@@ -3,22 +3,48 @@
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const PYTHON_VERSION = "3.14.7";
 const HOOK_TIMEOUT_MS = 12_000;
+const REVIEWED_PYTHON_RUNTIME = Object.freeze({
+  ".trellis/scripts/common/__init__.py":
+    "3d5e9347141f0296319a5beb29d69ae714c5a474b9078caeb3edd7c5f6562e22",
+  ".trellis/scripts/common/active_task.py":
+    "28a81f8828538fb70a15c88edd90eda9d685adbde8862f67f630bce5b27d9832",
+  ".trellis/scripts/common/config.py":
+    "8d2e5f8ccfcd5f622cd2af002aa761f3d3ffcc653182fefb2268afd102e77bca",
+  ".trellis/scripts/common/paths.py":
+    "05898ef136cc7c4d861b05fbf2b16d53ddd3e6f311a231d4fcfcb81bde7c45ee",
+  ".trellis/scripts/common/trellis_config.py":
+    "e282e897183e3ec2f4e6e56349431946e5f98c1c31d3eca4de7fc44e1383a7bf",
+});
+const ACTIVE_TASK_DEPENDENCIES = Object.freeze([
+  ".trellis/scripts/common/__init__.py",
+  ".trellis/scripts/common/active_task.py",
+  ".trellis/scripts/common/paths.py",
+]);
 const HOOK_MODES = Object.freeze({
   "workflow-state": Object.freeze({
+    dependencies: Object.freeze([
+      ...ACTIVE_TASK_DEPENDENCIES,
+      ".trellis/scripts/common/trellis_config.py",
+    ]),
     eventName: "UserPromptSubmit",
     script: ".codex/hooks/inject-workflow-state.py",
-    sha256: "c2c31cee862da15669e3a9ba6e57f655cc989cb1b76397db0c135f03da9a40cb",
+    sha256: "916212b7c66cf09c543e73fc5d3446a8287a41d9a85ec5d7006372d2419570ce",
   }),
   "subagent-context": Object.freeze({
+    dependencies: Object.freeze([
+      ...ACTIVE_TASK_DEPENDENCIES,
+      ".trellis/scripts/common/config.py",
+    ]),
     eventName: "SubagentStart",
     script: ".codex/hooks/inject-subagent-context.py",
-    sha256: "ab1f9cbf3a16b27b87461de49ad8881fd02aaff5111b57394033aa4c719f3560",
+    sha256: "b5825c4b7f1e576337416b0d0ac4b85e0e8cf9a6678f32db1ffff7bf5cb7f31a",
   }),
 });
 
@@ -60,7 +86,7 @@ function readRequiredFile(projectRoot, relativePath) {
   const filePath = path.join(projectRoot, relativePath);
   let stat;
   try {
-    stat = fs.statSync(filePath);
+    stat = fs.lstatSync(filePath);
   } catch (error) {
     fail(
       relativePath +
@@ -70,6 +96,11 @@ function readRequiredFile(projectRoot, relativePath) {
   }
   if (!stat.isFile()) {
     fail(relativePath + " must be a regular file");
+  }
+  const canonicalRoot = fs.realpathSync(projectRoot);
+  const canonicalFile = fs.realpathSync(filePath);
+  if (!isPathInsideProject(canonicalRoot, canonicalFile)) {
+    fail(relativePath + " must resolve inside the FyAgent repository");
   }
   const content = fs.readFileSync(filePath);
   if (content.length === 0 || content.includes(0)) {
@@ -209,6 +240,35 @@ function normalizedTextSha256(content) {
   return sha256(Buffer.from(content.toString("utf8").replace(/\r\n/g, "\n")));
 }
 
+function validateReviewedPythonRuntime(projectRoot, mode) {
+  const contracts = mode ? [HOOK_MODES[mode]] : Object.values(HOOK_MODES);
+  if (contracts.some((contract) => !contract)) {
+    fail("unsupported hook mode " + JSON.stringify(mode));
+  }
+
+  const reviewedFiles = new Map();
+  for (const contract of contracts) {
+    reviewedFiles.set(contract.script, contract.sha256);
+    for (const dependency of contract.dependencies) {
+      reviewedFiles.set(dependency, REVIEWED_PYTHON_RUNTIME[dependency]);
+    }
+  }
+
+  for (const [relativePath, expectedHash] of reviewedFiles) {
+    const source = readRequiredFile(projectRoot, relativePath);
+    const actualHash = normalizedTextSha256(source.content);
+    if (actualHash !== expectedHash) {
+      fail(
+        relativePath +
+          " integrity check failed; expected " +
+          expectedHash +
+          ", received " +
+          actualHash,
+      );
+    }
+  }
+}
+
 function validateProject(projectRoot, mode) {
   const pythonVersion = readRequiredFile(projectRoot, ".python-version");
   const versionLines = pythonVersion.text
@@ -259,28 +319,7 @@ function validateProject(projectRoot, mode) {
     });
   }
 
-  const modeContract = HOOK_MODES[mode];
-  if (modeContract) {
-    const hook = readRequiredFile(projectRoot, modeContract.script);
-    const actualHash = normalizedTextSha256(hook.content);
-    if (actualHash !== modeContract.sha256) {
-      fail(
-        modeContract.script +
-          " integrity check failed; expected " +
-          modeContract.sha256 +
-          ", received " +
-          actualHash,
-      );
-    }
-  } else {
-    for (const contract of Object.values(HOOK_MODES)) {
-      const hook = readRequiredFile(projectRoot, contract.script);
-      const actualHash = normalizedTextSha256(hook.content);
-      if (actualHash !== contract.sha256) {
-        fail(contract.script + " integrity check failed");
-      }
-    }
-  }
+  validateReviewedPythonRuntime(projectRoot, mode);
 
   const venvRoot = path.join(projectRoot, ".venv");
   let venvStat;
@@ -460,35 +499,92 @@ function validateHookOutput(stdout, mode) {
   return output;
 }
 
+function buildHookEnvironment({ environment, projectRoot, interpreter }) {
+  const childEnvironment = {};
+  for (const [key, value] of Object.entries(environment)) {
+    const normalizedKey = key.toUpperCase();
+    if (
+      normalizedKey.startsWith("UV_") ||
+      normalizedKey.startsWith("PYTHON") ||
+      normalizedKey.startsWith("CONDA_") ||
+      normalizedKey.startsWith("DYLD_") ||
+      normalizedKey.startsWith("LD_") ||
+      [
+        "__PYVENV_LAUNCHER__",
+        "LIBPATH",
+        "SHLIB_PATH",
+        "VIRTUAL_ENV",
+        "VIRTUAL_ENV_PROMPT",
+      ].includes(normalizedKey)
+    ) {
+      continue;
+    }
+    childEnvironment[key] = value;
+  }
+
+  return {
+    ...childEnvironment,
+    FYAGENT_CODEX_HOOK_STRICT: "1",
+    PYTHONDONTWRITEBYTECODE: "1",
+    PYTHONNOUSERSITE: "1",
+    PYTHONSAFEPATH: "1",
+    PYTHONUTF8: "1",
+    UV_LOCKED: "1",
+    UV_NO_ENV_FILE: "1",
+    UV_NO_SYNC: "1",
+    UV_OFFLINE: "1",
+    UV_PROJECT: projectRoot,
+    UV_PYTHON: interpreter,
+    UV_PYTHON_DOWNLOADS: "never",
+    UV_WORKING_DIR: projectRoot,
+  };
+}
+
 function runReadyHook({
   projectRoot,
   mode,
   input,
+  interpreter,
   spawn = spawnSync,
   environment = process.env,
 }) {
   const contract = HOOK_MODES[mode];
+  const executionRoot = fs.realpathSync(projectRoot);
+  const hookScript = path.resolve(executionRoot, contract.script);
+  const isolatedPycache = path.join(
+    os.tmpdir(),
+    "fyagent-codex-hook-" + crypto.randomUUID(),
+  );
   const args = [
     "run",
     "--locked",
     "--no-sync",
     "--offline",
+    "--no-env-file",
+    "--project",
+    executionRoot,
+    "--directory",
+    executionRoot,
+    "--python",
+    interpreter,
     "python",
+    "-I",
+    "-S",
+    "-B",
+    "-X",
+    "pycache_prefix=" + isolatedPycache,
     "-X",
     "utf8",
-    contract.script,
+    hookScript,
   ];
   const result = spawn("uv", args, {
-    cwd: projectRoot,
+    cwd: executionRoot,
     encoding: "utf8",
-    env: {
-      ...environment,
-      PYTHONDONTWRITEBYTECODE: "1",
-      PYTHONUTF8: "1",
-      FYAGENT_CODEX_HOOK_STRICT: "1",
-      UV_NO_SYNC: "1",
-      UV_OFFLINE: "1",
-    },
+    env: buildHookEnvironment({
+      environment,
+      projectRoot: executionRoot,
+      interpreter,
+    }),
     input: JSON.stringify(input) + "\n",
     maxBuffer: 16 * 1024 * 1024,
     timeout: HOOK_TIMEOUT_MS,
@@ -525,7 +621,14 @@ function executeHook({
   if (!readiness.ready) {
     return degradationOutput(mode, readiness.reason);
   }
-  return runReadyHook({ projectRoot, mode, input, spawn, environment });
+  return runReadyHook({
+    projectRoot,
+    mode,
+    input,
+    interpreter: readiness.interpreter,
+    spawn,
+    environment,
+  });
 }
 
 function snapshotFile(filePath) {

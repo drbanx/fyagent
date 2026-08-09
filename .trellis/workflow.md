@@ -16,6 +16,24 @@
 
 ## Trellis System
 
+<!-- fyagent:new-checkout-environment-gate:start -->
+
+### New Checkout Environment Gate
+
+For every new checkout, a human developer must explicitly review `mise.toml`,
+the included `.mise/tasks/*.toml` files, the standard version files, and
+`mise.lock`, then manually run this sequence in order:
+
+```bash
+mise trust
+mise run bootstrap
+mise run system:check
+```
+
+This gate is not automatic. Skills, hooks, and repository tasks must not automatically invoke `mise trust` or trigger `mise run bootstrap`; `bootstrap` runs only as the top-level command explicitly entered by the developer. If the checkout is untrusted or unprepared, stop and ask the developer to complete the sequence instead of attempting to repair the environment.
+
+<!-- fyagent:new-checkout-environment-gate:end -->
+
 ### Developer Identity
 
 On first use, initialize your identity:

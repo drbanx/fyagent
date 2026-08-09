@@ -9,6 +9,25 @@ Initialize a Trellis-managed development session. This platform has no session-s
 
 ---
 
+<!-- fyagent:new-checkout-environment-gate:start -->
+
+## Step 0: New checkout environment gate
+
+Before this skill runs a repository task in a new checkout, a human developer
+must explicitly review `mise.toml`, the included `.mise/tasks/*.toml` files,
+the standard version files, and `mise.lock`, then manually run this sequence in
+order:
+
+```bash
+mise trust
+mise run bootstrap
+mise run system:check
+```
+
+This gate is not automatic. Skills, hooks, and repository tasks must not automatically invoke `mise trust` or trigger `mise run bootstrap`; `bootstrap` runs only as the top-level command explicitly entered by the developer. If the gate is incomplete, stop and ask the developer to complete it instead of continuing to Step 1.
+
+<!-- fyagent:new-checkout-environment-gate:end -->
+
 ## Step 1: Current state
 
 Identity, git status, current task, active tasks, journal location.

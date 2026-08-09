@@ -34,11 +34,14 @@ Silent exit 0 cases (no output):
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import re
 import sys
 import queue
 import threading
+import types
+from html import escape as _escape_html
 from pathlib import Path
 
 # Force UTF-8 on stdin/stdout/stderr on Windows. Default codepage there is
@@ -96,13 +99,24 @@ def find_trellis_root(start: Path) -> Optional[Path]:
 # ---------------------------------------------------------------------------
 
 def _detect_platform(input_data: dict) -> str | None:
+    # The reviewed Codex runner owns the platform identity for strict hook
+    # invocations. Ambient compatibility variables can be inherited from an
+    # IDE or parent shell and must not redirect Codex to another session key or
+    # output protocol.
+    if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
+        return "codex"
     if isinstance(input_data.get("cursor_version"), str):
         return "cursor"
+    # CLAUDE_PROJECT_DIR is a compatibility alias that several hosts set
+    # alongside their own variable — CodeBuddy, ZCode and Trae all do. It must
+    # therefore be checked LAST, or every one of them is detected as claude and
+    # the context key becomes `claude_<their-session-id>`. That key does not
+    # match the session file `task.py start` wrote under the host's real name,
+    # so every turn reports no_task while the pointer exists on disk.
+    # Observed on CodeBuddy IDE 4.10.4: session file `codebuddy_ae54840e….json`
+    # alongside marker `update-check-claude_ae54840e….marker`, same id.
     env_map = {
-        # ZCode may set both ZCODE_PROJECT_DIR and CLAUDE_PROJECT_DIR; check
-        # ZCODE first so ZCode sessions aren't misdetected as claude.
         "ZCODE_PROJECT_DIR": "zcode",
-        "CLAUDE_PROJECT_DIR": "claude",
         "CURSOR_PROJECT_DIR": "cursor",
         "CODEBUDDY_PROJECT_DIR": "codebuddy",
         "FACTORY_PROJECT_DIR": "droid",
@@ -111,6 +125,8 @@ def _detect_platform(input_data: dict) -> str | None:
         "KIRO_PROJECT_DIR": "kiro",
         "COPILOT_PROJECT_DIR": "copilot",
         "TRAE_PROJECT_DIR": "trae",
+        # Last: the shared alias, only meaningful once no vendor key matched.
+        "CLAUDE_PROJECT_DIR": "claude",
     }
     for env_name, platform in env_map.items():
         if os.environ.get(env_name):
@@ -139,13 +155,97 @@ def _detect_platform(input_data: dict) -> str | None:
     return None
 
 
+def _load_reviewed_common_module(scripts_dir: Path, module_name: str):
+    """Load one exact common/*.py source without import-path shadowing."""
+    common_dir = (scripts_dir / "common").resolve()
+    package = sys.modules.get("common")
+    if package is None:
+        package = types.ModuleType("common")
+        package.__file__ = str(common_dir / "__init__.py")
+        package.__package__ = "common"
+        package.__path__ = [str(common_dir)]
+        sys.modules["common"] = package
+    elif list(getattr(package, "__path__", ())) != [str(common_dir)]:
+        raise ImportError("common package is not bound to the reviewed Trellis path")
+
+    qualified_name = f"common.{module_name}"
+    source_path = (common_dir / f"{module_name}.py").resolve()
+    existing = sys.modules.get(qualified_name)
+    if existing is not None:
+        existing_path = Path(getattr(existing, "__file__", "")).resolve()
+        if existing_path != source_path:
+            raise ImportError(f"{qualified_name} is not bound to reviewed source")
+        return existing
+
+    spec = importlib.util.spec_from_file_location(qualified_name, source_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load reviewed source {qualified_name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[qualified_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(qualified_name, None)
+        raise
+    setattr(package, module_name, module)
+    return module
+
+
 def _resolve_active_task(root: Path, input_data: dict):
     scripts_dir = root / ".trellis" / "scripts"
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
-    from common.active_task import resolve_active_task  # type: ignore[import-not-found]
+    active_task = _load_reviewed_common_module(scripts_dir, "active_task")
 
-    return resolve_active_task(root, input_data, platform=_detect_platform(input_data))
+    return active_task.resolve_active_task(
+        root, input_data, platform=_detect_platform(input_data)
+    )
+
+
+_TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
+_TASK_STATUS_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+
+
+def _reject_active_task_path(message: str) -> None:
+    if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
+        raise ValueError(message)
+    return None
+
+
+def _resolve_task_directory(root: Path, task_path: str) -> Path | None:
+    """Resolve an active task only within this repository's task directory."""
+    if not isinstance(task_path, str) or not task_path.strip():
+        return _reject_active_task_path("active task path must be a non-empty string")
+    if ".." in task_path.replace("\\", "/").split("/"):
+        return _reject_active_task_path(
+            "active task path must not contain parent traversal"
+        )
+    repository_root = root.resolve()
+    task_root_path = repository_root / ".trellis" / "tasks"
+    if task_root_path.is_symlink():
+        return _reject_active_task_path(
+            "active task root must not be a symlink or junction"
+        )
+    task_root = task_root_path.resolve()
+    try:
+        task_root.relative_to(repository_root)
+    except ValueError:
+        return _reject_active_task_path(
+            "active task root must remain inside the repository"
+        )
+    candidate = Path(task_path)
+    if candidate.is_absolute() and os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
+        return _reject_active_task_path(
+            "strict Codex active task paths must be repository-root relative"
+        )
+    if not candidate.is_absolute():
+        candidate = repository_root / candidate
+    candidate = candidate.resolve()
+    try:
+        candidate.relative_to(task_root)
+    except ValueError:
+        return _reject_active_task_path(
+            "active task path must remain inside the repository task root"
+        )
+    return candidate
 
 
 def get_active_task(root: Path, input_data: dict) -> Optional[tuple[str, str, str]]:
@@ -154,24 +254,48 @@ def get_active_task(root: Path, input_data: dict) -> Optional[tuple[str, str, st
     if not active.task_path:
         return None
 
-    task_dir = Path(active.task_path)
-    if not task_dir.is_absolute():
-        task_dir = root / task_dir
+    task_dir = _resolve_task_directory(root, active.task_path)
+    if task_dir is None:
+        return None
     if active.stale:
-        return task_dir.name, f"stale_{active.source_type}", active.source
+        stale_status = f"stale_{active.source_type}"
+        if not _TASK_ID_RE.fullmatch(task_dir.name):
+            return _reject_active_task_path(
+                "stale active task id is not a bounded identifier"
+            )
+        if not _TASK_STATUS_RE.fullmatch(stale_status):
+            return _reject_active_task_path(
+                "stale active task status is not a bounded identifier"
+            )
+        return task_dir.name, stale_status, active.source
 
-    task_json = task_dir / "task.json"
+    task_json_path = task_dir / "task.json"
+    if task_json_path.is_symlink():
+        return _reject_active_task_path("active task.json must not be a symlink")
+    task_json = task_json_path.resolve()
+    if task_json.parent != task_dir:
+        return _reject_active_task_path(
+            "active task.json must remain inside its task directory"
+        )
     if not task_json.is_file():
         return None
     try:
         data = json.loads(task_json.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
+            raise ValueError("active task.json must be readable JSON") from exc
         return None
+    if not isinstance(data, dict):
+        return _reject_active_task_path("active task.json must contain an object")
 
     task_id = data.get("id") or task_dir.name
     status = data.get("status", "")
-    if not isinstance(status, str) or not status:
-        return None
+    if not isinstance(task_id, str) or not _TASK_ID_RE.fullmatch(task_id):
+        return _reject_active_task_path("active task id is not a bounded identifier")
+    if not isinstance(status, str) or not _TASK_STATUS_RE.fullmatch(status):
+        return _reject_active_task_path(
+            "active task status is not a bounded identifier"
+        )
     return task_id, status, active.source
 
 
@@ -216,17 +340,17 @@ def _read_trellis_config(root: Path) -> dict:
     """Load .trellis/config.yaml via the bundled trellis_config helper.
 
     The helper lives in .trellis/scripts/common; the hook lives outside the
-    scripts tree, so we extend sys.path before importing.
+    scripts tree, so load the reviewed source by its exact path.
     """
     scripts_dir = root / ".trellis" / "scripts"
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
     try:
-        from common.trellis_config import read_trellis_config  # type: ignore[import-not-found]
+        trellis_config = _load_reviewed_common_module(
+            scripts_dir, "trellis_config"
+        )
     except Exception:
         return {}
     try:
-        return read_trellis_config(root)
+        return trellis_config.read_trellis_config(root)
     except Exception:
         return {}
 
@@ -356,7 +480,21 @@ def build_breadcrumb(
         body = templates.get(status)
     if body is None:
         body = "Refer to workflow.md for current step."
-    header = f"Status: {status}" if task_id is None else f"Task: {task_id} ({status})"
+    safe_status = _escape_html(
+        re.sub(r"[\x00-\x1f\x7f]+", " ", status).strip(), quote=False
+    )
+    safe_task_id = (
+        _escape_html(
+            re.sub(r"[\x00-\x1f\x7f]+", " ", task_id).strip(), quote=False
+        )
+        if task_id is not None
+        else None
+    )
+    header = (
+        f"Status: {safe_status}"
+        if safe_task_id is None
+        else f"Task: {safe_task_id} ({safe_status})"
+    )
     return f"<workflow-state>\n{header}\n{body}\n</workflow-state>"
 
 
@@ -413,10 +551,11 @@ def main() -> int:
 
     data = _load_hook_input()
 
-    cwd_str = data.get("cwd") or os.getcwd()
-    cwd = Path(cwd_str)
-
-    root = find_trellis_root(cwd)
+    if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
+        root = find_trellis_root(Path.cwd())
+    else:
+        cwd_str = data.get("cwd") or os.getcwd()
+        root = find_trellis_root(Path(cwd_str))
     if root is None:
         return 0  # not a Trellis project
 

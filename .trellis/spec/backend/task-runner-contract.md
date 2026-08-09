@@ -151,6 +151,50 @@ are an explicit Child 6 handoff allowlist. A new legacy occurrence fails
 `docs-contract-check.mjs`; removing an allowlisted occurrence is always safe.
 Retired local cross-build tasks have no alias or deprecation forwarder.
 
+The same checker owns a narrower, explicit operational-Trellis document set:
+`.trellis/workflow.md`, the project-local `fyagent-trellis` entry skill, and the
+`trellis-start`, `trellis-continue`, `trellis-before-dev`,
+`trellis-brainstorm`, `trellis-check`, and `trellis-finish-work` lifecycle
+skills. In that set, every use of mise's retired execution subcommand with its
+double-dash separator, or a bare `/finish-work` occurrence, is forbidden.
+Direct `python`/`python3`/`py` commands are forbidden only when their first
+script operand is `.trellis/scripts/*.py`; `uv run` is forbidden when its
+command is such a script or a Python launcher whose first script operand is
+such a script. The checker extracts small Markdown command candidates instead
+of applying those rules to arbitrary prose: fenced lines, inline code,
+`Run`/`Execute` imperatives, list items, blockquotes, shell prompts, and
+backslash, PowerShell-backtick, or cmd-caret continuations are command
+contexts. Unrelated Python/uv commands and prose remain outside this narrow
+entrypoint rule. In `trellis-check`, command candidates may not use recursive
+grep through `-r`, `-R`, a combined short-option cluster, or `--recursive`;
+the skill uses `rg` instead.
+
+Every concrete `mise run <task>` reference must resolve through the live
+task-definition loader. The parser accepts the current documented boolean
+flags, short flags, value-taking `--jobs`/`--cd` forms (separate or `=` where
+supported), and the `--` option boundary. An unknown option fails closed, and
+task membership uses an own-property check so inherited object keys are not
+treated as task definitions.
+
+The workflow must retain its host-native local-execution and synchronous
+whole-run GitHub Actions normative lines byte-for-byte. The workflow,
+`trellis-start`, and `fyagent-trellis` each contain exactly one setup block
+bounded by the project-owned
+`<!-- fyagent:new-checkout-environment-gate:start -->` and matching `:end`
+markers. Inside that block, an affirmative new/fresh-checkout rule assigns
+explicit configuration review and manual execution to a human developer;
+exactly one fenced command block contains, in order and with no extra command,
+`mise trust`, `mise run bootstrap`, and `mise run system:check`. The same block
+ties the prohibition on automatic trust/bootstrap execution to skills, hooks,
+and repository tasks.
+
+This operational scan is intentionally not recursive. Generic
+`trellis-meta/**` and `trellis-channel/**`, `.trellis/scripts/**`, historical
+design packages and task archives, hook-contract Wrong examples, and CI's
+documented non-mise execution boundary remain outside it. Those files describe
+reusable architecture, implementation leaves, frozen evidence, negative
+examples, or GitHub Actions rather than FyAgent's routine local command API.
+
 ## 7. Validation / Error Matrix
 
 | Condition                                                             | Required result                        |
@@ -174,6 +218,8 @@ Retired local cross-build tasks have no alias or deprecation forwarder.
 | Upstream safety/remotes/worktree do not match                         | Reject before fetch/merge              |
 | Generated task reference differs by one byte                          | `tasks:docs:check` fails               |
 | New active doc uses a legacy entrypoint                               | `docs-contract-check.mjs` fails        |
+| Operational Trellis doc bypasses mise or names an unknown task        | `docs-contract-check.mjs` fails        |
+| Workflow/setup safety marker disappears during a Trellis update       | `docs-contract-check.mjs` fails        |
 
 ## 8. Tests Required
 
@@ -210,6 +256,12 @@ Retired local cross-build tasks have no alias or deprecation forwarder.
 - Clean preview tests proving canonical repository-only targets and zero writes.
 - Docs generation/check tests including a description containing `|` to prove
   table escaping.
+- Operational-Trellis documentation fixtures covering direct Python/py, uv,
+  `mise exec`, bare `/finish-work`, every recursive-grep spelling, Markdown
+  command contexts and continuations, mise options and own-property task
+  lookup, the bounded new-checkout quality gate, exact host-native/Actions
+  lines, and the explicit generic, internal, historical, Wrong-example, and CI
+  exclusions.
 - `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
   `taskDocs.test.ts`, `systemCheck.test.ts`, and
   `localBuildBoundary.test.ts`.
