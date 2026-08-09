@@ -23,10 +23,15 @@ use futures::future::BoxFuture;
 
 use self::{
     deployment::{
-        deployment_error, launch_error, local_file_uri, WindowsDeploymentProgressSink,
-        WindowsPackageManager, WindowsPackageRecord,
+        deployment_error, launch_error, local_file_uri, verify_context_evidence,
+        WindowsDeploymentProgressSink, WindowsPackageManager, WindowsPackageRecord,
     },
     manifest::{parse_msix_manifest, WindowsPackageManifest},
+};
+
+#[cfg(test)]
+use self::deployment::{
+    WindowsPackageInventory, WindowsUserContextEvidence, WindowsUserOperationReceipt,
 };
 
 #[cfg(test)]
@@ -47,6 +52,7 @@ use crate::codex_desktop::{
         ReleaseDescriptor, UnsupportedReason,
     },
 };
+use crate::windows_runtime::InteractiveUserContext;
 
 #[cfg(target_os = "windows")]
 #[cfg_attr(test, allow(unused_imports))]
@@ -175,9 +181,12 @@ impl WindowsHost {
 
 /// Windows installer adapter with injectable PackageManager facts. The public
 /// construction boundary is side-effect-free, so tests never query, deploy,
-/// or activate a real system package.
+/// or activate a real system package. The production facade calls
+/// `revalidate_interactive_user_context` before and after native operations;
+/// this adapter independently verifies every returned context stamp.
 pub(crate) struct WindowsPlatformAdapter {
     package_manager: Arc<dyn WindowsPackageManager>,
+    user_context: Arc<InteractiveUserContext>,
     host: WindowsHost,
     publisher_evidence: VerifiedPublisherEvidence,
 }
@@ -185,11 +194,13 @@ pub(crate) struct WindowsPlatformAdapter {
 impl WindowsPlatformAdapter {
     pub(crate) fn new(
         package_manager: Arc<dyn WindowsPackageManager>,
+        user_context: Arc<InteractiveUserContext>,
         host: WindowsHost,
         publisher_evidence: VerifiedPublisherEvidence,
     ) -> Self {
         Self {
             package_manager,
+            user_context,
             host,
             publisher_evidence,
         }
@@ -200,9 +211,11 @@ impl WindowsPlatformAdapter {
     #[cfg(target_os = "windows")]
     pub(crate) fn for_current_host(
         publisher_evidence: VerifiedPublisherEvidence,
+        user_context: Arc<InteractiveUserContext>,
     ) -> Result<Self, InstallerError> {
         Ok(Self::new(
             Arc::new(SystemWindowsPackageManager),
+            user_context,
             WindowsHost::for_current_host()?,
             publisher_evidence,
         ))
@@ -231,6 +244,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
 
     fn inspect_local(&self) -> BoxFuture<'_, Result<LocalInstallStatus, InstallerError>> {
         let package_manager = self.package_manager.clone();
+        let user_context = self.user_context.clone();
         let host = self.host.clone();
         let publisher_evidence = self.publisher_evidence.clone();
         let host_error = self.host_support_error();
@@ -246,7 +260,12 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
                 return Err(error);
             }
             run_blocking(move || {
-                inspect_local(package_manager.as_ref(), &host, &publisher_evidence)
+                inspect_local(
+                    package_manager.as_ref(),
+                    &user_context,
+                    &host,
+                    &publisher_evidence,
+                )
             })
             .await
         })
@@ -256,6 +275,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         &self,
     ) -> BoxFuture<'_, Result<RestartCandidateInspection, InstallerError>> {
         let package_manager = self.package_manager.clone();
+        let user_context = self.user_context.clone();
         let host = self.host.clone();
         let publisher_evidence = self.publisher_evidence.clone();
         let host_error = self.host_support_error();
@@ -271,7 +291,12 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
                 return Err(error);
             }
             run_blocking(move || {
-                inspect_restart_candidates(package_manager.as_ref(), &host, &publisher_evidence)
+                inspect_restart_candidates(
+                    package_manager.as_ref(),
+                    &user_context,
+                    &host,
+                    &publisher_evidence,
+                )
             })
             .await
         })
@@ -323,6 +348,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         progress: PlatformProgressSink,
     ) -> BoxFuture<'a, Result<(), InstallerError>> {
         let package_manager = self.package_manager.clone();
+        let user_context = self.user_context.clone();
         let host = self.host.clone();
         let package = package.clone();
         let host_error = self.host_support_error();
@@ -331,7 +357,13 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
                 return Err(error);
             }
             run_blocking(move || {
-                install_current_user(package_manager.as_ref(), &host, &package, progress)
+                install_current_user(
+                    package_manager.as_ref(),
+                    &user_context,
+                    &host,
+                    &package,
+                    progress,
+                )
             })
             .await
         })
@@ -342,14 +374,25 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         installed: &'a InstalledApplication,
     ) -> BoxFuture<'a, Result<(), InstallerError>> {
         let package_manager = self.package_manager.clone();
+        let user_context = self.user_context.clone();
         let host = self.host.clone();
+        let publisher_evidence = self.publisher_evidence.clone();
         let installed = installed.clone();
         let host_error = self.host_support_error();
         Box::pin(async move {
             if let Some(error) = host_error {
                 return Err(error);
             }
-            run_blocking(move || launch(package_manager.as_ref(), &host, &installed)).await
+            run_blocking(move || {
+                launch(
+                    package_manager.as_ref(),
+                    &user_context,
+                    &host,
+                    &publisher_evidence,
+                    &installed,
+                )
+            })
+            .await
         })
     }
 
@@ -357,13 +400,14 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         &'a self,
         installed: &'a InstalledApplication,
     ) -> BoxFuture<'a, Result<RuntimeInspection, InstallerError>> {
+        let user_context = self.user_context.clone();
         let installed = installed.clone();
         let host_error = self.host_support_error();
         Box::pin(async move {
             if let Some(error) = host_error {
                 return Err(error);
             }
-            run_blocking(move || runtime::inspect(&installed)).await
+            run_blocking(move || runtime::inspect(&user_context, &installed)).await
         })
     }
 
@@ -372,6 +416,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         installed: &'a InstalledApplication,
         instances: &'a [TrustedRuntimeInstance],
     ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        let user_context = self.user_context.clone();
         let installed = installed.clone();
         let instances = instances.to_vec();
         let host_error = self.host_support_error();
@@ -379,7 +424,8 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
             if let Some(error) = host_error {
                 return Err(error);
             }
-            run_blocking(move || runtime::force_shutdown(&installed, &instances)).await
+            run_blocking(move || runtime::force_shutdown(&user_context, &installed, &instances))
+                .await
         })
     }
 
@@ -388,6 +434,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         installed: &'a InstalledApplication,
         instances: &'a [TrustedRuntimeInstance],
     ) -> BoxFuture<'a, Result<bool, InstallerError>> {
+        let user_context = self.user_context.clone();
         let installed = installed.clone();
         let instances = instances.to_vec();
         let host_error = self.host_support_error();
@@ -395,19 +442,21 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
             if let Some(error) = host_error {
                 return Err(error);
             }
-            run_blocking(move || runtime::is_instance_running(&installed, &instances)).await
+            run_blocking(move || {
+                runtime::is_instance_running(&user_context, &installed, &instances)
+            })
+            .await
         })
     }
 }
 
 fn inspect_local(
     package_manager: &dyn WindowsPackageManager,
+    user_context: &InteractiveUserContext,
     host: &WindowsHost,
     publisher_evidence: &VerifiedPublisherEvidence,
 ) -> Result<LocalInstallStatus, InstallerError> {
-    let records = package_manager
-        .current_user_packages()
-        .map_err(deployment_error)?;
+    let records = inventory_records(package_manager, user_context)?;
     let stable_records = records
         .iter()
         .filter(|record| record.identity_name == WINDOWS_CODEX_STABLE_IDENTITY)
@@ -432,7 +481,7 @@ fn inspect_local(
                 .iter()
                 .map(InstalledApplicationSummary::from)
                 .collect(),
-            error: InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+            error: InstallerError::new(InstallerErrorCode::MultipleInstallations)
                 .with_diagnostic_message(
                     "multiple Stable Windows packages prevent a safe update or launch",
                 )
@@ -441,19 +490,18 @@ fn inspect_local(
     }
 }
 
-/// Produces every current-user exact PFN-bound installation candidate for the
-/// v1.0.2 restart planner. `family_name` is obtained from PackageManager and
-/// is validated while forming the verified AUMID; display name, executable
-/// name, window title, and package path never participate in candidate
-/// discovery or ordering.
+/// Produces the one current-user exact PFN-bound installation candidate for
+/// the restart planner, or explicit ambiguity when more than one survives.
+/// `family_name` is obtained from PackageManager and validated while forming
+/// the verified AUMID; display name, executable name, window title, and package
+/// path never participate in candidate discovery or ordering.
 fn inspect_restart_candidates(
     package_manager: &dyn WindowsPackageManager,
+    user_context: &InteractiveUserContext,
     host: &WindowsHost,
     publisher_evidence: &VerifiedPublisherEvidence,
 ) -> Result<RestartCandidateInspection, InstallerError> {
-    let records = package_manager
-        .current_user_packages()
-        .map_err(deployment_error)?;
+    let records = inventory_records(package_manager, user_context)?;
     let stable_records = records
         .iter()
         .filter(|record| record.identity_name == WINDOWS_CODEX_STABLE_IDENTITY)
@@ -476,7 +524,21 @@ fn inspect_restart_candidates(
             })
         })
         .collect::<Result<Vec<_>, InstallerError>>()?;
-    Ok(RestartCandidateInspection::Trusted(candidates))
+    match candidates.as_slice() {
+        [candidate] => Ok(RestartCandidateInspection::Trusted(vec![candidate.clone()])),
+        _ => Ok(RestartCandidateInspection::AmbiguousInstallations),
+    }
+}
+
+fn inventory_records(
+    package_manager: &dyn WindowsPackageManager,
+    user_context: &InteractiveUserContext,
+) -> Result<Vec<WindowsPackageRecord>, InstallerError> {
+    let inventory = package_manager
+        .packages_for_user(user_context)
+        .map_err(deployment_error)?;
+    verify_context_evidence(user_context, inventory.context_evidence())?;
+    Ok(inventory.records().to_vec())
 }
 
 fn installed_application_from_record(
@@ -571,6 +633,7 @@ pub(crate) fn revalidate_all_users_package(
 
 fn install_current_user(
     package_manager: &dyn WindowsPackageManager,
+    user_context: &InteractiveUserContext,
     host: &WindowsHost,
     package: &VerifiedPackage,
     progress: PlatformProgressSink,
@@ -607,9 +670,10 @@ fn install_current_user(
             Some(100),
         ));
     });
-    package_manager
-        .deploy_current_user(&package_file_uri, native_progress)
+    let receipt = package_manager
+        .deploy_current_user(user_context, &package_file_uri, native_progress)
         .map_err(deployment_error)?;
+    verify_context_evidence(user_context, receipt.context_evidence())?;
     if !native_reported_completion.load(Ordering::Acquire) {
         progress.report_progress(JobProgress::new(
             ProgressPhase::Installation,
@@ -622,7 +686,9 @@ fn install_current_user(
 
 fn launch(
     package_manager: &dyn WindowsPackageManager,
+    user_context: &InteractiveUserContext,
     host: &WindowsHost,
+    publisher_evidence: &VerifiedPublisherEvidence,
     installed: &InstalledApplication,
 ) -> Result<(), InstallerError> {
     if installed.stable_identity != WINDOWS_CODEX_STABLE_IDENTITY
@@ -646,7 +712,46 @@ fn launch(
         return Err(InstallerError::new(InstallerErrorCode::LaunchFailed)
             .with_diagnostic_message("launch request contains an invalid Windows AUMID"));
     }
-    package_manager.launch_aumid(aumid).map_err(launch_error)
+
+    // A previously selected application is not itself a launch capability.
+    // Re-enumerate the frozen SID/Main inventory immediately before Explorer
+    // activation and require the one trusted result to be byte-for-byte the
+    // same domain record.
+    let records = inventory_records(package_manager, user_context)?;
+    let stable_records = records
+        .iter()
+        .filter(|record| record.identity_name == WINDOWS_CODEX_STABLE_IDENTITY)
+        .collect::<Vec<_>>();
+    let record = match stable_records.as_slice() {
+        [record] => *record,
+        [] => {
+            return Err(InstallerError::new(InstallerErrorCode::LaunchFailed)
+                .with_diagnostic_message(
+                    "launch requires one exact Stable package for the interactive user",
+                ));
+        }
+        _ => {
+            return Err(
+                InstallerError::new(InstallerErrorCode::MultipleInstallations)
+                    .with_diagnostic_message(
+                        "multiple Stable Windows packages prevent a safe launch",
+                    ),
+            );
+        }
+    };
+    let current = installed_application_from_record(record, host, publisher_evidence)?;
+    if &current != installed {
+        return Err(
+            InstallerError::new(InstallerErrorCode::LaunchFailed).with_diagnostic_message(
+                "the selected Stable Windows application changed before launch",
+            ),
+        );
+    }
+
+    let receipt = package_manager
+        .launch_aumid(user_context, aumid)
+        .map_err(launch_error)?;
+    verify_context_evidence(user_context, receipt.context_evidence())
 }
 
 fn validate_release_for_host(
@@ -869,14 +974,19 @@ mod native_host {
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::HashMap,
         fs::{self, File},
         io::Write,
         path::PathBuf,
-        sync::{Arc, Mutex},
+        sync::{
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+            Arc, Mutex,
+        },
     };
 
     use super::*;
     use crate::codex_desktop::{
+        all_users::{AllUsersProvisioner, ValidatedAllUsersJob},
         download::DownloadedArtifact,
         error::InstallerErrorCode,
         temp::JobTempDir,
@@ -888,26 +998,118 @@ mod tests {
 
     const PUBLISHER: &str = "CN=fixture publisher";
     const FAMILY_NAME: &str = "OpenAI.Codex_fixture";
+    const USER_SID: &str = "S-1-5-21-1000";
+    const OTHER_USER_SID: &str = "S-1-5-21-2000";
+
+    #[derive(Clone)]
+    enum FakeEvidence {
+        Bound,
+        Missing,
+        Override(WindowsUserContextEvidence),
+    }
+
+    impl FakeEvidence {
+        fn for_context(
+            &self,
+            context: &InteractiveUserContext,
+        ) -> Option<WindowsUserContextEvidence> {
+            match self {
+                Self::Bound => Some(WindowsUserContextEvidence::for_test(context)),
+                Self::Missing => None,
+                Self::Override(evidence) => Some(evidence.clone()),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum FakePackageOperation {
+        InventoryMain {
+            canonical_sid: String,
+        },
+        Deploy {
+            canonical_sid: String,
+            uri: String,
+        },
+        Launch {
+            canonical_sid: String,
+            aumid: String,
+        },
+    }
 
     struct FakePackageManager {
-        records: Mutex<Vec<WindowsPackageRecord>>,
+        records_by_sid: Mutex<HashMap<String, Vec<WindowsPackageRecord>>>,
+        context_is_current: AtomicBool,
+        inventory_evidence: Mutex<FakeEvidence>,
+        deployment_evidence: Mutex<FakeEvidence>,
+        launch_evidence: Mutex<FakeEvidence>,
         deployment_result: Mutex<Result<(), WindowsNativeError>>,
         deployment_progress: Mutex<Vec<u32>>,
         deployed_uris: Mutex<Vec<String>>,
         launched_aumids: Mutex<Vec<String>>,
         launch_result: Mutex<Result<(), WindowsNativeError>>,
+        operations: Mutex<Vec<FakePackageOperation>>,
+        all_users_calls: AtomicUsize,
     }
 
     impl FakePackageManager {
         fn with_records(records: Vec<WindowsPackageRecord>) -> Self {
+            Self::with_user_records([(USER_SID, records)])
+        }
+
+        fn with_user_records(
+            records: impl IntoIterator<Item = (&'static str, Vec<WindowsPackageRecord>)>,
+        ) -> Self {
             Self {
-                records: Mutex::new(records),
+                records_by_sid: Mutex::new(
+                    records
+                        .into_iter()
+                        .map(|(sid, records)| (sid.to_owned(), records))
+                        .collect(),
+                ),
+                context_is_current: AtomicBool::new(true),
+                inventory_evidence: Mutex::new(FakeEvidence::Bound),
+                deployment_evidence: Mutex::new(FakeEvidence::Bound),
+                launch_evidence: Mutex::new(FakeEvidence::Bound),
                 deployment_result: Mutex::new(Ok(())),
                 deployment_progress: Mutex::new(vec![35, 80]),
                 deployed_uris: Mutex::new(Vec::new()),
                 launched_aumids: Mutex::new(Vec::new()),
                 launch_result: Mutex::new(Ok(())),
+                operations: Mutex::new(Vec::new()),
+                all_users_calls: AtomicUsize::new(0),
             }
+        }
+
+        fn set_user_records(&self, sid: &str, records: Vec<WindowsPackageRecord>) {
+            self.records_by_sid
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .insert(sid.to_owned(), records);
+        }
+
+        fn set_context_is_current(&self, value: bool) {
+            self.context_is_current.store(value, Ordering::Release);
+        }
+
+        fn set_inventory_evidence(&self, evidence: FakeEvidence) {
+            *self
+                .inventory_evidence
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = evidence;
+        }
+
+        fn set_deployment_evidence(&self, evidence: FakeEvidence) {
+            *self
+                .deployment_evidence
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = evidence;
+        }
+
+        fn set_launch_evidence(&self, evidence: FakeEvidence) {
+            *self
+                .launch_evidence
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = evidence;
         }
 
         fn set_deployment_result(&self, result: Result<(), WindowsNativeError>) {
@@ -923,6 +1125,17 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = result;
         }
+
+        fn operations(&self) -> Vec<FakePackageOperation> {
+            self.operations
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone()
+        }
+
+        fn all_users_call_count(&self) -> usize {
+            self.all_users_calls.load(Ordering::Acquire)
+        }
     }
 
     impl Default for FakePackageManager {
@@ -932,23 +1145,54 @@ mod tests {
     }
 
     impl WindowsPackageManager for FakePackageManager {
-        fn current_user_packages(&self) -> Result<Vec<WindowsPackageRecord>, WindowsNativeError> {
-            Ok(self
-                .records
+        fn packages_for_user(
+            &self,
+            context: &InteractiveUserContext,
+        ) -> Result<WindowsPackageInventory, WindowsNativeError> {
+            self.operations
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .clone())
+                .push(FakePackageOperation::InventoryMain {
+                    canonical_sid: context.canonical_sid().to_owned(),
+                });
+            if !self.context_is_current.load(Ordering::Acquire) {
+                return Err(WindowsNativeError::context_mismatch());
+            }
+            let records = self
+                .records_by_sid
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .get(context.canonical_sid())
+                .cloned()
+                .unwrap_or_default();
+            let evidence = self
+                .inventory_evidence
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .for_context(context);
+            Ok(WindowsPackageInventory::for_test(evidence, records))
         }
 
         fn deploy_current_user(
             &self,
+            context: &InteractiveUserContext,
             package_file_uri: &str,
             progress: WindowsDeploymentProgressSink,
-        ) -> Result<(), WindowsNativeError> {
+        ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
+            if !self.context_is_current.load(Ordering::Acquire) {
+                return Err(WindowsNativeError::context_mismatch());
+            }
             self.deployed_uris
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .push(package_file_uri.to_owned());
+            self.operations
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(FakePackageOperation::Deploy {
+                    canonical_sid: context.canonical_sid().to_owned(),
+                    uri: package_file_uri.to_owned(),
+                });
             for value in self
                 .deployment_progress
                 .lock()
@@ -958,26 +1202,70 @@ mod tests {
             {
                 progress(value);
             }
-            *self
+            (*self
                 .deployment_result
                 .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()))?;
+            let evidence = self
+                .deployment_evidence
+                .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .for_context(context);
+            Ok(WindowsUserOperationReceipt::for_test(evidence))
         }
 
-        fn launch_aumid(&self, aumid: &str) -> Result<(), WindowsNativeError> {
+        fn launch_aumid(
+            &self,
+            context: &InteractiveUserContext,
+            aumid: &str,
+        ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
+            if !self.context_is_current.load(Ordering::Acquire) {
+                return Err(WindowsNativeError::context_mismatch());
+            }
             self.launched_aumids
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .push(aumid.to_owned());
-            *self
-                .launch_result
+            self.operations
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(FakePackageOperation::Launch {
+                    canonical_sid: context.canonical_sid().to_owned(),
+                    aumid: aumid.to_owned(),
+                });
+            (*self
+                .launch_result
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()))?;
+            let evidence = self
+                .launch_evidence
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .for_context(context);
+            Ok(WindowsUserOperationReceipt::for_test(evidence))
+        }
+    }
+
+    // The same fake deliberately owns the separate elevated capability. The
+    // ordinary adapter receives it only through WindowsPackageManager, so any
+    // capability-boundary regression makes these zero-call assertions fail.
+    impl AllUsersProvisioner for FakePackageManager {
+        fn stage_and_provision(
+            &self,
+            _job: &ValidatedAllUsersJob,
+            _release: &ReleaseDescriptor,
+        ) -> Result<(), InstallerError> {
+            self.all_users_calls.fetch_add(1, Ordering::AcqRel);
+            Ok(())
         }
     }
 
     fn host(architecture: CpuArchitecture, version: &str) -> WindowsHost {
         WindowsHost::new(architecture, version, PathBuf::from("C:\\")).unwrap()
+    }
+
+    fn user_context(sid: &str) -> Arc<InteractiveUserContext> {
+        Arc::new(InteractiveUserContext::for_test(sid, 1))
     }
 
     fn release(
@@ -1022,6 +1310,7 @@ mod tests {
     fn adapter(manager: Arc<dyn WindowsPackageManager>) -> WindowsPlatformAdapter {
         WindowsPlatformAdapter::new(
             manager,
+            user_context(USER_SID),
             host(CpuArchitecture::X86_64, "10.0.22631.0"),
             VerifiedPublisherEvidence::for_test(PUBLISHER),
         )
@@ -1108,7 +1397,7 @@ mod tests {
                 vec!["CodexApp"],
             ),
         ]));
-        let status = adapter(manager).inspect_local().await.unwrap();
+        let status = adapter(manager.clone()).inspect_local().await.unwrap();
         let LocalInstallStatus::Installed { application } = status else {
             panic!("exact Stable record should be installed")
         };
@@ -1119,6 +1408,155 @@ mod tests {
             LaunchTarget::WindowsAumid(format!("{FAMILY_NAME}!CodexApp"))
         );
         assert_eq!(application.location, None);
+        assert_eq!(
+            manager.operations(),
+            vec![FakePackageOperation::InventoryMain {
+                canonical_sid: USER_SID.to_owned(),
+            }]
+        );
+        assert_eq!(manager.all_users_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn explicit_sid_main_inventory_ignores_other_users_and_never_queries_all_users() {
+        let manager = Arc::new(FakePackageManager::with_user_records([
+            (
+                USER_SID,
+                vec![record(
+                    WINDOWS_CODEX_STABLE_IDENTITY,
+                    PUBLISHER,
+                    CpuArchitecture::X86_64,
+                    vec!["CodexApp"],
+                )],
+            ),
+            (
+                OTHER_USER_SID,
+                vec![
+                    record(
+                        WINDOWS_CODEX_STABLE_IDENTITY,
+                        PUBLISHER,
+                        CpuArchitecture::X86_64,
+                        vec!["OtherOne"],
+                    ),
+                    record(
+                        WINDOWS_CODEX_STABLE_IDENTITY,
+                        PUBLISHER,
+                        CpuArchitecture::X86_64,
+                        vec!["OtherTwo"],
+                    ),
+                ],
+            ),
+        ]));
+
+        let status = adapter(manager.clone()).inspect_local().await.unwrap();
+        let LocalInstallStatus::Installed { application } = status else {
+            panic!("the one same-SID Stable Main package must be selected")
+        };
+        assert_eq!(
+            application.launch_target,
+            LaunchTarget::WindowsAumid(format!("{FAMILY_NAME}!CodexApp"))
+        );
+        assert_eq!(
+            manager.operations(),
+            vec![FakePackageOperation::InventoryMain {
+                canonical_sid: USER_SID.to_owned(),
+            }]
+        );
+        assert_eq!(manager.all_users_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn other_user_packages_do_not_change_same_user_absence() {
+        let manager = Arc::new(FakePackageManager::with_user_records([(
+            OTHER_USER_SID,
+            vec![record(
+                WINDOWS_CODEX_STABLE_IDENTITY,
+                PUBLISHER,
+                CpuArchitecture::X86_64,
+                vec!["OtherCodex"],
+            )],
+        )]));
+        let adapter = adapter(manager.clone());
+
+        assert_eq!(
+            adapter.inspect_local().await.unwrap(),
+            LocalInstallStatus::NotInstalled {
+                platform: DesktopPlatform::Windows,
+                architecture: CpuArchitecture::X86_64,
+            }
+        );
+        assert_eq!(
+            adapter.inspect_restart_candidates().await.unwrap(),
+            RestartCandidateInspection::NotInstalled
+        );
+        assert!(manager.operations().iter().all(|operation| matches!(
+            operation,
+            FakePackageOperation::InventoryMain { canonical_sid }
+                if canonical_sid == USER_SID
+        )));
+        assert_eq!(manager.all_users_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn multiple_same_sid_stable_main_packages_are_ambiguous_for_discovery_and_restart() {
+        let manager = Arc::new(FakePackageManager::with_records(vec![
+            record(
+                WINDOWS_CODEX_STABLE_IDENTITY,
+                PUBLISHER,
+                CpuArchitecture::X86_64,
+                vec!["CodexOne"],
+            ),
+            record(
+                WINDOWS_CODEX_STABLE_IDENTITY,
+                PUBLISHER,
+                CpuArchitecture::X86_64,
+                vec!["CodexTwo"],
+            ),
+        ]));
+        let adapter = adapter(manager.clone());
+
+        let LocalInstallStatus::Ambiguous { candidates, .. } =
+            adapter.inspect_local().await.unwrap()
+        else {
+            panic!("same-user duplicate Stable Main packages must be ambiguous")
+        };
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(
+            adapter.inspect_restart_candidates().await.unwrap(),
+            RestartCandidateInspection::AmbiguousInstallations
+        );
+        assert!(manager.operations().iter().all(|operation| matches!(
+            operation,
+            FakePackageOperation::InventoryMain { canonical_sid }
+                if canonical_sid == USER_SID
+        )));
+        assert_eq!(manager.all_users_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn missing_or_wrong_context_inventory_evidence_fails_closed() {
+        let manager = Arc::new(FakePackageManager::with_records(vec![record(
+            WINDOWS_CODEX_STABLE_IDENTITY,
+            PUBLISHER,
+            CpuArchitecture::X86_64,
+            vec!["CodexApp"],
+        )]));
+        let adapter = adapter(manager.clone());
+
+        manager.set_inventory_evidence(FakeEvidence::Missing);
+        let missing = adapter.inspect_local().await.unwrap_err();
+        assert_eq!(missing.code(), InstallerErrorCode::PackageIdentityMismatch);
+
+        let other_context = InteractiveUserContext::for_test(OTHER_USER_SID, 1);
+        manager.set_inventory_evidence(FakeEvidence::Override(
+            WindowsUserContextEvidence::for_test(&other_context),
+        ));
+        let wrong_owner = adapter.inspect_local().await.unwrap_err();
+        assert_eq!(
+            wrong_owner.code(),
+            InstallerErrorCode::PackageIdentityMismatch
+        );
+        assert_eq!(manager.all_users_call_count(), 0);
     }
 
     #[tokio::test]
@@ -1320,6 +1758,11 @@ mod tests {
         assert_eq!(deployed.len(), 1);
         assert!(deployed[0].starts_with("file:///"));
         assert!(!deployed[0].starts_with("https://"));
+        assert!(matches!(
+            manager.operations().first(),
+            Some(FakePackageOperation::Deploy { canonical_sid, .. })
+                if canonical_sid == USER_SID
+        ));
 
         for (hresult, expected) in [
             (
@@ -1353,10 +1796,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn deployment_requires_current_context_and_a_same_context_receipt() {
+        let trusted_bytes = b"fixture";
+        let release = release_for_artifact(trusted_bytes);
+        let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
+        let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
+
+        let drifted_before_deploy = Arc::new(FakePackageManager::default());
+        drifted_before_deploy.set_context_is_current(false);
+        let error = adapter(drifted_before_deploy.clone())
+            .install_current_user(&package, Arc::new(|_| {}))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
+        assert!(drifted_before_deploy
+            .deployed_uris
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_empty());
+
+        let wrong_receipt = Arc::new(FakePackageManager::default());
+        let other_context = InteractiveUserContext::for_test(OTHER_USER_SID, 1);
+        wrong_receipt.set_deployment_evidence(FakeEvidence::Override(
+            WindowsUserContextEvidence::for_test(&other_context),
+        ));
+        let error = adapter(wrong_receipt.clone())
+            .install_current_user(&package, Arc::new(|_| {}))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
+        assert_eq!(
+            wrong_receipt
+                .deployed_uris
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn context_drift_after_deploy_blocks_the_same_context_post_query() {
+        let manager = Arc::new(FakePackageManager::with_records(vec![record(
+            WINDOWS_CODEX_STABLE_IDENTITY,
+            PUBLISHER,
+            CpuArchitecture::X86_64,
+            vec!["CodexApp"],
+        )]));
+        let adapter = adapter(manager.clone());
+        let trusted_bytes = b"fixture";
+        let release = release_for_artifact(trusted_bytes);
+        let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
+        let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
+
+        adapter
+            .install_current_user(&package, Arc::new(|_| {}))
+            .await
+            .unwrap();
+        manager.set_context_is_current(false);
+        let error = adapter.inspect_local().await.unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
+        assert_eq!(
+            manager.operations()[0],
+            FakePackageOperation::Deploy {
+                canonical_sid: USER_SID.to_owned(),
+                uri: manager
+                    .deployed_uris
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())[0]
+                    .clone(),
+            }
+        );
+        assert!(matches!(
+            manager.operations().last(),
+            Some(FakePackageOperation::InventoryMain { canonical_sid })
+                if canonical_sid == USER_SID
+        ));
+        assert_eq!(manager.all_users_call_count(), 0);
+    }
+
+    #[tokio::test]
     async fn replacement_after_platform_verification_never_reaches_current_user_deployment() {
         let manager = Arc::new(FakePackageManager::default());
         let adapter = WindowsPlatformAdapter::new(
             manager.clone(),
+            user_context(USER_SID),
             host(CpuArchitecture::X86_64, "10.0.22631.0"),
             VerifiedPublisherEvidence::for_test(OFFICIAL_WINDOWS_CODEX_PUBLISHER),
         );
@@ -1381,7 +1905,12 @@ mod tests {
 
     #[tokio::test]
     async fn launch_accepts_only_verified_aumid_and_preserves_a_stable_error() {
-        let manager = Arc::new(FakePackageManager::default());
+        let manager = Arc::new(FakePackageManager::with_records(vec![record(
+            WINDOWS_CODEX_STABLE_IDENTITY,
+            PUBLISHER,
+            CpuArchitecture::X86_64,
+            vec!["CodexApp"],
+        )]));
         let adapter = adapter(manager.clone());
         let installed = InstalledApplication {
             stable_identity: WINDOWS_CODEX_STABLE_IDENTITY.to_owned(),
@@ -1400,6 +1929,18 @@ mod tests {
                 .unwrap_or_else(|poisoned| poisoned.into_inner()),
             vec![format!("{FAMILY_NAME}!CodexApp")]
         );
+        assert_eq!(
+            &manager.operations()[..2],
+            &[
+                FakePackageOperation::InventoryMain {
+                    canonical_sid: USER_SID.to_owned(),
+                },
+                FakePackageOperation::Launch {
+                    canonical_sid: USER_SID.to_owned(),
+                    aumid: format!("{FAMILY_NAME}!CodexApp"),
+                },
+            ]
+        );
 
         manager.set_launch_result(Err(WindowsNativeError::from_hresult(
             0x8000_4005_u32 as i32,
@@ -1413,6 +1954,121 @@ mod tests {
         };
         let error = adapter.launch(&invalid).await.unwrap_err();
         assert_eq!(error.code(), InstallerErrorCode::LaunchFailed);
+    }
+
+    #[tokio::test]
+    async fn launch_requeries_unique_same_context_installation_before_activation() {
+        let manager = Arc::new(FakePackageManager::with_records(vec![record(
+            WINDOWS_CODEX_STABLE_IDENTITY,
+            PUBLISHER,
+            CpuArchitecture::X86_64,
+            vec!["CodexApp"],
+        )]));
+        let adapter = adapter(manager.clone());
+        let LocalInstallStatus::Installed { application } = adapter.inspect_local().await.unwrap()
+        else {
+            panic!("fixture must select one installed application")
+        };
+        manager
+            .operations
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
+
+        let mut replacement = record(
+            WINDOWS_CODEX_STABLE_IDENTITY,
+            PUBLISHER,
+            CpuArchitecture::X86_64,
+            vec!["CodexApp"],
+        );
+        replacement.family_name = "OpenAI.Codex_replacement".to_owned();
+        manager.set_user_records(USER_SID, vec![replacement]);
+        let error = adapter.launch(&application).await.unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::LaunchFailed);
+        assert!(manager
+            .launched_aumids
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_empty());
+
+        manager.set_user_records(
+            USER_SID,
+            vec![
+                record(
+                    WINDOWS_CODEX_STABLE_IDENTITY,
+                    PUBLISHER,
+                    CpuArchitecture::X86_64,
+                    vec!["CodexApp"],
+                ),
+                record(
+                    WINDOWS_CODEX_STABLE_IDENTITY,
+                    PUBLISHER,
+                    CpuArchitecture::X86_64,
+                    vec!["SecondApp"],
+                ),
+            ],
+        );
+        let error = adapter.launch(&application).await.unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::MultipleInstallations);
+        let error = error.to_dto();
+        assert!(!error.retryable);
+        assert_eq!(error.suggested_action, SuggestedAction::ResolvePathConflict);
+        assert!(manager
+            .launched_aumids
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_empty());
+        assert_eq!(manager.all_users_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn launch_blocks_context_drift_and_rejects_a_wrong_context_receipt() {
+        let installed_record = record(
+            WINDOWS_CODEX_STABLE_IDENTITY,
+            PUBLISHER,
+            CpuArchitecture::X86_64,
+            vec!["CodexApp"],
+        );
+        let installed = installed_application_from_record(
+            &installed_record,
+            &host(CpuArchitecture::X86_64, "10.0.22631.0"),
+            &VerifiedPublisherEvidence::for_test(PUBLISHER),
+        )
+        .unwrap();
+
+        let drifted = Arc::new(FakePackageManager::with_records(vec![
+            installed_record.clone()
+        ]));
+        drifted.set_context_is_current(false);
+        let error = adapter(drifted.clone())
+            .launch(&installed)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
+        assert!(drifted
+            .launched_aumids
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_empty());
+
+        let wrong_receipt = Arc::new(FakePackageManager::with_records(vec![installed_record]));
+        let other_context = InteractiveUserContext::for_test(OTHER_USER_SID, 1);
+        wrong_receipt.set_launch_evidence(FakeEvidence::Override(
+            WindowsUserContextEvidence::for_test(&other_context),
+        ));
+        let error = adapter(wrong_receipt.clone())
+            .launch(&installed)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
+        assert_eq!(
+            wrong_receipt
+                .launched_aumids
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .len(),
+            1
+        );
     }
 
     #[test]

@@ -160,7 +160,7 @@ describe("automatic CI workflow", () => {
     }
 
     const rustSteps = actionSteps("actions-rust-lang/setup-rust-toolchain");
-    expect(rustSteps).toHaveLength(4);
+    expect(rustSteps).toHaveLength(5);
     for (const step of rustSteps) {
       expect(step).toContain("cache: false");
       expect(step).toContain('rustflags: ""');
@@ -261,21 +261,23 @@ describe("automatic CI workflow", () => {
     );
   });
 
-  it("runs managed Python and Trellis on native Windows x64 and ARM64", () => {
+  it("runs managed Python, Trellis, and the explicit-SID package smoke on native Windows x64 and ARM64", () => {
     const block = jobBlock("windows-native-contracts");
     expect(block).toContain(
       "name: Windows Native Contracts (${{ matrix.architecture }})",
     );
-    expect(block).toContain("timeout-minutes: 15");
+    expect(block).toContain("timeout-minutes: 45");
     expect(block).toContain("fail-fast: false");
     expect(block).toContain(`matrix:
         include:
           - runner: windows-2022
             architecture: X64
+            rust_host: x86_64-pc-windows-msvc
             python_architecture: x86_64
             python_platform: win-amd64
           - runner: windows-11-arm
-            architecture: Arm64
+            architecture: ARM64
+            rust_host: aarch64-pc-windows-msvc
             python_architecture: aarch64
             python_platform: win-arm64
     runs-on: \${{ matrix.runner }}`);
@@ -294,7 +296,7 @@ describe("automatic CI workflow", () => {
     expect(block).toContain("enable-cache: false");
     expect(block).toContain("run: uv sync --locked --managed-python");
     expect(block).toContain(
-      "run: node scripts/ci/verify-toolchain.mjs --tools node,uv,python",
+      "run: node scripts/ci/verify-toolchain.mjs --tools node,uv,python,rust",
     );
     expect(block).toContain(
       "uv run --locked --no-sync python .trellis/scripts/task.py list --json",
@@ -312,12 +314,31 @@ describe("automatic CI workflow", () => {
     expect(block).toContain(
       'throw "Trellis task listing did not return a tasks array"',
     );
-    expect(block).not.toContain("windowsInstallerQuery.integration.ps1");
-    expect(block.match(/^      - name:/gm)).toHaveLength(7);
-    expect(block.match(/^        uses:/gm)).toHaveLength(3);
-    expect(block).not.toMatch(
-      /setup-rust|\b(?:npm|npx|pnpm|yarn|bun|cargo|rustc)\b|tauri|src-tauri|frontend|package|bundle/i,
+    expect(block).toContain("actions-rust-lang/setup-rust-toolchain@");
+    expect(block).toContain(
+      "$env:RUNNER_ARCH -cne '${{ matrix.architecture }}'",
     );
+    expect(block).toContain("$rustHost -cne '${{ matrix.rust_host }}'");
+    expect(block).toContain("rustc -vV did not report exactly one host triple");
+    expect(block).toContain(
+      "run: New-Item -ItemType Directory -Force dist | Out-Null",
+    );
+    expect(block).toContain(
+      "codex_desktop::platform::windows::deployment::tests::native_explicit_sid_main_query_smoke",
+    );
+    expect(block.indexOf("Verify native Rust architecture")).toBeLessThan(
+      block.indexOf("Exercise explicit-SID Main package inventory"),
+    );
+    expect(block).toContain(
+      "cargo test --target '${{ matrix.rust_host }}' --lib --locked --manifest-path src-tauri/Cargo.toml $testName -- --exact",
+    );
+    expect(block).toContain(
+      'if ($exitCode -ne 0 -or $joined -notmatch "test result: ok\\. 1 passed; 0 failed")',
+    );
+    expect(block).not.toContain("windowsInstallerQuery.integration.ps1");
+    expect(block.match(/^      - name:/gm)).toHaveLength(11);
+    expect(block.match(/^        uses:/gm)).toHaveLength(4);
+    expect(block).not.toMatch(/\b(?:npm|npx|pnpm|yarn|bun)\b|bundle|signing/i);
   });
 
   it("runs the focused pending-deprecation native Fetch probe", () => {

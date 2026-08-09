@@ -86,10 +86,26 @@ fn production_platform_dependencies() -> (Arc<dyn CodexDesktopPlatform>, Arc<dyn
     use crate::codex_desktop::platform::windows::{
         current_official_publisher_evidence, SystemWindowsDiskSpaceProbe, WindowsPlatformAdapter,
     };
+    use crate::codex_desktop::{
+        error::{InstallerError, InstallerErrorCode},
+        platform::windows::VerifiedPublisherEvidence,
+    };
 
     let architecture = current_windows_architecture();
+    let build_adapter = |publisher_evidence: VerifiedPublisherEvidence| {
+        let user_context = crate::windows_runtime::interactive_user_context()
+            .cloned()
+            .map(Arc::new)
+            .ok_or_else(|| {
+                InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                    .with_diagnostic_message(
+                        "the Windows interactive-user context was not established at startup",
+                    )
+            })?;
+        WindowsPlatformAdapter::for_current_host(publisher_evidence, user_context)
+    };
     let platform: Arc<dyn CodexDesktopPlatform> = match current_official_publisher_evidence()
-        .and_then(WindowsPlatformAdapter::for_current_host)
+        .and_then(build_adapter)
     {
         Ok(adapter) => Arc::new(adapter),
         Err(error) => {

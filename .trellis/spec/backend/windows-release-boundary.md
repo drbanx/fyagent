@@ -312,6 +312,16 @@ path.
   continues only when privilege status is available, elevated, locally
   administrative, and proven to match the interactive user. Any unavailable or
   mismatched proof returns a stable blocked outcome.
+- That proof is generated once from the current process token SID/session and
+  `GetShellWindow`'s process, session, and token SID. The process and Shell
+  sessions and canonical SIDs must match exactly; no Shell or any lookup error
+  fails closed. The ordinary GUI path never calls `WTSQueryUserToken`, whose
+  LocalSystem/`SE_TCB_NAME` service contract is outside this application.
+- The resulting internal `InteractiveUserContext` is the sole ordinary Codex
+  Windows user identity. Long-running package/restart operations re-prove the
+  live process/Shell facts against it but never replace it with a new context.
+  Development builds may continue when startup proof is unavailable, but the
+  ordinary Codex Windows adapter then remains unavailable.
 - Runtime state and lease objects live in the installer-provisioned protected
   ProgramData root. Every root/state/lease open rejects reparse points and
   verifies canonical object type, an admitted Builtin Administrators or

@@ -168,8 +168,10 @@ Provider IDs, or renderer-controlled filesystem paths.
   running instance. Saving configuration and restarting are separate results;
   a failed/cancelled restart never rolls back the saved configuration.
 - Windows identifies processes through the previously verified package
-  identity; macOS matches the verified bundle identity and path. Do not use
-  fuzzy executable/process-name matching or expose a generic kill command.
+  identity and the frozen interactive-user SID; a same-PFN process owned by a
+  different SID is not a runtime candidate. macOS matches the verified bundle
+  identity and path. Do not use fuzzy executable/process-name matching or
+  expose a generic kill command.
 - Request graceful exit and wait at most 8 seconds. If it is still alive, the
   backend returns an opaque force-confirmation token. Only a second explicit
   user confirmation may force termination. Launch only after the old verified
@@ -179,6 +181,10 @@ Provider IDs, or renderer-controlled filesystem paths.
   opportunity to select a different candidate.
 - Not-running, unsupported, ambiguous, later/manual choice, and restart
   failure must not auto-launch any process.
+- Windows re-enumerates only the frozen context SID's Main packages before
+  close and launch. Context/owner drift or more than one same-user trusted
+  Stable package makes restart incomplete/manual; it never selects another
+  user's package, the highest version, or the all-users capability.
 
 ### WorkBuddy fetch and persistence
 

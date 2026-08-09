@@ -272,7 +272,7 @@ jobs:
 
   windows-native-contracts:
     name: Windows Native Contracts (${{ matrix.architecture }})
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
       UV_MANAGED_PYTHON: "true"
     strategy:
@@ -281,10 +281,12 @@ jobs:
         include:
           - runner: windows-2022
             architecture: X64
+            rust_host: x86_64-pc-windows-msvc
             python_architecture: x86_64
             python_platform: win-amd64
           - runner: windows-11-arm
-            architecture: Arm64
+            architecture: ARM64
+            rust_host: aarch64-pc-windows-msvc
             python_architecture: aarch64
             python_platform: win-arm64
     runs-on: ${{ matrix.runner }}
@@ -298,6 +300,12 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          cache: false
+          rustflags: ""
 
       - name: Resolve locked toolchain facts
         id: toolchain-facts
@@ -314,7 +322,40 @@ jobs:
         run: uv sync --locked --managed-python
 
       - name: Verify managed Windows toolchains
-        run: node scripts/ci/verify-toolchain.mjs --tools node,uv,python
+        run: node scripts/ci/verify-toolchain.mjs --tools node,uv,python,rust
+
+      - name: Create frontend dist placeholder
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force dist | Out-Null
+
+      - name: Verify native Rust architecture
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_ARCH -cne '${{ matrix.architecture }}') {
+            throw "Runner architecture mismatch: expected ${{ matrix.architecture }}, got $env:RUNNER_ARCH"
+          }
+          $rustcFacts = @(& rustc -vV 2>&1)
+          $rustcExitCode = $LASTEXITCODE
+          $rustHostLines = @($rustcFacts | Where-Object { $_ -match '^host:\s+\S+\s*$' })
+          if ($rustcExitCode -ne 0 -or $rustHostLines.Count -ne 1) {
+            throw "rustc -vV did not report exactly one host triple"
+          }
+          $rustHost = ($rustHostLines[0] -replace '^host:\s+', '').Trim()
+          if ($rustHost -cne '${{ matrix.rust_host }}') {
+            throw "Rust host mismatch: expected ${{ matrix.rust_host }}, got $rustHost"
+          }
+
+      - name: Exercise explicit-SID Main package inventory
+        shell: pwsh
+        run: |
+          $testName = "codex_desktop::platform::windows::deployment::tests::native_explicit_sid_main_query_smoke"
+          $output = @(& cargo test --target '${{ matrix.rust_host }}' --lib --locked --manifest-path src-tauri/Cargo.toml $testName -- --exact 2>&1)
+          $exitCode = $LASTEXITCODE
+          $output | ForEach-Object { Write-Host $_ }
+          $joined = $output -join "`n"
+          if ($exitCode -ne 0 -or $joined -notmatch "test result: ok\. 1 passed; 0 failed") {
+            throw "The explicit-SID Main package inventory smoke did not execute exactly once"
+          }
 
       - name: Exercise Trellis through managed Python
         shell: pwsh

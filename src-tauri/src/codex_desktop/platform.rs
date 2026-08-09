@@ -211,12 +211,15 @@ impl fmt::Debug for TrustedInstallationCandidate {
 }
 
 /// Candidate discovery is deliberately separate from legacy local installer
-/// discovery. An adapter that cannot produce an exact lifecycle identity must
-/// return `UntrustedTarget`; the service will then do zero close/launch work.
+/// discovery. Multiple individually trusted installations remain an explicit
+/// ambiguity, while an adapter without exact lifecycle identity returns
+/// `UntrustedTarget`; both states authorize zero close/launch work.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RestartCandidateInspection {
     NotInstalled,
     Trusted(Vec<TrustedInstallationCandidate>),
+    AmbiguousInstallations,
+    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     UntrustedTarget,
     Unsupported(UnsupportedReason),
 }
@@ -439,11 +442,11 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
     fn inspect_local(&self) -> BoxFuture<'_, Result<LocalInstallStatus, InstallerError>>;
 
     /// Enumerate only candidates with exact lifecycle identity evidence. The
-    /// default supports the old unique-installation adapters but treats their
-    /// ambiguous result as untrusted rather than selecting an arbitrary
-    /// candidate. Windows overrides this to retain all exact PFN-bound records
-    /// for the restart-plan comparator; macOS presently fails closed until its
-    /// target bundle identity is independently validated.
+    /// default supports the old unique-installation adapters but preserves an
+    /// ambiguous result without selecting an arbitrary candidate. Windows
+    /// overrides this to bind its one exact same-user PFN or return explicit
+    /// installation ambiguity; macOS presently fails closed until its target
+    /// bundle identity is independently validated.
     fn inspect_restart_candidates(
         &self,
     ) -> BoxFuture<'_, Result<RestartCandidateInspection, InstallerError>> {
@@ -460,10 +463,8 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
                 LocalInstallStatus::Unsupported { reason } => {
                     Ok(RestartCandidateInspection::Unsupported(reason))
                 }
-                // Legacy discovery exposes summaries but not the exact
-                // restart identity that would bind every close/launch action.
                 LocalInstallStatus::Ambiguous { .. } => {
-                    Ok(RestartCandidateInspection::UntrustedTarget)
+                    Ok(RestartCandidateInspection::AmbiguousInstallations)
                 }
             }
         })

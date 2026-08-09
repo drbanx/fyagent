@@ -42,6 +42,7 @@ pub enum InstallerErrorCode {
     WindowsDependencyMissing,
     WindowsAllUsersUnsupported,
     WindowsDeploymentFailed,
+    MultipleInstallations,
     MacDmgMountFailed,
     MacAppNotFound,
     MacBundleIdMismatch,
@@ -87,6 +88,7 @@ impl InstallerErrorCode {
             Self::WindowsDependencyMissing => "codexDesktop.error.windowsDependencyMissing",
             Self::WindowsAllUsersUnsupported => "codexDesktop.error.windowsAllUsersUnsupported",
             Self::WindowsDeploymentFailed => "codexDesktop.error.windowsDeploymentFailed",
+            Self::MultipleInstallations => "codexDesktop.error.multipleInstallations",
             Self::MacDmgMountFailed => "codexDesktop.error.macDmgMountFailed",
             Self::MacAppNotFound => "codexDesktop.error.macAppNotFound",
             Self::MacBundleIdMismatch => "codexDesktop.error.macBundleIdMismatch",
@@ -149,9 +151,9 @@ impl InstallerErrorCode {
                 SuggestedAction::ContactAdministrator
             }
             Self::InsufficientDiskSpace => SuggestedAction::FreeDiskSpace,
-            Self::MacMultipleInstallations | Self::MacTargetPathConflict => {
-                SuggestedAction::ResolvePathConflict
-            }
+            Self::MultipleInstallations
+            | Self::MacMultipleInstallations
+            | Self::MacTargetPathConflict => SuggestedAction::ResolvePathConflict,
             Self::PlatformUnsupported
             | Self::OsVersionUnsupported
             | Self::ArchitectureUnsupported
@@ -388,6 +390,15 @@ mod tests {
         assert_eq!(dto.message_key, "codexDesktop.error.metadataChanged");
         assert!(dto.retryable);
         assert_eq!(dto.suggested_action, SuggestedAction::Refresh);
+    }
+
+    #[test]
+    fn multiple_installations_uses_a_platform_neutral_manual_action() {
+        let dto = InstallerError::new(InstallerErrorCode::MultipleInstallations).to_dto();
+
+        assert_eq!(dto.message_key, "codexDesktop.error.multipleInstallations");
+        assert!(!dto.retryable);
+        assert_eq!(dto.suggested_action, SuggestedAction::ResolvePathConflict);
     }
 
     #[test]

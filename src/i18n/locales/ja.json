@@ -1144,6 +1144,7 @@
       "windowsDependencyMissing": "Windows に必要なインストールコンポーネントがありません。システム管理者に連絡してください。",
       "windowsAllUsersUnsupported": "このインストール方法はすべてのユーザー範囲に対応していません。",
       "windowsDeploymentFailed": "Windows でのインストールに失敗しました。再試行してください。",
+      "multipleInstallations": "複数の Codex デスクトップアプリのインストールが検出されました。続行する前に解決してください。",
       "macDmgMountFailed": "macOS ディスクイメージをマウントできませんでした。再試行してください。",
       "macAppNotFound": "ディスクイメージ内に想定したアプリが見つかりませんでした。",
       "macBundleIdMismatch": "アプリ識別子が期待値と一致しないため、インストールをブロックしました。",

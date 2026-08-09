@@ -4,7 +4,7 @@
 //! accepts only a local `file://` URI, reports normalized progress, and never
 //! exposes WinRT, HRESULT text, or a raw filesystem path to the common domain.
 
-use std::{path::Path, sync::Arc};
+use std::{fmt, path::Path, sync::Arc};
 
 use url::Url;
 
@@ -12,10 +12,132 @@ use crate::codex_desktop::{
     error::{InstallerError, InstallerErrorCode},
     types::{CpuArchitecture, PlatformVersion},
 };
+use crate::windows_runtime::InteractiveUserContext;
 
 /// Callback used by the PackageManager facade. Values are normalized into the
 /// inclusive `[0, 100]` range before leaving this module.
 pub(crate) type WindowsDeploymentProgressSink = Arc<dyn Fn(u32) + Send + Sync>;
+
+/// Immutable, redacted proof that a package-manager result belongs to the
+/// exact interactive-user context supplied to the operation. The optional
+/// wrapper on inventories and receipts is intentional: fakes can model a
+/// missing proof and callers must reject it before reaching another side
+/// effect.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct WindowsUserContextEvidence {
+    canonical_sid: String,
+    process_session_id: u32,
+    shell_session_id: u32,
+}
+
+impl WindowsUserContextEvidence {
+    fn bound_to(context: &InteractiveUserContext) -> Self {
+        Self {
+            canonical_sid: context.canonical_sid().to_owned(),
+            process_session_id: context.process_session_id(),
+            shell_session_id: context.shell_session_id(),
+        }
+    }
+
+    pub(crate) fn belongs_to(&self, context: &InteractiveUserContext) -> bool {
+        self.canonical_sid == context.canonical_sid()
+            && self.process_session_id == context.process_session_id()
+            && self.shell_session_id == context.shell_session_id()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(context: &InteractiveUserContext) -> Self {
+        Self::bound_to(context)
+    }
+}
+
+impl fmt::Debug for WindowsUserContextEvidence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WindowsUserContextEvidence")
+            .field("canonical_sid", &"<redacted>")
+            .field("process_session_id", &self.process_session_id)
+            .field("shell_session_id", &self.shell_session_id)
+            .finish()
+    }
+}
+
+/// Exact explicit-SID/Main inventory returned by the ordinary facade.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct WindowsPackageInventory {
+    context_evidence: Option<WindowsUserContextEvidence>,
+    records: Vec<WindowsPackageRecord>,
+}
+
+impl WindowsPackageInventory {
+    fn bound_to(context: &InteractiveUserContext, records: Vec<WindowsPackageRecord>) -> Self {
+        Self {
+            context_evidence: Some(WindowsUserContextEvidence::bound_to(context)),
+            records,
+        }
+    }
+
+    pub(crate) fn context_evidence(&self) -> Option<&WindowsUserContextEvidence> {
+        self.context_evidence.as_ref()
+    }
+
+    pub(crate) fn records(&self) -> &[WindowsPackageRecord] {
+        &self.records
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        context_evidence: Option<WindowsUserContextEvidence>,
+        records: Vec<WindowsPackageRecord>,
+    ) -> Self {
+        Self {
+            context_evidence,
+            records,
+        }
+    }
+}
+
+impl fmt::Debug for WindowsPackageInventory {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WindowsPackageInventory")
+            .field("context_evidence", &self.context_evidence)
+            .field("record_count", &self.records.len())
+            .finish()
+    }
+}
+
+/// Context-bound completion receipt for an ordinary deployment or launch.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct WindowsUserOperationReceipt {
+    context_evidence: Option<WindowsUserContextEvidence>,
+}
+
+impl WindowsUserOperationReceipt {
+    fn bound_to(context: &InteractiveUserContext) -> Self {
+        Self {
+            context_evidence: Some(WindowsUserContextEvidence::bound_to(context)),
+        }
+    }
+
+    pub(crate) fn context_evidence(&self) -> Option<&WindowsUserContextEvidence> {
+        self.context_evidence.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(context_evidence: Option<WindowsUserContextEvidence>) -> Self {
+        Self { context_evidence }
+    }
+}
+
+impl fmt::Debug for WindowsUserOperationReceipt {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WindowsUserOperationReceipt")
+            .field("context_evidence", &self.context_evidence)
+            .finish()
+    }
+}
 
 /// Current-user package facts obtained from PackageManager, not from a path,
 /// process name, or executable scan.
@@ -53,22 +175,31 @@ impl WindowsPackageRecord {
     }
 }
 
-/// The only system boundary the common Windows adapter needs. Implementations
-/// must query the current user only and must not use PowerShell, winget, or a
-/// shell command as a deployment fallback.
+/// The only system boundary the ordinary Windows adapter needs. Every method
+/// is explicitly bound to the one frozen interactive-user context. Inventory
+/// is the exact SID/Main capability; an all-users query is deliberately absent
+/// and must never be added as a fallback.
 pub(crate) trait WindowsPackageManager: Send + Sync {
-    fn current_user_packages(&self) -> Result<Vec<WindowsPackageRecord>, WindowsNativeError>;
+    fn packages_for_user(
+        &self,
+        context: &InteractiveUserContext,
+    ) -> Result<WindowsPackageInventory, WindowsNativeError>;
 
     fn deploy_current_user(
         &self,
+        context: &InteractiveUserContext,
         package_file_uri: &str,
         progress: WindowsDeploymentProgressSink,
-    ) -> Result<(), WindowsNativeError>;
+    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError>;
 
     /// Launches an already verified app identity. The system implementation
     /// delegates this to the interactive user's Explorer shell rather than
     /// activating the app from the elevated FyAgent process.
-    fn launch_aumid(&self, aumid: &str) -> Result<(), WindowsNativeError>;
+    fn launch_aumid(
+        &self,
+        context: &InteractiveUserContext,
+        aumid: &str,
+    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError>;
 }
 
 /// A sanitized native failure. Raw system text is intentionally not retained:
@@ -76,21 +207,37 @@ pub(crate) trait WindowsPackageManager: Send + Sync {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WindowsNativeError {
     hresult: Option<i32>,
+    context_mismatch: bool,
 }
 
 impl WindowsNativeError {
     pub(crate) const fn from_hresult(hresult: i32) -> Self {
         Self {
             hresult: Some(hresult),
+            context_mismatch: false,
         }
     }
 
     pub(crate) const fn unavailable() -> Self {
-        Self { hresult: None }
+        Self {
+            hresult: None,
+            context_mismatch: false,
+        }
+    }
+
+    pub(crate) const fn context_mismatch() -> Self {
+        Self {
+            hresult: None,
+            context_mismatch: true,
+        }
     }
 
     pub(crate) const fn hresult(self) -> Option<i32> {
         self.hresult
+    }
+
+    pub(crate) const fn is_context_mismatch(self) -> bool {
+        self.context_mismatch
     }
 }
 
@@ -99,6 +246,9 @@ impl WindowsNativeError {
 /// code; all other deployment failures remain generic and retain the numeric
 /// HRESULT for diagnostics.
 pub(crate) fn deployment_error(error: WindowsNativeError) -> InstallerError {
+    if error.is_context_mismatch() {
+        return interactive_context_error();
+    }
     let code = error
         .hresult()
         .map(map_deployment_hresult)
@@ -159,12 +309,32 @@ fn all_users_stage_record_error() -> InstallerError {
 /// Preserve an HRESULT if present, but always expose the stable launch-specific
 /// code.
 pub(crate) fn launch_error(error: WindowsNativeError) -> InstallerError {
+    if error.is_context_mismatch() {
+        return interactive_context_error();
+    }
     let mut installer_error = InstallerError::new(InstallerErrorCode::LaunchFailed)
         .with_diagnostic_message("Windows could not launch the verified application identity");
     if let Some(hresult) = error.hresult() {
         installer_error = installer_error.with_platform_error_code(format_hresult(hresult));
     }
     installer_error
+}
+
+/// Stable fail-closed result for a missing, changed, or wrong-owner ordinary
+/// Windows user proof. SID values are intentionally absent from diagnostics.
+pub(crate) fn interactive_context_error() -> InstallerError {
+    InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+        .with_diagnostic_message("the Windows interactive-user context is unavailable or changed")
+}
+
+pub(crate) fn verify_context_evidence(
+    context: &InteractiveUserContext,
+    evidence: Option<&WindowsUserContextEvidence>,
+) -> Result<(), InstallerError> {
+    match evidence {
+        Some(evidence) if evidence.belongs_to(context) => Ok(()),
+        _ => Err(interactive_context_error()),
+    }
 }
 
 fn format_hresult(hresult: i32) -> String {
@@ -251,20 +421,28 @@ pub struct SystemWindowsPackageManager;
 
 #[cfg(target_os = "windows")]
 impl WindowsPackageManager for SystemWindowsPackageManager {
-    fn current_user_packages(&self) -> Result<Vec<WindowsPackageRecord>, WindowsNativeError> {
-        native::current_user_packages()
+    fn packages_for_user(
+        &self,
+        context: &InteractiveUserContext,
+    ) -> Result<WindowsPackageInventory, WindowsNativeError> {
+        native::packages_for_user_main(context)
     }
 
     fn deploy_current_user(
         &self,
+        context: &InteractiveUserContext,
         package_file_uri: &str,
         progress: WindowsDeploymentProgressSink,
-    ) -> Result<(), WindowsNativeError> {
-        native::deploy_current_user(package_file_uri, progress)
+    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
+        native::deploy_current_user(context, package_file_uri, progress)
     }
 
-    fn launch_aumid(&self, aumid: &str) -> Result<(), WindowsNativeError> {
-        native::launch_aumid(aumid)
+    fn launch_aumid(
+        &self,
+        context: &InteractiveUserContext,
+        aumid: &str,
+    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
+        native::launch_aumid(context, aumid)
     }
 }
 
@@ -338,7 +516,7 @@ mod native {
         core::{HSTRING, PCWSTR},
         Foundation::Uri,
         Management::Deployment::{
-            AddPackageOptions, DeploymentProgress, DeploymentResult, PackageManager,
+            AddPackageOptions, DeploymentProgress, DeploymentResult, PackageManager, PackageTypes,
             StagePackageOptions,
         },
         System::ProcessorArchitecture,
@@ -349,23 +527,52 @@ mod native {
     };
     use windows_future::AsyncOperationProgressHandler;
 
+    #[cfg(test)]
+    use windows::{
+        core::PWSTR,
+        Win32::{
+            Foundation::{CloseHandle, LocalFree, HANDLE, HLOCAL},
+            Security::{
+                Authorization::ConvertSidToStringSidW, GetTokenInformation, TokenUser, TOKEN_QUERY,
+                TOKEN_USER,
+            },
+            System::Threading::{GetCurrentProcess, OpenProcessToken},
+        },
+    };
+
     use super::{
         all_users_api_error, all_users_stage_record_error, deployment_error,
-        WindowsDeploymentProgressSink, WindowsNativeError, WindowsPackageRecord,
+        WindowsDeploymentProgressSink, WindowsNativeError, WindowsPackageInventory,
+        WindowsPackageRecord, WindowsUserOperationReceipt,
     };
     use crate::codex_desktop::{
         error::InstallerError,
         platform::WINDOWS_CODEX_STABLE_IDENTITY,
         types::{CpuArchitecture, PlatformVersion},
     };
+    use crate::windows_runtime::{revalidate_interactive_user_context, InteractiveUserContext};
 
-    pub(super) fn current_user_packages() -> Result<Vec<WindowsPackageRecord>, WindowsNativeError> {
+    pub(super) fn packages_for_user_main(
+        context: &InteractiveUserContext,
+    ) -> Result<WindowsPackageInventory, WindowsNativeError> {
+        require_current_context(context)?;
+        let records = packages_for_user_sid_main(context.canonical_sid())?;
+        require_current_context(context)?;
+        Ok(WindowsPackageInventory::bound_to(context, records))
+    }
+
+    pub(super) fn packages_for_user_sid_main(
+        canonical_sid: &str,
+    ) -> Result<Vec<WindowsPackageRecord>, WindowsNativeError> {
         let _apartment = WinRtApartment::initialize()?;
         let package_manager = PackageManager::new().map_err(WindowsNativeError::from_windows)?;
         let mut records = Vec::new();
 
         let packages = package_manager
-            .FindPackages()
+            .FindPackagesByUserSecurityIdWithPackageTypes(
+                &HSTRING::from(canonical_sid),
+                PackageTypes::Main,
+            )
             .map_err(WindowsNativeError::from_windows)?;
         let iterator = packages.First().map_err(WindowsNativeError::from_windows)?;
         while iterator
@@ -455,9 +662,11 @@ mod native {
     }
 
     pub(super) fn deploy_current_user(
+        context: &InteractiveUserContext,
         package_file_uri: &str,
         progress: WindowsDeploymentProgressSink,
-    ) -> Result<(), WindowsNativeError> {
+    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
+        require_current_context(context)?;
         let _apartment = WinRtApartment::initialize()?;
         let package_manager = PackageManager::new().map_err(WindowsNativeError::from_windows)?;
         let uri = Uri::CreateUri(&HSTRING::from(package_file_uri))
@@ -494,7 +703,8 @@ mod native {
             return Err(WindowsNativeError::unavailable());
         }
         progress(100);
-        Ok(())
+        require_current_context(context)?;
+        Ok(WindowsUserOperationReceipt::bound_to(context))
     }
 
     pub(super) fn stage_and_provision_all_users(
@@ -630,9 +840,76 @@ mod native {
         family_name.ok_or_else(all_users_stage_record_error)
     }
 
-    pub(super) fn launch_aumid(aumid: &str) -> Result<(), WindowsNativeError> {
+    pub(super) fn launch_aumid(
+        context: &InteractiveUserContext,
+        aumid: &str,
+    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
+        require_current_context(context)?;
         crate::platform::process_launch::launch_trusted_windows_app_aumid_as_user(aumid)
-            .map_err(|_| WindowsNativeError::unavailable())
+            .map_err(|_| WindowsNativeError::unavailable())?;
+        require_current_context(context)?;
+        Ok(WindowsUserOperationReceipt::bound_to(context))
+    }
+
+    fn require_current_context(context: &InteractiveUserContext) -> Result<(), WindowsNativeError> {
+        revalidate_interactive_user_context(context)
+            .then_some(())
+            .ok_or_else(WindowsNativeError::context_mismatch)
+    }
+
+    #[cfg(test)]
+    pub(super) fn current_process_sid_for_test() -> Result<String, WindowsNativeError> {
+        struct OwnedToken(HANDLE);
+
+        impl Drop for OwnedToken {
+            fn drop(&mut self) {
+                unsafe {
+                    let _ = CloseHandle(self.0);
+                }
+            }
+        }
+
+        let mut token = HANDLE::default();
+        unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }
+            .map_err(WindowsNativeError::from_windows)?;
+        if token.is_invalid() {
+            return Err(WindowsNativeError::unavailable());
+        }
+        let token = OwnedToken(token);
+        let mut required = 0_u32;
+        let _ = unsafe { GetTokenInformation(token.0, TokenUser, None, 0, &mut required) };
+        if required < std::mem::size_of::<TOKEN_USER>() as u32 {
+            return Err(WindowsNativeError::unavailable());
+        }
+        // TOKEN_USER contains pointer-aligned fields. A byte vector does not
+        // guarantee that alignment before the Win32 buffer is cast back.
+        let mut buffer = vec![0_usize; (required as usize).div_ceil(std::mem::size_of::<usize>())];
+        unsafe {
+            GetTokenInformation(
+                token.0,
+                TokenUser,
+                Some(buffer.as_mut_ptr().cast()),
+                required,
+                &mut required,
+            )
+        }
+        .map_err(WindowsNativeError::from_windows)?;
+        let token_user = unsafe { &*(buffer.as_ptr().cast::<TOKEN_USER>()) };
+        if token_user.User.Sid.is_invalid() {
+            return Err(WindowsNativeError::unavailable());
+        }
+        let mut string_sid = PWSTR::null();
+        unsafe { ConvertSidToStringSidW(token_user.User.Sid, &mut string_sid) }
+            .map_err(WindowsNativeError::from_windows)?;
+        if string_sid.is_null() {
+            return Err(WindowsNativeError::unavailable());
+        }
+        let value =
+            unsafe { string_sid.to_string() }.map_err(|_| WindowsNativeError::unavailable());
+        unsafe {
+            let _ = LocalFree(Some(HLOCAL(string_sid.0.cast())));
+        }
+        value
     }
 
     pub(super) fn volume_root_for(path: &Path) -> Result<PathBuf, WindowsNativeError> {
@@ -775,5 +1052,24 @@ mod tests {
             relative_error.code(),
             InstallerErrorCode::PackageParseFailed
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn native_explicit_sid_main_query_smoke() {
+        let sid = native::current_process_sid_for_test()
+            .expect("the Windows test process token must expose its SID");
+        // The runner does not need Codex, Store access, network access, or a
+        // second account. An empty exact-SID/Main inventory is a valid smoke
+        // result; the assertion is that the locked WinRT overload completed
+        // and propagated the native error from an invalid explicit SID.
+        let records = native::packages_for_user_sid_main(&sid)
+            .expect("the explicit-SID/Main PackageManager binding must be callable");
+        assert!(records.iter().all(|record| {
+            record.identity_name == crate::codex_desktop::platform::WINDOWS_CODEX_STABLE_IDENTITY
+        }));
+        let error = native::packages_for_user_sid_main("not-a-windows-sid")
+            .expect_err("PackageManager must reject a malformed explicit SID");
+        assert!(error.hresult().is_some());
     }
 }

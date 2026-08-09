@@ -87,6 +87,36 @@ comparison value.
   remove the manifest read bound or replace Windows PackageManager as the
   signature and package-trust authority.
 
+### Windows interactive-user scope
+
+- Ordinary Windows construction requires the immutable interactive-user
+  context created by the pre-Tauri runtime proof. It contains the canonical
+  user SID and matching process/Shell session IDs, is internal-only and
+  redacted, and is never reconstructed from package metadata or renderer input.
+- The only ordinary identity path is process token/session -> `GetShellWindow`
+  -> Shell PID/session -> Shell token SID -> exact process/Shell SID comparison.
+  Missing Shell, token/session failure, session mismatch, or SID mismatch is
+  unavailable/fail-closed. `WTSQueryUserToken` is not an ordinary GUI proof.
+- Every ordinary inventory call passes the frozen SID and `PackageTypes.Main`
+  to `FindPackagesByUserSecurityIdWithPackageTypes`, the locked Rust binding
+  for the explicit-user PackageManager overload. Zero/one/multiple trusted
+  Stable Main records for that SID mean not installed, one selected install,
+  and ambiguous failure. Packages for another SID and non-Main package types
+  never enter the candidate set.
+- Inventory, current-user deployment, post-install verification, runtime
+  inspection/termination, and launch all accept the same frozen context and
+  return or consume context-bound evidence. Each native side-effect boundary
+  re-proves the current process/Shell identity; missing or changed context and
+  package/process owner mismatch stop the remaining lifecycle.
+- Launch re-enumerates the same-user trusted Stable Main and requires it to be
+  exactly the selected application before invoking Explorer. Restart treats
+  multiple same-user Stable packages as ambiguous instead of using version or
+  scope ordering to guess one. Runtime process evidence also requires the
+  process token SID to match the frozen context.
+- The all-users stage/provision helper remains outside the ordinary package
+  facade and retains its all-user staged-package query. Ordinary code has no
+  fallback or capability that can call it.
+
 ### Rust to renderer
 
 - Rust serializes camelCase DTO fields and snake_case tagged enum values where
@@ -182,25 +212,27 @@ comparison value.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                 | Required result                                                                                                                                |
-| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Remote metadata has a changed release ID                                                                  | METADATA_CHANGED, suggested action refresh; do not install the new release implicitly.                                                         |
-| Manifest-wide aggregate version differs from the active platform branch                                   | Expose the branch's validated displayVersion and platformVersion; never derive an active-card latest label or update state from the aggregate. |
-| Locked metadata's artifact checksum mismatches and the refresh changes release ID                         | METADATA_CHANGED; delete the artifact and require an explicit refreshed action.                                                                |
-| Trusted local Stable version is equal to or newer than the descriptor                                     | Launch only; no preflight, download, temporary directory, package validation, or install.                                                      |
-| Another job is active or cancellation cleanup is pending                                                  | JOB_ALREADY_RUNNING; retain the single-job slot.                                                                                               |
-| Settings restart races with a start request                                                               | Exactly one may claim the same mutex; a running/cancellation-pending job blocks restart, and a successful restart claim blocks later starts.   |
-| Hash sources disagree or an artifact name is unsafe/ambiguous                                             | CHECKSUM_MISMATCH, CHECKSUM_MISSING, or RELEASE_METADATA_INVALID; never guess an artifact.                                                     |
-| Metadata or download redirect leaves HTTPS/allowlist policy                                               | REDIRECT_REJECTED.                                                                                                                             |
-| Artifact changes after package verification but before a platform consumes it                             | CHECKSUM_MISMATCH or a stable artifact-validation error; do not call deploy or attach.                                                         |
-| Download is cancelled before installation                                                                 | Worker cleans temp data, then publishes cancelled.                                                                                             |
-| Renderer receives `completedBytes` / `totalBytes` after `job_downloading`                                 | Keep percentage/indeterminate progress, but do not render the numeric pair with byte units.                                                    |
-| A Windows MSIX uses bounded, internally consistent, single-disk ZIP64 metadata                            | Continue raw central-directory and `ZipArchive` inspection; do not reject ZIP64 solely because classic EOCD fields contain sentinels.          |
-| ZIP/ZIP64 disk fields disagree, ZIP64 records are missing/misplaced/extensible, or directory bounds drift | PACKAGE_PARSE_FAILED before manifest parsing or PackageManager deployment.                                                                     |
-| Declared ZIP uncompressed total exceeds 4 GiB or its checked sum overflows                                | PACKAGE_PARSE_FAILED; do not weaken the separately bounded 512 KiB root-manifest read.                                                         |
-| Platform verification, signature, identity, architecture, or post-check fails                             | Stable platform/package error; do not launch or downgrade.                                                                                     |
-| Ordinary renderer tries to provide scope/URL/path/extra request field                                     | DTO deserialization or validation rejects it.                                                                                                  |
-| Elevated all-users job control is empty, oversized, reparse-backed, remote, or changes capability path    | WINDOWS_ELEVATION_FAILED before the fresh anchor, validator, Stage, or Provision adapter runs.                                                 |
+| Condition                                                                                                                      | Required result                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Remote metadata has a changed release ID                                                                                       | METADATA_CHANGED, suggested action refresh; do not install the new release implicitly.                                                                                  |
+| Manifest-wide aggregate version differs from the active platform branch                                                        | Expose the branch's validated displayVersion and platformVersion; never derive an active-card latest label or update state from the aggregate.                          |
+| Locked metadata's artifact checksum mismatches and the refresh changes release ID                                              | METADATA_CHANGED; delete the artifact and require an explicit refreshed action.                                                                                         |
+| Trusted local Stable version is equal to or newer than the descriptor                                                          | Launch only; no preflight, download, temporary directory, package validation, or install.                                                                               |
+| Another job is active or cancellation cleanup is pending                                                                       | JOB_ALREADY_RUNNING; retain the single-job slot.                                                                                                                        |
+| Settings restart races with a start request                                                                                    | Exactly one may claim the same mutex; a running/cancellation-pending job blocks restart, and a successful restart claim blocks later starts.                            |
+| Hash sources disagree or an artifact name is unsafe/ambiguous                                                                  | CHECKSUM_MISMATCH, CHECKSUM_MISSING, or RELEASE_METADATA_INVALID; never guess an artifact.                                                                              |
+| Metadata or download redirect leaves HTTPS/allowlist policy                                                                    | REDIRECT_REJECTED.                                                                                                                                                      |
+| Artifact changes after package verification but before a platform consumes it                                                  | CHECKSUM_MISMATCH or a stable artifact-validation error; do not call deploy or attach.                                                                                  |
+| Download is cancelled before installation                                                                                      | Worker cleans temp data, then publishes cancelled.                                                                                                                      |
+| Renderer receives `completedBytes` / `totalBytes` after `job_downloading`                                                      | Keep percentage/indeterminate progress, but do not render the numeric pair with byte units.                                                                             |
+| A Windows MSIX uses bounded, internally consistent, single-disk ZIP64 metadata                                                 | Continue raw central-directory and `ZipArchive` inspection; do not reject ZIP64 solely because classic EOCD fields contain sentinels.                                   |
+| ZIP/ZIP64 disk fields disagree, ZIP64 records are missing/misplaced/extensible, or directory bounds drift                      | PACKAGE_PARSE_FAILED before manifest parsing or PackageManager deployment.                                                                                              |
+| Declared ZIP uncompressed total exceeds 4 GiB or its checked sum overflows                                                     | PACKAGE_PARSE_FAILED; do not weaken the separately bounded 512 KiB root-manifest read.                                                                                  |
+| Platform verification, signature, identity, architecture, or post-check fails                                                  | Stable platform/package error; do not launch or downgrade.                                                                                                              |
+| Interactive context is missing/drifts, an inventory receipt names another context, or a package/process belongs to another SID | Fail the ordinary operation before the next deploy, close, or launch side effect; never fall back to all-users inventory.                                               |
+| The same interactive SID has more than one trusted Stable Main package                                                         | Discovery returns non-retryable `MULTIPLE_INSTALLATIONS` plus `resolve_path_conflict`; restart reports `ambiguous/installations`; neither selects, closes, or launches. |
+| Ordinary renderer tries to provide scope/URL/path/extra request field                                                          | DTO deserialization or validation rejects it.                                                                                                                           |
+| Elevated all-users job control is empty, oversized, reparse-backed, remote, or changes capability path                         | WINDOWS_ELEVATION_FAILED before the fresh anchor, validator, Stage, or Provision adapter runs.                                                                          |
 
 Diagnostics may contain only the structured, redacted fields of
 InstallerErrorDto; never pass raw credential-bearing URLs, paths, cookies, or
@@ -271,6 +303,16 @@ such controls.
 - Platform acceptance: real Windows x64, Windows ARM64, Apple Silicon macOS,
   and mainland-network checks remain human-owned and are not replaced by these
   tests.
+- Windows user scope: hermetic multi-SID fakes prove explicit SID/Main calls,
+  other-user exclusion, same-user 0/1/multiple behavior, context receipt drift,
+  owner drift, post-verify continuity, launch/restart revalidation, and zero
+  ordinary calls into all-users capability. If a unique record becomes
+  multiple during post-install or pre-launch revalidation, tests retain
+  non-retryable `MULTIPLE_INSTALLATIONS` and prove launch is not called. A
+  native smoke on both matching
+  Windows architectures calls only the real explicit-SID/Main WinRT adapter,
+  permits an empty result, and uses no Store/network/real Codex/multi-account
+  dependency.
 
 ## 7. Wrong vs Correct
 

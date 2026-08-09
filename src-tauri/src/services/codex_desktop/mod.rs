@@ -225,6 +225,7 @@ enum InstallFlowOutcome {
 
 enum RestartPlanInspection {
     NotInstalled,
+    AmbiguousInstallations,
     UntrustedTarget,
     Unsupported(UnsupportedReason),
     Plan(RestartPlan),
@@ -325,6 +326,9 @@ impl CodexDesktopService {
     pub async fn get_runtime_status(&self) -> Result<CodexDesktopRuntimeStatus, InstallerError> {
         Ok(match self.inspect_restart_plan().await? {
             RestartPlanInspection::NotInstalled => CodexDesktopRuntimeStatus::NotInstalled,
+            RestartPlanInspection::AmbiguousInstallations => CodexDesktopRuntimeStatus::Ambiguous {
+                reason: CodexDesktopRuntimeAmbiguity::Installations,
+            },
             RestartPlanInspection::UntrustedTarget => CodexDesktopRuntimeStatus::UntrustedTarget,
             RestartPlanInspection::Unsupported(reason) => {
                 CodexDesktopRuntimeStatus::Unsupported { reason }
@@ -371,6 +375,7 @@ impl CodexDesktopService {
                 }
             }
             Ok(RestartPlanInspection::UntrustedTarget) => manual_untrusted_restart(),
+            Ok(RestartPlanInspection::AmbiguousInstallations) => manual_untrusted_restart(),
             Ok(RestartPlanInspection::Unsupported(_)) => {
                 CodexDesktopRestartOutcome::ManualRestartRequired {
                     reason: CodexDesktopManualRestartReason::Unsupported,
@@ -419,6 +424,7 @@ impl CodexDesktopService {
                 }
             }
             Ok(RestartPlanInspection::UntrustedTarget) => manual_untrusted_restart(),
+            Ok(RestartPlanInspection::AmbiguousInstallations) => manual_untrusted_restart(),
             Ok(RestartPlanInspection::Unsupported(_)) => {
                 CodexDesktopRestartOutcome::ManualRestartRequired {
                     reason: CodexDesktopManualRestartReason::Unsupported,
@@ -479,6 +485,9 @@ impl CodexDesktopService {
             }
             RestartCandidateInspection::UntrustedTarget => {
                 return Ok(RestartPlanInspection::UntrustedTarget)
+            }
+            RestartCandidateInspection::AmbiguousInstallations => {
+                return Ok(RestartPlanInspection::AmbiguousInstallations)
             }
             RestartCandidateInspection::Unsupported(reason) => {
                 return Ok(RestartPlanInspection::Unsupported(reason))
@@ -785,10 +794,9 @@ impl CodexDesktopService {
                 self.platform.launch(&application).await
             }
             LocalInstallStatus::Unsupported { reason } => Err(unsupported_status_error(reason)),
-            LocalInstallStatus::Ambiguous { .. } => Err(InstallerError::new(
-                InstallerErrorCode::MacMultipleInstallations,
-            )
-            .with_diagnostic_message("local Codex installations are ambiguous")),
+            LocalInstallStatus::Ambiguous { error, .. } => {
+                Err(ambiguous_local_status_error(error.code))
+            }
             LocalInstallStatus::NotInstalled { .. } => {
                 Err(InstallerError::new(InstallerErrorCode::LaunchFailed)
                     .with_diagnostic_message("a supported Codex installation was not found"))
@@ -914,11 +922,8 @@ impl CodexDesktopService {
             LocalInstallStatus::Unsupported { reason } => {
                 return Err(unsupported_status_error(reason));
             }
-            LocalInstallStatus::Ambiguous { .. } => {
-                return Err(
-                    InstallerError::new(InstallerErrorCode::MacMultipleInstallations)
-                        .with_diagnostic_message("local Codex installations are ambiguous"),
-                );
+            LocalInstallStatus::Ambiguous { error, .. } => {
+                return Err(ambiguous_local_status_error(error.code));
             }
             LocalInstallStatus::NotInstalled { .. } => {}
         }
@@ -1024,13 +1029,19 @@ impl CodexDesktopService {
         self.transition_to(job_id, JobStage::VerifyingInstallation, cancellation)?;
         self.publish_verification_progress(job_id)?;
         let status = self.platform.inspect_local().await?;
-        let LocalInstallStatus::Installed { application } = status else {
-            return Err(
-                InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
-                    .with_diagnostic_message(
-                        "post-install inspection did not find one matching Codex application",
-                    ),
-            );
+        let application = match status {
+            LocalInstallStatus::Installed { application } => application,
+            LocalInstallStatus::Ambiguous { error, .. } => {
+                return Err(ambiguous_local_status_error(error.code));
+            }
+            LocalInstallStatus::NotInstalled { .. } | LocalInstallStatus::Unsupported { .. } => {
+                return Err(
+                    InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+                        .with_diagnostic_message(
+                            "post-install inspection did not find one matching Codex application",
+                        ),
+                );
+            }
         };
         if !installed_application_matches_release(&application, &release)? {
             return Err(InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
@@ -1415,6 +1426,10 @@ fn unsupported_status_error(reason: UnsupportedReason) -> InstallerError {
     InstallerError::new(code).with_diagnostic_message("the current host cannot launch Codex")
 }
 
+fn ambiguous_local_status_error(code: InstallerErrorCode) -> InstallerError {
+    InstallerError::new(code).with_diagnostic_message("local Codex installations are ambiguous")
+}
+
 fn recover_lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
@@ -1441,6 +1456,7 @@ mod tests {
     use crate::codex_desktop::{
         cancellation::Cancellation,
         download::{TransportError, TransportFuture, TransportResponse},
+        error::SuggestedAction,
         platform::{
             PlatformInstallPlan, RestartCandidateInspection, TrustedInstallationCandidate,
             VerifiedPackage, WINDOWS_CODEX_STABLE_IDENTITY,
@@ -1626,6 +1642,7 @@ mod tests {
     struct FixturePlatform {
         release: ReleaseDescriptor,
         initial_local_status: Arc<Mutex<LocalInstallStatus>>,
+        post_install_local_status: Arc<Mutex<Option<LocalInstallStatus>>>,
         preflight_calls: Arc<AtomicUsize>,
         install_calls: Arc<AtomicUsize>,
         launch_calls: Arc<AtomicUsize>,
@@ -1639,6 +1656,7 @@ mod tests {
                     platform: release.platform,
                     architecture: release.architecture,
                 })),
+                post_install_local_status: Arc::new(Mutex::new(None)),
                 release,
                 preflight_calls: Arc::new(AtomicUsize::new(0)),
                 install_calls: Arc::new(AtomicUsize::new(0)),
@@ -1667,6 +1685,10 @@ mod tests {
             *recover_lock(&self.initial_local_status) = status;
         }
 
+        fn set_post_install_local_status(&self, status: LocalInstallStatus) {
+            *recover_lock(&self.post_install_local_status) = Some(status);
+        }
+
         fn set_panic_on_preflight(&self, enabled: bool) {
             self.panic_on_preflight.store(enabled, Ordering::SeqCst);
         }
@@ -1683,9 +1705,11 @@ mod tests {
 
         fn inspect_local(&self) -> BoxFuture<'_, Result<LocalInstallStatus, InstallerError>> {
             let status = if self.install_calls.load(Ordering::SeqCst) > 0 {
-                LocalInstallStatus::Installed {
-                    application: self.installed_application(),
-                }
+                recover_lock(&self.post_install_local_status)
+                    .clone()
+                    .unwrap_or_else(|| LocalInstallStatus::Installed {
+                        application: self.installed_application(),
+                    })
             } else {
                 recover_lock(&self.initial_local_status).clone()
             };
@@ -1862,6 +1886,13 @@ mod tests {
                                 })
                                 .collect(),
                             error: InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                                .to_dto(),
+                        }
+                    }
+                    RestartCandidateInspection::AmbiguousInstallations => {
+                        LocalInstallStatus::Ambiguous {
+                            candidates: Vec::new(),
+                            error: InstallerError::new(InstallerErrorCode::MultipleInstallations)
                                 .to_dto(),
                         }
                     }
@@ -2241,6 +2272,71 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn windows_ambiguous_install_preserves_the_platform_neutral_error() {
+        let artifact = b"fixture installer package".to_vec();
+        let release = release_for(&artifact, "1.2.3.4");
+        let harness = harness(release, artifact, None);
+        harness
+            .platform
+            .set_initial_local_status(LocalInstallStatus::Ambiguous {
+                candidates: Vec::new(),
+                error: InstallerError::new(InstallerErrorCode::MultipleInstallations).to_dto(),
+            });
+
+        let checked = harness.service.check_latest(false).await.unwrap();
+        let started = harness
+            .service
+            .start_install(StartInstallRequest {
+                expected_release_id: checked.release_id,
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+
+        assert_eq!(terminal.stage, JobStage::Failed);
+        assert_eq!(
+            terminal.error.as_ref().map(|error| error.code),
+            Some(InstallerErrorCode::MultipleInstallations)
+        );
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
+        assert!(harness.disk_probe.paths().is_empty());
+    }
+
+    #[tokio::test]
+    async fn post_install_ambiguity_preserves_the_platform_neutral_error() {
+        let artifact = b"fixture installer package".to_vec();
+        let release = release_for(&artifact, "1.2.3.4");
+        let harness = harness(release, artifact, None);
+        harness
+            .platform
+            .set_post_install_local_status(LocalInstallStatus::Ambiguous {
+                candidates: Vec::new(),
+                error: InstallerError::new(InstallerErrorCode::MultipleInstallations).to_dto(),
+            });
+
+        let checked = harness.service.check_latest(false).await.unwrap();
+        let started = harness
+            .service
+            .start_install(StartInstallRequest {
+                expected_release_id: checked.release_id,
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+
+        assert_eq!(terminal.stage, JobStage::Failed);
+        let error = terminal
+            .error
+            .expect("post-install ambiguity must be visible");
+        assert_eq!(error.code, InstallerErrorCode::MultipleInstallations);
+        assert!(!error.retryable);
+        assert_eq!(error.suggested_action, SuggestedAction::ResolvePathConflict);
+        assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn metadata_change_after_check_fails_before_preflight_or_install() {
         let artifact = b"fixture installer package".to_vec();
         let original = release_for(&artifact, "1.2.3.4");
@@ -2490,6 +2586,24 @@ mod tests {
             });
         harness.service.launch().await.unwrap();
         assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 1);
+        assert!(recover_lock(&harness.source.calls).is_empty());
+    }
+
+    #[tokio::test]
+    async fn windows_ambiguous_launch_preserves_the_platform_neutral_error() {
+        let artifact = b"fixture installer package".to_vec();
+        let release = release_for(&artifact, "1.2.3.4");
+        let harness = harness(release, artifact, None);
+        harness
+            .platform
+            .set_initial_local_status(LocalInstallStatus::Ambiguous {
+                candidates: Vec::new(),
+                error: InstallerError::new(InstallerErrorCode::MultipleInstallations).to_dto(),
+            });
+
+        let error = harness.service.launch().await.unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::MultipleInstallations);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
         assert!(recover_lock(&harness.source.calls).is_empty());
     }
 
@@ -2764,6 +2878,32 @@ mod tests {
             .platform
             .queue_candidates([RestartCandidateInspection::UntrustedTarget]);
 
+        assert_eq!(
+            harness.service.request_restart().await,
+            CodexDesktopRestartOutcome::ManualRestartRequired {
+                reason: CodexDesktopManualRestartReason::UntrustedTarget,
+            }
+        );
+        assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+        assert!(recover_lock(&harness.platform.force_targets).is_empty());
+        assert!(recover_lock(&harness.platform.launch_targets).is_empty());
+    }
+
+    #[tokio::test]
+    async fn multiple_trusted_installations_are_ambiguous_but_never_destructive() {
+        let harness = restart_harness(restart_application("primary"));
+        harness.platform.queue_candidates([
+            RestartCandidateInspection::AmbiguousInstallations,
+            RestartCandidateInspection::AmbiguousInstallations,
+        ]);
+
+        assert_eq!(
+            harness.service.get_runtime_status().await.unwrap(),
+            CodexDesktopRuntimeStatus::Ambiguous {
+                reason: CodexDesktopRuntimeAmbiguity::Installations,
+            }
+        );
         assert_eq!(
             harness.service.request_restart().await,
             CodexDesktopRestartOutcome::ManualRestartRequired {

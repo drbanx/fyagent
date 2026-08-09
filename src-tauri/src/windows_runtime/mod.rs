@@ -82,6 +82,192 @@ pub enum InteractiveUserMatch {
     Unavailable,
 }
 
+/// Frozen proof of the same-session Windows Shell user selected at startup.
+///
+/// This type is crate-private and deliberately has no serialization support.
+/// Its SID is required by the ordinary Windows package adapter, but must never
+/// enter renderer DTOs or diagnostics.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct InteractiveUserContext {
+    process_session_id: u32,
+    shell_session_id: u32,
+    canonical_sid: String,
+}
+
+impl std::fmt::Debug for InteractiveUserContext {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("InteractiveUserContext")
+            .field("process_session_id", &self.process_session_id)
+            .field("shell_session_id", &self.shell_session_id)
+            .field("canonical_sid", &"<redacted>")
+            .finish()
+    }
+}
+
+impl InteractiveUserContext {
+    pub(crate) const fn process_session_id(&self) -> u32 {
+        self.process_session_id
+    }
+
+    pub(crate) const fn shell_session_id(&self) -> u32 {
+        self.shell_session_id
+    }
+
+    pub(crate) fn canonical_sid(&self) -> &str {
+        &self.canonical_sid
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(canonical_sid: &str, session_id: u32) -> Self {
+        evaluate_interactive_user_proof(
+            Some(session_id),
+            Some(canonical_sid),
+            Some(session_id),
+            Some(canonical_sid),
+        )
+        .context()
+        .expect("test interactive-user context must use a canonical SID")
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InteractiveUserProof<'a> {
+    Match {
+        process_session_id: u32,
+        shell_session_id: u32,
+        canonical_sid: &'a str,
+    },
+    SessionMismatch,
+    SidMismatch,
+    Unavailable,
+}
+
+impl std::fmt::Debug for InteractiveUserProof<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Match {
+                process_session_id,
+                shell_session_id,
+                canonical_sid: _,
+            } => formatter
+                .debug_struct("Match")
+                .field("process_session_id", process_session_id)
+                .field("shell_session_id", shell_session_id)
+                .field("canonical_sid", &"<redacted>")
+                .finish(),
+            Self::SessionMismatch => formatter.write_str("SessionMismatch"),
+            Self::SidMismatch => formatter.write_str("SidMismatch"),
+            Self::Unavailable => formatter.write_str("Unavailable"),
+        }
+    }
+}
+
+impl InteractiveUserProof<'_> {
+    const fn interactive_user_match(self) -> InteractiveUserMatch {
+        match self {
+            Self::Match { .. } => InteractiveUserMatch::Match,
+            Self::SessionMismatch | Self::SidMismatch => InteractiveUserMatch::Mismatch,
+            Self::Unavailable => InteractiveUserMatch::Unavailable,
+        }
+    }
+
+    fn context(self) -> Option<InteractiveUserContext> {
+        let Self::Match {
+            process_session_id,
+            shell_session_id,
+            canonical_sid,
+        } = self
+        else {
+            return None;
+        };
+
+        Some(InteractiveUserContext {
+            process_session_id,
+            shell_session_id,
+            canonical_sid: canonical_sid.to_owned(),
+        })
+    }
+}
+
+fn evaluate_interactive_user_proof<'a>(
+    process_session_id: Option<u32>,
+    process_sid: Option<&'a str>,
+    shell_session_id: Option<u32>,
+    shell_sid: Option<&'a str>,
+) -> InteractiveUserProof<'a> {
+    let (Some(process_session_id), Some(process_sid), Some(shell_session_id), Some(shell_sid)) =
+        (process_session_id, process_sid, shell_session_id, shell_sid)
+    else {
+        return InteractiveUserProof::Unavailable;
+    };
+
+    if !is_canonical_sid(process_sid) || !is_canonical_sid(shell_sid) {
+        return InteractiveUserProof::Unavailable;
+    }
+    if process_session_id != shell_session_id {
+        return InteractiveUserProof::SessionMismatch;
+    }
+    if process_sid != shell_sid {
+        return InteractiveUserProof::SidMismatch;
+    }
+
+    InteractiveUserProof::Match {
+        process_session_id,
+        shell_session_id,
+        canonical_sid: process_sid,
+    }
+}
+
+fn interactive_user_proof_matches_context(
+    expected: &InteractiveUserContext,
+    process_session_id: Option<u32>,
+    process_sid: Option<&str>,
+    shell_session_id: Option<u32>,
+    shell_sid: Option<&str>,
+) -> bool {
+    matches!(
+        evaluate_interactive_user_proof(
+            process_session_id,
+            process_sid,
+            shell_session_id,
+            shell_sid,
+        ),
+        InteractiveUserProof::Match {
+            process_session_id,
+            shell_session_id,
+            canonical_sid,
+        } if process_session_id == expected.process_session_id()
+            && shell_session_id == expected.shell_session_id()
+            && canonical_sid == expected.canonical_sid()
+    )
+}
+
+pub(crate) fn user_sid_matches_context(
+    expected: &InteractiveUserContext,
+    candidate_sid: Option<&str>,
+) -> bool {
+    matches!(
+        candidate_sid,
+        Some(candidate_sid)
+            if is_canonical_sid(candidate_sid)
+                && candidate_sid == expected.canonical_sid()
+    )
+}
+
+fn is_canonical_sid(value: &str) -> bool {
+    let Some(components) = value.strip_prefix("S-") else {
+        return false;
+    };
+    let components = components.split('-').collect::<Vec<_>>();
+
+    value.len() <= 184
+        && components.len() >= 3
+        && components.iter().all(|component| {
+            !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_digit())
+        })
+}
+
 impl RuntimePrivilegeStatus {
     #[cfg(not(target_os = "windows"))]
     const fn unsupported() -> Self {
@@ -746,6 +932,35 @@ pub(crate) fn business_instance_key(user_sid: &str, session_id: u32) -> String {
 #[cfg(target_os = "windows")]
 mod native;
 
+/// Returns the one startup-frozen identity proof used by ordinary Windows
+/// package operations. This accessor never performs a fallback identity query.
+pub(crate) fn interactive_user_context() -> Option<&'static InteractiveUserContext> {
+    #[cfg(target_os = "windows")]
+    {
+        native::interactive_user_context()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
+/// Re-proves current process/Shell ownership against the frozen context. The
+/// fresh evidence is never promoted to a replacement lifecycle identity.
+pub(crate) fn revalidate_interactive_user_context(expected: &InteractiveUserContext) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        native::revalidate_interactive_user_context(expected)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = expected;
+        false
+    }
+}
+
 /// Executes the Windows-only, pre-Tauri guard. On every other target this is
 /// deliberately a no-op so cross-platform test binaries never inspect a host
 /// token or create OS resources.
@@ -792,12 +1007,14 @@ mod tests {
         business_instance_key, decide_descriptor_startup, decode_activation_frame,
         decode_handshake_frame, decode_instance_state, encode_activation_auth,
         encode_activation_request, encode_activation_stop, encode_client_hello,
-        encode_instance_state, encode_server_proof, evaluate_privilege_gate, is_expected_pipe_sddl,
-        is_expected_runtime_root_sddl, is_expected_static_object_sddl, verify_activation_auth,
-        verify_server_proof, ActivationWireMessage, DescriptorLockState, DescriptorReadState,
-        DescriptorStartupDecision, HandshakeMessage, InstanceState, InteractiveUserMatch,
-        OwnerLiveness, PrivilegeGateDecision, RuntimePrivilegePlatform, RuntimePrivilegeStatus,
-        WindowsStartupErrorCode, ACTIVATION_FRAME_BYTES,
+        encode_instance_state, encode_server_proof, evaluate_interactive_user_proof,
+        evaluate_privilege_gate, interactive_user_proof_matches_context, is_expected_pipe_sddl,
+        is_expected_runtime_root_sddl, is_expected_static_object_sddl, user_sid_matches_context,
+        verify_activation_auth, verify_server_proof, ActivationWireMessage, DescriptorLockState,
+        DescriptorReadState, DescriptorStartupDecision, HandshakeMessage, InstanceState,
+        InteractiveUserMatch, InteractiveUserProof, OwnerLiveness, PrivilegeGateDecision,
+        RuntimePrivilegePlatform, RuntimePrivilegeStatus, WindowsStartupErrorCode,
+        ACTIVATION_FRAME_BYTES,
     };
 
     fn windows_status(
@@ -902,6 +1119,126 @@ mod tests {
             ),
             PrivilegeGateDecision::Allow
         );
+    }
+
+    #[test]
+    fn interactive_user_matching_shell_proof_freezes_only_redacted_identity_fields() {
+        let sid = "S-1-5-21-1000-1001-1002-1003";
+        let proof = evaluate_interactive_user_proof(Some(7), Some(sid), Some(7), Some(sid));
+        assert_eq!(proof.interactive_user_match(), InteractiveUserMatch::Match);
+        let proof_debug = format!("{proof:?}");
+        assert!(proof_debug.contains("<redacted>"));
+        assert!(!proof_debug.contains(sid));
+
+        let context = proof.context().expect("matching proof creates context");
+        assert_eq!(context.process_session_id(), 7);
+        assert_eq!(context.shell_session_id(), 7);
+        assert_eq!(context.canonical_sid(), sid);
+
+        let debug = format!("{context:?}");
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains(sid));
+    }
+
+    #[test]
+    fn interactive_user_proof_distinguishes_session_and_sid_mismatch() {
+        let process_sid = "S-1-5-21-1000-1001-1002-1003";
+        let shell_sid = "S-1-5-21-2000-2001-2002-2003";
+
+        assert_eq!(
+            evaluate_interactive_user_proof(Some(7), Some(process_sid), Some(8), Some(process_sid),),
+            InteractiveUserProof::SessionMismatch
+        );
+        assert_eq!(
+            evaluate_interactive_user_proof(Some(7), Some(process_sid), Some(7), Some(shell_sid),),
+            InteractiveUserProof::SidMismatch
+        );
+    }
+
+    #[test]
+    fn interactive_user_proof_rejects_unavailable_or_invalid_sid_evidence() {
+        let sid = "S-1-5-21-1000-1001-1002-1003";
+
+        assert_eq!(
+            evaluate_interactive_user_proof(Some(7), Some(sid), None, None),
+            InteractiveUserProof::Unavailable
+        );
+        assert_eq!(
+            evaluate_interactive_user_proof(
+                Some(7),
+                Some("not-a-canonical-sid"),
+                Some(7),
+                Some(sid),
+            ),
+            InteractiveUserProof::Unavailable
+        );
+        assert_eq!(
+            evaluate_interactive_user_proof(Some(7), Some(sid), Some(7), Some("S-1-5-invalid"),),
+            InteractiveUserProof::Unavailable
+        );
+    }
+
+    #[test]
+    fn interactive_user_frozen_context_revalidation_rejects_every_identity_drift_axis() {
+        let sid = "S-1-5-21-1000-1001-1002-1003";
+        let other_sid = "S-1-5-21-2000-2001-2002-2003";
+        let context = super::InteractiveUserContext::for_test(sid, 7);
+
+        assert!(interactive_user_proof_matches_context(
+            &context,
+            Some(7),
+            Some(sid),
+            Some(7),
+            Some(sid),
+        ));
+        assert!(!interactive_user_proof_matches_context(
+            &context,
+            Some(8),
+            Some(sid),
+            Some(8),
+            Some(sid),
+        ));
+        assert!(!interactive_user_proof_matches_context(
+            &context,
+            Some(7),
+            Some(sid),
+            Some(8),
+            Some(sid),
+        ));
+        assert!(!interactive_user_proof_matches_context(
+            &context,
+            Some(7),
+            Some(other_sid),
+            Some(7),
+            Some(other_sid),
+        ));
+        assert!(!interactive_user_proof_matches_context(
+            &context,
+            Some(7),
+            Some(sid),
+            None,
+            None,
+        ));
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert!(super::interactive_user_context().is_none());
+            assert!(!super::revalidate_interactive_user_context(&context));
+        }
+    }
+
+    #[test]
+    fn interactive_user_context_accepts_only_the_same_canonical_process_owner() {
+        let sid = "S-1-5-21-1000-1001-1002-1003";
+        let context = super::InteractiveUserContext::for_test(sid, 7);
+
+        assert!(user_sid_matches_context(&context, Some(sid)));
+        assert!(!user_sid_matches_context(
+            &context,
+            Some("S-1-5-21-2000-2001-2002-2003")
+        ));
+        assert!(!user_sid_matches_context(&context, Some("invalid-sid")));
+        assert!(!user_sid_matches_context(&context, None));
     }
 
     #[test]

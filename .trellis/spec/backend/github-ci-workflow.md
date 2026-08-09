@@ -117,24 +117,33 @@ the development-hook behavior tests invoke the real Python harness.
   `macos-15`; no `*-latest` runner is allowed.
 - `windows-native-contracts` is one unconditional required job with a two-entry
   native matrix: `windows-2022`/`X64` and
-  `windows-11-arm`/`Arm64`, with `fail-fast: false`. It checks out the
-  repository read-only and resolves Node/uv/Python only from the repository
+  `windows-11-arm`/`ARM64`, with `fail-fast: false`. Each row binds
+  `RUNNER_ARCH` and the sole `rustc -vV` host line to
+  `x86_64-pc-windows-msvc` or `aarch64-pc-windows-msvc`, uses that native host
+  toolchain, and passes the verified host triple explicitly to Cargo; an
+  emulated or cross-target Rust process cannot satisfy the native smoke. It
+  checks out the
+  repository read-only and resolves Node/uv/Python/Rust only from repository
   facts. Each matrix row maps its runner to an explicit uv managed-Python
   request: `windows-2022` uses `windows-x86_64`, while `windows-11-arm` uses
   `windows-aarch64`. The request keeps the version from `.python-version`, uses
   uv's full `implementation-version-os-arch-libc` request format, and remains in
   `UV_PYTHON` for every subsequent command. The job requires managed Python,
-  performs `uv sync --locked --managed-python`, and executes the Trellis
-  task-list protocol through `uv run --locked --no-sync`. A version-only Python
-  request is forbidden because Windows on ARM can transparently select an
+  performs `uv sync --locked --managed-python`, executes the Trellis task-list
+  protocol through `uv run --locked --no-sync`, and installs the locked Rust
+  toolchain solely to run the one exact native explicit-SID/Main WinRT package
+  inventory smoke. That smoke accepts an empty result and never contacts the
+  Store, network, a real Codex installation, or another user account. A
+  version-only Python request is forbidden because Windows on ARM can
+  transparently select an
   emulated x64 interpreter. Python's `sysconfig.get_platform()` must be
   `win-amd64` on the x64 leg and `win-arm64` on the ARM64 leg, so an emulated
   interpreter cannot satisfy the native environment gate. This job does not
-  install pnpm, Rust, frontend, application, packaging, or signing dependencies;
-  NSIS build/sign/install lifecycle evidence belongs to the Release workflow's
-  architecture-matched Windows jobs. A job-level `timeout-minutes: 15` bounds
-  managed-toolchain and Trellis hangs instead of inheriting GitHub's six-hour
-  default.
+  install pnpm, frontend, packaging, or signing dependencies, and it does not
+  build or launch the application; NSIS build/sign/install lifecycle evidence
+  belongs to the Release workflow's architecture-matched Windows jobs. A
+  job-level `timeout-minutes: 45` bounds managed-toolchain, compilation, and
+  Trellis hangs instead of inheriting GitHub's six-hour default.
 - `windows-11-arm` is a native hosted runner. Scheduling or image
   unavailability is a retryable infrastructure failure, but it still fails
   `CI / Required`; x64 substitution, cross-build, local Windows bridging, job

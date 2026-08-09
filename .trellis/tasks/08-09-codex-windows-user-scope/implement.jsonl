@@ -1,3 +1,5 @@
 {"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Owns Codex installation identity, lifecycle, and restart boundaries."}
 {"file":".trellis/spec/backend/windows-release-boundary.md","reason":"Owns same-session Shell/process formal startup proof."}
+{"file":".trellis/spec/backend/fyagent-v1-0-1-config-domains.md","reason":"Owns the public Codex restart ambiguity and no-side-effect contract."}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Owns matching-architecture native Windows smoke gates."}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace identity context across runtime, package facade, and restart."}

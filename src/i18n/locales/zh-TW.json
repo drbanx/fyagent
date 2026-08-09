@@ -1144,6 +1144,7 @@
       "windowsDependencyMissing": "Windows 缺少安裝所需元件，請聯絡系統管理員。",
       "windowsAllUsersUnsupported": "此安裝方式不支援所有使用者範圍。",
       "windowsDeploymentFailed": "Windows 安裝失敗，請重試。",
+      "multipleInstallations": "偵測到多個 Codex 桌面應用程式安裝，請先手動處理。",
       "macDmgMountFailed": "無法掛載 macOS 安裝映像，請重試。",
       "macAppNotFound": "安裝映像中找不到預期的應用程式。",
       "macBundleIdMismatch": "應用程式識別碼不符合預期，已封鎖安裝。",

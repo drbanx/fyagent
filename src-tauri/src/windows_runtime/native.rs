@@ -57,7 +57,7 @@ use windows::{
                 ImpersonateNamedPipeClient, PeekNamedPipe, WaitNamedPipeW, PIPE_READMODE_MESSAGE,
                 PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_MESSAGE, PIPE_WAIT,
             },
-            RemoteDesktop::{ProcessIdToSessionId, WTSQueryUserToken},
+            RemoteDesktop::ProcessIdToSessionId,
             Threading::{
                 GetCurrentProcess, GetCurrentProcessId, GetCurrentThread, GetProcessTimes,
                 OpenProcess, OpenProcessToken, OpenThreadToken, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -75,14 +75,15 @@ use super::{
     business_instance_key, decide_descriptor_startup, decode_activation_frame,
     decode_handshake_frame, decode_instance_state, encode_activation_auth,
     encode_activation_request, encode_activation_stop, encode_client_hello, encode_instance_state,
-    encode_server_proof, evaluate_privilege_gate, formal_windows_build, is_expected_pipe_sddl,
-    is_expected_runtime_root_sddl, is_expected_static_object_sddl, verify_activation_auth,
-    verify_server_proof, ActivationEnvelope, ActivationFrame, ActivationWireMessage,
-    DescriptorLockState, DescriptorReadState, DescriptorStartupDecision, HandshakeMessage,
-    InstanceState, InteractiveUserMatch, OwnerLiveness, PrivilegeGateDecision,
-    RuntimePrivilegePlatform, RuntimePrivilegeStatus, WindowsStartupDisposition,
-    WindowsStartupErrorCode, ACTIVATION_AUTH_FRAME_BYTES, ACTIVATION_FRAME_BYTES,
-    HANDSHAKE_CHALLENGE_BYTES, HANDSHAKE_FRAME_BYTES, PIPE_NONCE_BYTES,
+    encode_server_proof, evaluate_interactive_user_proof, evaluate_privilege_gate,
+    formal_windows_build, interactive_user_proof_matches_context, is_canonical_sid,
+    is_expected_pipe_sddl, is_expected_runtime_root_sddl, is_expected_static_object_sddl,
+    verify_activation_auth, verify_server_proof, ActivationEnvelope, ActivationFrame,
+    ActivationWireMessage, DescriptorLockState, DescriptorReadState, DescriptorStartupDecision,
+    HandshakeMessage, InstanceState, InteractiveUserContext, InteractiveUserMatch, OwnerLiveness,
+    PrivilegeGateDecision, RuntimePrivilegePlatform, RuntimePrivilegeStatus,
+    WindowsStartupDisposition, WindowsStartupErrorCode, ACTIVATION_AUTH_FRAME_BYTES,
+    ACTIVATION_FRAME_BYTES, HANDSHAKE_CHALLENGE_BYTES, HANDSHAKE_FRAME_BYTES, PIPE_NONCE_BYTES,
     PROTECTED_STATIC_OBJECT_SDDL,
 };
 
@@ -96,13 +97,13 @@ const DESCRIPTOR_READ_ATTEMPTS: usize = 25;
 const DESCRIPTOR_READ_RETRY: Duration = Duration::from_millis(20);
 
 const RUNTIME_ROOT_RELATIVE_PATH: &str = r"FyAgent\runtime";
-static RUNTIME_STATUS: OnceLock<RuntimePrivilegeStatus> = OnceLock::new();
+static RUNTIME_IDENTITY: OnceLock<Result<RuntimeIdentity, WindowsStartupErrorCode>> =
+    OnceLock::new();
 static INSTANCE_GUARD: OnceLock<Arc<InstanceGuard>> = OnceLock::new();
 
 #[derive(Debug)]
-struct PrivilegeProbe {
-    user_sid: String,
-    session_id: u32,
+struct RuntimeIdentity {
+    context: Option<InteractiveUserContext>,
     status: RuntimePrivilegeStatus,
 }
 
@@ -419,10 +420,17 @@ impl InstanceGuard {
     }
 }
 
+fn runtime_identity() -> Result<&'static RuntimeIdentity, WindowsStartupErrorCode> {
+    match RUNTIME_IDENTITY.get_or_init(probe_current_process) {
+        Ok(identity) => Ok(identity),
+        Err(code) => Err(*code),
+    }
+}
+
 pub(super) fn early_windows_startup_gate() -> WindowsStartupDisposition {
     let formal_build = formal_windows_build();
-    let probe = match probe_current_process() {
-        Ok(probe) => probe,
+    let identity = match runtime_identity() {
+        Ok(identity) => identity,
         Err(code) if formal_build => return WindowsStartupDisposition::Blocked(code),
         // Development/test manifests intentionally remain asInvoker. They do
         // not use the protected release lease because the installer may not
@@ -431,43 +439,75 @@ pub(super) fn early_windows_startup_gate() -> WindowsStartupDisposition {
         // IPC name.
         Err(_) => return WindowsStartupDisposition::Continue,
     };
-    let _ = RUNTIME_STATUS.set(probe.status);
 
-    if let PrivilegeGateDecision::Block(code) = evaluate_privilege_gate(formal_build, probe.status)
+    if let PrivilegeGateDecision::Block(code) =
+        evaluate_privilege_gate(formal_build, identity.status)
     {
         return WindowsStartupDisposition::Blocked(code);
     }
     if !formal_build {
         return WindowsStartupDisposition::Continue;
     }
-
-    let paths = match RuntimePaths::for_user_session(&probe.user_sid, probe.session_id) {
-        Ok(paths) => paths,
-        Err(code) => return WindowsStartupDisposition::Blocked(code),
+    let Some(context) = identity.context.as_ref() else {
+        return WindowsStartupDisposition::Blocked(
+            WindowsStartupErrorCode::InteractiveUserUnavailable,
+        );
     };
+
+    let paths =
+        match RuntimePaths::for_user_session(context.canonical_sid(), context.process_session_id())
+        {
+            Ok(paths) => paths,
+            Err(code) => return WindowsStartupDisposition::Blocked(code),
+        };
     let lease = match acquire_lease(&paths) {
         Ok(lease) => lease,
         Err(code) => return WindowsStartupDisposition::Blocked(code),
     };
 
     match lease {
-        LeaseAttempt::Held(lease) => start_or_recover_instance(paths, probe, lease),
+        LeaseAttempt::Held(lease) => start_or_recover_instance(paths, context, lease),
         LeaseAttempt::Contended => forward_to_descriptor_owner(&paths),
     }
 }
 
 pub(super) fn runtime_privilege_status() -> RuntimePrivilegeStatus {
-    RUNTIME_STATUS.get().copied().unwrap_or_else(|| {
-        probe_current_process()
-            .map(|probe| probe.status)
-            .unwrap_or(RuntimePrivilegeStatus {
-                platform: RuntimePrivilegePlatform::Windows,
-                supported: false,
-                elevated: false,
-                local_administrator: false,
-                interactive_user_match: InteractiveUserMatch::Unavailable,
-            })
-    })
+    runtime_identity()
+        .map(|identity| identity.status)
+        .unwrap_or(RuntimePrivilegeStatus {
+            platform: RuntimePrivilegePlatform::Windows,
+            supported: false,
+            elevated: false,
+            local_administrator: false,
+            interactive_user_match: InteractiveUserMatch::Unavailable,
+        })
+}
+
+pub(super) fn interactive_user_context() -> Option<&'static InteractiveUserContext> {
+    runtime_identity().ok()?.context.as_ref()
+}
+
+pub(super) fn revalidate_interactive_user_context(expected: &InteractiveUserContext) -> bool {
+    let Ok(token) = current_process_token() else {
+        return false;
+    };
+    let Ok(process_session_id) = token_session_id(token.get()) else {
+        return false;
+    };
+    let Ok(process_sid) = token_user_sid(token.get()) else {
+        return false;
+    };
+    let Some((shell_session_id, shell_sid)) = shell_window_user_identity() else {
+        return false;
+    };
+
+    interactive_user_proof_matches_context(
+        expected,
+        Some(process_session_id),
+        Some(&process_sid),
+        Some(shell_session_id),
+        Some(&shell_sid),
+    )
 }
 
 pub(super) fn install_activation_handler<F>(handler: F) -> Result<(), WindowsStartupErrorCode>
@@ -517,7 +557,7 @@ pub(super) fn release_instance_guard() {
 
 fn start_or_recover_instance(
     paths: RuntimePaths,
-    probe: PrivilegeProbe,
+    context: &InteractiveUserContext,
     lease: InstanceLease,
 ) -> WindowsStartupDisposition {
     let descriptor = match read_state(&paths) {
@@ -535,7 +575,7 @@ fn start_or_recover_instance(
     };
 
     match decide_descriptor_startup(DescriptorLockState::Held, descriptor_state, owner_liveness) {
-        DescriptorStartupDecision::CreateNew => start_first_instance(paths, probe, lease),
+        DescriptorStartupDecision::CreateNew => start_first_instance(paths, context, lease),
         DescriptorStartupDecision::RemoveStaleThenCreate => {
             let StateRead::Valid(state) = descriptor else {
                 return WindowsStartupDisposition::Blocked(
@@ -547,7 +587,7 @@ fn start_or_recover_instance(
                     WindowsStartupErrorCode::InstanceGuardUnavailable,
                 );
             }
-            start_first_instance(paths, probe, lease)
+            start_first_instance(paths, context, lease)
         }
         DescriptorStartupDecision::Block => {
             WindowsStartupDisposition::Blocked(WindowsStartupErrorCode::InstanceGuardUnavailable)
@@ -561,7 +601,7 @@ fn start_or_recover_instance(
 
 fn start_first_instance(
     paths: RuntimePaths,
-    probe: PrivilegeProbe,
+    context: &InteractiveUserContext,
     lease: InstanceLease,
 ) -> WindowsStartupDisposition {
     let (owner_pid, owner_creation_time) = match current_process_identity() {
@@ -572,7 +612,7 @@ fn start_first_instance(
         Ok(state) => state,
         Err(code) => return WindowsStartupDisposition::Blocked(code),
     };
-    let pipe = match create_activation_pipe(&state, &probe.user_sid) {
+    let pipe = match create_activation_pipe(&state, context.canonical_sid()) {
         Ok(pipe) => pipe,
         Err(code) => return WindowsStartupDisposition::Blocked(code),
     };
@@ -603,7 +643,7 @@ fn start_first_instance(
     }
 
     let listener_guard = guard.clone();
-    let user_sid = probe.user_sid;
+    let user_sid = context.canonical_sid().to_owned();
     if thread::Builder::new()
         .name("fyagent-windows-activation-v2".to_string())
         .spawn(move || {
@@ -1332,23 +1372,27 @@ fn is_transient_descriptor_absence(error: &windows::core::Error) -> bool {
     )
 }
 
-fn probe_current_process() -> Result<PrivilegeProbe, WindowsStartupErrorCode> {
+fn probe_current_process() -> Result<RuntimeIdentity, WindowsStartupErrorCode> {
     let token = current_process_token()?;
-    let user_sid = token_user_sid(token.get())?;
-    let session_id = token_session_id(token.get())?;
+    let process_session_id = token_session_id(token.get())?;
+    let process_sid = token_user_sid(token.get())?;
+    let (context, interactive_user_match) = match shell_window_user_identity() {
+        Some((shell_session_id, shell_sid)) => {
+            let proof = evaluate_interactive_user_proof(
+                Some(process_session_id),
+                Some(&process_sid),
+                Some(shell_session_id),
+                Some(&shell_sid),
+            );
+            (proof.context(), proof.interactive_user_match())
+        }
+        None => (None, InteractiveUserMatch::Unavailable),
+    };
     let elevated = token_is_elevated(token.get())?;
     let local_administrator = token_is_local_administrator(token.get())?;
-    let interactive_user_match = match interactive_session_user_sid(session_id)
-        .or_else(|| shell_window_user_sid(session_id))
-    {
-        Some(interactive_sid) if interactive_sid == user_sid => InteractiveUserMatch::Match,
-        Some(_) => InteractiveUserMatch::Mismatch,
-        None => InteractiveUserMatch::Unavailable,
-    };
 
-    Ok(PrivilegeProbe {
-        user_sid,
-        session_id,
+    Ok(RuntimeIdentity {
+        context,
         status: RuntimePrivilegeStatus {
             platform: RuntimePrivilegePlatform::Windows,
             supported: true,
@@ -1381,7 +1425,9 @@ fn token_user_sid(token: HANDLE) -> Result<String, WindowsStartupErrorCode> {
         return Err(WindowsStartupErrorCode::PrivilegeStatusUnavailable);
     }
 
-    let mut buffer = vec![0_u8; required as usize];
+    // TOKEN_USER contains pointer-aligned fields. A byte vector does not
+    // guarantee that alignment before the Win32 buffer is cast back.
+    let mut buffer = vec![0_usize; (required as usize).div_ceil(std::mem::size_of::<usize>())];
     unsafe {
         GetTokenInformation(
             token,
@@ -1438,8 +1484,11 @@ fn token_is_elevated(token: HANDLE) -> Result<bool, WindowsStartupErrorCode> {
 }
 
 fn token_is_local_administrator(token: HANDLE) -> Result<bool, WindowsStartupErrorCode> {
-    let mut sid_buffer = [0_u8; SECURITY_MAX_SID_SIZE as usize];
-    let mut sid_size = sid_buffer.len() as u32;
+    // SID contains u32-aligned fields, so the backing allocation must not be
+    // a byte array even though CreateWellKnownSid reports its size in bytes.
+    let mut sid_buffer =
+        vec![0_usize; (SECURITY_MAX_SID_SIZE as usize).div_ceil(std::mem::size_of::<usize>())];
+    let mut sid_size = SECURITY_MAX_SID_SIZE;
     let sid = PSID(sid_buffer.as_mut_ptr().cast());
     unsafe { CreateWellKnownSid(WinBuiltinAdministratorsSid, None, Some(sid), &mut sid_size) }
         .map_err(|_| WindowsStartupErrorCode::PrivilegeStatusUnavailable)?;
@@ -1450,16 +1499,7 @@ fn token_is_local_administrator(token: HANDLE) -> Result<bool, WindowsStartupErr
     Ok(bool::from(member))
 }
 
-fn interactive_session_user_sid(session_id: u32) -> Option<String> {
-    let mut token = HANDLE::default();
-    if unsafe { WTSQueryUserToken(session_id, &mut token) }.is_err() || token.is_invalid() {
-        return None;
-    }
-    let token = OwnedHandle(token);
-    token_user_sid(token.get()).ok()
-}
-
-fn shell_window_user_sid(expected_session_id: u32) -> Option<String> {
+fn shell_window_user_identity() -> Option<(u32, String)> {
     let shell_window = unsafe { GetShellWindow() };
     if shell_window.is_invalid() {
         return None;
@@ -1473,9 +1513,7 @@ fn shell_window_user_sid(expected_session_id: u32) -> Option<String> {
     }
 
     let mut shell_session_id = 0_u32;
-    if unsafe { ProcessIdToSessionId(process_id, &mut shell_session_id) }.is_err()
-        || shell_session_id != expected_session_id
-    {
+    if unsafe { ProcessIdToSessionId(process_id, &mut shell_session_id) }.is_err() {
         return None;
     }
 
@@ -1483,7 +1521,8 @@ fn shell_window_user_sid(expected_session_id: u32) -> Option<String> {
         unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id) }.ok()?;
     let process = OwnedHandle(process);
     let token = open_process_token(process.get()).ok()?;
-    token_user_sid(token.get()).ok()
+    let shell_sid = token_user_sid(token.get()).ok()?;
+    Some((shell_session_id, shell_sid))
 }
 
 fn sid_to_string(sid: PSID) -> Result<String, WindowsStartupErrorCode> {
@@ -1504,14 +1543,6 @@ fn sid_to_string(sid: PSID) -> Result<String, WindowsStartupErrorCode> {
         return Err(WindowsStartupErrorCode::PrivilegeStatusUnavailable);
     }
     Ok(value)
-}
-
-fn is_canonical_sid(value: &str) -> bool {
-    value.starts_with("S-")
-        && value.len() <= 184
-        && value
-            .bytes()
-            .all(|byte| byte == b'S' || byte == b'-' || byte.is_ascii_digit())
 }
 
 fn wide_null(value: &str) -> Vec<u16> {

@@ -15,18 +15,32 @@ affecting discovery, updates, verification, or restart/launch.
   `PackageTypes.Main`; retain trusted package identity/publisher/architecture/
   AUMID filtering.
 - Carry the same context through discover, install/update, post-verify, and
-  restart/launch. Context or owner drift stops the lifecycle.
+  restart/launch. Each ordinary native boundary accepts the frozen context and
+  returns context-bound evidence; missing evidence, context drift, or package/
+  process owner drift stops the lifecycle before the next side effect.
 - Zero/one/multiple same-user trusted Stable Main candidates map to absent,
   selected, and ambiguous failure. Other users' packages do not count.
 - Keep ordinary and all-users capability paths separate; do not replace the
   all-users query or add a fallback.
+- Treat more than one same-user trusted Stable Main as ambiguous for both
+  install/launch discovery and restart planning; do not reuse the existing
+  restart comparator to guess one Windows package.
+- Expose ordinary discovery ambiguity as the platform-neutral,
+  non-retryable `MULTIPLE_INSTALLATIONS` error with
+  `resolve_path_conflict`; expose restart planning ambiguity as
+  `ambiguous/installations`. Neither state may authorize close or launch.
 
 ## Acceptance Criteria
 
-- [ ] Multi-SID fixtures prove other-user isolation and same-user ambiguity.
-- [ ] Adapter tests assert explicit SID plus Main and same-context post-verify.
-- [ ] Ordinary fakes prove all-users capability is never called.
-- [ ] WTS token acquisition is absent from ordinary GUI identity proof while
+- [ ] Multi-SID fixtures prove other-user isolation and same-user ambiguity
+      (implemented; Windows CI execution pending).
+- [ ] Adapter tests assert explicit SID plus Main and same-context post-verify
+      (implemented; Windows CI execution pending).
+- [ ] Ordinary fakes prove all-users capability is never called (implemented;
+      Windows CI execution pending).
+- [x] WTS token acquisition is absent from ordinary GUI identity proof while
       formal Shell/process mismatch continues to block startup.
 - [ ] Native Windows smoke verifies WinRT plumbing without Store, network,
       real Codex, or a real multi-account VM.
+- [ ] Matching x64 and ARM64 native CI legs execute that exact smoke once;
+      scheduling or native API failure blocks acceptance.

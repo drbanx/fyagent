@@ -966,6 +966,7 @@ mod tests {
                 InstallerErrorCode::WindowsDependencyMissing,
                 InstallerErrorCode::WindowsAllUsersUnsupported,
                 InstallerErrorCode::WindowsDeploymentFailed,
+                InstallerErrorCode::MultipleInstallations,
                 InstallerErrorCode::MacDmgMountFailed,
                 InstallerErrorCode::MacAppNotFound,
                 InstallerErrorCode::MacBundleIdMismatch,
