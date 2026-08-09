@@ -132,6 +132,10 @@ become a second public signing authority.
   deterministic encoded command. It invokes the absolute system Windows
   PowerShell with profiles disabled, restricts module lookup to `$PSHOME`, and
   uses module-qualified commands.
+- Repository PowerShell and NSIS text inputs are LF-pinned. The embedded helper
+  is level-9 gzip over its exact UTF-16LE source with the RFC 1952 OS header
+  normalized to `255` (unknown); verification retains the full byte comparison
+  and a separate decode-to-source comparison on every host.
 - HTTPS redirects, elapsed time, and response size are bounded. Download bytes
   are created below the protected machine-runtime root and remain pinned against
   replacement from signature verification through process exit.

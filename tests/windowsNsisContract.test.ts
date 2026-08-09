@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { gzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 // @ts-expect-error The release workflow executes this dependency-free helper directly.
 import * as nsisContractModule from "../scripts/release/verify-windows-nsis-contract.mjs";
@@ -14,6 +14,7 @@ type VerificationResult = Readonly<{
 }>;
 
 const ROOT = path.resolve(__dirname, "..");
+const GIT_ATTRIBUTES = path.join(ROOT, ".gitattributes");
 const BASE_CONFIG = path.join(ROOT, "src-tauri", "tauri.conf.json");
 const WINDOWS_CONFIG = path.join(ROOT, "src-tauri", "tauri.windows.conf.json");
 const TEMPLATE = path.join(ROOT, "src-tauri", "nsis", "installer.nsi");
@@ -72,6 +73,12 @@ const assertFinalPathValidatorContract =
   nsisContractModule.assertFinalPathValidatorContract as (
     source: string,
   ) => void;
+const canonicalizeGzipHeader = nsisContractModule.canonicalizeGzipHeader as (
+  compressed: Uint8Array,
+) => Buffer;
+const gzipDeterministically = nsisContractModule.gzipDeterministically as (
+  payload: Uint8Array,
+) => Buffer;
 
 function temporaryFile(name: string, source: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-nsis-contract-"));
@@ -91,9 +98,9 @@ function verifyTemplate(source: string): VerificationResult {
 
 function encodedIncludeForSource(source: string): string {
   const include = fs.readFileSync(WEBVIEW_INCLUDE, "utf8");
-  const encoded = gzipSync(Buffer.from(source, "utf16le"), {
-    level: 9,
-  }).toString("base64");
+  const encoded = gzipDeterministically(
+    Buffer.from(source, "utf16le"),
+  ).toString("base64");
   const chunks = encoded.match(/.{1,768}/gu) ?? [];
   const declaredCount = Number.parseInt(
     include.match(/FYAGENT_WEBVIEW2_COMMAND_CHUNK_COUNT (\d+)/u)?.[1] ?? "0",
@@ -258,6 +265,25 @@ describe("Windows NSIS installer contract", () => {
         webviewIncludePath: includePath,
       }),
     ).toThrow(/deterministic level-9 gzip/u);
+  });
+
+  it("canonicalizes the gzip OS header and pins NSIS text inputs to LF", () => {
+    const payload = Buffer.from("FyAgent portable gzip fixture", "utf8");
+    const hostSpecific = gzipSync(payload, { level: 9 });
+    hostSpecific[9] = 10;
+    const canonical = canonicalizeGzipHeader(hostSpecific);
+
+    expect(hostSpecific[9]).toBe(10);
+    expect(canonical[9]).toBe(255);
+    expect(gunzipSync(canonical)).toEqual(payload);
+    expect(gzipDeterministically(payload)[9]).toBe(255);
+
+    const attributes = fs.readFileSync(GIT_ATTRIBUTES, "utf8");
+    for (const extension of ["ps1", "nsi", "nsh"]) {
+      expect(attributes).toMatch(
+        new RegExp(`^\\*\\.${extension} text eol=lf$`, "mu"),
+      );
+    }
   });
 
   it("locks a PowerShell 5.1-safe loader and rejects unary-comma method arguments", () => {

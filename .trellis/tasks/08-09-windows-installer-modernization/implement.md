@@ -95,3 +95,17 @@ and no custom lifecycle root. Complete x64 and ARM64 WebView2 trust,
 install/uninstall, registry, shortcut, ProgramData, and user-data-preservation
 acceptance remains gated on the native GitHub `windows-2025` and
 `windows-11-arm` runners.
+
+## Release preflight correction evidence
+
+The first exact-SHA dispatch preflight, GitHub Actions run `31333558714` for
+source `2047bc67ebc7ae0b3b30fb79526082c62e79ccb4`, passed release eligibility
+and then failed closed in both native Windows source-contract jobs before any
+build, install, signing, or lifecycle execution. Node/zlib emitted different
+RFC 1952 OS header bytes for the same level-9 gzip on Linux and Windows, while
+the verifier incorrectly treated the host-specific header as deterministic;
+the relevant PowerShell/NSIS extensions also lacked explicit LF checkout
+rules. The correction pins those text inputs to LF, normalizes only the
+descriptive gzip OS byte to `255` (unknown), and continues to require exact
+compressed bytes plus exact decompressed source. A new full dev push CI and
+same-SHA dispatch preflight remain mandatory before tagging.

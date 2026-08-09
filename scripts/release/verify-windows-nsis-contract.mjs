@@ -26,6 +26,28 @@ function contract(condition, message) {
   }
 }
 
+const GZIP_OS_OFFSET = 9;
+const GZIP_OS_UNKNOWN = 255;
+
+export function canonicalizeGzipHeader(compressed) {
+  const canonical = Buffer.from(compressed);
+  contract(
+    canonical.length > GZIP_OS_OFFSET &&
+      canonical[0] === 0x1f &&
+      canonical[1] === 0x8b &&
+      canonical[2] === 0x08,
+    "canonical gzip input must contain a complete deflate header",
+  );
+  // RFC 1952 makes the OS byte descriptive only. Node/zlib writes a
+  // host-specific value, so freeze it to "unknown" before byte comparison.
+  canonical[GZIP_OS_OFFSET] = GZIP_OS_UNKNOWN;
+  return canonical;
+}
+
+export function gzipDeterministically(payload) {
+  return canonicalizeGzipHeader(gzipSync(payload, { level: 9 }));
+}
+
 function readJson(filePath, label) {
   let source;
   try {
@@ -118,9 +140,9 @@ function assertPowerShell51LoaderContract(loader, loaderPath, chunkCount) {
 
   const controlledSource =
     "if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { exit 95 };return 'FYAGENT_PS51_LOADER_OK'";
-  const controlledPayload = gzipSync(Buffer.from(controlledSource, "utf16le"), {
-    level: 9,
-  }).toString("base64");
+  const controlledPayload = gzipDeterministically(
+    Buffer.from(controlledSource, "utf16le"),
+  ).toString("base64");
   const executionEnvironment = { ...process.env };
   for (const name of Object.keys(executionEnvironment)) {
     if (/^FY_WV2_\d+$/u.test(name)) delete executionEnvironment[name];
@@ -676,9 +698,13 @@ function assertWebView2CommandContract({
     `WebView2 encoded payload exceeds its environment budget (${encodedPayload.length})`,
   );
   const compressedSource = Buffer.from(encodedPayload, "base64");
-  const expectedCompressedSource = gzipSync(Buffer.from(source, "utf16le"), {
-    level: 9,
-  });
+  contract(
+    compressedSource[GZIP_OS_OFFSET] === GZIP_OS_UNKNOWN,
+    "WebView2 payload gzip header must use the canonical unknown OS",
+  );
+  const expectedCompressedSource = gzipDeterministically(
+    Buffer.from(source, "utf16le"),
+  );
   contract(
     compressedSource.equals(expectedCompressedSource),
     "WebView2 payload is not the deterministic level-9 gzip of its repo-owned source",
