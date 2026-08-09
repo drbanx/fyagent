@@ -15,14 +15,12 @@
   "branch": "dev/laiyongjie",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
+  "commit": "f020147b2d785134f8423b1d4b71780db2972df5",
   "pr_url": null,
   "subtasks": [],
   "children": [],
   "parent": "08-09-fyagent-modernization",
   "relatedFiles": [],
   "notes": "",
-  "meta": {
-    "status": "completed"
-  }
+  "meta": {}
 }

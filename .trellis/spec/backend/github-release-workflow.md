@@ -255,8 +255,9 @@ re-evaluated when the locked Tauri CLI/bundler changes.
 
 - one universal app contains `arm64` and `x86_64`, the frozen version, and
   bundle identifier `com.fyagent.desktop`;
-- the current public policy is unsigned/ad-hoc only. A Developer ID authority,
-  real TeamIdentifier, notarization, or stapled ticket is rejected;
+- the current public policy is unsigned: no code-signing identity is configured
+  or verified. A Developer ID authority, real TeamIdentifier, notarization, or
+  stapled ticket is rejected;
 - ZIP and DMG originate from the same app and are re-opened to prove version
   and executable digest identity.
 

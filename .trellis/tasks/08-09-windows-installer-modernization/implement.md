@@ -1,19 +1,19 @@
 # Implementation
 
-1. Inventory MSI/WiX ownership and user-data paths; freeze keep/delete lists.
-2. Add NSIS platform config and shared path-validation hook/harness.
-3. Update Windows build, artifact collection, release-contract code, and tests
+1. [done] Inventory MSI/WiX ownership and user-data paths; freeze keep/delete lists.
+2. [done] Add NSIS platform config and shared path-validation hook/harness.
+3. [done] Update Windows build, artifact collection, release-contract code, and tests
    to setup EXEs while leaving other platforms unchanged.
-4. Delete MSI/WiX-only crate, configs, scripts, fixtures, and tests.
-5. Add optional signer status/verification and release-note metadata. Keep
+4. [done] Delete MSI/WiX-only crate, configs, scripts, fixtures, and tests.
+5. [done] Add optional signer status/verification and release-note metadata. Keep
    all native build outputs behind one pre-signer immutable artifact ID,
    preflight sealing wholly secret-free; formal signing first emits only an
    untrusted transformed candidate, then a fresh secret-free runner compares it
    with raw bytes, independently verifies policy, and owns trusted evidence.
-6. Run x64/ARM64 native lifecycles on a further fresh runner only after the
+6. [remote pending] Run x64/ARM64 native lifecycles on a further fresh runner only after the
    exact preflight or formal producer/sealer result tuple succeeds; revalidate
    the sealed installer/evidence pair before execution and prohibit uploads.
-7. Run config/release/unit/Rust checks locally; retain native lifecycle gates
+7. [done locally] Run config/release/unit/Rust checks locally; retain native lifecycle gates
    for matching GitHub runners.
 
 ## Ownership and user-data inventory

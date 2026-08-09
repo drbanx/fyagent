@@ -25,10 +25,10 @@ and testable while preserving stable `mise run` developer entrypoints.
 
 ## Acceptance Criteria
 
-- [ ] Every managed path is pristine or has exactly one declared overlay owner.
-- [ ] Reconcile handles base/output states idempotently and rejects drift.
-- [ ] Verify detects missing, undeclared, stale, and hash-mismatched states
+- [x] Every managed path is pristine or has exactly one declared overlay owner.
+- [x] Reconcile handles base/output states idempotently and rejects drift.
+- [x] Verify detects missing, undeclared, stale, and hash-mismatched states
       without changing the worktree, and is part of contracts/CI.
-- [ ] Both missing canonical files are restored and root `AGENTS.md` is tracked.
-- [ ] uv-direct wrapper and `format:files` edge/cross-shell tests pass.
-- [ ] A temporary update rehearsal proves idempotence and upstream-drift failure.
+- [x] Both missing canonical files are restored and root `AGENTS.md` is tracked.
+- [x] uv-direct wrapper and `format:files` edge/cross-shell tests pass.
+- [x] A temporary update rehearsal proves idempotence and upstream-drift failure.

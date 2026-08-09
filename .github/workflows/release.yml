@@ -1487,16 +1487,18 @@ jobs:
             exit 1
           fi
 
-          signature_info="$(codesign -dvvv "$app_path" 2>&1 || true)"
-          if grep -Eq '^Authority=|Developer ID' <<<"$signature_info"; then
-            echo "Unsigned $RELEASE_TAG app unexpectedly has a distribution signing authority" >&2
+          if signature_info="$(codesign -dvvv "$app_path" 2>&1)"; then
+            echo "Unsigned $RELEASE_TAG app unexpectedly has a code signature" >&2
             exit 1
           fi
-          team_identifier="$(sed -n 's/^TeamIdentifier=//p' <<<"$signature_info" | tail -1)"
-          [ -z "$team_identifier" ] || [ "$team_identifier" = 'not set' ] || {
-            echo "Unsigned $RELEASE_TAG app unexpectedly has TeamIdentifier=$team_identifier" >&2
+          grep -Fq 'code object is not signed at all' <<<"$signature_info" || {
+            echo "Unable to prove that the $RELEASE_TAG app is unsigned: $signature_info" >&2
             exit 1
           }
+          if grep -Eqi 'Signature=adhoc|flags=.*adhoc|^Authority=|Developer ID|^TeamIdentifier=' <<<"$signature_info"; then
+            echo "Unsigned $RELEASE_TAG app produced contradictory signature evidence" >&2
+            exit 1
+          fi
           if xcrun stapler validate "$app_path" >/dev/null 2>&1; then
             echo "Unsigned $RELEASE_TAG app unexpectedly contains a notarization ticket" >&2
             exit 1
@@ -1551,9 +1553,16 @@ jobs:
             echo "Unsigned $RELEASE_TAG DMG unexpectedly contains a notarization ticket" >&2
             exit 1
           fi
-          dmg_signature="$(codesign -dvvv "$dmg_path" 2>&1 || true)"
-          if grep -Eq '^Authority=|Developer ID|^TeamIdentifier=[A-Z0-9]+' <<<"$dmg_signature"; then
-            echo "Unsigned $RELEASE_TAG DMG unexpectedly has a distribution identity" >&2
+          if dmg_signature="$(codesign -dvvv "$dmg_path" 2>&1)"; then
+            echo "Unsigned $RELEASE_TAG DMG unexpectedly has a code signature" >&2
+            exit 1
+          fi
+          grep -Fq 'code object is not signed at all' <<<"$dmg_signature" || {
+            echo "Unable to prove that the $RELEASE_TAG DMG is unsigned: $dmg_signature" >&2
+            exit 1
+          }
+          if grep -Eqi 'Signature=adhoc|flags=.*adhoc|^Authority=|Developer ID|^TeamIdentifier=' <<<"$dmg_signature"; then
+            echo "Unsigned $RELEASE_TAG DMG produced contradictory signature evidence" >&2
             exit 1
           fi
           [ "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 2 ]

@@ -47,7 +47,7 @@ data.
       prove the shared path policy.
 - [ ] WebView2, language, elevation, uninstall ownership, asset naming, signing
       state, disclosure, and attestation contracts pass automatically.
-- [ ] Tests prove the five-stage preflight and six-stage formal trust chains,
+- [x] Tests prove the five-stage preflight and six-stage formal trust chains,
       immutable-ID pinning of every pre-signer platform artifact,
       exact one-file artifact handoffs, secret-free build/preflight/sealer/
       lifecycle jobs, untrusted formal-producer output, independent signature

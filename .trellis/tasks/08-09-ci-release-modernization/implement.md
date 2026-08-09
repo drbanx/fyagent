@@ -16,10 +16,10 @@
    rechecks, and preserve the existing pinned assets, Windows signing/sealing/
    lifecycle, 10/13/14 allowlists, draft re-download, attestation, and Latest
    transaction.
-7. [in progress] Run local workflow/unit/release-contract checks and frozen
-   engineering/security/release review. The parent later owns the repository-
-   wide final check, real dev push, preflight, annotated tag, formal Release,
-   and closeout-CI observations.
+7. [done locally; remote pending] Run local workflow/unit/release-contract
+   checks and frozen engineering/security/release review. The parent owns the
+   completed repository-wide local check and still owns the real dev push,
+   preflight, annotated tag, formal Release, and closeout-CI observations.
 
 ## Local implementation evidence
 

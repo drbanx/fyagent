@@ -14,6 +14,8 @@ const ROOT = path.resolve(__dirname, "..");
 const RELEASE_WORKFLOW = path.join(ROOT, ".github", "workflows", "release.yml");
 const CI_WORKFLOW = path.join(ROOT, ".github", "workflows", "ci.yml");
 const CARGO_TOML = path.join(ROOT, "src-tauri", "Cargo.toml");
+const TAURI_CONFIG = path.join(ROOT, "src-tauri", "tauri.conf.json");
+const RELEASE_NOTES_DIR = path.join(ROOT, "docs", "release-notes");
 const BUILD_RS = path.join(ROOT, "src-tauri", "build.rs");
 const TEST_MANIFEST = path.join(
   ROOT,
@@ -181,6 +183,44 @@ describe("FyAgent release workflow", () => {
   const releaseContractTypes = read(RELEASE_CONTRACT_TYPES);
   const windowsManifestVerifier = read(WINDOWS_MANIFEST_VERIFIER);
 
+  it("ships non-empty English notes for the canonical release version", () => {
+    const canonicalVersion = read(CARGO_TOML).match(
+      /\[workspace\.package\]\s+version = "([0-9]+\.[0-9]+\.[0-9]+)"/u,
+    )?.[1];
+    expect(canonicalVersion).toBeTruthy();
+    const notes = read(
+      path.join(RELEASE_NOTES_DIR, `v${canonicalVersion}-en.md`),
+    );
+
+    expect(notes).toContain(`# FyAgent v${canonicalVersion}`);
+    for (const installer of expectedInstallerNames(canonicalVersion!)) {
+      expect(notes, installer).toContain(installer);
+    }
+    for (const evidence of [
+      "download-manifest.json",
+      "build-metadata.json",
+      "signing-status.json",
+      "artifact-attestation.sigstore.json",
+    ]) {
+      expect(notes, evidence).toContain(evidence);
+    }
+    expect(notes).toContain("14 attachments total");
+    expect(notes).toContain("13 subjects");
+    expect(notes).toContain("dev/laiyongjie");
+    expect(notes).toContain("NotSigned");
+    expect(notes).toMatch(/Developer\s+ID/u);
+    expect(notes).toContain("not notarized");
+    expect(notes).toContain("unsigned universal application");
+    expect(notes).not.toMatch(/ad-hoc(?: signed| application signing)/iu);
+    for (const retiredInstaller of [
+      `FyAgent-${canonicalVersion}-Windows.msi`,
+      `FyAgent-${canonicalVersion}-Windows-arm64.msi`,
+    ]) {
+      expect(notes, retiredInstaller).not.toContain(retiredInstaller);
+    }
+    expect(notes).not.toMatch(/FyAgent-[^\s`]*Windows[^\s`]*\.msi/iu);
+  });
+
   it("pins every pre-signer build input by exact file identity", async () => {
     const version = "12.34.56";
     const sourceSha = "0123456789abcdef0123456789abcdef01234567";
@@ -245,7 +285,7 @@ describe("FyAgent release workflow", () => {
     const trigger = source.slice(0, source.indexOf("\npermissions:"));
     expect(trigger).toContain('      - "v*.*.*"');
     expect(trigger).not.toContain('      - "v*"');
-    expect(trigger).not.toContain('      - "v0.3.0"');
+    expect(trigger).not.toMatch(/^\s+- ["']v\d+\.\d+\.\d+["']\s*$/mu);
     expect(trigger).toContain("workflow_dispatch:");
     expect(trigger).toContain("source_sha:");
     expect(trigger).toContain("dev/laiyongjie HEAD SHA");
@@ -899,6 +939,13 @@ describe("FyAgent release workflow", () => {
   });
 
   it("preserves the unsigned universal macOS and complete Linux asset contracts", () => {
+    const macJob = source.slice(
+      source.indexOf("\n  build-macos:\n"),
+      source.indexOf("\n  pin-release-build-inputs:\n"),
+    );
+    const tauriConfig = JSON.parse(read(TAURI_CONFIG)) as {
+      bundle?: { macOS?: { signingIdentity?: string } };
+    };
     expect(source).toContain("--target universal-apple-darwin --bundles app");
     expect(source).toContain("lipo -archs");
     expect(source).toContain("CFBundleShortVersionString");
@@ -908,6 +955,19 @@ describe("FyAgent release workflow", () => {
     expect(source).not.toContain("notarytool");
     expect(source).toContain("hdiutil attach");
     expect(source).toContain("-readonly");
+    expect(tauriConfig.bundle?.macOS).not.toHaveProperty("signingIdentity");
+    expect(macJob).not.toContain("APPLE_SIGNING_IDENTITY");
+    expect(macJob).toContain(
+      'if signature_info="$(codesign -dvvv "$app_path" 2>&1)"; then',
+    );
+    expect(macJob).toContain(
+      'if dmg_signature="$(codesign -dvvv "$dmg_path" 2>&1)"; then',
+    );
+    expect(macJob.match(/unexpectedly has a code signature/gu)).toHaveLength(2);
+    expect(macJob.match(/code object is not signed at all/gu)).toHaveLength(2);
+    expect(macJob.match(/Signature=adhoc\|flags=\.\*adhoc/gu)).toHaveLength(2);
+    expect(macJob).not.toContain('codesign -dvvv "$app_path" 2>&1 || true');
+    expect(macJob).not.toContain('codesign -dvvv "$dmg_path" 2>&1 || true');
     expect(source).toContain(
       "FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.AppImage",
     );

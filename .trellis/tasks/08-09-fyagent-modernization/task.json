@@ -3,7 +3,7 @@
   "name": "fyagent-modernization",
   "title": "FyAgent modernization",
   "description": "Coordinate five modernization workstreams, exact-SHA v0.3.1 release, and final archive closeout on dev/laiyongjie.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "repository-wide coordination and release closeout",
   "package": null,

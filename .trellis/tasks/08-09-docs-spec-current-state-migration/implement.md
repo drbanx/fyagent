@@ -8,10 +8,10 @@
 5. [done] Update references/tests and delete replaced specs plus `docs/fyagent/dev/`.
 6. [done] Audit every remaining version/MSI/WiX match semantically, preserving true
    machine contracts and excluding immutable archives from rewrite.
-7. [in progress] Run task/docs, link/reference, protocol, and release checks;
-   compare the archive tree against the pre-task commit. The parent owns the
-   final repository-wide check after the canonical release-version update and
-   keeps this child open until the remote release evidence permits archival.
+7. [done locally; archive pending] Run task/docs, link/reference, protocol, and
+   release checks; compare the archive tree against the pre-task commit. The
+   parent recorded the successful canonical `0.3.1` repository-wide check and
+   keeps this child open until remote Release evidence permits archival.
 
 ## Local migration evidence
 

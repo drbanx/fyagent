@@ -265,7 +265,7 @@ the standard version file and `mise.lock` captured before the attempt.
 - Run `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
   `taskDocs.test.ts`, `systemCheck.test.ts`, and `localBuildBoundary.test.ts`.
 - In Required CI, run the locked uv/Python preparation and Trellis task-list
-  protocol on both `windows-2022` x64 and `windows-11-arm` ARM64. Require
+  protocol on both `windows-2025` x64 and `windows-11-arm` ARM64. Require
   an explicit uv full managed-Python request for each matrix architecture and
   Python `sysconfig.get_platform()` to match `win-amd64`/`win-arm64`; a
   version-only request can select Windows-on-ARM x64 emulation and therefore

@@ -63,7 +63,7 @@ const LOCALIZED_INSTALLATION_GUIDES = [
   {
     file: "docs/user-manual/zh/1-getting-started/1.2-installation.md",
     trustPatterns: [
-      /未使用 Apple\s+Developer ID 签名/,
+      /未使用 Apple\s+Developer ID\s+签名/,
       /未经 Apple 公证/,
       /仍要打开[\s\S]{0,40}Open\s+Anyway/,
       /不要关闭 Gatekeeper/,
@@ -223,8 +223,9 @@ describe("current FyAgent documentation authority", () => {
         expect(source, `${file} -> ${installer}`).toContain(installer);
       }
       expect(source, file).toContain("NSIS");
+      expect(source, file).not.toMatch(/\bad-hoc\b/iu);
       expect(source, file).not.toMatch(
-        /FyAgent-X\.Y\.Z-Windows-(?:x64|arm64)\.msi/i,
+        /FyAgent-X\.Y\.Z-Windows(?:-(?:x64|arm64))?\.msi/i,
       );
       expect(source, file).not.toContain("FyAgent-X.Y.Z-Windows-Portable.zip");
     }

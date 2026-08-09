@@ -319,7 +319,7 @@ describe("canonical mise task API", () => {
     const version = mise("version:set", "0.3.0");
     expect(version.status, output(version)).toBe(0);
     expect(output(version)).toContain("0.3.0");
-    expect(output(version)).toMatch(/preview|no files (?:would )?change/i);
+    expect(output(version)).toMatch(/would update|no files changed/i);
 
     const python = mise("python:add:dev", "httpx");
     expect(python.status, output(python)).toBe(0);
