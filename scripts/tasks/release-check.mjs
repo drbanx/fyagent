@@ -3,6 +3,9 @@
 import { fail, run } from "./lib.mjs";
 
 const CI_SAFE_TESTS = Object.freeze([
+  "tests/classifyChanges.test.ts",
+  "tests/devReleaseEligibility.test.ts",
+  "tests/devReleaseRemote.test.ts",
   "tests/releaseWorkflow.test.ts",
   "tests/downloadManifest.test.ts",
   "tests/releaseAssets.test.ts",

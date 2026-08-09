@@ -86,11 +86,17 @@ app_version = canonical Cargo version
 release_tag = "v" + app_version
 source_sha  = lowercase full Git commit SHA
 release_mode = preflight | formal
+ci_run_id / ci_run_attempt = exact successful dev push CI attempt
 ```
 
 Every platform, evidence, attestation, and publication step consumes those
 outputs unchanged. A downstream step must not trim `GITHUB_REF_NAME`, reread a
-different version field, or substitute another source SHA.
+different version field, substitute another source SHA, or select another CI
+attempt. Both modes require the source to equal the live remote
+`dev/laiyongjie` HEAD and bind the same successful `.github/workflows/ci.yml`
+push attempt. Formal mode additionally requires an annotated `vX.Y.Z` tag
+whose target is that exact commit; preflight is the dev-branch workflow at the
+same commit and cannot publish.
 
 The installer allowlist contains exactly ten versioned files:
 
@@ -155,8 +161,9 @@ attachment and does not attest itself.
 - Download/release asset tests assert all ten exact names, Windows NSIS EXE
   architecture mapping, URL shape, no MSI, and missing/extra/symlink rejection.
 - Release tests assert frozen output consumption and that the download,
-  build, signing, attestation, and publication stages use the same version and
-  source SHA.
+  build, signing, attestation, and publication stages use the same version,
+  source SHA, CI run, and attempt. They cover dev-branch movement, annotated
+  versus lightweight tags, and exact frozen rechecks before publication.
 - Windows release tests accept `65535`, reject `65536`, and use an integer path
   that also rejects values beyond JavaScript's safe-number range without
   truncation.

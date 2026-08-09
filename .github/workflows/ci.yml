@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, dev/laiyongjie]
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -13,12 +13,108 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', github.run_id, github.run_attempt) || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  changes:
+    name: Classify Changes
+    runs-on: ubuntu-24.04
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      contracts: ${{ steps.plan.outputs.contracts }}
+      frontend: ${{ steps.plan.outputs.frontend }}
+      desktop: ${{ steps.plan.outputs.desktop }}
+      backend: ${{ steps.plan.outputs.backend }}
+      windows_native: ${{ steps.plan.outputs.windows_native }}
+      docs_spec: ${{ steps.plan.outputs.docs_spec }}
+    steps:
+      - name: Checkout complete comparison history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Classify explicit base and head commits
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          event_force_full=false
+          case "$EVENT_NAME" in
+            pull_request)
+              base_sha="$PR_BASE_SHA"
+              head_sha="$PR_HEAD_SHA"
+              ;;
+            merge_group)
+              base_sha="$MERGE_GROUP_BASE_SHA"
+              head_sha="$MERGE_GROUP_HEAD_SHA"
+              ;;
+            push)
+              base_sha="$PUSH_BASE_SHA"
+              head_sha="$PUSH_HEAD_SHA"
+              event_force_full=true
+              ;;
+            workflow_dispatch)
+              base_sha="$PUSH_HEAD_SHA"
+              head_sha="$PUSH_HEAD_SHA"
+              event_force_full=true
+              ;;
+            *)
+              echo "Unsupported CI event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$base_sha" =~ ^0{40}$ ]]; then
+            base_sha="$head_sha"
+          fi
+
+          classifier_status=0
+          node scripts/ci/classify-changes.mjs \
+            --base "$base_sha" --head "$head_sha" --json \
+            > classifier-report.json || classifier_status=$?
+          [ -s classifier-report.json ] || {
+            echo 'Change classifier did not emit a JSON report' >&2
+            exit 1
+          }
+          jq . classifier-report.json
+          [ "$classifier_status" -eq 0 ] || exit "$classifier_status"
+
+          jq --argjson eventForceFull "$event_force_full" '
+            if $eventForceFull then
+              .forceFull = true | .domains |= with_entries(.value = true)
+            else
+              .
+            end
+          ' classifier-report.json > ci-plan.json
+          plan="$(jq -c . ci-plan.json)"
+          {
+            printf 'plan=%s\n' "$plan"
+            printf 'contracts=%s\n' "$(jq -r '.domains.contracts' ci-plan.json)"
+            printf 'frontend=%s\n' "$(jq -r '.domains.frontend' ci-plan.json)"
+            printf 'desktop=%s\n' "$(jq -r '.domains.desktop' ci-plan.json)"
+            printf 'backend=%s\n' "$(jq -r '.domains.backend' ci-plan.json)"
+            printf 'windows_native=%s\n' "$(jq -r '.domains.windowsNative' ci-plan.json)"
+            printf 'docs_spec=%s\n' "$(jq -r '.domains.docsSpec' ci-plan.json)"
+          } >> "$GITHUB_OUTPUT"
+
   contracts:
     name: Repository Contracts
+    needs: changes
+    if: needs.changes.result == 'success' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.docs_spec == 'true')
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -65,10 +161,14 @@ jobs:
         run: node scripts/ci/verify-toolchain.mjs --tools node,pnpm,rust,uv,python
 
       - name: Run repository and release contracts
-        run: node scripts/tasks/release-check.mjs --ci
+        run: |
+          node scripts/trellis/verify.mjs
+          node scripts/tasks/release-check.mjs --ci
 
   frontend:
     name: Frontend Checks
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -142,6 +242,8 @@ jobs:
 
   desktop-acceptance-contract:
     name: Desktop Acceptance Contract
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -178,6 +280,8 @@ jobs:
 
   backend-linux:
     name: Backend Checks (Linux)
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -229,7 +333,9 @@ jobs:
 
   backend-windows:
     name: Backend Checks (Windows)
-    runs-on: windows-2022
+    needs: changes
+    if: needs.changes.result == 'success' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.windows_native == 'true')
+    runs-on: windows-2025
     env:
       FYAGENT_WINDOWS_MANIFEST: test
     steps:
@@ -272,6 +378,8 @@ jobs:
 
   windows-native-contracts:
     name: Windows Native Contracts (${{ matrix.architecture }})
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.windows_native == 'true'
     timeout-minutes: 45
     env:
       UV_MANAGED_PYTHON: "true"
@@ -279,7 +387,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: windows-2022
+          - runner: windows-2025
             architecture: X64
             rust_host: x86_64-pc-windows-msvc
             python_architecture: x86_64
@@ -380,6 +488,8 @@ jobs:
 
   backend-macos:
     name: Backend Checks (macOS)
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'
     runs-on: macos-15
     steps:
       - name: Checkout
@@ -422,6 +532,7 @@ jobs:
     name: CI / Required
     if: always()
     needs:
+      - changes
       - contracts
       - frontend
       - desktop-acceptance-contract
@@ -430,13 +541,32 @@ jobs:
       - windows-native-contracts
       - backend-macos
     runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      - name: Read current run-attempt job conclusions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api -X GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" \
+            -f per_page=100 > current-run-jobs.json
+          jq -e '.total_count == (.jobs | length)' current-run-jobs.json >/dev/null || {
+            echo 'Current run-attempt job response was incomplete' >&2
+            exit 1
+          }
+
       - name: Evaluate required dependency results
         env:
           REQUIRED_RESULTS: ${{ toJSON(needs) }}
-        run: node scripts/ci/required-gate.mjs
+          CI_CLASSIFICATION_PLAN: ${{ needs.changes.outputs.plan }}
+        run: >-
+          node scripts/ci/required-gate.mjs
+          --jobs-json "$(jq -c . current-run-jobs.json)"

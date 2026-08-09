@@ -3,7 +3,7 @@
   "name": "ci-release-modernization",
   "title": "CI and release modernization",
   "description": "Add domain-aware pull-request CI and exact-SHA dev-branch release eligibility.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "GitHub Actions CI, classifier, release eligibility, and publication",
   "package": null,

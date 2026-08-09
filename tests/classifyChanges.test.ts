@@ -1,0 +1,299 @@
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, describe, expect, it } from "vitest";
+import {
+  CHANGE_DOMAINS,
+  changedPathsBetweenCommits,
+  classifyChangedPaths,
+  parseNameStatusZ,
+  type ChangeClassification,
+} from "../scripts/ci/classify-changes.mjs";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CLASSIFIER = path.join(ROOT, "scripts", "ci", "classify-changes.mjs");
+const temporaryRoots: string[] = [];
+
+function domains(...enabled: (typeof CHANGE_DOMAINS)[number][]) {
+  return Object.fromEntries(
+    CHANGE_DOMAINS.map((domain) => [domain, enabled.includes(domain)]),
+  );
+}
+
+function git(cwd: string, ...args: string[]): string {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || `git ${args.join(" ")} failed`);
+  }
+  return result.stdout.trim();
+}
+
+function write(root: string, relativePath: string, contents: string): void {
+  const destination = path.join(root, relativePath);
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.writeFileSync(destination, contents);
+}
+
+function commit(root: string, message: string): string {
+  git(root, "add", "-A");
+  git(root, "commit", "-m", message);
+  return git(root, "rev-parse", "HEAD");
+}
+
+function temporaryRepository(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-classifier-"));
+  temporaryRoots.push(root);
+  git(root, "init", "--quiet");
+  git(root, "config", "user.name", "FyAgent Tests");
+  git(root, "config", "user.email", "tests@fyagent.invalid");
+  return root;
+}
+
+function runClassifier(cwd: string, args: string[]): SpawnSyncReturns<string> {
+  return spawnSync(process.execPath, [CLASSIFIER, ...args], {
+    cwd,
+    encoding: "utf8",
+  });
+}
+
+afterAll(() => {
+  for (const root of temporaryRoots) {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+describe("repository change classifier", () => {
+  it("uses the stable public domain shape for an empty diff", () => {
+    expect(CHANGE_DOMAINS).toEqual([
+      "contracts",
+      "frontend",
+      "desktop",
+      "backend",
+      "windowsNative",
+      "docsSpec",
+    ]);
+    expect(classifyChangedPaths([])).toEqual({
+      domains: domains(),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it.each([
+    [
+      "docs/spec",
+      ["docs/fyagent/development/ci.md"],
+      domains("contracts", "docsSpec"),
+    ],
+    ["frontend", ["src/components/App.tsx"], domains("frontend")],
+    [
+      "backend",
+      ["src-tauri/src/proxy/server.rs"],
+      domains("contracts", "backend"),
+    ],
+    [
+      "Windows installer",
+      ["src-tauri/nsis/validate-install-dir.nsh"],
+      domains("contracts", "windowsNative"),
+    ],
+    [
+      "Codex Windows",
+      ["src-tauri/src/codex_desktop/platform/windows.rs"],
+      domains("contracts", "backend", "windowsNative"),
+    ],
+    [
+      "Cargo dependency root",
+      ["src-tauri/Cargo.lock"],
+      domains("contracts", "backend", "windowsNative"),
+    ],
+    [
+      "Tauri bundle and capability boundary",
+      [
+        "src-tauri/tauri.conf.json",
+        "src-tauri/build.rs",
+        "src-tauri/capabilities/default.json",
+      ],
+      domains("contracts", "backend"),
+    ],
+    [
+      "pnpm dependency root",
+      ["pnpm-lock.yaml"],
+      domains("contracts", "frontend", "desktop"),
+    ],
+  ])("classifies the %s fixture", (_name, paths, expectedDomains) => {
+    expect(classifyChangedPaths(paths as string[])).toEqual({
+      domains: expectedDomains,
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it.each([
+    ".github/workflows/ci.yml",
+    "scripts/ci/classify-changes.mjs",
+    "scripts/release/release-contract.mjs",
+    "scripts/trellis/verify.mjs",
+    "rust-toolchain.toml",
+  ])("forces every domain for control-plane path %s", (changedPath) => {
+    expect(classifyChangedPaths([changedPath])).toEqual({
+      domains: domains(...CHANGE_DOMAINS),
+      unknownPaths: [],
+      forceFull: true,
+    });
+  });
+
+  it("unions multiple affected domains without converting them to full CI", () => {
+    expect(
+      classifyChangedPaths([
+        "src/components/App.tsx",
+        "src-tauri/src/proxy/server.rs",
+        "docs/fyagent/development/ci.md",
+        "src/components/App.tsx",
+      ]),
+    ).toEqual({
+      domains: domains("contracts", "frontend", "backend", "docsSpec"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it("reports unknown and unsafe paths deterministically instead of guessing", () => {
+    expect(
+      classifyChangedPaths([
+        "unknown/new-file.txt",
+        "../outside.txt",
+        "another-unknown.txt",
+        "unknown/new-file.txt",
+      ]),
+    ).toEqual({
+      domains: domains(),
+      unknownPaths: [
+        "../outside.txt",
+        "another-unknown.txt",
+        "unknown/new-file.txt",
+      ],
+      forceFull: false,
+    });
+  });
+
+  it("keeps every currently tracked repository path owned", () => {
+    const tracked = git(ROOT, "ls-files", "-z").split("\0").filter(Boolean);
+    expect(classifyChangedPaths(tracked).unknownPaths).toEqual([]);
+  });
+
+  it("parses both sides of rename/copy records and rejects truncated data", () => {
+    expect(
+      parseNameStatusZ(
+        "M\0src/App.tsx\0R100\0docs/old.md\0src/new.ts\0C75\0README.md\0docs/copy.md\0",
+      ),
+    ).toEqual([
+      "src/App.tsx",
+      "docs/old.md",
+      "src/new.ts",
+      "README.md",
+      "docs/copy.md",
+    ]);
+    expect(() => parseNameStatusZ("R100\0docs/old.md\0")).toThrow(
+      "is missing a path",
+    );
+    expect(() => parseNameStatusZ("M\0src/App.tsx")).toThrow(
+      "missing its final NUL byte",
+    );
+  });
+
+  it("classifies a real Git rename from both its old and new path", () => {
+    const root = temporaryRepository();
+    write(root, "docs/old.md", "same contents\n");
+    const base = commit(root, "base");
+    fs.mkdirSync(path.join(root, "src"), { recursive: true });
+    fs.renameSync(
+      path.join(root, "docs", "old.md"),
+      path.join(root, "src", "new.ts"),
+    );
+    const head = commit(root, "rename");
+
+    expect(changedPathsBetweenCommits(base, head, root)).toEqual([
+      "docs/old.md",
+      "src/new.ts",
+    ]);
+
+    const result = runClassifier(root, [
+      "--base",
+      base,
+      "--head",
+      head,
+      "--json",
+    ]);
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout) as ChangeClassification).toEqual({
+      domains: domains("contracts", "frontend", "docsSpec"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it("emits JSON and exits nonzero for an unclassified Git path", () => {
+    const root = temporaryRepository();
+    write(root, "README.md", "base\n");
+    const base = commit(root, "base");
+    write(root, "infra/pipeline.yml", "unknown: true\n");
+    const head = commit(root, "unknown path");
+
+    const result = runClassifier(root, [
+      "--base",
+      base,
+      "--head",
+      head,
+      "--json",
+    ]);
+    expect(result.status).toBe(1);
+    expect(JSON.parse(result.stdout) as ChangeClassification).toEqual({
+      domains: domains(),
+      unknownPaths: ["infra/pipeline.yml"],
+      forceFull: false,
+    });
+    expect(result.stderr).toContain("Unclassified repository paths");
+  });
+
+  it("fails closed for malformed, injected, missing, and non-commit revisions", () => {
+    const root = temporaryRepository();
+    write(root, "README.md", "base\n");
+    const commitSha = commit(root, "base");
+    const missingSha = "f".repeat(40);
+    const blobSha = git(root, "hash-object", "-w", "README.md");
+
+    for (const args of [
+      ["--base", "HEAD", "--head", commitSha, "--json"],
+      ["--base", "--help", "--head", commitSha, "--json"],
+      ["--base", missingSha, "--head", commitSha, "--json"],
+      ["--base", blobSha, "--head", commitSha, "--json"],
+      ["--base", commitSha, "--head", commitSha, "--json", "--evil"],
+    ]) {
+      const result = runClassifier(root, args);
+      expect(result.status, args.join(" ")).toBe(1);
+      expect(result.stdout, args.join(" ")).toBe("");
+      expect(result.stderr.length, args.join(" ")).toBeGreaterThan(0);
+    }
+  });
+
+  it("returns the stable empty report when base and head are identical", () => {
+    const root = temporaryRepository();
+    write(root, "README.md", "base\n");
+    const sha = commit(root, "base");
+    const result = runClassifier(root, [
+      "--base",
+      sha,
+      "--head",
+      sha,
+      "--json",
+    ]);
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout) as ChangeClassification).toEqual({
+      domains: domains(),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+});

@@ -182,7 +182,7 @@ describe("FyAgent release workflow", () => {
   const windowsManifestVerifier = read(WINDOWS_MANIFEST_VERIFIER);
 
   it("pins every pre-signer build input by exact file identity", async () => {
-    const version = "0.3.0";
+    const version = "12.34.56";
     const sourceSha = "0123456789abcdef0123456789abcdef01234567";
     const inputRoot = createBuildInputFixture(version);
     const outputRoot = path.join(
@@ -241,17 +241,22 @@ describe("FyAgent release workflow", () => {
     ).rejects.toThrow(/Unexpected trusted build input entry/u);
   });
 
-  it("supports only an immutable preflight and the exact v0.3.0 formal tag", () => {
+  it("supports an immutable dev preflight and stable tag candidates without publishing dispatches", () => {
     const trigger = source.slice(0, source.indexOf("\npermissions:"));
-    expect(trigger).toContain('      - "v0.3.0"');
-    expect(trigger).not.toContain('"v*"');
+    expect(trigger).toContain('      - "v*.*.*"');
+    expect(trigger).not.toContain('      - "v*"');
+    expect(trigger).not.toContain('      - "v0.3.0"');
     expect(trigger).toContain("workflow_dispatch:");
     expect(trigger).toContain("source_sha:");
+    expect(trigger).toContain("dev/laiyongjie HEAD SHA");
     expect(trigger).toContain("required: true");
     expect(source).toContain("release_mode='preflight'");
     expect(source).toContain("release_mode='formal'");
     expect(source).toContain(
-      "if: needs.eligibility.outputs.release_mode == 'formal'",
+      "if: github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal'",
+    );
+    expect(source).not.toContain(
+      "if: github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'formal'",
     );
     expect(source).not.toContain("gh release create");
     expect(source).toContain("draft:true,prerelease:false");
@@ -373,7 +378,7 @@ describe("FyAgent release workflow", () => {
     );
   });
 
-  it("preserves repository, workflow, main ancestry, and Required-CI admission semantics", () => {
+  it("binds repository, dev HEAD, annotated formal tag, and exact Required CI through the repository-owned verifier", () => {
     const eligibility = source.slice(
       source.indexOf("\n  eligibility:\n"),
       source.indexOf("\n  build-windows:\n"),
@@ -385,13 +390,39 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain("path: candidate-source");
     expect(eligibility).not.toContain("installer-actions");
     expect(eligibility).not.toContain("pnpm install");
-    expect(eligibility).toContain("refs/tags/v0.3.0");
-    expect(eligibility).toContain("git merge-base --is-ancestor");
-    expect(eligibility).toContain("refs/remotes/origin/main");
-    expect(eligibility).toContain("actions/workflows/ci.yml");
-    expect(eligibility).toContain("sort_by(.run_number, .run_attempt)");
-    expect(eligibility).toContain('select(.name == "CI / Required")');
-    expect(eligibility).toContain('.app.slug == "github-actions"');
+    expect(eligibility).toContain("refs/heads/dev/laiyongjie");
+    expect(eligibility).toContain('"refs/tags/$GITHUB_REF_NAME"');
+    expect(eligibility).toContain('release_tag="v$app_version"');
+    expect(eligibility).toContain('check --tag "$release_tag"');
+    expect(eligibility).toContain(
+      "node scripts/release/verify-dev-release-remote.mjs",
+    );
+    expect(eligibility).toContain(
+      '--evidence "$RUNNER_TEMP/fyagent-release-remote-evidence.json"',
+    );
+    expect(eligibility).toContain(
+      "RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}",
+    );
+    expect(eligibility).toContain(
+      "GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}",
+    );
+    expect(eligibility).toContain("unset RELEASE_DISPATCH_SOURCE_SHA");
+    expect(eligibility).toContain(
+      "ci_run_id: ${{ steps.remote.outputs.ci_run_id }}",
+    );
+    expect(eligibility).toContain(
+      "ci_run_attempt: ${{ steps.remote.outputs.ci_run_attempt }}",
+    );
+    expect(eligibility).toContain("checks: read");
+    expect(eligibility).not.toContain("merge-base --is-ancestor");
+    expect(eligibility).not.toContain("refs/remotes/origin/main");
+    expect(eligibility).not.toContain("branch=main");
+    expect(
+      namedStepBlock(
+        eligibility,
+        "Bind remote dev, tag, and successful Required CI evidence",
+      ),
+    ).not.toContain("\n        if:");
   });
 
   it("uses native Linux hosts with reviewed Ubuntu child digests", () => {
@@ -895,11 +926,64 @@ describe("FyAgent release workflow", () => {
     expect(publish).toContain("failure-release-state.json");
     expect(publish).toContain("The publish outcome is unknown");
     expect(publish).toContain("published-confirmed.json");
-    expect(publish).toContain("docs/release-notes/v0.3.0-en.md");
+    expect(publish).toContain(
+      'release_notes_path="docs/release-notes/${RELEASE_TAG}-en.md"',
+    );
     expect(publish).not.toContain("gh release create");
     expect(publish).not.toContain("--request DELETE");
     expect(publish).not.toContain("gh release delete");
     expect(publish).not.toMatch(/git (?:push --delete|tag -d)/);
+  });
+
+  it("rechecks the exact frozen remote eligibility before publication starts and immediately before the final PATCH", () => {
+    const publish = source.slice(source.indexOf("\n  publish:\n"));
+    expect(publish).toContain(
+      "if: github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal'",
+    );
+    expect(publish).toContain(
+      "permissions:\n      actions: read\n      checks: read\n      contents: write",
+    );
+    expect(publish).toContain(
+      "GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}",
+    );
+    expect(publish).toContain(
+      "Revalidate frozen dev release eligibility at publish start",
+    );
+    expect(
+      publish.match(/node scripts\/release\/verify-dev-release-remote\.mjs/gu),
+    ).toHaveLength(2);
+    expect(publish.match(/--expected /gu)).toHaveLength(2);
+    expect(publish).toContain('--expected "$frozen_eligibility"');
+    expect(publish).toContain(
+      '--expected "$RUNNER_TEMP/fyagent-frozen-release-eligibility.json"',
+    );
+    for (const frozenField of [
+      "appVersion",
+      "releaseTag",
+      "sourceSha",
+      "workflowSha",
+      "ciRunId",
+      "ciRunAttempt",
+      'mode:"formal"',
+    ]) {
+      expect(publish).toContain(frozenField);
+    }
+    const finalRecheck = publish.lastIndexOf(
+      "node scripts/release/verify-dev-release-remote.mjs",
+    );
+    const publishRequest = publish.indexOf(
+      'publish_status="$(curl --silent',
+      finalRecheck,
+    );
+    const finalPatch = publish.indexOf("--request PATCH", finalRecheck);
+    expect(finalRecheck).toBeGreaterThan(
+      publish.indexOf('prepublish_json="$transaction_root/prepublish.json"'),
+    );
+    expect(publishRequest).toBeGreaterThan(finalRecheck);
+    expect(finalPatch).toBeGreaterThan(finalRecheck);
+    expect(publish.slice(finalRecheck, publishRequest)).not.toContain(
+      "curl --silent",
+    );
   });
 
   it("keeps formal assets free of MSI, WiX, portable, and updater surfaces", () => {

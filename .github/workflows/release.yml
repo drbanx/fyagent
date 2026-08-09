@@ -7,11 +7,11 @@ name: Release
 on:
   push:
     tags:
-      - "v0.3.0"
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Immutable 40-character main commit SHA to preflight
+        description: Immutable 40-character dev/laiyongjie HEAD SHA to preflight
         required: true
         type: string
 
@@ -26,6 +26,8 @@ jobs:
   eligibility:
     name: Freeze source and release eligibility
     runs-on: ubuntu-24.04
+    env:
+      GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
     permissions:
       actions: read
       checks: read
@@ -37,8 +39,8 @@ jobs:
       workflow_sha: ${{ steps.contract.outputs.workflow_sha }}
       release_mode: ${{ steps.contract.outputs.release_mode }}
       generated_at: ${{ steps.contract.outputs.generated_at }}
-      ci_run_id: ${{ steps.ci.outputs.ci_run_id }}
-      ci_run_attempt: ${{ steps.ci.outputs.ci_run_attempt }}
+      ci_run_id: ${{ steps.remote.outputs.ci_run_id }}
+      ci_run_attempt: ${{ steps.remote.outputs.ci_run_attempt }}
     steps:
       - name: Validate the untrusted request envelope before checkout
         id: request
@@ -61,21 +63,24 @@ jobs:
                 echo 'workflow_dispatch source_sha must be a lowercase full 40-character commit SHA' >&2
                 exit 1
               }
-              [ "$DISPATCH_SOURCE_SHA" = "$GITHUB_WORKFLOW_SHA" ] || {
-                echo 'v0.3.0 preflight must attest the exact trusted main workflow commit' >&2
+              if [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_SHA" ] ||
+                [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_WORKFLOW_SHA" ]; then
+                echo 'Preflight must attest the exact trusted dev workflow commit' >&2
                 exit 1
-              }
-              [ "$GITHUB_REF" = 'refs/heads/main' ]
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ]
+              fi
+              [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ]
+              [ "$GITHUB_REF_TYPE" = 'branch' ]
+              [ "$GITHUB_REF_NAME" = 'dev/laiyongjie' ]
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ]
               requested_source_sha="$DISPATCH_SOURCE_SHA"
               requested_mode='preflight'
               ;;
             push)
               [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
-              [ "$GITHUB_REF" = 'refs/tags/v0.3.0' ]
               [ "$GITHUB_REF_TYPE" = 'tag' ]
-              [ "$GITHUB_REF_NAME" = 'v0.3.0' ]
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/v0.3.0" ]
+              [ "$GITHUB_REF" = "refs/tags/$GITHUB_REF_NAME" ]
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/$GITHUB_REF_NAME" ]
+              [ "$GITHUB_SHA" = "$GITHUB_WORKFLOW_SHA" ]
               requested_source_sha="$GITHUB_SHA"
               requested_mode='formal'
               ;;
@@ -132,11 +137,6 @@ jobs:
             echo "Unexpected workflow name: $GITHUB_WORKFLOW" >&2
             exit 1
           }
-          case "$GITHUB_WORKFLOW_REF" in
-            "${expected_workflow_ref_prefix}"*) ;;
-            *) echo "Unexpected workflow ref: $GITHUB_WORKFLOW_REF" >&2; exit 1 ;;
-          esac
-
           trusted_checkout_sha="$(git rev-parse HEAD)"
           event_commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
           workflow_commit="$(git rev-parse "${GITHUB_WORKFLOW_SHA}^{commit}")"
@@ -156,38 +156,34 @@ jobs:
                 echo 'workflow_dispatch source_sha must be a lowercase full 40-character commit SHA' >&2
                 exit 1
               }
-              [ "$GITHUB_REF" = 'refs/heads/main' ] || {
-                echo "Preflight must run from trusted refs/heads/main; received $GITHUB_REF" >&2
+              [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ] || {
+                echo "Preflight must run from trusted refs/heads/dev/laiyongjie; received $GITHUB_REF" >&2
                 exit 1
               }
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ] || {
-                echo "Preflight workflow ref is not trusted main: $GITHUB_WORKFLOW_REF" >&2
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ] || {
+                echo "Preflight workflow ref is not trusted dev/laiyongjie: $GITHUB_WORKFLOW_REF" >&2
                 exit 1
               }
               [ "$source_sha" = "$DISPATCH_SOURCE_SHA" ] || {
                 echo "Dispatch input does not resolve to the exact candidate commit: $DISPATCH_SOURCE_SHA" >&2
                 exit 1
               }
-              [ "$source_sha" = "$workflow_commit" ] || {
-                echo 'Preflight candidate differs from the trusted workflow provenance SHA' >&2
+              if [ "$GITHUB_REF_TYPE" != 'branch' ] || [ "$GITHUB_REF_NAME" != 'dev/laiyongjie' ]; then
+                echo 'Preflight event is not the exact dev/laiyongjie branch' >&2
                 exit 1
-              }
+              fi
               release_mode='preflight'
               ;;
             push)
-              [ "$GITHUB_REF" = 'refs/tags/v0.3.0' ] || {
-                echo "Formal Release accepts only refs/tags/v0.3.0; received $GITHUB_REF" >&2
-                exit 1
-              }
-              if [ "$GITHUB_REF_TYPE" != 'tag' ] || [ "$GITHUB_REF_NAME" != 'v0.3.0' ]; then
-                echo 'Formal Release event is not the exact v0.3.0 tag' >&2
+              if [ "$GITHUB_REF_TYPE" != 'tag' ] || [ "$GITHUB_REF" != "refs/tags/$GITHUB_REF_NAME" ]; then
+                echo 'Formal Release event is not a tag push' >&2
                 exit 1
               fi
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/v0.3.0" ] || {
-                echo "Formal workflow ref is not bound to v0.3.0: $GITHUB_WORKFLOW_REF" >&2
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/$GITHUB_REF_NAME" ] || {
+                echo "Formal workflow ref is not bound to the event tag: $GITHUB_WORKFLOW_REF" >&2
                 exit 1
               }
-              tag_commit="$(git rev-parse 'refs/tags/v0.3.0^{commit}')"
+              tag_commit="$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")"
               if [ "$source_sha" != "$trusted_checkout_sha" ] ||
                 [ "$source_sha" != "$event_commit" ] || [ "$source_sha" != "$tag_commit" ]; then
                 echo 'Tag, event SHA, and checked-out source do not resolve to one commit' >&2
@@ -218,122 +214,55 @@ jobs:
           cp candidate-source/src-tauri/tauri.conf.json "$candidate_contract_root/src-tauri/tauri.conf.json"
           cp candidate-source/src-tauri/Cargo.toml "$candidate_contract_root/src-tauri/Cargo.toml"
           cp candidate-source/src-tauri/Cargo.lock "$candidate_contract_root/src-tauri/Cargo.lock"
-          node "$candidate_contract_root/scripts/version.mjs" check --tag v0.3.0
           app_version="$(node "$candidate_contract_root/scripts/version.mjs" get)"
-          [ "$app_version" = '0.3.0' ] || {
-            echo "FyAgent v0.3.0 workflow cannot release product version $app_version" >&2
+          release_tag="v$app_version"
+          if [ "$release_mode" = 'formal' ] && [ "$release_tag" != "$GITHUB_REF_NAME" ]; then
+            echo "Formal tag $GITHUB_REF_NAME does not match canonical version $app_version" >&2
             exit 1
-          }
-
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          git merge-base --is-ancestor "$workflow_commit" refs/remotes/origin/main || {
-            echo "Trusted workflow commit $workflow_commit is not on origin/main" >&2
-            exit 1
-          }
-          if [ "$release_mode" = 'formal' ]; then
-            git merge-base --is-ancestor "$source_sha" refs/remotes/origin/main || {
-              echo "Candidate $source_sha is not an ancestor of origin/main" >&2
-              exit 1
-            }
           fi
+          node "$candidate_contract_root/scripts/version.mjs" check --tag "$release_tag"
 
           {
             printf 'app_version=%s\n' "$app_version"
-            printf 'release_tag=v0.3.0\n'
+            printf 'release_tag=%s\n' "$release_tag"
             printf 'source_sha=%s\n' "$source_sha"
             printf 'workflow_sha=%s\n' "$workflow_commit"
             printf 'release_mode=%s\n' "$release_mode"
             printf 'generated_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Bind successful Required CI to the exact source
-        if: steps.contract.outputs.release_mode == 'formal'
-        id: ci
+      - name: Bind remote dev, tag, and successful Required CI evidence
+        id: remote
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_APP_VERSION: ${{ steps.contract.outputs.app_version }}
+          RELEASE_TAG: ${{ steps.contract.outputs.release_tag }}
+          RELEASE_SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+          RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-
-          repository='NongHua123/fyagent'
-          workflow_path='.github/workflows/ci.yml'
-          workflow_json="$(gh api "repos/${repository}/actions/workflows/ci.yml")"
-          [ "$(jq -r '.path' <<<"$workflow_json")" = "$workflow_path" ] || {
-            echo 'CI workflow API path identity drifted' >&2
-            exit 1
-          }
-          [ "$(jq -r '.state' <<<"$workflow_json")" = 'active' ] || {
-            echo 'CI workflow is not active' >&2
-            exit 1
-          }
-          workflow_id="$(jq -r '.id' <<<"$workflow_json")"
-
-          runs_json="$(gh api -X GET "repos/${repository}/actions/workflows/${workflow_id}/runs" \
-            -f branch=main -f event=push -f per_page=100)"
-          matching_runs="$(jq --arg sha "$SOURCE_SHA" --arg path "$workflow_path" '
-            [.workflow_runs[]
-              | select(.head_sha == $sha)
-              | select(.event == "push" and .head_branch == "main")
-              | select(.path == $path and .repository.full_name == "NongHua123/fyagent")]
-            | sort_by(.run_number, .run_attempt)
-          ' <<<"$runs_json")"
-          [ "$(jq 'length' <<<"$matching_runs")" -gt 0 ] || {
-            echo "No completed main push CI run exists for $SOURCE_SHA" >&2
-            exit 1
-          }
-          ci_run="$(jq 'last' <<<"$matching_runs")"
-          if [ "$(jq -r '.status' <<<"$ci_run")" != 'completed' ] ||
-            [ "$(jq -r '.conclusion' <<<"$ci_run")" != 'success' ]; then
-            echo 'The latest matching main push CI run did not succeed' >&2
-            exit 1
+          if [ '${{ steps.contract.outputs.release_mode }}' = 'formal' ]; then
+            unset RELEASE_DISPATCH_SOURCE_SHA
           fi
-          ci_run_id="$(jq -r '.id' <<<"$ci_run")"
-          ci_run_attempt="$(jq -r '.run_attempt' <<<"$ci_run")"
-          check_suite_id="$(jq -r '.check_suite_id' <<<"$ci_run")"
-
-          jobs_json="$(gh api -X GET \
-            "repos/${repository}/actions/runs/${ci_run_id}/attempts/${ci_run_attempt}/jobs" \
-            -f per_page=100)"
-          required_jobs="$(jq '[.jobs[] | select(.name == "CI / Required")]' <<<"$jobs_json")"
-          [ "$(jq 'length' <<<"$required_jobs")" -eq 1 ] || {
-            echo 'Expected exactly one CI / Required job in the selected run attempt' >&2
-            exit 1
-          }
-          if [ "$(jq -r '.[0].status' <<<"$required_jobs")" != 'completed' ] ||
-            [ "$(jq -r '.[0].conclusion' <<<"$required_jobs")" != 'success' ]; then
-            echo 'CI / Required job is not completed successfully' >&2
-            exit 1
-          fi
-          required_job_check_url="$(jq -r '.[0].check_run_url' <<<"$required_jobs")"
-          case "$required_job_check_url" in
-            "https://api.github.com/repos/${repository}/check-runs/"*) ;;
-            *) echo 'CI / Required job check-run URL identity drifted' >&2; exit 1 ;;
-          esac
-
-          checks_json="$(gh api -X GET \
-            "repos/${repository}/check-suites/${check_suite_id}/check-runs" \
-            -f per_page=100)"
-          required_checks="$(jq --arg run "$ci_run_id" --arg sha "$SOURCE_SHA" --arg job_url "$required_job_check_url" '
-            [.check_runs[]
-              | select(.name == "CI / Required")
-              | select(.app.slug == "github-actions")
-              | select(.head_sha == $sha)
-              | select(.url == $job_url)
-              | select(.details_url | contains("/actions/runs/" + $run + "/job/"))]
-          ' <<<"$checks_json")"
-          [ "$(jq 'length' <<<"$required_checks")" -eq 1 ] || {
-            echo 'Expected one GitHub Actions CI / Required check-run bound to the selected run' >&2
-            exit 1
-          }
-          if [ "$(jq -r '.[0].status' <<<"$required_checks")" != 'completed' ] ||
-            [ "$(jq -r '.[0].conclusion' <<<"$required_checks")" != 'success' ]; then
-            echo 'Bound CI / Required check-run is not completed successfully' >&2
-            exit 1
-          fi
-
-          printf 'ci_run_id=%s\n' "$ci_run_id" >> "$GITHUB_OUTPUT"
-          printf 'ci_run_attempt=%s\n' "$ci_run_attempt" >> "$GITHUB_OUTPUT"
+          frozen_eligibility="$RUNNER_TEMP/fyagent-release-eligibility.json"
+          node scripts/release/verify-dev-release-remote.mjs \
+            --json --evidence "$RUNNER_TEMP/fyagent-release-remote-evidence.json" \
+            > "$frozen_eligibility"
+          jq -e \
+            --arg version '${{ steps.contract.outputs.app_version }}' \
+            --arg tag '${{ steps.contract.outputs.release_tag }}' \
+            --arg source '${{ steps.contract.outputs.source_sha }}' \
+            --arg workflow '${{ steps.contract.outputs.workflow_sha }}' \
+            --arg mode '${{ steps.contract.outputs.release_mode }}' \
+            '.appVersion == $version and .releaseTag == $tag and
+             .sourceSha == $source and .workflowSha == $workflow and
+             .mode == $mode and
+             (.ciRunId | test("^[1-9][0-9]*$")) and
+             (.ciRunAttempt | test("^[1-9][0-9]*$"))' \
+            "$frozen_eligibility" >/dev/null
+          printf 'ci_run_id=%s\n' "$(jq -r '.ciRunId' "$frozen_eligibility")" >> "$GITHUB_OUTPUT"
+          printf 'ci_run_attempt=%s\n' "$(jq -r '.ciRunAttempt' "$frozen_eligibility")" >> "$GITHUB_OUTPUT"
 
   build-windows:
     name: Windows ${{ matrix.architecture }} NSIS installer
@@ -1560,16 +1489,16 @@ jobs:
 
           signature_info="$(codesign -dvvv "$app_path" 2>&1 || true)"
           if grep -Eq '^Authority=|Developer ID' <<<"$signature_info"; then
-            echo 'Unsigned v0.3.0 app unexpectedly has a distribution signing authority' >&2
+            echo "Unsigned $RELEASE_TAG app unexpectedly has a distribution signing authority" >&2
             exit 1
           fi
           team_identifier="$(sed -n 's/^TeamIdentifier=//p' <<<"$signature_info" | tail -1)"
           [ -z "$team_identifier" ] || [ "$team_identifier" = 'not set' ] || {
-            echo "Unsigned v0.3.0 app unexpectedly has TeamIdentifier=$team_identifier" >&2
+            echo "Unsigned $RELEASE_TAG app unexpectedly has TeamIdentifier=$team_identifier" >&2
             exit 1
           }
           if xcrun stapler validate "$app_path" >/dev/null 2>&1; then
-            echo 'Unsigned v0.3.0 app unexpectedly contains a notarization ticket' >&2
+            echo "Unsigned $RELEASE_TAG app unexpectedly contains a notarization ticket" >&2
             exit 1
           fi
           printf 'app_path=%s\n' "$app_path" >> "$GITHUB_OUTPUT"
@@ -1619,12 +1548,12 @@ jobs:
           hdiutil detach "$mount_point"
           mounted=false
           if xcrun stapler validate "$dmg_path" >/dev/null 2>&1; then
-            echo 'Unsigned v0.3.0 DMG unexpectedly contains a notarization ticket' >&2
+            echo "Unsigned $RELEASE_TAG DMG unexpectedly contains a notarization ticket" >&2
             exit 1
           fi
           dmg_signature="$(codesign -dvvv "$dmg_path" 2>&1 || true)"
           if grep -Eq '^Authority=|Developer ID|^TeamIdentifier=[A-Z0-9]+' <<<"$dmg_signature"; then
-            echo 'Unsigned v0.3.0 DMG unexpectedly has a distribution identity' >&2
+            echo "Unsigned $RELEASE_TAG DMG unexpectedly has a distribution identity" >&2
             exit 1
           fi
           [ "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 2 ]
@@ -1887,16 +1816,24 @@ jobs:
 
   publish:
     name: Publish stable GitHub Release
-    if: needs.eligibility.outputs.release_mode == 'formal'
+    if: github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal'
     needs: [eligibility, attest]
     runs-on: ubuntu-24.04
     permissions:
       actions: read
+      checks: read
       contents: write
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      RELEASE_APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
       RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
       SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      RELEASE_SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      TRUSTED_WORKFLOW_SHA: ${{ needs.eligibility.outputs.workflow_sha }}
+      EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
+      EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
+      GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout immutable formal source
@@ -1911,6 +1848,31 @@ jobs:
         with:
           node-version-file: .node-version
 
+      - name: Revalidate frozen dev release eligibility at publish start
+        shell: bash
+        env:
+          RELEASE_APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+          RELEASE_SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          frozen_eligibility="$RUNNER_TEMP/fyagent-frozen-release-eligibility.json"
+          jq -n \
+            --arg appVersion "$APP_VERSION" \
+            --arg releaseTag "$RELEASE_TAG" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg workflowSha "$TRUSTED_WORKFLOW_SHA" \
+            --arg ciRunId "$EXPECTED_CI_RUN_ID" \
+            --arg ciRunAttempt "$EXPECTED_CI_RUN_ATTEMPT" \
+            '{appVersion:$appVersion,releaseTag:$releaseTag,sourceSha:$sourceSha,
+              workflowSha:$workflowSha,ciRunId:$ciRunId,
+              ciRunAttempt:$ciRunAttempt,mode:"formal"}' \
+            > "$frozen_eligibility"
+          node scripts/release/verify-dev-release-remote.mjs \
+            --json \
+            --evidence "$RUNNER_TEMP/fyagent-publish-start-remote-evidence.json" \
+            --expected "$frozen_eligibility" \
+            > "$RUNNER_TEMP/fyagent-publish-start-eligibility.json"
+
       - name: Download complete Release transaction payload
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1921,12 +1883,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/tags/v0.3.0 ]
-          [ "$GITHUB_WORKFLOW_REF" = 'NongHua123/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0' ]
-          [ "$GITHUB_WORKFLOW_SHA" = "$SOURCE_SHA" ]
-          [ "$RELEASE_TAG" = v0.3.0 ] && [ "$APP_VERSION" = 0.3.0 ]
+          [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" ]
+          [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" = "$RELEASE_TAG" ]
+          [ "$GITHUB_WORKFLOW_REF" = "NongHua123/fyagent/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" ]
+          [ "$GITHUB_WORKFLOW_SHA" = "$SOURCE_SHA" ] && [ "$TRUSTED_WORKFLOW_SHA" = "$SOURCE_SHA" ]
+          [ "$RELEASE_TAG" = "v$APP_VERSION" ]
           [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]
-          [ "$(git rev-parse 'refs/tags/v0.3.0^{commit}')" = "$SOURCE_SHA" ]
+          [ "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA" ]
           node scripts/release/verify-release-files.mjs attachments release-attachments "$APP_VERSION"
           jq -e --arg version "$APP_VERSION" --arg source "$SOURCE_SHA" '
             .schema == "fyagent-windows-signing-status/v1" and
@@ -1938,8 +1901,9 @@ jobs:
               "FyAgent-" + $version + "-Windows-x64-setup.exe"
             ] | sort)
           ' release-attachments/signing-status.json >/dev/null
-          [ -s docs/release-notes/v0.3.0-en.md ] || {
-            echo 'English v0.3.0 Release Notes are missing' >&2
+          release_notes_path="docs/release-notes/${RELEASE_TAG}-en.md"
+          [ -s "$release_notes_path" ] || {
+            echo "English $RELEASE_TAG Release Notes are missing" >&2
             exit 1
           }
 
@@ -2050,7 +2014,8 @@ jobs:
                 ))
             | join("\n")
           ' release-attachments/signing-status.json)"
-          notes="$(cat docs/release-notes/v0.3.0-en.md)"
+          release_notes_path="docs/release-notes/${RELEASE_TAG}-en.md"
+          notes="$(cat "$release_notes_path")"
           notes="${notes}"$'\n\n'"${signing_disclosure}"
           draft_body="${notes}"$'\n\n'"<!-- ${transaction_marker} -->"
           jq -n \
@@ -2166,6 +2131,11 @@ jobs:
             '{name:$name,body:$body,draft:false,prerelease:false,make_latest:"true"}' \
             > "$transaction_root/publish.json"
           published_json="$transaction_root/published.json"
+          node scripts/release/verify-dev-release-remote.mjs \
+            --json \
+            --evidence "$transaction_root/final-remote-evidence.json" \
+            --expected "$RUNNER_TEMP/fyagent-frozen-release-eligibility.json" \
+            > "$transaction_root/final-release-eligibility.json"
           publish_attempted=true
           publish_status="$(curl --silent --show-error \
             --request PATCH --output "$published_json" --write-out '%{http_code}' \

@@ -18,20 +18,30 @@ full-CI HEAD of `dev/laiyongjie`.
 - Every `dev/laiyongjie` push runs the complete CI matrix. Preserve current
   `main` push CI and do not add Main Provenance or change repository settings.
 - Formal tag eligibility requires strict SemVer/canonical version, current
-  remote dev HEAD equality, and a successful exact-SHA push CI from the
-  correct repository/workflow/branch.
+  remote dev HEAD equality, an annotated tag targeting that commit, and a
+  successful exact-SHA push CI from the correct repository/workflow/branch.
+- Preflight binds the same dev HEAD and successful CI attempt. Publication
+  repeats live eligibility when the publish job begins and immediately before
+  the final PATCH, comparing both observations with the frozen decision.
 - `workflow_dispatch` is preflight-only. Formal publication preserves the
   multi-platform asset transaction and attestation and consumes verified
   Windows signing-state disclosure.
 
 ## Acceptance Criteria
 
-- [ ] Classifier fixtures cover each domain, dependency/control roots, unknown
-      paths, base/head errors, and dev force-full.
-- [ ] Required aggregation rejects failure/cancel/timeout and accepts only
-      explicitly non-required skips.
-- [ ] Eligibility fixtures reject old green commits, wrong identity/event/
-      branch/SHA, moved branch, missing/failed run, and version mismatch.
-- [ ] Dispatch cannot reach publish; exact-SHA tag flow publishes only after
-      verified assets, signing state, digests, and attestation.
-- [ ] Existing `main` behavior/settings remain untouched.
+- [x] Classifier fixtures cover each domain, dependency/control roots, unknown
+      paths, and base/head errors; workflow fixtures cover dev/main full-run
+      policy and PR/merge-group affected-domain policy.
+- [x] Required aggregation rejects failure/cancel/timeout and accepts only
+      explicitly non-required skips while requiring independent Jobs API
+      evidence for every requested job.
+- [x] Eligibility fixtures reject old green commits, wrong identity/event/
+      branch/SHA, moved branch, lightweight/moved tags, incomplete API
+      evidence, missing/failed/newer run, frozen-result drift, and version
+      mismatch.
+- [x] Dispatch cannot reach publish; exact-SHA tag flow publishes only after
+      two live remote rechecks, verified assets, signing state, digests, and
+      attestation.
+- [x] Existing `main` workflow behavior remains unchanged and this workstream
+      performs no repository-setting mutation. The parent retains the final
+      remote settings observation.

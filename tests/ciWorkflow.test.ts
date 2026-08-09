@@ -17,6 +17,8 @@ const REQUIRED_JOBS = [
   "backend-macos",
 ] as const;
 
+const DEPENDENCY_JOBS = ["changes", ...REQUIRED_JOBS] as const;
+
 const LOCAL_MISE_TESTS = [
   "tests/developmentEnvironment.test.ts",
   "tests/developmentHooks.test.ts",
@@ -66,24 +68,62 @@ function actionSteps(action: string): string[] {
 }
 
 describe("automatic CI workflow", () => {
-  it("keeps exactly seven unconditional dependencies behind one stable gate", () => {
+  it("routes seven conditional domain jobs through one always-present gate", () => {
     const jobsSection = source.slice(source.indexOf("\njobs:\n"));
     const jobIds = [...jobsSection.matchAll(/^  ([a-z][a-z0-9-]*):\s*$/gm)].map(
       (match) => match[1],
     );
-    expect(jobIds).toEqual([...REQUIRED_JOBS, "required"]);
+    expect(jobIds).toEqual(["changes", ...REQUIRED_JOBS, "required"]);
 
-    for (const id of REQUIRED_JOBS) {
-      expect(jobBlock(id), id).not.toMatch(/^    if:/m);
-    }
+    const changes = jobBlock("changes");
+    expect(changes).toContain("name: Classify Changes");
+    expect(changes).toContain("fetch-depth: 0");
+    expect(changes).toContain(
+      'node scripts/ci/classify-changes.mjs \\\n            --base "$base_sha" --head "$head_sha" --json',
+    );
+    expect(changes).toContain("PR_BASE_SHA:");
+    expect(changes).toContain("MERGE_GROUP_BASE_SHA:");
+    expect(changes).toContain("PUSH_BASE_SHA:");
+    expect(changes).toContain("event_force_full=true");
+    expect(changes).toContain(".domains |= with_entries(.value = true)");
+
+    expect(jobBlock("contracts")).toContain(
+      "if: needs.changes.result == 'success' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.docs_spec == 'true')",
+    );
+    expect(jobBlock("frontend")).toContain(
+      "if: needs.changes.result == 'success' && needs.changes.outputs.frontend == 'true'",
+    );
+    expect(jobBlock("desktop-acceptance-contract")).toContain(
+      "if: needs.changes.result == 'success' && needs.changes.outputs.desktop == 'true'",
+    );
+    expect(jobBlock("backend-linux")).toContain(
+      "if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'",
+    );
+    expect(jobBlock("backend-windows")).toContain(
+      "needs.changes.outputs.backend == 'true' || needs.changes.outputs.windows_native == 'true'",
+    );
+    expect(jobBlock("windows-native-contracts")).toContain(
+      "if: needs.changes.result == 'success' && needs.changes.outputs.windows_native == 'true'",
+    );
+    expect(jobBlock("backend-macos")).toContain(
+      "if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'",
+    );
 
     const required = jobBlock("required");
     expect(required).toContain("name: CI / Required");
     expect(required).toContain("if: always()");
     expect(required).toContain("runs-on: ubuntu-24.04");
     expect(required).toContain("REQUIRED_RESULTS: ${{ toJSON(needs) }}");
-    expect(required).toContain("run: node scripts/ci/required-gate.mjs");
-    for (const id of REQUIRED_JOBS) {
+    expect(required).toContain("node scripts/ci/required-gate.mjs");
+    expect(required).toContain("actions: read");
+    expect(required).toContain(
+      "actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs",
+    );
+    expect(required).toContain(
+      "CI_CLASSIFICATION_PLAN: ${{ needs.changes.outputs.plan }}",
+    );
+    expect(required).toContain("--jobs-json");
+    for (const id of DEPENDENCY_JOBS) {
       expect(required).toContain(`      - ${id}`);
     }
   });
@@ -101,7 +141,8 @@ describe("automatic CI workflow", () => {
       "runs-on: ubuntu-24.04",
     );
     expect(jobBlock("backend-linux")).toContain("runs-on: ubuntu-24.04");
-    expect(jobBlock("backend-windows")).toContain("runs-on: windows-2022");
+    expect(jobBlock("changes")).toContain("runs-on: ubuntu-24.04");
+    expect(jobBlock("backend-windows")).toContain("runs-on: windows-2025");
     expect(jobBlock("windows-native-contracts")).toContain(
       "runs-on: ${{ matrix.runner }}",
     );
@@ -131,7 +172,7 @@ describe("automatic CI workflow", () => {
     }
 
     const checkoutSteps = actionSteps("actions/checkout");
-    expect(checkoutSteps).toHaveLength(8);
+    expect(checkoutSteps).toHaveLength(9);
     for (const step of checkoutSteps) {
       expect(step).toContain("persist-credentials: false");
     }
@@ -146,7 +187,7 @@ describe("automatic CI workflow", () => {
     expect(source).not.toContain("3.14.7");
 
     const nodeSteps = actionSteps("actions/setup-node");
-    expect(nodeSteps).toHaveLength(7);
+    expect(nodeSteps).toHaveLength(8);
     for (const step of nodeSteps) {
       expect(step).toContain("node-version-file: .node-version");
       expect(step).not.toMatch(/^\s+node-version:/m);
@@ -215,9 +256,8 @@ describe("automatic CI workflow", () => {
       "utf8",
     );
 
-    expect(contracts).toContain(
-      "run: node scripts/tasks/release-check.mjs --ci",
-    );
+    expect(contracts).toContain("node scripts/trellis/verify.mjs");
+    expect(contracts).toContain("node scripts/tasks/release-check.mjs --ci");
     expect(frontend).toContain("pnpm test:unit");
     expect(frontend).not.toContain("run: pnpm test:unit");
     for (const test of LOCAL_MISE_TESTS) {
@@ -270,7 +310,7 @@ describe("automatic CI workflow", () => {
     expect(block).toContain("fail-fast: false");
     expect(block).toContain(`matrix:
         include:
-          - runner: windows-2022
+          - runner: windows-2025
             architecture: X64
             rust_host: x86_64-pc-windows-msvc
             python_architecture: x86_64

@@ -13,7 +13,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ATTESTATION_BUNDLE_NAME,
   BUILD_METADATA_NAME,
+  CI_WORKFLOW_PATH,
   DOWNLOAD_MANIFEST_NAME,
+  RELEASE_BRANCH,
   WINDOWS_SIGNING_STATUS_NAME,
   EXPECTED_TARGETS,
   EXPECTED_INSTALLERS_BY_TARGET,
@@ -45,15 +47,15 @@ const identity: ReleaseIdentity = {
   repositoryId: "1313497021",
   workflowPath: ".github/workflows/release.yml",
   workflowRef:
-    "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/main",
+    "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
   workflowSha: "b".repeat(40),
   runId: "123456",
   runAttempt: "2",
   event: "workflow_dispatch",
   mode: "preflight",
-  ciWorkflowPath: null,
-  ciRunId: null,
-  ciRunAttempt: null,
+  ciWorkflowPath: CI_WORKFLOW_PATH,
+  ciRunId: "987654",
+  ciRunAttempt: "3",
 };
 
 function temporaryDirectory(): string {
@@ -417,6 +419,7 @@ describe("release asset and metadata contract", () => {
   });
 
   it("freezes the NSIS-only Windows assets and the complete release file sets", () => {
+    expect(RELEASE_BRANCH).toBe("dev/laiyongjie");
     expect(expectedInstallerNames("0.3.0")).toHaveLength(10);
     expect(expectedInstallerNames("0.3.0")).toContain(
       "FyAgent-0.3.0-Windows-x64-setup.exe",
@@ -573,10 +576,16 @@ describe("release asset and metadata contract", () => {
         runAttempt: "2",
         event: "workflow_dispatch",
         mode: "preflight",
-        ref: "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/main",
+        ref: "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
         sha: "b".repeat(40),
       },
-      requiredCi: null,
+      requiredCi: {
+        path: ".github/workflows/ci.yml",
+        runId: "987654",
+        runAttempt: "3",
+        job: "CI / Required",
+        conclusion: "success",
+      },
     });
     expect(metadata.targets.map(({ targetGroup }) => targetGroup)).toEqual(
       EXPECTED_TARGETS.map(({ targetGroup }) => targetGroup),
@@ -637,7 +646,7 @@ describe("release asset and metadata contract", () => {
     }
   });
 
-  it("requires a unique Required CI binding only for formal metadata", () => {
+  it("records the exact Required CI binding for preflight and formal metadata", () => {
     const directory = temporaryDirectory();
     const formalIdentity = {
       ...identity,
@@ -665,24 +674,45 @@ describe("release asset and metadata contract", () => {
     });
 
     const secondDirectory = temporaryDirectory();
-    writePlatformMetadata(secondDirectory, {
-      ...identity,
-      ciWorkflowPath: ".github/workflows/ci.yml",
-      ciRunId: "987654",
-      ciRunAttempt: "3",
-    });
-    expect(() =>
+    writePlatformMetadata(secondDirectory);
+    expect(
       buildBuildMetadata({
         metadataDirectory: secondDirectory,
-        identity: {
-          ...identity,
-          ciWorkflowPath: ".github/workflows/ci.yml",
-          ciRunId: "987654",
-          ciRunAttempt: "3",
-        },
+        identity,
         generatedAt: "2026-08-08T00:00:00.000Z",
-      }),
-    ).toThrow(/Preflight metadata must not claim a Required CI binding/);
+      }).requiredCi,
+    ).toEqual({
+      path: ".github/workflows/ci.yml",
+      runId: "987654",
+      runAttempt: "3",
+      job: "CI / Required",
+      conclusion: "success",
+    });
+  });
+
+  it("accepts another canonical stable version and binds its formal tag ref", () => {
+    const directory = temporaryDirectory();
+    const generalizedIdentity: ReleaseIdentity = {
+      ...identity,
+      productVersion: "12.34.56",
+      tag: "v12.34.56",
+      workflowRef:
+        "NongHua123/fyagent/.github/workflows/release.yml@refs/tags/v12.34.56",
+      event: "push",
+      mode: "formal",
+    };
+    writePlatformMetadata(directory, generalizedIdentity);
+
+    const metadata = buildBuildMetadata({
+      metadataDirectory: directory,
+      identity: generalizedIdentity,
+      generatedAt: "2026-08-08T00:00:00.000Z",
+    });
+
+    expect(metadata.version).toBe("12.34.56");
+    expect(metadata.tag).toBe("v12.34.56");
+    expect(metadata.workflow.ref).toBe(generalizedIdentity.workflowRef);
+    expect(expectedInstallerNames(metadata.version)).toHaveLength(10);
   });
 
   it.each([
@@ -697,6 +727,31 @@ describe("release asset and metadata contract", () => {
       { workflowPath: ".github/workflows/other.yml" },
       /workflow path drifted/,
     ],
+    [
+      "preflight workflow ref",
+      {
+        workflowRef:
+          "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/main",
+      },
+      /Preflight must use the trusted dev\/laiyongjie workflow ref/,
+    ],
+    [
+      "formal workflow ref",
+      {
+        workflowRef:
+          "NongHua123/fyagent/.github/workflows/release.yml@refs/tags/v12.34.56",
+        event: "push",
+        mode: "formal",
+      },
+      /Formal Release workflow ref drifted/,
+    ],
+    [
+      "CI workflow",
+      { ciWorkflowPath: ".github/workflows/other.yml" },
+      /CI workflow path drifted/,
+    ],
+    ["CI run", { ciRunId: "0" }, /ciRunId must be numeric/],
+    ["CI attempt", { ciRunAttempt: "0" }, /ciRunAttempt must be numeric/],
     ["source SHA", { sourceSha: "c".repeat(39) }, /full 40-character/],
   ])("rejects %s identity drift", (_label, change, error) => {
     const directory = temporaryDirectory();

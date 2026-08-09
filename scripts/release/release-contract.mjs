@@ -9,10 +9,9 @@ import {
 import { basename, join } from "node:path";
 
 export const PRODUCT_NAME = "FyAgent";
-export const FORMAL_VERSION = "0.3.0";
-export const FORMAL_TAG = `v${FORMAL_VERSION}`;
 export const EXPECTED_REPOSITORY = "NongHua123/fyagent";
 export const EXPECTED_REPOSITORY_ID = "1313497021";
+export const RELEASE_BRANCH = "dev/laiyongjie";
 export const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";
 export const CI_WORKFLOW_PATH = ".github/workflows/ci.yml";
 export const DOWNLOAD_MANIFEST_NAME = "download-manifest.json";
@@ -625,10 +624,6 @@ export function buildBuildMetadata({
     sourceSha: identity.sourceSha,
   });
   assert(
-    identity.productVersion === FORMAL_VERSION,
-    `Only FyAgent ${FORMAL_VERSION} is supported`,
-  );
-  assert(
     identity.repository === EXPECTED_REPOSITORY,
     "Repository identity drifted",
   );
@@ -663,13 +658,14 @@ export function buildBuildMetadata({
   const workflowRefPrefix = `${EXPECTED_REPOSITORY}/${RELEASE_WORKFLOW_PATH}@`;
   if (identity.mode === "formal") {
     assert(
-      identity.workflowRef === `${workflowRefPrefix}refs/tags/${FORMAL_TAG}`,
+      identity.workflowRef === `${workflowRefPrefix}refs/tags/${identity.tag}`,
       "Formal Release workflow ref drifted",
     );
   } else {
     assert(
-      identity.workflowRef === `${workflowRefPrefix}refs/heads/main`,
-      "Preflight must use the trusted main workflow ref",
+      identity.workflowRef ===
+        `${workflowRefPrefix}refs/heads/${RELEASE_BRANCH}`,
+      `Preflight must use the trusted ${RELEASE_BRANCH} workflow ref`,
     );
   }
   assert(/^[1-9]\d*$/.test(String(identity.runId)), "runId must be numeric");
@@ -677,27 +673,18 @@ export function buildBuildMetadata({
     /^[1-9]\d*$/.test(String(identity.runAttempt)),
     "runAttempt must be numeric",
   );
-  if (identity.mode === "formal") {
-    assert(
-      identity.ciWorkflowPath === CI_WORKFLOW_PATH,
-      "CI workflow path drifted",
-    );
-    assert(
-      /^[1-9]\d*$/.test(String(identity.ciRunId)),
-      "ciRunId must be numeric",
-    );
-    assert(
-      /^[1-9]\d*$/.test(String(identity.ciRunAttempt)),
-      "ciRunAttempt must be numeric",
-    );
-  } else {
-    assert(
-      identity.ciWorkflowPath === null &&
-        identity.ciRunId === null &&
-        identity.ciRunAttempt === null,
-      "Preflight metadata must not claim a Required CI binding",
-    );
-  }
+  assert(
+    identity.ciWorkflowPath === CI_WORKFLOW_PATH,
+    "CI workflow path drifted",
+  );
+  assert(
+    /^[1-9]\d*$/.test(String(identity.ciRunId)),
+    "ciRunId must be numeric",
+  );
+  assert(
+    /^[1-9]\d*$/.test(String(identity.ciRunAttempt)),
+    "ciRunAttempt must be numeric",
+  );
   assert(
     typeof generatedAt === "string" &&
       new Date(generatedAt).toISOString() === generatedAt,
@@ -739,16 +726,13 @@ export function buildBuildMetadata({
       event: identity.event,
       mode: identity.mode,
     },
-    requiredCi:
-      identity.mode === "formal"
-        ? {
-            path: identity.ciWorkflowPath,
-            runId: String(identity.ciRunId),
-            runAttempt: String(identity.ciRunAttempt),
-            job: "CI / Required",
-            conclusion: "success",
-          }
-        : null,
+    requiredCi: {
+      path: identity.ciWorkflowPath,
+      runId: String(identity.ciRunId),
+      runAttempt: String(identity.ciRunAttempt),
+      job: "CI / Required",
+      conclusion: "success",
+    },
     generatedAt,
     targets,
   };

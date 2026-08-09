@@ -45,9 +45,9 @@ export interface ReleaseIdentity {
   runAttempt: string;
   event: string;
   mode: string;
-  ciWorkflowPath: string | null;
-  ciRunId: string | null;
-  ciRunAttempt: string | null;
+  ciWorkflowPath: string;
+  ciRunId: string;
+  ciRunAttempt: string;
 }
 
 export interface DownloadManifestAsset {
@@ -132,16 +132,15 @@ export interface BuildMetadata {
     runAttempt: string;
     job: "CI / Required";
     conclusion: "success";
-  } | null;
+  };
   generatedAt: string;
   targets: PlatformBuildTargetMetadata[];
 }
 
 export const PRODUCT_NAME: "FyAgent";
-export const FORMAL_VERSION: "0.3.0";
-export const FORMAL_TAG: "v0.3.0";
 export const EXPECTED_REPOSITORY: "NongHua123/fyagent";
 export const EXPECTED_REPOSITORY_ID: "1313497021";
+export const RELEASE_BRANCH: "dev/laiyongjie";
 export const RELEASE_WORKFLOW_PATH: ".github/workflows/release.yml";
 export const CI_WORKFLOW_PATH: ".github/workflows/ci.yml";
 export const DOWNLOAD_MANIFEST_NAME: "download-manifest.json";
