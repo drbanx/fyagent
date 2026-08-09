@@ -24,9 +24,10 @@ pub(crate) const ACTIVATION_FRAME_BYTES: usize = 72 * 1024;
 const MAX_ACTIVATION_ARGUMENTS: usize = 8;
 const MAX_ACTIVATION_ARGUMENT_BYTES: usize = 64 * 1024;
 
-/// Release builds publish this fixed-size descriptor only inside the WiX-owned
-/// ProgramData runtime root. The state file names are deterministic (from a
-/// SID/session hash), while every live pipe endpoint is a fresh secret.
+/// Release builds publish this fixed-size descriptor only inside the
+/// installer-owned ProgramData runtime root. The state file names are
+/// deterministic (from a SID/session hash), while every live pipe endpoint is
+/// a fresh secret.
 const INSTANCE_STATE_MAGIC: [u8; 8] = *b"FYAGST2\0";
 const INSTANCE_STATE_VERSION: u8 = 2;
 const INSTANCE_STATE_BYTES: usize = 96;
@@ -698,9 +699,9 @@ pub(crate) fn is_expected_static_object_sddl(sddl: &str) -> bool {
     )
 }
 
-/// Canonical SDDL allow-list for the static WiX runtime root. It must be a
+/// Canonical SDDL allow-list for the static NSIS runtime root. It must be a
 /// protected SYSTEM/Administrators-only directory before any descriptor is
-/// read. `AI` is accepted because MSI can preserve the auto-inherited bit
+/// read. `AI` is accepted because Windows can preserve the auto-inherited bit
 /// while retaining the same protected ACE set.
 pub(crate) fn is_expected_runtime_root_sddl(sddl: &str) -> bool {
     matches!(

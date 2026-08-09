@@ -13,7 +13,7 @@ const REQUIRED_JOBS = [
   "desktop-acceptance-contract",
   "backend-linux",
   "backend-windows",
-  "windows-msi-query",
+  "windows-native-contracts",
   "backend-macos",
 ] as const;
 
@@ -102,7 +102,7 @@ describe("automatic CI workflow", () => {
     );
     expect(jobBlock("backend-linux")).toContain("runs-on: ubuntu-24.04");
     expect(jobBlock("backend-windows")).toContain("runs-on: windows-2022");
-    expect(jobBlock("windows-msi-query")).toContain(
+    expect(jobBlock("windows-native-contracts")).toContain(
       "runs-on: ${{ matrix.runner }}",
     );
     expect(jobBlock("backend-macos")).toContain("runs-on: macos-15");
@@ -261,8 +261,8 @@ describe("automatic CI workflow", () => {
     );
   });
 
-  it("runs managed Python, Trellis, and the query fixture on native Windows x64 and ARM64", () => {
-    const block = jobBlock("windows-msi-query");
+  it("runs managed Python and Trellis on native Windows x64 and ARM64", () => {
+    const block = jobBlock("windows-native-contracts");
     expect(block).toContain(
       "name: Windows Native Contracts (${{ matrix.architecture }})",
     );
@@ -312,11 +312,8 @@ describe("automatic CI workflow", () => {
     expect(block).toContain(
       'throw "Trellis task listing did not return a tasks array"',
     );
-    expect(block).toContain("./tests/windowsInstallerQuery.integration.ps1");
-    expect(block).toContain(
-      "-ExpectedArchitecture '${{ matrix.architecture }}'",
-    );
-    expect(block.match(/^      - name:/gm)).toHaveLength(8);
+    expect(block).not.toContain("windowsInstallerQuery.integration.ps1");
+    expect(block.match(/^      - name:/gm)).toHaveLength(7);
     expect(block.match(/^        uses:/gm)).toHaveLength(3);
     expect(block).not.toMatch(
       /setup-rust|\b(?:npm|npx|pnpm|yarn|bun|cargo|rustc)\b|tauri|src-tauri|frontend|package|bundle/i,

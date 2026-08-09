@@ -20,7 +20,7 @@ const EXPECTED_REQUIRED_JOB_IDS = [
   "desktop-acceptance-contract",
   "backend-linux",
   "backend-windows",
-  "windows-msi-query",
+  "windows-native-contracts",
   "backend-macos",
 ] as const;
 const evaluateRequiredCiResults =

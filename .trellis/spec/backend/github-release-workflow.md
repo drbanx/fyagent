@@ -31,23 +31,12 @@ on:
 - no branch push, broad `v*` tag, manual signed mode, manual tag dispatch,
   partial platform mode, or local publish path exists.
 
-The post-merge exact-main-SHA sequence above is implemented in the workflow
-and locally verified. The project owner accepted D113/D114 on 2026-08-08;
-[D113](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
-confirms this ordering. A decision or local test is not remote evidence; the
-v0.3.0 conformance record in Section 10 separately identifies the completed
-preflight, tag, formal run, Release, assets, and attestation verification.
-
-Local implementation and static tests do not authorize dispatch, tag creation,
-or publication. Every future release must still satisfy the remote gates in
-this contract even though v0.3.0 has one completed conformance record.
-
-When a release run is explicitly authorized, the initiating main flow waits
-synchronously for that entire run to reach `completed`. It does not delegate
-monitoring to a background or asynchronous agent and does not repeatedly poll
-run state. After completion it reads the run result once; only a failed result
-authorizes one retrieval of the failed-job logs. This observation contract does
-not itself authorize dispatch, rerun, cancellation, tag creation, or publish.
+Local implementation, decisions, and static tests do not authorize dispatch,
+tag creation, rerun, cancellation, or publication; every release must satisfy
+the remote gates below. When a run is explicitly authorized, the initiating
+flow waits synchronously for the whole run to reach `completed`, reads the
+result once, and retrieves failed-job logs only after a failure. It does not
+delegate monitoring or attach a polling watcher.
 
 ## 2. Frozen Values and Job Topology
 
@@ -60,18 +49,25 @@ eligibility
   ci_run_id / ci_run_attempt = exact successful main push CI (formal only)
 
 eligibility ─┬─> build-windows (windows-x64, windows-arm64) ─┐
-             ├─> build-linux   (linux-x64, linux-arm64) ─────┼─> verify-assets
-             └─> build-macos   (macos-universal) ────────────┘
+             ├─> build-linux   (linux-x64, linux-arm64)       ├─> pin-release-build-inputs
+             └─> build-macos   (macos-universal) ─────────────┘            │
+                       ┌─────────────────────────────────────────────────────┤
+                       ├─ dispatch -> prove-windows-preflight ──────────────┐│
+                       └─ formal -> sign-windows-formal -> seal-windows-formal ┴─> windows-lifecycle
 
-verify-assets -> attest -> publish (formal only)
+pin-release-build-inputs + windows-lifecycle -> verify-assets -> attest -> publish (formal only)
 ```
 
-Every platform job receives the same values only from `eligibility`. It checks
-out `source_sha` directly, validates the product tag through `version:check`,
-and records the trusted workflow SHA; formal metadata also records the selected
-Required CI run, while preflight records `requiredCi: null`. Platform jobs must
-not derive a version from a ref, package.json,
-Tauri configuration, a bundle filename, or a second version source.
+Every platform build receives the same values only from `eligibility`. It
+checks out `source_sha` directly, validates the product tag through
+`version:check`, and records the trusted workflow SHA; formal metadata also
+records the selected Required CI run, while preflight records
+`requiredCi: null`. Before signer code, a secret-free job bundles the exact ten
+build artifacts with a file-digest manifest. Consumers use its original
+immutable ID, never its name. Preflight has five trust stages and formal has
+six: build, pin, proof or untrusted transform/fresh seal, lifecycle, and
+aggregation. No job may derive a version from a ref, package.json, Tauri
+configuration, a bundle filename, or a second version source.
 
 ## 3. Eligibility Contract
 
@@ -100,20 +96,11 @@ Eligibility fails closed unless all of the following are true:
    the `github-actions` app whose head SHA, API job/check URL, and details URL
    are bound to that selected run and job.
 
-The approved pre-merge preflight order cannot be represented truthfully by
-standard `actions/attest` in this one-workflow design: dispatch provenance is
-bound to the workflow `GITHUB_SHA`, not to a different unmerged candidate.
-v0.3.0 therefore runs its first preflight after merge on the exact `main` SHA.
-A future unmerged-candidate design requires a separate trusted reusable
-workflow or custom predicate and is outside this release.
-
-This is the implemented and accepted D113 sequence. The 2026-08-08 project
-decision clears only the ordering question in the
-[decision register](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md);
-remote preflight, exact tag creation, formal publication, asset checks, and
-attestations remain separate evidence categories and were verified for v0.3.0
-by the Section 10 record. Repository task archival remains a separate closeout
-concern.
+Standard `actions/attest` binds dispatch provenance to workflow `GITHUB_SHA`,
+so this one-workflow design cannot truthfully attest a different unmerged
+candidate. Preflight therefore runs after merge on the exact trusted `main`
+SHA. Supporting unmerged candidates requires a separate trusted reusable
+workflow or custom predicate and is outside this contract.
 
 This workflow-only admission is intentionally weaker than administrator-backed
 branch/tag rulesets or a protected environment. FyAgent 0.3.0 accepts that
@@ -133,10 +120,70 @@ Both pnpm setup and `setup-rust-toolchain` declare `cache: false` explicitly.
 The Rust action enables `Swatinem/rust-cache` by default when that input is
 omitted, so absence of the field is not evidence that Release caching is off.
 
+Each Windows target uses three matching-architecture hosted runners in a
+preflight and four in a formal run. Preflight uses a build runner, a no-secret
+proof/sealer, and a lifecycle runner. Formal inserts a secret-bearing
+untrusted producer before a separate no-secret verifier/sealer and then uses a
+no-secret lifecycle runner. The build runner installs dependencies, runs Cargo/Tauri,
+proves the normalized NSIS
+candidate is strictly `NotSigned` with an empty PE security directory, records
+platform metadata, and uploads one private `raw-<target-group>` artifact. It
+has no secret expression, signer staging variable, provider adapter, final
+lifecycle, or final `installers-*` output.
+
+`pin-release-build-inputs` waits for every native build and records each exact
+file's size/SHA-256/version/source SHA. Its original artifact ID/digest are job
+outputs. Overwrite creates a new ID; deletion makes old-ID download fail. The
+preflight sealer and formal producer are mutually exclusive consumers.
+`prove-windows-preflight` exists only for `workflow_dispatch` preflight. Its
+entire job payload has no secret expression or signer-provider configuration;
+it explicitly selects `FYAGENT_WINDOWS_SIGNING_MODE=unsigned`, requires strict
+`NotSigned` evidence with null certificate fields, byte-binds that evidence to
+the installer, uploads one `installers-*` artifact and one private `signing-*`
+artifact, and ends. `sign-windows-formal` exists only for a formal tag push. It
+is the only job whose payload receives the base64 adapter and optional opaque
+credential secrets. It validates the all-or-none selector/configuration,
+removes staging and managed signer variables, invokes the provider-neutral
+transform, deletes the materialized adapter, and uploads only one
+architecture-specific `formal-candidate-*` artifact. That artifact and any
+provider-produced output are explicitly untrusted: the producer neither
+creates a signing fragment, owns an `installers-*`/`signing-*` artifact, probes
+post-provider bytes, nor executes the candidate.
+
+`seal-windows-formal` runs next on another fresh matching-architecture runner
+with only `contents: read`, no secret expression, adapter, or credential. It
+downloads the pinned bundle by its original ID plus the untrusted formal
+candidate from the same run, re-verifies the bundle manifest, checks out the frozen repository probe independently, requires
+the raw input to remain strict `NotSigned`, and admits only one of two states:
+byte-identical strict unsigned output, or an Authenticode-only mutation with
+system status `Valid`, the complete public publisher/certificate policy, Code
+Signing EKU, and timestamp policy. Only this fresh job generates the trusted
+per-architecture fragment and uniquely uploads the formal `installers-*` and
+`signing-*` artifacts. These Windows boundary jobs establish the exact Node
+version and never run pnpm setup, dependency installation, Cargo, Tauri, or a
+project build.
+
+`windows-lifecycle` is a final fresh matching-architecture runner and has no
+secret expression, signer environment, or upload step. Because one sealing job
+is intentionally skipped, its `always()` admission accepts only two exact
+result tuples after successful build-input pinning: dispatch/preflight with preflight sealing `success` and both
+formal producer/sealer jobs `skipped`, or push/formal with preflight sealing
+`skipped` and both formal producer and fresh sealer `success`; eligibility and
+the raw Windows build and pin job must also be successful. Failure, cancellation, or any
+other success/skip combination is rejected. The lifecycle runner downloads the
+sealed installer and fragment,
+admits an exact one-file pair, rechecks identity, size, and SHA-256, reasserts
+the unsigned/null-certificate contract for preflight, and only then executes
+the complete elevated native install/verify/uninstall lifecycle. It never
+uploads or overwrites release evidence. `verify-assets` downloads the same old
+pinned ID for Linux/macOS installers and all metadata, then adds only the
+Windows pair produced after the provider runner ended. Windows platform
+metadata remains the build runner's byte-bound record.
+
 | Target group      | Runner             | Build user space                       | Required output                    |
 | ----------------- | ------------------ | -------------------------------------- | ---------------------------------- |
-| `windows-x64`     | `windows-2022`     | native x64                             | one x64 MSI                        |
-| `windows-arm64`   | `windows-11-arm`   | native ARM64                           | one ARM64 MSI                      |
+| `windows-x64`     | `windows-2025`     | native x64                             | one x64 NSIS setup EXE             |
+| `windows-arm64`   | `windows-11-arm`   | native ARM64                           | one ARM64 NSIS setup EXE           |
 | `linux-x64`       | `ubuntu-24.04`     | native Ubuntu 22.04 amd64 child digest | AppImage, DEB, RPM                 |
 | `linux-arm64`     | `ubuntu-24.04-arm` | native Ubuntu 22.04 arm64 child digest | AppImage, DEB, RPM                 |
 | `macos-universal` | `macos-15`         | macOS with both Apple targets          | DMG and ZIP from one universal app |
@@ -185,22 +232,12 @@ Each target proves Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1 at runtime. Every
   above; `linux-arm64` requires `ubuntu` / `22.04` / `aarch64` with the arm64
   reference above.
 
-The Linux metadata step repeats the runner-context, `/etc/os-release`, and
-`uname -m` gates immediately before invoking the writer. This late measurement
-is distinct from the early bootstrap gate: the first prevents expensive work
-in the wrong environment, while the second supplies the observations that are
-actually serialized. The writer never reads ambient `RUNNER_OS`,
-`RUNNER_ARCH`, `ImageOS`, or `ImageVersion`; the latter two implementation
-details are removed rather than retained as nullable compatibility fields.
-Missing, blank, partial, contradictory, or malformed owned evidence fails.
-
-The configured image reference is reviewed workflow configuration, not a
-digest independently measured from inside the container. `/etc/os-release`,
-`uname -m`, and the artifact attestation corroborate user-space, machine, bytes,
-and workflow provenance, but none independently proves the configured OCI
-digest or certifies the semantic truth of arbitrary custom JSON. The metadata
-therefore contains no `verified` boolean, fabricated actual-image digest, or
-guessed hosted-image version.
+Immediately before serialization, Linux repeats the runner, `/etc/os-release`,
+and `uname -m` gates. The writer never reads ambient `RUNNER_OS`, `RUNNER_ARCH`,
+`ImageOS`, or `ImageVersion`; missing, partial, contradictory, or malformed
+owned evidence fails. The configured image reference is reviewed workflow
+input, not an in-container digest measurement, so metadata has no synthetic
+`verified` flag, actual-image digest, or hosted-image version.
 
 The locked `@tauri-apps/cli` 2.8.1 embeds `tauri-bundler` 2.6.1, before the
 nested AppImage-plugin propagation fixed by `tauri-apps/tauri#14241`. The Linux
@@ -216,52 +253,47 @@ upgraded.
 ### Windows
 
 - both native jobs set `FYAGENT_WINDOWS_MANIFEST=release` on the application
-  build and MSI bundle commands.
-- the MSI bundle command uses `--verbose`, captures `$LASTEXITCODE` immediately,
-  and fails before looking for an MSI when Tauri exits nonzero. Candle/Light
-  stderr remains visible, and Light runs its normal ICE validation without
-  `-sval` or individual ICE suppression.
+  build and NSIS bundle commands.
+- the NSIS bundle command uses `--verbose`, captures `$LASTEXITCODE`
+  immediately, and fails before enumerating output when Tauri exits nonzero.
 - the application executable is inspected before and after bundling for exact
   x64/ARM64 PE Machine, `requireAdministrator`, `uiAccess=false`, bundle
   version, and exactly one `requestedExecutionLevel`.
-- the architecture-matched installer-actions DLL is built separately, checked
-  for PE Machine, and supplied through both helper environment variables.
-- `verify-windows-msi-structure.ps1` preserves the Type 1/Type 19 actions, the
-  post-`CostFinalize` Type 35 normalized-directory assignment, HKLM anchor,
-  protected DACL, native complete `INSTALLDIR` component classifier,
-  context-redirected machine-wide Desktop/Programs shortcuts, UI/Execute sequence,
-  unsafe-directory dialog, and MSI summary architecture gates formerly inlined
-  in the workflow. After `CostFinalize`, one Type 1 classifier runs independently
-  in each MSI sequence, clears the private mixed-case `FyAgentPureUninstall`
-  marker, queries the active MSI Directory and Component tables, and sets the
-  marker only when every actual `INSTALLDIR` descendant has action state
-  `INSTALLSTATE_ABSENT`. It rejects empty, duplicate, over-limit, malformed, or
-  missing-core closures and fails the transaction closed on any MSI API error.
-  This includes generated resources, bundled binaries, and conditional update
-  components without putting an over-limit component expression in the MSI
-  Sequence Condition column. The verifier independently derives the real table
-  closure, requires the four core components, checks the private marker has no
-  authored default, and proves classifier ordering before every consumer. The
-  per-machine package keeps the standard `DesktopFolder` and
-  `ProgramMenuFolder` identifiers, which `ALLUSERS=1` redirects to All Users.
-  Both shortcut rows are advertised-authored children of the existing `Path`
-  file component, while `DISABLEADVTSHORTCUTS=1` makes Windows Installer emit
-  ordinary shortcuts; no profile-scoped shortcut component, marker KeyPath, or
-  explicit shortcut Icon exists. The verifier requires both rendered targets
-  to use the same Feature, proves `FeatureComponents` binds it to `Path`, and
-  keeps `RemoveShortcuts` before the one product-folder `RemoveFiles` cleanup.
-  It also reads the embedded cabinet stream through the
-  read-only MSI database, extracts only fixed File key `Path` with system
-  `expand.exe` into a fresh root, and binds the final MSI executable to the
-  already verified built executable by size, SHA-256, PE Machine, and
-  Authenticode `NotSigned` without executing the installer.
-- `verify-windows-msi.ps1` independently verifies the embedded Binary stream,
-  helper SHA/PE identity, product/version/repair properties, protocol registry,
-  single `fyagent.exe` payload, architecture, and absence of retired host-path
-  residue.
-- both the executable and MSI must report Authenticode `NotSigned` with no
-  signer or timestamp certificate. No Windows certificate secret or signing
-  command belongs in v0.3.0.
+- `verify-windows-nsis-contract.mjs` runs before build and after bundling. It
+  pins the checked-in Tauri-template provenance, Windows-only `nsis` config,
+  first-section final-path gate, final-handle fixed-volume classification,
+  atomic ProgramData creation or fail-closed trusted-preimage admission, and
+  bounded uninstall ownership.
+- both raw setup executables are strictly unsigned before leaving their native
+  build runners. A formal producer may transform each exact raw file through
+  the provider-neutral adapter, but its result remains untrusted. A separate
+  fresh no-secret runner re-downloads the pinned raw and transformed bytes and owns
+  the definitive diff, signature-policy proof, fragment, and sealed outputs.
+  Fully absent signer configuration proves strict `NotSigned`; complete
+  configuration must produce `Valid` plus the expected publisher/certificate
+  and timestamp policy. Partial, malformed, mismatched, or failed
+  configuration cannot fall back to unsigned.
+- signer secrets exist only in the formal-tag signing step. The mutually
+  exclusive dispatch step explicitly requests unsigned evidence and contains
+  no signer secret or credential expression. Neither the build runner nor
+  dependency installation, Cargo, Tauri, the native lifecycle, or artifact
+  aggregation receives secrets. The formal producer clears staging and managed
+  signer variables, deletes the adapter, uploads only an untrusted candidate,
+  and ends without executing or producing trusted evidence for it. The fresh
+  formal sealer has no secret/provider material, runs the independent
+  repository probe, compares against pinned raw bytes, and exclusively uploads
+  the installer/evidence pair. A further fresh no-secret lifecycle runner
+  re-downloads that immutable pair before the elevated candidate executes and
+  cannot replace the pair later consumed by aggregation.
+- the same final bytes then run a complete native install/verify/uninstall
+  lifecycle. Product architecture comes from installed `fyagent.exe`, never
+  the NSIS launcher. The lifecycle covers default Program Files, fixed-drive
+  custom space/Unicode `/S ... /D=...`, unsafe path rejection, HKLM registration,
+  all-users shortcuts, strict ProgramData SDDL, bounded cleanup, and user-data
+  sentinel preservation.
+- native signing fragments are workflow-internal. The verified x64/ARM64
+  aggregate becomes public `signing-status.json`, is attested, and drives the
+  Windows signing table appended to the public Release notes.
 
 ### macOS
 
@@ -293,8 +325,8 @@ The installer allowlist contains exactly ten files:
 ```text
 FyAgent-0.3.0-macOS.dmg
 FyAgent-0.3.0-macOS.zip
-FyAgent-0.3.0-Windows.msi
-FyAgent-0.3.0-Windows-arm64.msi
+FyAgent-0.3.0-Windows-x64-setup.exe
+FyAgent-0.3.0-Windows-arm64-setup.exe
 FyAgent-0.3.0-Linux-x86_64.AppImage
 FyAgent-0.3.0-Linux-x86_64.deb
 FyAgent-0.3.0-Linux-x86_64.rpm
@@ -333,11 +365,13 @@ publication, both identifiers and all writers/validators/types/tests/docs must
 move atomically to v2; the formal path then accepts only v2. There is no v1
 compatibility reader, defaulting path, or synthesized equivalence.
 
-The attestation subjects are exactly the ten installers plus those two JSON
-files (12 subjects). `actions/attest` v4.2.2 is mandatory and receives only
-those files. Its Sigstore bundle is copied to the fixed independent name
-`artifact-attestation.sigstore.json`, producing exactly 13 allowed Release
-attachments. The bundle is evidence and does not count as an installer.
+The attestation subjects are exactly the ten installers plus
+`download-manifest.json`, `build-metadata.json`, and public
+`signing-status.json` (13 subjects). `actions/attest` v4.2.2 is mandatory and
+receives only those files. Its Sigstore bundle is copied to the fixed
+independent name `artifact-attestation.sigstore.json`, producing exactly 14
+allowed Release attachments. The bundle and signing status are evidence and do
+not count as installers.
 
 ## 7. Permission and Publication Transaction
 
@@ -351,14 +385,20 @@ permissions:
   `artifact-metadata: write`.
 - publish alone adds `contents: write` after eligibility, all native builds,
   exact-asset verification, evidence generation, and attestation succeed.
-- v0.3.0 uses no Release environment, signing credential, environment approval,
-  or signed mode.
+- provider credentials and provider-specific adapter bytes are GitHub secrets;
+  their values are never stored in repository files, workflow logs, Release
+  notes, or long-lived specifications. The workflow materializes the bounded
+  adapter into a random create-new runner-temporary file only for the signing
+  step, passes an optional opaque credential through the environment without
+  reading it, and deletes the adapter afterward. Repository code validates only
+  the adapter boundary and expected public signing policy.
 
-Publish rechecks the exact formal event/tag/source and the 13-file allowlist,
-requires the English v0.3.0 Release Notes, and uses the authenticated Release
+Publish rechecks the exact formal event/tag/source and the 14-file allowlist,
+requires the English v0.3.0 Release Notes plus a signing disclosure generated
+from verified metadata, and uses the authenticated Release
 list (including drafts) to fail if any `v0.3.0` Release already exists. It then
 creates one private draft carrying a run/source ownership marker, uploads the
-13 files, lists and re-downloads them, proves exact names/non-empty states and
+14 files, lists and re-downloads them, proves exact names/non-empty states and
 SHA-256 equality, then re-reads the draft ID/tag/marker/state and exact asset
 IDs immediately before one final PATCH to stable/non-prerelease/latest. A
 successful PATCH response is not sufficient: publish re-reads the Release by
@@ -379,22 +419,26 @@ rulesets and is not described as atomic administrator protection.
 
 ## 8. Failure Matrix
 
-| Condition                                                                                                                     | Required result                                                                                                     |
-| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Dispatch SHA is not full/lowercase or differs from trusted main workflow/event provenance                                     | Fail eligibility before any platform build.                                                                         |
-| Formal ref, workflow ref, tag commit, event commit, product version, or source differ                                         | Fail eligibility; do not build or publish.                                                                          |
-| Latest same-SHA main CI attempt is absent, running, failed, cancelled, or lacks the unique Required job/check                 | Fail eligibility; an older success is not accepted.                                                                 |
-| A native runner/architecture, Ubuntu child digest, or tool version drifts                                                     | Fail that platform job; no fallback target is allowed.                                                              |
-| Node is not established before pnpm, a Linux container lacks exact workspace trust, or a Release cache is enabled             | Fail platform bootstrap; do not rely on runner-preinstalled tools, wildcard Git trust, or implicit Action defaults. |
-| Windows bundle exits nonzero, Light reports an ICE error, or a manifest/helper/MSI structure/payload/unsigned assertion fails | Preserve verbose stderr and fail Windows output before MSI enumeration or artifact upload.                          |
-| macOS app is not universal, identity differs, distribution identity/ticket exists, or ZIP/DMG copies differ                   | Fail macOS output before artifact upload.                                                                           |
-| Linux nested AppImage execution or package count/version/architecture differs                                                 | Fail Linux output with verbose downstream stderr before artifact upload; do not add mount privileges.               |
-| Artifact tree or exact ten/twelve/thirteen allowlist differs                                                                  | Fail verification/attestation/publish.                                                                              |
-| Mandatory attestation or bundle is absent                                                                                     | Fail; do not characterize hashes alone as v0.3.0 provenance success.                                                |
-| Dispatch reaches publish                                                                                                      | Static workflow test fails; remote preflight must create no Release.                                                |
-| A draft or published Release already exists                                                                                   | Refuse to update, replace, or delete it.                                                                            |
-| Upload/re-download fails before final PATCH                                                                                   | Leave the draft untouched, report ID/URL, and require manual decision.                                              |
-| Final PATCH has a failed or ambiguous outcome                                                                                 | Read state by ID, report draft/published/unknown, and never retry or delete.                                        |
+| Condition                                                                                                         | Required result                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Dispatch SHA is not full/lowercase or differs from trusted main workflow/event provenance                         | Fail eligibility before any platform build.                                                                         |
+| Formal ref, workflow ref, tag commit, event commit, product version, or source differ                             | Fail eligibility; do not build or publish.                                                                          |
+| Latest same-SHA main CI attempt is absent, running, failed, cancelled, or lacks the unique Required job/check     | Fail eligibility; an older success is not accepted.                                                                 |
+| A native runner/architecture, Ubuntu child digest, or tool version drifts                                         | Fail that platform job; no fallback target is allowed.                                                              |
+| Node is not established before pnpm, a Linux container lacks exact workspace trust, or a Release cache is enabled | Fail platform bootstrap; do not rely on runner-preinstalled tools, wildcard Git trust, or implicit Action defaults. |
+| Windows bundle/static contract or raw unsigned proof fails                                                        | Fail the build runner before uploading the private raw candidate.                                                   |
+| Pinned build-input directory, file, manifest, source, digest, or original artifact ID drifts                      | Fail before provider code or downstream consumption; a same-name replacement is never accepted.                     |
+| Raw artifact set, formal producer policy/secret cleanup, or provider transform fails                              | Fail the untrusted producer; no trusted formal fragment or final artifact exists.                                   |
+| Fresh formal raw diff, independent Authenticode policy, or sealed binding fails                                   | Fail the no-secret sealer; lifecycle and downstream verification remain blocked.                                    |
+| Producer/sealer result tuple, sealed installer/evidence binding, or native lifecycle fails                        | Fail the secret-free lifecycle admission or execution; never replace the already sealed artifacts.                  |
+| macOS app is not universal, identity differs, distribution identity/ticket exists, or ZIP/DMG copies differ       | Fail macOS output before artifact upload.                                                                           |
+| Linux nested AppImage execution or package count/version/architecture differs                                     | Fail Linux output with verbose downstream stderr before artifact upload; do not add mount privileges.               |
+| Artifact tree or exact ten/thirteen/fourteen allowlist differs                                                    | Fail verification/attestation/publish.                                                                              |
+| Mandatory attestation or bundle is absent                                                                         | Fail; do not characterize hashes alone as v0.3.0 provenance success.                                                |
+| Dispatch reaches publish                                                                                          | Static workflow test fails; remote preflight must create no Release.                                                |
+| A draft or published Release already exists                                                                       | Refuse to update, replace, or delete it.                                                                            |
+| Upload/re-download fails before final PATCH                                                                       | Leave the draft untouched, report ID/URL, and require manual decision.                                              |
+| Final PATCH has a failed or ambiguous outcome                                                                     | Read state by ID, report draft/published/unknown, and never retry or delete.                                        |
 
 ## 9. Validation and Evidence Boundary
 
@@ -408,50 +452,27 @@ keys at every nested input level and prove canonical output reconstruction.
 Local execution is restricted to the current host OS and architecture. A
 subsystem bridge, foreign executable, cross target, emulator, or locally copied
 non-host toolchain cannot establish native release evidence. PowerShell
-runtime, Windows Candle/Light/MSI, Linux package, macOS bundle, and every
+runtime, Windows NSIS/signing/lifecycle, Linux package, macOS bundle, and every
 non-host architecture check run only in their matching native GitHub Actions
 jobs. No local cross-OS or cross-architecture result counts toward acceptance.
 
 A green local suite proves the implementation contract, not publication.
 Release closure requires the exact source's main `CI / Required`, one
-successful post-merge same-SHA full-matrix unsigned preflight, the tag-triggered
+successful post-merge same-SHA full-matrix preflight, the tag-triggered
 formal run, the public stable Release, independent re-download/digest checks,
 and attestation evidence. D113 acceptance alone cannot satisfy these gates.
 Trellis archival, journal, and branch cleanup are repository closeout gates,
 not substitutes for or retroactive changes to Release evidence.
 
-## 10. v0.3.0 Conformance Record
+## 10. v0.3.0 Historical Evidence
 
-This section records one verified instance; Sections 1–9 remain the reusable,
-fail-closed implementation contract.
-
-- [PR #7](https://github.com/NongHua123/fyagent/pull/7) delivered the D118
-  engineering revision. [PR CI `31258884239`](https://github.com/NongHua123/fyagent/actions/runs/31258884239)
-  and [main CI `31259389682`](https://github.com/NongHua123/fyagent/actions/runs/31259389682)
-  succeeded for source `bde1370bbaffd345c3d9875708615eaf96140591`, including
-  native Windows x64/ARM64 MSI query fixtures.
-- [preflight `31259905022`](https://github.com/NongHua123/fyagent/actions/runs/31259905022)
-  succeeded for all five native target groups, exact asset/evidence verification,
-  and attestation; publish was skipped as required.
-- annotated tag object `e6706d4bdc33a184cf641204574df1fc2962ca4c`
-  peels to the exact source. [formal run `31260931509`](https://github.com/NongHua123/fyagent/actions/runs/31260931509)
-  completed eligibility, all native builds, verification, attestation, and
-  publication of [stable/latest v0.3.0](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)
-  (Release ID `367220197`) with exactly 13 attachments.
-- independent re-download matched the exact-13 allowlist and all ten installer
-  names, sizes, SHA-256 values, and URLs in `download-manifest.json`.
-  `build-metadata.json` binds the formal source to main Required run
-  `31259389682`, attempt 1. An official-checksum-verified GitHub CLI 2.97.0
-  verified all 12 subjects from the local Sigstore bundle with exact repository,
-  signer workflow, source digest/ref, and self-hosted-runner denial.
-- D114 remains an accepted live-`merge_group` N/A exception, not a successful
-  run. The substitute YAML/fail-closed static contract and real PR/main/manual
-  evidence are complete. The repository still has no ruleset, branch/tag
-  protection, or Release environment; that accepted workflow-only residual risk
-  remains explicit.
-
-The closeout PR extends `Windows Native Contracts` with locked uv-managed
-Python/Trellis task-list smoke on x64 and ARM64 before its MSI fixture. That PR
-gate and repository archive/journal/branch cleanup must complete before the
-overall modernization task closes, but they do not change the truthful
-Released/Verified state of v0.3.0.
+The prior release instance remains independently auditable at source
+`bde1370bbaffd345c3d9875708615eaf96140591`: main CI `31259389682`, preflight
+`31259905022`, annotated tag object
+`e6706d4bdc33a184cf641204574df1fc2962ca4c`, formal run `31260931509`, and
+[stable/latest v0.3.0](https://github.com/NongHua123/fyagent/releases/tag/v0.3.0)
+(Release ID `367220197`). Its re-download, digest, metadata, and Sigstore checks
+describe that historical MSI-era release only; they do not satisfy the current
+NSIS/formal-sealer contract or any future release gate. The repository had no
+ruleset, branch/tag protection, or Release environment, so its recorded trust
+remains workflow-scoped.

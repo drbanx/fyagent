@@ -50,7 +50,7 @@ frontend         (ubuntu-24.04)  \
 desktop-acceptance-contract (ubuntu-24.04) +--> CI / Required (ubuntu-24.04, always)
 backend-linux    (ubuntu-24.04)   /
 backend-windows  (windows-2022)  /
-windows-msi-query (windows-2022 x64 + windows-11-arm ARM64) /
+windows-native-contracts (windows-2022 x64 + windows-11-arm ARM64) /
 backend-macos    (macos-15)     /
 ```
 
@@ -62,7 +62,7 @@ frontend
 desktop-acceptance-contract
 backend-linux
 backend-windows
-windows-msi-query
+windows-native-contracts
 backend-macos
 ```
 
@@ -115,7 +115,7 @@ the development-hook behavior tests invoke the real Python harness.
 
 - Required CI uses only `ubuntu-24.04`, `windows-2022`, `windows-11-arm`, and
   `macos-15`; no `*-latest` runner is allowed.
-- `windows-msi-query` is one unconditional required job with a two-entry
+- `windows-native-contracts` is one unconditional required job with a two-entry
   native matrix: `windows-2022`/`X64` and
   `windows-11-arm`/`Arm64`, with `fail-fast: false`. It checks out the
   repository read-only and resolves Node/uv/Python only from the repository
@@ -129,21 +129,12 @@ the development-hook behavior tests invoke the real Python harness.
   request is forbidden because Windows on ARM can transparently select an
   emulated x64 interpreter. Python's `sysconfig.get_platform()` must be
   `win-amd64` on the x64 leg and `win-arm64` on the ARM64 leg, so an emulated
-  interpreter cannot satisfy the native environment gate. The same job then runs
-  `tests/windowsInstallerQuery.integration.ps1`; it does not install
-  pnpm, Rust, frontend, application, packaging, or signing dependencies. This
-  is the required native evidence path for the Windows ARM64 environment
-  contract without making mise an Actions dependency. The implementation,
-  static contract, and Child 3 remote gate are complete: after a version-only
-  request selected `win-amd64` on Windows on ARM in closeout run `31264604075`,
-  commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` introduced the full request
-  above, and run `31265504901` passed the x64 (`93122857985`), ARM64
-  (`93122858012`), and aggregate Required (`93123992476`) jobs. The query fixture
-  creates a temporary MSI from checked-in `.idt` source and exercises the
-  production module on the runner's actual Windows Installer Automation
-  boundary. A job-level `timeout-minutes: 15` bounds setup, Python/Trellis, COM,
-  and fixture hangs
-  instead of inheriting GitHub's six-hour default.
+  interpreter cannot satisfy the native environment gate. This job does not
+  install pnpm, Rust, frontend, application, packaging, or signing dependencies;
+  NSIS build/sign/install lifecycle evidence belongs to the Release workflow's
+  architecture-matched Windows jobs. A job-level `timeout-minutes: 15` bounds
+  managed-toolchain and Trellis hangs instead of inheriting GitHub's six-hour
+  default.
 - `windows-11-arm` is a native hosted runner. Scheduling or image
   unavailability is a retryable infrastructure failure, but it still fails
   `CI / Required`; x64 substitution, cross-build, local Windows bridging, job
@@ -268,22 +259,22 @@ job conclusion, and any failure log in one ordered evidence chain.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                                                                        | Required result                                                                                                                   |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Any required dependency is missing, extra, malformed, failed, cancelled, skipped, or unknown                                                                     | `CI / Required` fails and prints a machine-readable summary.                                                                      |
-| Either native Windows contract matrix leg cannot schedule, resolve its exact managed-Python architecture, prepare locked Python/Trellis, or pass its MSI fixture | `windows-msi-query` fails; Required remains red with no architecture fallback or conditional omission.                            |
-| A dependency job is conditional or a workflow-level path filter hides the workflow                                                                               | Static contract fails; do not merge the workflow change.                                                                          |
-| A Required runner uses `*-latest` or an unapproved label                                                                                                         | Static contract fails before remote execution.                                                                                    |
-| A third-party Action is not a reviewed full SHA with a version note                                                                                              | Static contract fails.                                                                                                            |
-| Node, pnpm, Rust, uv, or Python differs from its repository fact                                                                                                 | The affected job fails before its tests.                                                                                          |
-| Windows batch invocation contains a token outside the internal allowlist                                                                                         | Toolchain verification fails before `cmd.exe`; it never falls back to an implicit shell.                                          |
-| `mise.lock` has no unique uv entry or setup-uv receives an independent literal                                                                                   | Toolchain resolution fails; do not fall back to `latest`.                                                                         |
-| Full unit tests run without `uv sync --locked` and the managed `.venv`                                                                                           | Frontend CI fails; do not weaken the real hook harness.                                                                           |
-| Labeler checks out or executes PR code, reads secrets, or gains another write permission                                                                         | Reject the workflow as unsafe.                                                                                                    |
-| A configured label does not exist                                                                                                                                | Labeler fails without `issues: write`; create the reviewed label out of band, then rerun.                                         |
-| No real merge-group event can be produced under current repository governance                                                                                    | Record the accepted D114 live-run N/A exception; require YAML/static plus real PR/main/manual evidence, and never report success. |
-| A triggered run is delegated to an asynchronous monitor or sampled repeatedly                                                                                    | Stop the observation path; the initiating flow must perform one synchronous whole-run wait.                                       |
-| A completed successful run is followed by broad log retrieval                                                                                                    | Reject the extra collection; fetch failed-job logs only after a failed final result.                                              |
+| Condition                                                                                                                                  | Required result                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Any required dependency is missing, extra, malformed, failed, cancelled, skipped, or unknown                                               | `CI / Required` fails and prints a machine-readable summary.                                                                      |
+| Either native Windows contract matrix leg cannot schedule, resolve its exact managed-Python architecture, or prepare locked Python/Trellis | `windows-native-contracts` fails; Required remains red with no architecture fallback or conditional omission.                     |
+| A dependency job is conditional or a workflow-level path filter hides the workflow                                                         | Static contract fails; do not merge the workflow change.                                                                          |
+| A Required runner uses `*-latest` or an unapproved label                                                                                   | Static contract fails before remote execution.                                                                                    |
+| A third-party Action is not a reviewed full SHA with a version note                                                                        | Static contract fails.                                                                                                            |
+| Node, pnpm, Rust, uv, or Python differs from its repository fact                                                                           | The affected job fails before its tests.                                                                                          |
+| Windows batch invocation contains a token outside the internal allowlist                                                                   | Toolchain verification fails before `cmd.exe`; it never falls back to an implicit shell.                                          |
+| `mise.lock` has no unique uv entry or setup-uv receives an independent literal                                                             | Toolchain resolution fails; do not fall back to `latest`.                                                                         |
+| Full unit tests run without `uv sync --locked` and the managed `.venv`                                                                     | Frontend CI fails; do not weaken the real hook harness.                                                                           |
+| Labeler checks out or executes PR code, reads secrets, or gains another write permission                                                   | Reject the workflow as unsafe.                                                                                                    |
+| A configured label does not exist                                                                                                          | Labeler fails without `issues: write`; create the reviewed label out of band, then rerun.                                         |
+| No real merge-group event can be produced under current repository governance                                                              | Record the accepted D114 live-run N/A exception; require YAML/static plus real PR/main/manual evidence, and never report success. |
+| A triggered run is delegated to an asynchronous monitor or sampled repeatedly                                                              | Stop the observation path; the initiating flow must perform one synchronous whole-run wait.                                       |
+| A completed successful run is followed by broad log retrieval                                                                              | Reject the extra collection; fetch failed-job logs only after a failed final result.                                              |
 
 ## 5. Good / Base / Bad Cases
 
@@ -312,8 +303,7 @@ mise run format:check
 ```
 
 `tests/githubWorkflowTriggers.test.ts`, `tests/ciWorkflow.test.ts`,
-`tests/requiredCiGate.test.ts`, `tests/windowsInstallerQueryContract.test.ts`,
-and `tests/ciToolchainContract.test.ts` enforce
+`tests/requiredCiGate.test.ts`, and `tests/ciToolchainContract.test.ts` enforce
 the event, runner, Action, permission, dependency-result, and toolchain-source
 contracts. They also ensure the CI commands cannot rediscover the five
 mise-dependent host suites on a fresh runner. Run Prettier against the changed
@@ -361,7 +351,7 @@ jobs:
       - desktop-acceptance-contract
       - backend-linux
       - backend-windows
-      - windows-msi-query
+      - windows-native-contracts
       - backend-macos
 ```
 

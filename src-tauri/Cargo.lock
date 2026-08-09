@@ -1853,13 +1853,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fyagent-installer-actions"
-version = "0.3.0"
-dependencies = [
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -7,8 +7,8 @@ Codex Desktop restart flow, or WorkBuddy configuration. These changes cross
 Rust/Tauri commands, renderer state, user-owned configuration files, and
 Windows process identity boundaries.
 
-Application-version, release-metadata, and MSI directory-policy changes belong
-to [FyAgent 0.3.0 Version and Installer Contract](./fyagent-version-contract.md).
+Application-version, release-metadata, and Windows installer changes belong
+to [FyAgent Application Version and Installer Asset Contract](./fyagent-version-contract.md).
 
 The v1.0.1 and v1.0.2 labels in `docs/fyagent/dev/v1-0.1/` and
 `docs/fyagent/dev/v1-0.2/` name historical feature-design inputs, not the

@@ -6,8 +6,9 @@ const CI_SAFE_TESTS = Object.freeze([
   "tests/releaseWorkflow.test.ts",
   "tests/downloadManifest.test.ts",
   "tests/releaseAssets.test.ts",
+  "tests/windowsNsisContract.test.ts",
+  "tests/windowsSigningAdapter.test.ts",
   "tests/writePlatformMetadata.test.ts",
-  "tests/windowsInstallerQueryContract.test.ts",
   "tests/githubWorkflowTriggers.test.ts",
   "tests/ciWorkflow.test.ts",
   "tests/requiredCiGate.test.ts",
@@ -38,6 +39,7 @@ try {
     run("node", ["scripts/tasks/task-contract-check.mjs"]);
   }
   run("node", ["scripts/tasks/task-docs.mjs", "check"]);
+  run("node", ["scripts/release/verify-windows-nsis-contract.mjs"]);
   run("pnpm", [
     "run",
     "test:unit",

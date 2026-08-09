@@ -1,6 +1,6 @@
 //! Native Windows implementation for the pre-Tauri runtime guard.
 //!
-//! Release builds use a WiX-owned ProgramData runtime root as the discovery
+//! Release builds use an NSIS-owned ProgramData runtime root as the discovery
 //! bootstrap. No client ever connects to a pipe derived from a user SID or a
 //! predictable mutex name: the protected state descriptor carries a fresh
 //! 244-bit pipe endpoint and a separate 256-bit activation capability.
@@ -425,9 +425,10 @@ pub(super) fn early_windows_startup_gate() -> WindowsStartupDisposition {
         Ok(probe) => probe,
         Err(code) if formal_build => return WindowsStartupDisposition::Blocked(code),
         // Development/test manifests intentionally remain asInvoker. They do
-        // not use the protected release lease because WiX may not be present.
-        // A failed status probe must not turn that observability path into a
-        // startup block, and it must not fall back to a predictable IPC name.
+        // not use the protected release lease because the installer may not
+        // be present. A failed status probe must not turn that observability
+        // path into a startup block, and it must not fall back to a predictable
+        // IPC name.
         Err(_) => return WindowsStartupDisposition::Continue,
     };
     let _ = RUNTIME_STATUS.set(probe.status);

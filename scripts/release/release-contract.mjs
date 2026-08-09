@@ -17,11 +17,13 @@ export const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";
 export const CI_WORKFLOW_PATH = ".github/workflows/ci.yml";
 export const DOWNLOAD_MANIFEST_NAME = "download-manifest.json";
 export const BUILD_METADATA_NAME = "build-metadata.json";
+export const WINDOWS_SIGNING_STATUS_NAME = "signing-status.json";
 export const ATTESTATION_BUNDLE_NAME = "artifact-attestation.sigstore.json";
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const SHA256_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const WINDOWS_VERSION_COMPONENT_MAX = 65535n;
 
 export const GITHUB_RUNNER_ARCHITECTURES = Object.freeze([
   "X86",
@@ -44,15 +46,15 @@ export const INSTALLER_RULES = Object.freeze([
     architecture: "universal",
   },
   {
-    suffix: "-Windows.msi",
+    suffix: "-Windows-x64-setup.exe",
     platform: "windows",
-    kind: "msi",
+    kind: "exe",
     architecture: "x64",
   },
   {
-    suffix: "-Windows-arm64.msi",
+    suffix: "-Windows-arm64-setup.exe",
     platform: "windows",
-    kind: "msi",
+    kind: "exe",
     architecture: "arm64",
   },
   {
@@ -107,7 +109,7 @@ export const EXPECTED_TARGETS = Object.freeze([
     targetGroup: "windows-x64",
     platform: "windows",
     architecture: "x64",
-    requestedRunnerLabel: "windows-2022",
+    requestedRunnerLabel: "windows-2025",
     expectedRunnerOs: "Windows",
     expectedRunnerArch: "X64",
     expectedContainer: null,
@@ -165,15 +167,29 @@ export const EXPECTED_INSTALLERS_BY_TARGET = Object.freeze({
   "linux-arm64": Object.freeze([7, 8, 9]),
 });
 
+export const WINDOWS_SIGNING_FRAGMENTS_BY_TARGET = Object.freeze({
+  "windows-x64": "windows-signing-x64.json",
+  "windows-arm64": "windows-signing-arm64.json",
+});
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-export function assertReleaseIdentity({ version, tag, sourceSha }) {
+export function assertWindowsBundleVersion(version) {
+  const match =
+    typeof version === "string" ? version.match(STABLE_VERSION_PATTERN) : null;
+  assert(match, `Invalid stable application version: ${version}`);
   assert(
-    STABLE_VERSION_PATTERN.test(version),
-    `Invalid stable application version: ${version}`,
+    match
+      .slice(1)
+      .every((component) => BigInt(component) <= WINDOWS_VERSION_COMPONENT_MAX),
+    `Windows NSIS version components must be between 0 and ${WINDOWS_VERSION_COMPONENT_MAX}; received ${version}`,
   );
+}
+
+export function assertReleaseIdentity({ version, tag, sourceSha }) {
+  assertWindowsBundleVersion(version);
   assert(
     tag === `v${version}`,
     `Release tag must exactly match v${version}; received ${tag}`,
@@ -185,10 +201,7 @@ export function assertReleaseIdentity({ version, tag, sourceSha }) {
 }
 
 export function expectedInstallerNames(version) {
-  assert(
-    STABLE_VERSION_PATTERN.test(version),
-    `Invalid stable application version: ${version}`,
-  );
+  assertWindowsBundleVersion(version);
   return INSTALLER_RULES.map(
     (rule) => `${PRODUCT_NAME}-${version}${rule.suffix}`,
   );
@@ -199,6 +212,7 @@ export function expectedAttestationSubjectNames(version) {
     ...expectedInstallerNames(version),
     DOWNLOAD_MANIFEST_NAME,
     BUILD_METADATA_NAME,
+    WINDOWS_SIGNING_STATUS_NAME,
   ];
 }
 

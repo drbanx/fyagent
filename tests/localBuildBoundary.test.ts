@@ -88,11 +88,9 @@ const LOCAL_CROSS_EXECUTION_MARKERS = [
   "scripts/macos-cross",
   "scripts/windows-cross",
   "src-tauri/target/app",
-  "target/installer-actions",
   "universal-apple-darwin",
   "pc-windows-msvc",
   "rustup target add",
-  "wixl",
 ];
 const CURRENT_DOCUMENTS = [
   "README.md",
@@ -464,7 +462,7 @@ describe("local build boundary", () => {
   it("retains native release targets for all five platform groups", () => {
     const release = read(".github/workflows/release.yml");
     for (const contract of [
-      "runner: windows-2022",
+      "runner: windows-2025",
       "target_group: windows-x64",
       "runner: windows-11-arm",
       "target_group: windows-arm64",

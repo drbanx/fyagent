@@ -14,8 +14,11 @@ import {
   ATTESTATION_BUNDLE_NAME,
   BUILD_METADATA_NAME,
   DOWNLOAD_MANIFEST_NAME,
+  WINDOWS_SIGNING_STATUS_NAME,
   EXPECTED_TARGETS,
   EXPECTED_INSTALLERS_BY_TARGET,
+  WINDOWS_SIGNING_FRAGMENTS_BY_TARGET,
+  assertWindowsBundleVersion,
   buildBuildMetadata,
   expectedAttestationSubjectNames,
   expectedInstallerNames,
@@ -139,6 +142,16 @@ function writeInstallerArtifacts(directory: string): void {
     for (const index of EXPECTED_INSTALLERS_BY_TARGET[targetGroup]) {
       writeFileSync(path.join(artifact, installers[index]), installers[index]);
     }
+  }
+}
+
+function writeSigningArtifacts(directory: string): void {
+  for (const [targetGroup, fragmentName] of Object.entries(
+    WINDOWS_SIGNING_FRAGMENTS_BY_TARGET,
+  )) {
+    const artifact = path.join(directory, `signing-${targetGroup}`);
+    mkdirSync(artifact);
+    writeFileSync(path.join(artifact, fragmentName), fragmentName);
   }
 }
 
@@ -352,7 +365,7 @@ describe("release asset and metadata contract", () => {
         targetGroup: "windows-x64",
         platform: "windows",
         architecture: "x64",
-        requestedRunnerLabel: "windows-2022",
+        requestedRunnerLabel: "windows-2025",
         expectedRunnerOs: "Windows",
         expectedRunnerArch: "X64",
         expectedContainer: null,
@@ -403,17 +416,42 @@ describe("release asset and metadata contract", () => {
     ]);
   });
 
-  it("freezes ten installers, twelve attestation subjects, and thirteen attachments", () => {
+  it("freezes the NSIS-only Windows assets and the complete release file sets", () => {
     expect(expectedInstallerNames("0.3.0")).toHaveLength(10);
+    expect(expectedInstallerNames("0.3.0")).toContain(
+      "FyAgent-0.3.0-Windows-x64-setup.exe",
+    );
+    expect(expectedInstallerNames("0.3.0")).toContain(
+      "FyAgent-0.3.0-Windows-arm64-setup.exe",
+    );
+    expect(expectedInstallerNames("0.3.0")).not.toContain(
+      "FyAgent-0.3.0-Windows.msi",
+    );
     expect(expectedAttestationSubjectNames("0.3.0")).toEqual([
       ...expectedInstallerNames("0.3.0"),
       DOWNLOAD_MANIFEST_NAME,
       BUILD_METADATA_NAME,
+      WINDOWS_SIGNING_STATUS_NAME,
     ]);
+    expect(expectedAttestationSubjectNames("0.3.0")).toHaveLength(13);
     expect(expectedReleaseAttachmentNames("0.3.0")).toEqual([
       ...expectedAttestationSubjectNames("0.3.0"),
       ATTESTATION_BUNDLE_NAME,
     ]);
+    expect(expectedReleaseAttachmentNames("0.3.0")).toHaveLength(14);
+  });
+
+  it("fails closed when a canonical version cannot fit NSIS fixed-file fields", () => {
+    expect(() => assertWindowsBundleVersion("65535.65535.65535")).not.toThrow();
+    expect(() => assertWindowsBundleVersion("65536.0.0")).toThrow(
+      /Windows NSIS version components must be between 0 and 65535/u,
+    );
+    expect(() => assertWindowsBundleVersion("9007199254740993.0.0")).toThrow(
+      /Windows NSIS version components must be between 0 and 65535/u,
+    );
+    expect(() => expectedInstallerNames("0.65536.0")).toThrow(
+      /Windows NSIS version components must be between 0 and 65535/u,
+    );
   });
 
   it("rejects directories, symlinks, missing names, and unapproved ancillary files", () => {
@@ -445,6 +483,46 @@ describe("release asset and metadata contract", () => {
     expect(readdirSync(output).sort()).toEqual(
       expectedInstallerNames("0.3.0").sort(),
     );
+  });
+
+  it("collects exactly two private Windows signing fragments", () => {
+    const root = temporaryDirectory();
+    const downloads = path.join(root, "downloads");
+    const output = path.join(root, "signing-fragments");
+    mkdirSync(downloads);
+    writeSigningArtifacts(downloads);
+    execFileSync(
+      process.execPath,
+      [collectorScript, "signing", downloads, output, "0.3.0"],
+      { cwd: repositoryRoot, encoding: "utf8", stdio: "pipe" },
+    );
+    expect(readdirSync(output).sort()).toEqual(
+      Object.values(WINDOWS_SIGNING_FRAGMENTS_BY_TARGET).sort(),
+    );
+  });
+
+  it("rejects extra signing fragments before aggregation", () => {
+    const root = temporaryDirectory();
+    const downloads = path.join(root, "downloads");
+    mkdirSync(downloads);
+    writeSigningArtifacts(downloads);
+    writeFileSync(
+      path.join(downloads, "signing-windows-x64", "unexpected.json"),
+      "unexpected",
+    );
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          collectorScript,
+          "signing",
+          downloads,
+          path.join(root, "signing-fragments"),
+          "0.3.0",
+        ],
+        { cwd: repositoryRoot, encoding: "utf8", stdio: "pipe" },
+      ),
+    ).toThrow(/signing-windows-x64 artifact must contain exactly 1 files/);
   });
 
   it("rejects duplicate or misplaced installers before flattening artifacts", () => {

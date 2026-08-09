@@ -270,7 +270,7 @@ jobs:
       - name: Run Rust tests
         run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml
 
-  windows-msi-query:
+  windows-native-contracts:
     name: Windows Native Contracts (${{ matrix.architecture }})
     timeout-minutes: 15
     env:
@@ -337,12 +337,6 @@ jobs:
           }
           Write-Host "Verified Trellis with $($parsed.tasks.Count) active task(s)"
 
-      - name: Exercise native Windows Installer query boundary
-        shell: pwsh
-        run: >-
-          ./tests/windowsInstallerQuery.integration.ps1
-          -ExpectedArchitecture '${{ matrix.architecture }}'
-
   backend-macos:
     name: Backend Checks (macOS)
     runs-on: macos-15
@@ -392,7 +386,7 @@ jobs:
       - desktop-acceptance-contract
       - backend-linux
       - backend-windows
-      - windows-msi-query
+      - windows-native-contracts
       - backend-macos
     runs-on: ubuntu-24.04
     steps:

@@ -212,14 +212,12 @@ jobs:
           candidate_contract_root="$RUNNER_TEMP/fyagent-candidate-version-contract"
           rm -rf "$candidate_contract_root"
           mkdir -p "$candidate_contract_root/scripts" \
-            "$candidate_contract_root/src-tauri/installer-actions"
+            "$candidate_contract_root/src-tauri"
           cp scripts/version.mjs "$candidate_contract_root/scripts/version.mjs"
           cp candidate-source/package.json "$candidate_contract_root/package.json"
           cp candidate-source/src-tauri/tauri.conf.json "$candidate_contract_root/src-tauri/tauri.conf.json"
           cp candidate-source/src-tauri/Cargo.toml "$candidate_contract_root/src-tauri/Cargo.toml"
           cp candidate-source/src-tauri/Cargo.lock "$candidate_contract_root/src-tauri/Cargo.lock"
-          cp candidate-source/src-tauri/installer-actions/Cargo.toml \
-            "$candidate_contract_root/src-tauri/installer-actions/Cargo.toml"
           node "$candidate_contract_root/scripts/version.mjs" check --tag v0.3.0
           app_version="$(node "$candidate_contract_root/scripts/version.mjs" get)"
           [ "$app_version" = '0.3.0' ] || {
@@ -338,23 +336,21 @@ jobs:
           printf 'ci_run_attempt=%s\n' "$ci_run_attempt" >> "$GITHUB_OUTPUT"
 
   build-windows:
-    name: Windows ${{ matrix.architecture }} unsigned installer
+    name: Windows ${{ matrix.architecture }} NSIS installer
     needs: eligibility
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: windows-2022
+          - runner: windows-2025
             target_group: windows-x64
             architecture: x64
             rust_target: x86_64-pc-windows-msvc
-            asset_suffix: ""
           - runner: windows-11-arm
             target_group: windows-arm64
             architecture: arm64
             rust_target: aarch64-pc-windows-msvc
-            asset_suffix: -arm64
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
       RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
@@ -426,7 +422,10 @@ jobs:
       - name: Install locked frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build unsigned Windows application executable
+      - name: Verify Windows NSIS source contract before build
+        run: node scripts/release/verify-windows-nsis-contract.mjs
+
+      - name: Build Windows application executable
         shell: pwsh
         env:
           FYAGENT_WINDOWS_MANIFEST: release
@@ -446,98 +445,123 @@ jobs:
           "FYAGENT_WINDOWS_TARGET_ROOT=$targetRoot" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           "FYAGENT_WINDOWS_EXE=$exePath" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Verify elevated release manifest before MSI bundle
+      - name: Verify elevated release manifest before NSIS bundle
         shell: pwsh
         run: |
           ./scripts/release/verify-windows-release-manifest.ps1 `
             -ExePath $env:FYAGENT_WINDOWS_EXE `
             -AppVersion $env:APP_VERSION `
             -Architecture '${{ matrix.architecture }}' `
-            -Phase before-msi-bundle
+            -Phase before-nsis-bundle
 
-      - name: Build and verify architecture-matched installer-actions DLL
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $installerActionsTarget = Join-Path $PWD 'src-tauri/target/installer-actions'
-          $env:CARGO_TARGET_DIR = $installerActionsTarget
-          if ('${{ matrix.architecture }}' -eq 'arm64') {
-            cargo build --locked --manifest-path src-tauri/Cargo.toml `
-              --package fyagent-installer-actions --target '${{ matrix.rust_target }}' --release
-            $dllPath = Join-Path $installerActionsTarget '${{ matrix.rust_target }}/release/fyagent_installer_actions.dll'
-            [uint16]$expectedMachine = 0xAA64
-          } else {
-            cargo build --locked --manifest-path src-tauri/Cargo.toml `
-              --package fyagent-installer-actions --release
-            $dllPath = Join-Path $installerActionsTarget 'release/fyagent_installer_actions.dll'
-            [uint16]$expectedMachine = 0x8664
-          }
-          $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $dllPath))
-          if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
-            throw "installer-actions output is not a PE DLL: $dllPath"
-          }
-          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
-          if ($peOffset -lt 0x40 -or $peOffset + 6 -gt $bytes.Length -or
-              $bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45) {
-            throw "installer-actions output has no valid PE header: $dllPath"
-          }
-          [uint16]$machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
-          if ($machine -ne $expectedMachine) {
-            throw "installer-actions PE Machine is 0x$($machine.ToString('X4')); expected 0x$($expectedMachine.ToString('X4'))"
-          }
-          $resolvedDll = (Resolve-Path -LiteralPath $dllPath).Path
-          "FYAGENT_INSTALLER_ACTIONS_DLL=$resolvedDll" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          "TAURI_FYAGENT_INSTALLER_ACTIONS_DLL=$resolvedDll" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Bundle unsigned Windows MSI
+      - name: Bundle Windows NSIS setup executable
         shell: pwsh
         env:
           FYAGENT_WINDOWS_MANIFEST: release
         run: |
           $ErrorActionPreference = 'Stop'
           if ('${{ matrix.architecture }}' -eq 'arm64') {
-            pnpm tauri bundle --target '${{ matrix.rust_target }}' --bundles msi --verbose
+            pnpm tauri bundle --target '${{ matrix.rust_target }}' --bundles nsis --verbose
             $bundleExitCode = $LASTEXITCODE
           } else {
-            pnpm tauri bundle --bundles msi --verbose
+            pnpm tauri bundle --bundles nsis --verbose
             $bundleExitCode = $LASTEXITCODE
           }
           if ($bundleExitCode -ne 0) {
-            throw "Tauri MSI bundle failed with exit code $bundleExitCode"
+            throw "Tauri NSIS bundle failed with exit code $bundleExitCode"
           }
-          $msis = @(
-            Get-ChildItem -Path (Join-Path $env:FYAGENT_WINDOWS_TARGET_ROOT 'bundle/msi') `
-              -Recurse -Filter *.msi -File -ErrorAction Stop
+          $setups = @(
+            Get-ChildItem -Path (Join-Path $env:FYAGENT_WINDOWS_TARGET_ROOT 'bundle/nsis') `
+              -Recurse -Filter *.exe -File -ErrorAction Stop
           )
-          if ($msis.Count -ne 1) {
-            throw "Expected exactly one raw Windows MSI, found $($msis.Count)"
+          if ($setups.Count -ne 1) {
+            throw "Expected exactly one raw Windows NSIS setup executable, found $($setups.Count)"
           }
-          "FYAGENT_WINDOWS_MSI=$($msis[0].FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "FYAGENT_WINDOWS_RAW_SETUP=$($setups[0].FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Re-verify elevated manifest and MSI security boundary
+      - name: Re-verify elevated application manifest after NSIS bundle
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
           ./scripts/release/verify-windows-release-manifest.ps1 `
             -ExePath $env:FYAGENT_WINDOWS_EXE `
             -AppVersion $env:APP_VERSION `
             -Architecture '${{ matrix.architecture }}' `
-            -Phase after-msi-bundle
-          ./scripts/release/verify-windows-msi-structure.ps1 `
-            -MsiPath $env:FYAGENT_WINDOWS_MSI `
-            -Architecture '${{ matrix.architecture }}' `
-            -AppVersion $env:APP_VERSION `
-            -BuiltExePath $env:FYAGENT_WINDOWS_EXE
-          ./scripts/release/verify-windows-msi.ps1 `
-            -MsiPath $env:FYAGENT_WINDOWS_MSI `
-            -InstallerActionsDll $env:FYAGENT_INSTALLER_ACTIONS_DLL `
-            -Architecture '${{ matrix.architecture }}' `
-            -AppVersion $env:APP_VERSION
-          ./scripts/release/verify-windows-unsigned.ps1 `
-            -ExePath $env:FYAGENT_WINDOWS_EXE `
-            -MsiPath $env:FYAGENT_WINDOWS_MSI
+            -Phase after-nsis-bundle
 
-      - name: Normalize exact Windows installer and metadata
+      - name: Re-verify Windows NSIS source contract after bundle
+        run: node scripts/release/verify-windows-nsis-contract.mjs
+
+      - name: Normalize exact unsigned Windows candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force raw-windows-candidate | Out-Null
+          $assetName = "FyAgent-$env:APP_VERSION-Windows-${{ matrix.architecture }}-setup.exe"
+          $assetPath = Join-Path raw-windows-candidate $assetName
+          Copy-Item -LiteralPath $env:FYAGENT_WINDOWS_RAW_SETUP -Destination $assetPath
+          $entries = @(Get-ChildItem -LiteralPath raw-windows-candidate -Force)
+          if ($entries.Count -ne 1 -or -not ($entries[0] -is [IO.FileInfo])) {
+            throw "Expected exactly one normalized raw Windows candidate, found $($entries.Count)"
+          }
+          if (($entries[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $entries[0].Length -le 0 -or $entries[0].Name -cne $assetName) {
+            throw 'Normalized raw Windows candidate is not the exact expected regular file'
+          }
+          "FYAGENT_WINDOWS_RAW_ASSET=$assetPath" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Prove raw Windows candidate is strictly unsigned
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidenceJson = & ./scripts/release/windows-signing-evidence.ps1 `
+            -ArtifactPath $env:FYAGENT_WINDOWS_RAW_ASSET
+          $evidence = $evidenceJson | ConvertFrom-Json -Depth 6
+          if ($evidence.schema -cne 'fyagent-authenticode-evidence/v1' -or
+              $evidence.status -cne 'NotSigned' -or
+              $null -ne $evidence.publisher -or
+              $null -ne $evidence.signerCertificate -or
+              $null -ne $evidence.timestampCertificate) {
+            throw 'Raw Windows candidate is not strictly Authenticode-unsigned'
+          }
+
+          $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $env:FYAGENT_WINDOWS_RAW_ASSET).Path)
+          if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) {
+            throw 'Raw Windows candidate does not contain a valid DOS header'
+          }
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          if ($peOffset -lt 0 -or $peOffset + 26 -gt $bytes.Length -or
+              [BitConverter]::ToUInt32($bytes, $peOffset) -ne 0x00004550) {
+            throw 'Raw Windows candidate does not contain a valid PE header'
+          }
+          $optionalHeaderSize = [BitConverter]::ToUInt16($bytes, $peOffset + 20)
+          $optionalHeaderOffset = $peOffset + 24
+          if ($optionalHeaderOffset + $optionalHeaderSize -gt $bytes.Length) {
+            throw 'Raw Windows candidate optional header is truncated'
+          }
+          $optionalMagic = [BitConverter]::ToUInt16($bytes, $optionalHeaderOffset)
+          switch ($optionalMagic) {
+            0x010b {
+              $numberOfDirectoriesOffset = $optionalHeaderOffset + 92
+              $dataDirectoryOffset = $optionalHeaderOffset + 96
+            }
+            0x020b {
+              $numberOfDirectoriesOffset = $optionalHeaderOffset + 108
+              $dataDirectoryOffset = $optionalHeaderOffset + 112
+            }
+            default { throw 'Raw Windows candidate has an unsupported PE optional header' }
+          }
+          $securityDirectoryOffset = $dataDirectoryOffset + (4 * 8)
+          if ($numberOfDirectoriesOffset + 4 -gt $optionalHeaderOffset + $optionalHeaderSize -or
+              [BitConverter]::ToUInt32($bytes, $numberOfDirectoriesOffset) -lt 5 -or
+              $securityDirectoryOffset + 8 -gt $optionalHeaderOffset + $optionalHeaderSize) {
+            throw 'Raw Windows candidate does not expose the PE security directory'
+          }
+          if ([BitConverter]::ToUInt32($bytes, $securityDirectoryOffset) -ne 0 -or
+              [BitConverter]::ToUInt32($bytes, $securityDirectoryOffset + 4) -ne 0) {
+            throw 'Raw Windows candidate PE security directory is not empty'
+          }
+
+      - name: Record Windows build metadata
         shell: pwsh
         env:
           TARGET_GROUP: ${{ matrix.target_group }}
@@ -548,16 +572,14 @@ jobs:
           ACTUAL_RUNNER_ARCH: ${{ runner.arch }}
         run: |
           $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force release-assets, platform-metadata | Out-Null
-          $assetName = "FyAgent-$env:APP_VERSION-Windows${{ matrix.asset_suffix }}.msi"
-          Copy-Item -LiteralPath $env:FYAGENT_WINDOWS_MSI -Destination (Join-Path release-assets $assetName)
+          New-Item -ItemType Directory -Force platform-metadata | Out-Null
           node scripts/release/write-platform-metadata.mjs "platform-metadata/${{ matrix.target_group }}.json"
 
-      - name: Upload Windows installer
+      - name: Upload private unsigned Windows candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: installers-${{ matrix.target_group }}
-          path: release-assets/*
+          name: raw-${{ matrix.target_group }}
+          path: raw-windows-candidate/*
           if-no-files-found: error
           retention-days: 7
 
@@ -568,6 +590,662 @@ jobs:
           path: platform-metadata/*
           if-no-files-found: error
           retention-days: 7
+
+  prove-windows-preflight:
+    name: Windows ${{ matrix.architecture }} unsigned preflight sealing
+    if: needs.eligibility.outputs.release_mode == 'preflight' && github.event_name == 'workflow_dispatch'
+    needs: [eligibility, pin-release-build-inputs]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target_group: windows-x64
+            architecture: x64
+          - runner: windows-11-arm
+            target_group: windows-arm64
+            architecture: arm64
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+    steps:
+      - name: Checkout immutable preflight boundary
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Setup exact preflight Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Verify clean native preflight runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedRunnerArch = if ('${{ matrix.architecture }}' -eq 'arm64') { 'ARM64' } else { 'X64' }
+          if ($env:RUNNER_ARCH -cne $expectedRunnerArch) {
+            throw "Windows preflight runner architecture $env:RUNNER_ARCH is not native $expectedRunnerArch"
+          }
+          if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
+            throw 'Windows preflight checkout is not the frozen source SHA'
+          }
+          $declaredNodeVersion = (Get-Content -LiteralPath .node-version -Raw).Trim()
+          $actualNodeVersion = (node --version).TrimStart('v')
+          if ($actualNodeVersion -cne $declaredNodeVersion -or $actualNodeVersion -cne '24.19.0') {
+            throw "Windows preflight Node.js drift: declared=$declaredNodeVersion actual=$actualNodeVersion"
+          }
+
+      - name: Download immutable pre-signer build inputs for preflight
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs['pin-release-build-inputs'].outputs.artifact_id }}
+          path: trusted-build-inputs
+
+      - name: Verify immutable pre-signer build inputs for preflight
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/release/pin-release-build-inputs.mjs verify `
+            trusted-build-inputs $env:APP_VERSION $env:SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned release build input verification failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Admit exact raw Windows preflight candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedName = "FyAgent-$env:APP_VERSION-Windows-${{ matrix.architecture }}-setup.exe"
+          $entries = @(Get-ChildItem -LiteralPath 'trusted-build-inputs/raw-${{ matrix.target_group }}' -Force)
+          if ($entries.Count -ne 1 -or -not ($entries[0] -is [IO.FileInfo])) {
+            throw "Expected exactly one downloaded raw Windows candidate, found $($entries.Count)"
+          }
+          $candidate = $entries[0]
+          $candidateIsInvalid = (
+            $candidate.Name -cne $expectedName -or
+            $candidate.Length -le 0 -or
+            ($candidate.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+          )
+          if ($candidateIsInvalid) {
+            throw 'Downloaded raw Windows candidate is not the exact expected regular file'
+          }
+          New-Item -ItemType Directory -Force release-assets, signing-fragments | Out-Null
+          $assetPath = Join-Path release-assets $expectedName
+          Copy-Item -LiteralPath $candidate.FullName -Destination $assetPath
+          "FYAGENT_WINDOWS_ASSET=$assetPath" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "FYAGENT_WINDOWS_SIGNING_FRAGMENT=signing-fragments/windows-signing-${{ matrix.architecture }}.json" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Prove unsigned preflight Windows setup executable
+        shell: pwsh
+        env:
+          FYAGENT_WINDOWS_SIGNING_MODE: unsigned
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/release/windows-signing.mjs asset `
+            --asset $env:FYAGENT_WINDOWS_ASSET `
+            --architecture '${{ matrix.architecture }}' `
+            --version $env:APP_VERSION `
+            --source-sha $env:SOURCE_SHA `
+            --output $env:FYAGENT_WINDOWS_SIGNING_FRAGMENT
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows unsigned preflight evidence failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Validate unsigned Windows preflight output before immutable upload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $assetItem = Get-Item -LiteralPath $env:FYAGENT_WINDOWS_ASSET -Force
+          $fragmentItem = Get-Item -LiteralPath $env:FYAGENT_WINDOWS_SIGNING_FRAGMENT -Force
+          if (-not ($assetItem -is [IO.FileInfo]) -or
+              ($assetItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $assetItem.Length -le 0 -or
+              -not ($fragmentItem -is [IO.FileInfo]) -or
+              ($fragmentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $fragmentItem.Length -le 0) {
+            throw 'Windows preflight output is not an exact pair of non-empty regular files'
+          }
+          $fragment = Get-Content -LiteralPath $fragmentItem.FullName -Raw | ConvertFrom-Json -Depth 8
+          $expectedAssetName = "FyAgent-$env:APP_VERSION-Windows-${{ matrix.architecture }}-setup.exe"
+          $assetSha256 = (Get-FileHash -LiteralPath $assetItem.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($fragment.schema -cne 'fyagent-windows-signing-asset/v1' -or
+              $fragment.version -cne $env:APP_VERSION -or
+              $fragment.sourceSha -cne $env:SOURCE_SHA -or
+              $fragment.mode -cne 'unsigned' -or
+              $fragment.asset.name -cne $expectedAssetName -or
+              $fragment.asset.architecture -cne '${{ matrix.architecture }}' -or
+              [int64]$fragment.asset.sizeBytes -ne $assetItem.Length -or
+              $fragment.asset.sha256 -cne $assetSha256 -or
+              $fragment.asset.signature.status -cne 'NotSigned' -or
+              $null -ne $fragment.asset.signature.publisher -or
+              $null -ne $fragment.asset.signature.signerCertificate -or
+              $null -ne $fragment.asset.signature.timestampCertificate) {
+            throw 'Windows preflight output is not strictly unsigned and byte-bound'
+          }
+
+      - name: Upload sealed Windows preflight installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installers-${{ matrix.target_group }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload sealed Windows preflight signing fragment
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signing-${{ matrix.target_group }}
+          path: signing-fragments/*
+          if-no-files-found: error
+          retention-days: 7
+
+  sign-windows-formal:
+    name: Windows ${{ matrix.architecture }} formal signing
+    if: needs.eligibility.outputs.release_mode == 'formal' && github.event_name == 'push'
+    needs: [eligibility, pin-release-build-inputs]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target_group: windows-x64
+            architecture: x64
+          - runner: windows-11-arm
+            target_group: windows-arm64
+            architecture: arm64
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+    steps:
+      - name: Checkout immutable signing boundary
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Setup exact signing Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Verify clean native signing runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedRunnerArch = if ('${{ matrix.architecture }}' -eq 'arm64') { 'ARM64' } else { 'X64' }
+          if ($env:RUNNER_ARCH -cne $expectedRunnerArch) {
+            throw "Windows signing runner architecture $env:RUNNER_ARCH is not native $expectedRunnerArch"
+          }
+          if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
+            throw 'Windows signing checkout is not the frozen source SHA'
+          }
+          $declaredNodeVersion = (Get-Content -LiteralPath .node-version -Raw).Trim()
+          $actualNodeVersion = (node --version).TrimStart('v')
+          if ($actualNodeVersion -cne $declaredNodeVersion -or $actualNodeVersion -cne '24.19.0') {
+            throw "Windows signing Node.js drift: declared=$declaredNodeVersion actual=$actualNodeVersion"
+          }
+
+      - name: Download immutable pre-signer build inputs for formal signing
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs['pin-release-build-inputs'].outputs.artifact_id }}
+          path: trusted-build-inputs
+
+      - name: Verify immutable pre-signer build inputs for formal signing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/release/pin-release-build-inputs.mjs verify `
+            trusted-build-inputs $env:APP_VERSION $env:SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned release build input verification failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Admit exact raw Windows candidate for untrusted transformation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedName = "FyAgent-$env:APP_VERSION-Windows-${{ matrix.architecture }}-setup.exe"
+          $entries = @(Get-ChildItem -LiteralPath 'trusted-build-inputs/raw-${{ matrix.target_group }}' -Force)
+          if ($entries.Count -ne 1 -or -not ($entries[0] -is [IO.FileInfo])) {
+            throw "Expected exactly one downloaded raw Windows candidate, found $($entries.Count)"
+          }
+          $candidate = $entries[0]
+          $candidateIsInvalid = (
+            $candidate.Name -cne $expectedName -or
+            $candidate.Length -le 0 -or
+            ($candidate.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+          )
+          if ($candidateIsInvalid) {
+            throw 'Downloaded raw Windows candidate is not the exact expected regular file'
+          }
+          New-Item -ItemType Directory -Force formal-candidate | Out-Null
+          $assetPath = Join-Path formal-candidate $expectedName
+          Copy-Item -LiteralPath $candidate.FullName -Destination $assetPath
+          $finalEntries = @(Get-ChildItem -LiteralPath formal-candidate -Force)
+          $finalSetIsInvalid = (
+            $finalEntries.Count -ne 1 -or
+            -not ($finalEntries[0] -is [IO.FileInfo]) -or
+            $finalEntries[0].Name -cne $expectedName -or
+            ($finalEntries[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+          )
+          if ($finalSetIsInvalid) {
+            throw 'Formal Windows candidate directory is not an exact one-file set'
+          }
+          "FYAGENT_WINDOWS_CANDIDATE=$assetPath" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Produce untrusted formal Windows candidate
+        shell: pwsh
+        env:
+          SIGNING_MODE_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}
+          SIGNER_ADAPTER_BASE64_CONFIG: ${{ secrets.FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 }}
+          SIGNER_PUBLISHER_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER }}
+          SIGNER_CERTIFICATE_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256 }}
+          SIGNER_CREDENTIAL_CONFIG: ${{ secrets.FYAGENT_WINDOWS_SIGNER_CREDENTIAL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $managedSignerEnvironment = @(
+            'FYAGENT_WINDOWS_SIGNING_MODE',
+            'FYAGENT_WINDOWS_SIGNER_ADAPTER',
+            'FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER',
+            'FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256',
+            'FYAGENT_WINDOWS_SIGNER_CREDENTIAL'
+          )
+          $stagingSignerEnvironment = @(
+            'SIGNING_MODE_CONFIG',
+            'SIGNER_ADAPTER_BASE64_CONFIG',
+            'SIGNER_PUBLISHER_CONFIG',
+            'SIGNER_CERTIFICATE_CONFIG',
+            'SIGNER_CREDENTIAL_CONFIG'
+          )
+          $providerConfig = @(
+            [string]$env:SIGNER_ADAPTER_BASE64_CONFIG,
+            [string]$env:SIGNER_PUBLISHER_CONFIG,
+            [string]$env:SIGNER_CERTIFICATE_CONFIG,
+            [string]$env:SIGNER_CREDENTIAL_CONFIG
+          )
+          $hasProviderConfig = @(
+            $providerConfig | Where-Object { $_ -cne '' }
+          ).Count -ne 0
+          foreach ($name in $managedSignerEnvironment) {
+            [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+          }
+
+          $adapterPath = $null
+          $requiredProviderConfig = $null
+          try {
+            switch -CaseSensitive ([string]$env:SIGNING_MODE_CONFIG) {
+              '' {
+                if ($hasProviderConfig) {
+                  throw 'FYAGENT_WINDOWS_SIGNING_MODE must select provider before defining signer configuration.'
+                }
+              }
+              'unsigned' {
+                if ($hasProviderConfig) {
+                  throw 'Signer configuration must be absent when FYAGENT_WINDOWS_SIGNING_MODE is unsigned.'
+                }
+                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNING_MODE', 'unsigned', 'Process')
+              }
+              'provider' {
+                $requiredProviderConfig = @(
+                  [string]$env:SIGNER_ADAPTER_BASE64_CONFIG,
+                  [string]$env:SIGNER_PUBLISHER_CONFIG,
+                  [string]$env:SIGNER_CERTIFICATE_CONFIG
+                )
+                if (@($requiredProviderConfig | Where-Object { $_ -ceq '' }).Count -ne 0) {
+                  throw 'Provider signing requires adapter bytes, expected publisher, and certificate SHA-256.'
+                }
+                try {
+                  $adapterBytes = [Convert]::FromBase64String($env:SIGNER_ADAPTER_BASE64_CONFIG)
+                } catch {
+                  throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 is not valid base64.'
+                }
+                if ($adapterBytes.Length -eq 0 -or $adapterBytes.Length -gt 49152) {
+                  throw 'FYAGENT_WINDOWS_SIGNER_ADAPTER_BASE64 must decode to 1..49152 bytes.'
+                }
+                $adapterName = ".fyagent-windows-signer-$([Guid]::NewGuid().ToString('N')).ps1"
+                $adapterPath = [IO.Path]::Combine($env:RUNNER_TEMP, $adapterName)
+                $adapterStream = [IO.FileStream]::new(
+                  $adapterPath,
+                  [IO.FileMode]::CreateNew,
+                  [IO.FileAccess]::Write,
+                  [IO.FileShare]::None
+                )
+                try {
+                  $adapterStream.Write($adapterBytes, 0, $adapterBytes.Length)
+                  $adapterStream.Flush($true)
+                } finally {
+                  $adapterStream.Dispose()
+                  [Array]::Clear($adapterBytes, 0, $adapterBytes.Length)
+                }
+                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNING_MODE', 'provider', 'Process')
+                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_ADAPTER', $adapterPath, 'Process')
+                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER', $env:SIGNER_PUBLISHER_CONFIG, 'Process')
+                [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256', $env:SIGNER_CERTIFICATE_CONFIG, 'Process')
+                if ([string]$env:SIGNER_CREDENTIAL_CONFIG -cne '') {
+                  [Environment]::SetEnvironmentVariable('FYAGENT_WINDOWS_SIGNER_CREDENTIAL', $env:SIGNER_CREDENTIAL_CONFIG, 'Process')
+                }
+              }
+              default {
+                throw 'FYAGENT_WINDOWS_SIGNING_MODE must be unsigned or provider.'
+              }
+            }
+            foreach ($name in $stagingSignerEnvironment) {
+              [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+            }
+            [Array]::Clear($providerConfig, 0, $providerConfig.Length)
+            if ($null -ne $requiredProviderConfig) {
+              [Array]::Clear($requiredProviderConfig, 0, $requiredProviderConfig.Length)
+            }
+            node scripts/release/windows-signing.mjs transform `
+              --asset $env:FYAGENT_WINDOWS_CANDIDATE `
+              --architecture '${{ matrix.architecture }}' `
+              --version $env:APP_VERSION `
+              --source-sha $env:SOURCE_SHA
+            if ($LASTEXITCODE -ne 0) {
+              throw "Windows formal candidate transformation failed with exit code $LASTEXITCODE"
+            }
+          } finally {
+            foreach ($name in @($managedSignerEnvironment + $stagingSignerEnvironment)) {
+              [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+            }
+            if ($providerConfig.Length -gt 0) {
+              [Array]::Clear($providerConfig, 0, $providerConfig.Length)
+            }
+            if ($null -ne $requiredProviderConfig) {
+              [Array]::Clear($requiredProviderConfig, 0, $requiredProviderConfig.Length)
+            }
+            if ($null -ne $adapterPath -and [IO.File]::Exists($adapterPath)) {
+              [IO.File]::Delete($adapterPath)
+            }
+          }
+
+      - name: Upload untrusted formal Windows candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: formal-candidate-${{ matrix.target_group }}
+          path: formal-candidate/*
+          if-no-files-found: error
+          retention-days: 7
+
+  seal-windows-formal:
+    name: Windows ${{ matrix.architecture }} fresh formal verification and sealing
+    if: needs.eligibility.outputs.release_mode == 'formal' && github.event_name == 'push'
+    needs: [eligibility, pin-release-build-inputs, sign-windows-formal]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target_group: windows-x64
+            architecture: x64
+          - runner: windows-11-arm
+            target_group: windows-arm64
+            architecture: arm64
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      PUBLIC_SIGNING_MODE: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}
+      PUBLIC_EXPECTED_PUBLISHER: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER }}
+      PUBLIC_EXPECTED_CERTIFICATE_SHA256: ${{ vars.FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256 }}
+    steps:
+      - name: Checkout immutable formal verification boundary
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Setup exact formal verification Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Verify fresh native formal sealer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedRunnerArch = if ('${{ matrix.architecture }}' -eq 'arm64') { 'ARM64' } else { 'X64' }
+          if ($env:RUNNER_ARCH -cne $expectedRunnerArch) {
+            throw "Windows formal sealer architecture $env:RUNNER_ARCH is not native $expectedRunnerArch"
+          }
+          if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
+            throw 'Windows formal sealer checkout is not the frozen source SHA'
+          }
+          $declaredNodeVersion = (Get-Content -LiteralPath .node-version -Raw).Trim()
+          $actualNodeVersion = (node --version).TrimStart('v')
+          if ($actualNodeVersion -cne $declaredNodeVersion -or $actualNodeVersion -cne '24.19.0') {
+            throw "Windows formal sealer Node.js drift: declared=$declaredNodeVersion actual=$actualNodeVersion"
+          }
+
+      - name: Download immutable pre-signer build inputs for independent verification
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs['pin-release-build-inputs'].outputs.artifact_id }}
+          path: trusted-build-inputs
+
+      - name: Verify immutable pre-signer build inputs independently
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/release/pin-release-build-inputs.mjs verify `
+            trusted-build-inputs $env:APP_VERSION $env:SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned release build input verification failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Download untrusted formal Windows candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: formal-candidate-${{ matrix.target_group }}
+          path: formal-verification/candidate
+
+      - name: Admit exact raw and formal candidate pair
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedName = "FyAgent-$env:APP_VERSION-Windows-${{ matrix.architecture }}-setup.exe"
+          $rawEntries = @(Get-ChildItem -LiteralPath 'trusted-build-inputs/raw-${{ matrix.target_group }}' -Force)
+          $candidateEntries = @(Get-ChildItem -LiteralPath formal-verification/candidate -Force)
+          foreach ($entries in @($rawEntries, $candidateEntries)) {
+            if ($entries.Count -ne 1 -or
+                -not ($entries[0] -is [IO.FileInfo]) -or
+                $entries[0].Name -cne $expectedName -or
+                ($entries[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+                $entries[0].Length -le 0) {
+              throw 'Formal verification input is not the exact expected regular file'
+            }
+          }
+          New-Item -ItemType Directory -Force release-assets, signing-fragments | Out-Null
+          $finalAsset = Join-Path release-assets $expectedName
+          Copy-Item -LiteralPath $candidateEntries[0].FullName -Destination $finalAsset
+          "FYAGENT_WINDOWS_RAW_ASSET=$($rawEntries[0].FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "FYAGENT_WINDOWS_FINAL_ASSET=$finalAsset" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "FYAGENT_WINDOWS_SIGNING_FRAGMENT=signing-fragments/windows-signing-${{ matrix.architecture }}.json" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Independently verify and seal formal Windows candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commonArguments = @(
+            'scripts/release/windows-signing.mjs',
+            'verify-sealed',
+            '--raw', $env:FYAGENT_WINDOWS_RAW_ASSET,
+            '--candidate', $env:FYAGENT_WINDOWS_FINAL_ASSET,
+            '--architecture', '${{ matrix.architecture }}',
+            '--version', $env:APP_VERSION,
+            '--source-sha', $env:SOURCE_SHA,
+            '--output', $env:FYAGENT_WINDOWS_SIGNING_FRAGMENT
+          )
+          switch -CaseSensitive ([string]$env:PUBLIC_SIGNING_MODE) {
+            '' {
+              if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -cne '' -or
+                  [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -cne '') {
+                throw 'Absent Windows signing mode cannot define public provider policy.'
+              }
+              & node @commonArguments --mode unsigned
+            }
+            'unsigned' {
+              if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -cne '' -or
+                  [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -cne '') {
+                throw 'Unsigned Windows signing mode cannot define public provider policy.'
+              }
+              & node @commonArguments --mode unsigned
+            }
+            'provider' {
+              if ([string]$env:PUBLIC_EXPECTED_PUBLISHER -ceq '' -or
+                  [string]$env:PUBLIC_EXPECTED_CERTIFICATE_SHA256 -ceq '') {
+                throw 'Provider mode requires complete public publisher and certificate policy.'
+              }
+              & node @commonArguments `
+                --mode provider `
+                --expected-publisher $env:PUBLIC_EXPECTED_PUBLISHER `
+                --expected-certificate-sha256 $env:PUBLIC_EXPECTED_CERTIFICATE_SHA256
+            }
+            default { throw 'FYAGENT_WINDOWS_SIGNING_MODE must be unsigned or provider.' }
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Independent Windows formal verification failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload independently sealed final Windows installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installers-${{ matrix.target_group }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload independently generated Windows signing fragment
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signing-${{ matrix.target_group }}
+          path: signing-fragments/*
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-lifecycle:
+    name: Windows ${{ matrix.architecture }} immutable native lifecycle
+    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}
+    needs:
+      [
+        eligibility,
+        build-windows,
+        pin-release-build-inputs,
+        prove-windows-preflight,
+        sign-windows-formal,
+        seal-windows-formal,
+      ]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target_group: windows-x64
+            architecture: x64
+          - runner: windows-11-arm
+            target_group: windows-arm64
+            architecture: arm64
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+      RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
+    steps:
+      - name: Checkout immutable lifecycle boundary
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Verify clean native lifecycle runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedRunnerArch = if ('${{ matrix.architecture }}' -eq 'arm64') { 'ARM64' } else { 'X64' }
+          if ($env:RUNNER_ARCH -cne $expectedRunnerArch) {
+            throw "Windows lifecycle runner architecture $env:RUNNER_ARCH is not native $expectedRunnerArch"
+          }
+          if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
+            throw 'Windows lifecycle checkout is not the frozen source SHA'
+          }
+
+      - name: Download sealed Windows installer for native lifecycle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installers-${{ matrix.target_group }}
+          path: immutable-lifecycle/installer
+
+      - name: Download sealed Windows signing fragment for native lifecycle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: signing-${{ matrix.target_group }}
+          path: immutable-lifecycle/signing
+
+      - name: Run native install lifecycle against sealed Windows setup bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedAssetName = "FyAgent-$env:APP_VERSION-Windows-${{ matrix.architecture }}-setup.exe"
+          $expectedFragmentName = "windows-signing-${{ matrix.architecture }}.json"
+          $installerEntries = @(Get-ChildItem -LiteralPath immutable-lifecycle/installer -Force)
+          $fragmentEntries = @(Get-ChildItem -LiteralPath immutable-lifecycle/signing -Force)
+          if ($installerEntries.Count -ne 1 -or
+              -not ($installerEntries[0] -is [IO.FileInfo]) -or
+              $installerEntries[0].Name -cne $expectedAssetName -or
+              ($installerEntries[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $installerEntries[0].Length -le 0) {
+            throw 'Sealed lifecycle installer artifact is not the exact expected regular file'
+          }
+          if ($fragmentEntries.Count -ne 1 -or
+              -not ($fragmentEntries[0] -is [IO.FileInfo]) -or
+              $fragmentEntries[0].Name -cne $expectedFragmentName -or
+              ($fragmentEntries[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $fragmentEntries[0].Length -le 0) {
+            throw 'Sealed lifecycle signing artifact is not the exact expected regular file'
+          }
+          $sealedFragment = Get-Content -LiteralPath $fragmentEntries[0].FullName -Raw | ConvertFrom-Json -Depth 8
+          $sealedInstallerSha256 = (
+            Get-FileHash -LiteralPath $installerEntries[0].FullName -Algorithm SHA256
+          ).Hash.ToLowerInvariant()
+          if ($sealedFragment.schema -cne 'fyagent-windows-signing-asset/v1' -or
+              $sealedFragment.version -cne $env:APP_VERSION -or
+              $sealedFragment.sourceSha -cne $env:SOURCE_SHA -or
+              $sealedFragment.asset.name -cne $expectedAssetName -or
+              $sealedFragment.asset.architecture -cne '${{ matrix.architecture }}' -or
+              [int64]$sealedFragment.asset.sizeBytes -ne $installerEntries[0].Length -or
+              $sealedFragment.asset.sha256 -cne $sealedInstallerSha256) {
+            throw 'Sealed Windows lifecycle inputs are not byte-bound to each other'
+          }
+          switch -CaseSensitive ($env:RELEASE_MODE) {
+            'preflight' {
+              if ($sealedFragment.mode -cne 'unsigned' -or
+                  $sealedFragment.asset.signature.status -cne 'NotSigned' -or
+                  $null -ne $sealedFragment.asset.signature.publisher -or
+                  $null -ne $sealedFragment.asset.signature.signerCertificate -or
+                  $null -ne $sealedFragment.asset.signature.timestampCertificate) {
+                throw 'Sealed Windows preflight lifecycle input is not strictly unsigned'
+              }
+            }
+            'formal' {}
+            default { throw "Unsupported sealed Windows lifecycle mode: $env:RELEASE_MODE" }
+          }
+          ./scripts/release/verify-windows-nsis-lifecycle.ps1 `
+            -InstallerPath $installerEntries[0].FullName `
+            -Architecture '${{ matrix.architecture }}' `
+            -AppVersion $env:APP_VERSION
 
   build-linux:
     name: Linux ${{ matrix.architecture }} unsigned installers
@@ -979,9 +1657,82 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  pin-release-build-inputs:
+    name: Pin immutable pre-signer build inputs
+    needs: [eligibility, build-windows, build-linux, build-macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+    env:
+      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
+      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
+    steps:
+      - name: Checkout immutable build-input pinning boundary
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.eligibility.outputs.source_sha }}
+
+      - name: Setup exact pinning Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Verify immutable pinning checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(node --version)" = "v$(tr -d '\r\n' < .node-version)"
+
+      - name: Download exact unsigned Windows build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: raw-windows-*
+          path: release-build-inputs
+
+      - name: Download exact non-Windows installer build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: installers-*
+          path: release-build-inputs
+
+      - name: Download exact platform metadata build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: metadata-*
+          path: release-build-inputs
+
+      - name: Create exact trusted build input bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release/pin-release-build-inputs.mjs create \
+            release-build-inputs trusted-build-inputs "$APP_VERSION" "$SOURCE_SHA"
+
+      - name: Upload immutable trusted build inputs
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trusted-build-inputs
+          path: trusted-build-inputs/*
+          if-no-files-found: error
+          retention-days: 7
+
   verify-assets:
     name: Verify exact installers and generate evidence
-    needs: [eligibility, build-windows, build-linux, build-macos]
+    needs:
+      [
+        eligibility,
+        build-windows,
+        windows-lifecycle,
+        build-linux,
+        build-macos,
+        pin-release-build-inputs,
+      ]
     runs-on: ubuntu-24.04
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
@@ -1004,19 +1755,35 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Download all native installers
+      - name: Download immutable pre-signer build inputs by artifact ID
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: installers-*
+          artifact-ids: ${{ needs['pin-release-build-inputs'].outputs.artifact_id }}
+          path: trusted-build-inputs
+
+      - name: Verify and stage immutable pre-signer build inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release/pin-release-build-inputs.mjs verify \
+            trusted-build-inputs "$APP_VERSION" "$SOURCE_SHA"
+          mkdir downloaded-installers downloaded-metadata
+          cp -R trusted-build-inputs/installers-* downloaded-installers/
+          cp -R trusted-build-inputs/metadata-* downloaded-metadata/
+
+      - name: Download sealed Windows installers
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: installers-windows-*
           path: downloaded-installers
 
-      - name: Download all platform metadata
+      - name: Download private Windows signing fragments
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: metadata-*
-          path: downloaded-metadata
+          pattern: signing-*
+          path: downloaded-signing
 
-      - name: Verify exact ten and generate two machine-readable subjects
+      - name: Verify exact ten and generate three machine-readable subjects
         shell: bash
         run: |
           set -euo pipefail
@@ -1024,9 +1791,18 @@ jobs:
             installers downloaded-installers installers "$APP_VERSION"
           node scripts/release/collect-workflow-artifacts.mjs \
             metadata downloaded-metadata platform-metadata "$APP_VERSION"
+          node scripts/release/collect-workflow-artifacts.mjs \
+            signing downloaded-signing signing-fragments "$APP_VERSION"
           node scripts/release/verify-release-files.mjs installers installers "$APP_VERSION"
           mkdir verified-subjects
           cp installers/* verified-subjects/
+          node scripts/release/windows-signing.mjs aggregate \
+            --x64-status signing-fragments/windows-signing-x64.json \
+            --arm64-status signing-fragments/windows-signing-arm64.json \
+            --assets-directory installers \
+            --version "$APP_VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --output verified-subjects/signing-status.json
           node scripts/generate-download-manifest.mjs \
             installers "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
             'https://github.com/NongHua123/fyagent/releases/download' "$GENERATED_AT" \
@@ -1040,7 +1816,7 @@ jobs:
             verified-subjects/build-metadata.json
           node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"
 
-      - name: Upload the exact twelve attestation subjects
+      - name: Upload the exact thirteen attestation subjects
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: verified-attestation-subjects
@@ -1049,7 +1825,7 @@ jobs:
           retention-days: 7
 
   attest:
-    name: Attest ten installers and two evidence files
+    name: Attest ten installers and three evidence files
     needs: [eligibility, verify-assets]
     runs-on: ubuntu-24.04
     permissions:
@@ -1077,7 +1853,7 @@ jobs:
           name: verified-attestation-subjects
           path: verified-subjects
 
-      - name: Recheck the exact twelve subjects
+      - name: Recheck the exact thirteen subjects
         run: node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"
 
       - name: Generate mandatory GitHub artifact attestation
@@ -1086,7 +1862,7 @@ jobs:
         with:
           subject-path: verified-subjects/*
 
-      - name: Assemble and verify exact thirteen Release attachments
+      - name: Assemble and verify exact fourteen Release attachments
         shell: bash
         env:
           BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
@@ -1152,6 +1928,16 @@ jobs:
           [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]
           [ "$(git rev-parse 'refs/tags/v0.3.0^{commit}')" = "$SOURCE_SHA" ]
           node scripts/release/verify-release-files.mjs attachments release-attachments "$APP_VERSION"
+          jq -e --arg version "$APP_VERSION" --arg source "$SOURCE_SHA" '
+            .schema == "fyagent-windows-signing-status/v1" and
+            .product == "FyAgent" and .version == $version and .sourceSha == $source and
+            (.mode == "signed" or .mode == "unsigned") and
+            ([.assets[].architecture] | sort) == ["arm64", "x64"] and
+            ([.assets[].name] | sort) == ([
+              "FyAgent-" + $version + "-Windows-arm64-setup.exe",
+              "FyAgent-" + $version + "-Windows-x64-setup.exe"
+            ] | sort)
+          ' release-attachments/signing-status.json >/dev/null
           [ -s docs/release-notes/v0.3.0-en.md ] || {
             echo 'English v0.3.0 Release Notes are missing' >&2
             exit 1
@@ -1239,7 +2025,33 @@ jobs:
           }
 
           transaction_marker="fyagent-release-transaction:run=$GITHUB_RUN_ID;attempt=$GITHUB_RUN_ATTEMPT;source=$SOURCE_SHA"
+          signing_disclosure="$(jq -r '
+            [
+              "## Windows installer signing status",
+              "",
+              ("Mode: `" + .mode + "`; source: `" + .sourceSha + "`. The installer rows below are backed by the published `signing-status.json` and `artifact-attestation.sigstore.json` evidence."),
+              "",
+              "| Architecture | Installer | Authenticode | Publisher | Timestamp | SHA-256 | Source SHA | Attestation |",
+              "| --- | --- | --- | --- | --- | --- | --- | --- |"
+            ] +
+            (.assets
+              | sort_by(if .architecture == "x64" then 0 else 1 end)
+              | map(
+                  "| " + .architecture +
+                  " | `" + .name +
+                  "` | `" + .signature.status +
+                  "` | " + ((.signature.publisher // "Not signed") | gsub("[|\\r\\n]"; " ")) +
+                  " | " + (if .signature.timestampCertificate == null then "None" else "Verified" end) +
+                  " | `" + .sha256 +
+                  "` | `" + .sourceSha +
+                  "` | `" + .attestation.bundle +
+                  "` subject `" + .attestation.subjectName +
+                  "` digest `" + .attestation.subjectDigest + "` |"
+                ))
+            | join("\n")
+          ' release-attachments/signing-status.json)"
           notes="$(cat docs/release-notes/v0.3.0-en.md)"
+          notes="${notes}"$'\n\n'"${signing_disclosure}"
           draft_body="${notes}"$'\n\n'"<!-- ${transaction_marker} -->"
           jq -n \
             --arg tag "$RELEASE_TAG" \
@@ -1301,9 +2113,9 @@ jobs:
             "$api_root/repos/$repository/releases/$draft_id/assets?per_page=100")"
           [ "$assets_status" = 200 ]
           jq -e '
-            length == 13 and
-            (map(.id) | unique | length) == 13 and
-            (map(.name) | unique | length) == 13 and
+            length == 14 and
+            (map(.id) | unique | length) == 14 and
+            (map(.name) | unique | length) == 14 and
             all(.state == "uploaded" and .size > 0)
           ' "$assets_json" >/dev/null
 
@@ -1371,7 +2183,7 @@ jobs:
             '.id == $id and .draft == false and .prerelease == false and
              .tag_name == $tag and
              .name == ("FyAgent " + $tag) and .body == $body and
-             (.published_at | type) == "string" and (.assets | length) == 13' \
+             (.published_at | type) == "string" and (.assets | length) == 14' \
             "$published_json" >/dev/null
 
           published_confirm_json="$transaction_root/published-confirmed.json"

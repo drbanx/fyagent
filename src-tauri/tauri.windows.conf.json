@@ -13,5 +13,21 @@
         "minHeight": 600
       }
     ]
+  },
+  "bundle": {
+    "targets": ["nsis"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "template": "nsis/installer.nsi",
+        "installerHooks": "nsis/webview2-command.nsh",
+        "installMode": "perMachine",
+        "languages": ["English", "SimpChinese"],
+        "displayLanguageSelector": false,
+        "startMenuFolder": "FyAgent"
+      }
+    }
   }
 }

@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "installer-actions"]
+members = ["."]
 resolver = "2"
 
 [workspace.package]
@@ -18,10 +18,8 @@ rust-version = "1.85.0"
 
 [lib]
 name = "fyagent_lib"
-# V1 targets desktop only. Tauri's WiX bundler packages every release DLL as a
-# resource with a file KeyPath, which violates ICE38 for this per-user MSI.
-# Keep the Rust/static library outputs used by the desktop host and tests; add
-# `cdylib` back only together with an explicitly supported mobile build path.
+# V1 targets desktop only. Keep the Rust/static library outputs used by the
+# desktop host and tests; add `cdylib` only with a supported mobile build path.
 crate-type = ["staticlib", "rlib"]
 doctest = false
 
