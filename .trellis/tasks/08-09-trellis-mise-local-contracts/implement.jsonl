@@ -1,3 +1,8 @@
 {"file":".trellis/spec/backend/development-environment.md","reason":"Owns uv-managed Python and local execution boundaries."}
 {"file":".trellis/spec/backend/task-runner-contract.md","reason":"Owns mise task signatures, effects, and composition."}
 {"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Requires search and single ownership for shared task helpers."}
+{"file": "scripts/trellis/", "type": "directory", "reason": "Versioned overlay manifest, exact transforms, shared verifier, and atomic reconciler."}
+{"file": "scripts/tasks/trellis.mjs", "reason": "Direct uv-managed Trellis script invocation without a system Python executable name."}
+{"file": "scripts/tasks/format-files.mjs", "reason": "Repository-contained argv-safe reviewed-file Prettier entrypoint."}
+{"file": ".agents/skills/fyagent-trellis/SKILL.md", "reason": "Project-owned checkout, update, reconcile, verify, current-context, and native-evidence runbook."}
+{"file": ".trellis/spec/backend/development-hooks.md", "reason": "Durable ownership and fail-closed contract for the three Codex overlays."}

@@ -1,0 +1,232 @@
+--- a/.codex/hooks/inject-subagent-context.py
++++ b/.codex/hooks/inject-subagent-context.py
+@@ -28,0 +29 @@
++import importlib.util
+@@ -29,0 +31 @@
++import ntpath
+@@ -31,0 +34 @@
++import types
+@@ -128,0 +132,36 @@
++def _load_reviewed_common_module(scripts_dir: Path, module_name: str):
++    """Load one exact common/*.py source without import-path shadowing."""
++    common_dir = (scripts_dir / "common").resolve()
++    package = sys.modules.get("common")
++    if package is None:
++        package = types.ModuleType("common")
++        package.__file__ = str(common_dir / "__init__.py")
++        package.__package__ = "common"
++        package.__path__ = [str(common_dir)]
++        sys.modules["common"] = package
++    elif list(getattr(package, "__path__", ())) != [str(common_dir)]:
++        raise ImportError("common package is not bound to the reviewed Trellis path")
++
++    qualified_name = f"common.{module_name}"
++    source_path = (common_dir / f"{module_name}.py").resolve()
++    existing = sys.modules.get(qualified_name)
++    if existing is not None:
++        existing_path = Path(getattr(existing, "__file__", "")).resolve()
++        if existing_path != source_path:
++            raise ImportError(f"{qualified_name} is not bound to reviewed source")
++        return existing
++
++    spec = importlib.util.spec_from_file_location(qualified_name, source_path)
++    if spec is None or spec.loader is None:
++        raise ImportError(f"cannot load reviewed source {qualified_name}")
++    module = importlib.util.module_from_spec(spec)
++    sys.modules[qualified_name] = module
++    try:
++        spec.loader.exec_module(module)
++    except Exception:
++        sys.modules.pop(qualified_name, None)
++        raise
++    setattr(package, module_name, module)
++    return module
++
++
+@@ -140,2 +178,0 @@
+-    if str(scripts_dir) not in sys.path:
+-        sys.path.insert(0, str(scripts_dir))
+@@ -143 +180 @@
+-        from common.active_task import resolve_active_task  # type: ignore[import-not-found]
++        active_task = _load_reviewed_common_module(scripts_dir, "active_task")
+@@ -147 +184 @@
+-    active = resolve_active_task(
++    active = active_task.resolve_active_task(
+@@ -181,2 +217,0 @@
+-    if str(scripts_dir) not in sys.path:
+-        sys.path.insert(0, str(scripts_dir))
+@@ -184 +219,2 @@
+-        from common.config import get_context_injection_limits  # type: ignore[import-not-found]
++        _load_reviewed_common_module(scripts_dir, "paths")
++        config = _load_reviewed_common_module(scripts_dir, "config")
+@@ -186 +222 @@
+-        return get_context_injection_limits(Path(repo_root))
++        return config.get_context_injection_limits(Path(repo_root))
+@@ -240,0 +277,33 @@
++def _resolve_repo_path(base_path: str, file_path: str) -> str:
++    """Resolve a repository-relative context path without permitting escape.
++
++    JSONL context manifests are repository data, not filesystem authority.
++    Check both native and Windows path forms before resolving symlinks so an
++    entry cannot turn a dispatched sub-agent into an arbitrary local file
++    reader.
++    """
++    if not isinstance(file_path, str) or not file_path.strip():
++        raise ValueError("Trellis context path must be a non-empty string")
++    if "\x00" in file_path:
++        raise ValueError("Trellis context path must not contain NUL bytes")
++    if ".." in file_path.replace("\\", "/").split("/"):
++        raise ValueError("Trellis context path must not contain parent traversal")
++
++    windows_drive, _ = ntpath.splitdrive(file_path)
++    if os.path.isabs(file_path) or ntpath.isabs(file_path) or windows_drive:
++        raise ValueError("Trellis context path must be repository-root relative")
++
++    native_path = file_path.replace("\\", os.sep).replace("/", os.sep)
++    repository_root = os.path.realpath(base_path)
++    candidate = os.path.realpath(os.path.join(repository_root, native_path))
++    try:
++        common_root = os.path.commonpath((repository_root, candidate))
++    except ValueError as exc:
++        raise ValueError(
++            "Trellis context path must remain inside the repository"
++        ) from exc
++    if os.path.normcase(common_root) != os.path.normcase(repository_root):
++        raise ValueError("Trellis context path must remain inside the repository")
++    return candidate
++
++
+@@ -243 +312 @@
+-    full_path = os.path.join(base_path, file_path)
++    full_path = _resolve_repo_path(base_path, file_path)
+@@ -248 +317,3 @@
+-        except Exception:
++        except OSError:
++            if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
++                raise
+@@ -339 +410 @@
+-    full_path = os.path.join(base_path, dir_path)
++    full_path = _resolve_repo_path(base_path, dir_path)
+@@ -355,2 +426,3 @@
+-    except Exception:
+-        pass
++    except OSError:
++        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
++            raise
+@@ -378 +450 @@
+-    full_path = os.path.join(base_path, jsonl_path)
++    full_path = _resolve_repo_path(base_path, jsonl_path)
+@@ -396,0 +469,2 @@
++                    if not isinstance(item, dict):
++                        continue
+@@ -402,0 +477,11 @@
++                    if not isinstance(file_path, str):
++                        raise ValueError(
++                            "Trellis context file entry must be a string"
++                        )
++                    entry_type = item.get("type", "file")
++                    if entry_type not in ("file", "directory"):
++                        raise ValueError(
++                            "Trellis context entry type must be file or directory"
++                        )
++                    _resolve_repo_path(base_path, file_path)
++
+@@ -407 +492 @@
+-                            "type": item.get("type", "file"),
++                            "type": entry_type,
+@@ -413,2 +498,3 @@
+-    except Exception:
+-        pass
++    except OSError:
++        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
++            raise
+@@ -750 +836 @@
+-To get structured package info, run: `python ./{DIR_WORKFLOW}/scripts/get_context.py --mode packages`
++To get structured package info, run: `mise run trellis:context -- --mode packages`
+@@ -868 +954 @@
+-def _handle_codex_subagent_start(input_data: dict) -> None:
++def _handle_codex_subagent_start(input_data: dict) -> bool:
+@@ -878 +964 @@
+-        return
++        return False
+@@ -880,2 +965,0 @@
+-    # Payload cwd first, then our own — some hosts (CodeBuddy IDE 4.10.4)
+-    # report "/" for every hook event. See inject-workflow-state.py.
+@@ -883,6 +967,14 @@
+-    for candidate in (_string_value(input_data.get("cwd")), os.getcwd()):
+-        if not candidate:
+-            continue
+-        repo_root = find_repo_root(candidate)
+-        if repo_root:
+-            break
++    if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
++        # The reviewed runner binds cwd to the hash-checked FyAgent root. A
++        # payload may point at a nested checkout whose unreviewed common modules
++        # would otherwise replace the validated import closure.
++        repo_root = find_repo_root(os.getcwd())
++    else:
++        # Generic shared hosts keep the 0.6.14 compatibility fallback: payload
++        # cwd first, then our own, because some report "/" for every event.
++        for candidate in (_string_value(input_data.get("cwd")), os.getcwd()):
++            if not candidate:
++                continue
++            repo_root = find_repo_root(candidate)
++            if repo_root:
++                break
+@@ -890 +982 @@
+-        return
++        return False
+@@ -901 +993 @@
+-        return
++        return False
+@@ -903,4 +995,3 @@
+-    if subagent_type in AGENTS_REQUIRE_TASK:
+-        task_dir_full = Path(repo_root) / task_dir
+-        if not task_dir_full.is_dir():
+-            return
++    task_dir_full = _resolve_repo_path(repo_root, task_dir)
++    if subagent_type in AGENTS_REQUIRE_TASK and not os.path.isdir(task_dir_full):
++        return False
+@@ -916 +1007 @@
+-        return
++        return False
+@@ -926,0 +1018 @@
++    return True
+@@ -1050 +1142,3 @@
+-    except json.JSONDecodeError:
++    except json.JSONDecodeError as exc:
++        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
++            raise SystemExit(f"invalid Codex hook input JSON: {exc}") from exc
+@@ -1052,0 +1147,2 @@
++        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
++            raise SystemExit("Codex hook input must be a JSON object")
+@@ -1057 +1153 @@
+-            _handle_codex_subagent_start(input_data)
++            handled = _handle_codex_subagent_start(input_data)
+@@ -1059,3 +1155,5 @@
+-            # A native context hook must never prevent Codex from spawning the
+-            # requested child when its runtime state is unavailable or stale.
+-            pass
++            if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
++                raise
++            handled = False
++        if not handled:
++            print(json.dumps({"continue": True}))
+@@ -1079,3 +1177,6 @@
+-    # implement/check need task directory
+-    if subagent_type in AGENTS_REQUIRE_TASK:
+-        if not task_dir:
++    # Any active task pointer must remain inside this repository. Implement
++    # and check additionally require the resolved task directory to exist.
++    if task_dir:
++        try:
++            task_dir_full = _resolve_repo_path(repo_root, task_dir)
++        except ValueError:
+@@ -1083,3 +1184 @@
+-        # Check if task directory exists
+-        task_dir_full = os.path.join(repo_root, task_dir)
+-        if not os.path.exists(task_dir_full):
++        if subagent_type in AGENTS_REQUIRE_TASK and not os.path.isdir(task_dir_full):
+@@ -1086,0 +1186,2 @@
++    elif subagent_type in AGENTS_REQUIRE_TASK:
++        sys.exit(0)

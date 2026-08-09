@@ -1,0 +1,27 @@
+{
+  "schema": "fyagent-trellis-json-transform/v1",
+  "events": [
+    {
+      "name": "UserPromptSubmit",
+      "matcher": null,
+      "baseCommands": {
+        "python": "python -X utf8 .codex/hooks/inject-workflow-state.py",
+        "python3": "python3 -X utf8 .codex/hooks/inject-workflow-state.py"
+      },
+      "outputCommand": "mise run --silent --skip-tools --deny-net codex:hook:workflow-state",
+      "type": "command",
+      "timeout": 15
+    },
+    {
+      "name": "SubagentStart",
+      "matcher": "^(?:trellis-implement|trellis-check|trellis-research)$",
+      "baseCommands": {
+        "python": "python -X utf8 .codex/hooks/inject-subagent-context.py",
+        "python3": "python3 -X utf8 .codex/hooks/inject-subagent-context.py"
+      },
+      "outputCommand": "mise run --silent --skip-tools --deny-net codex:hook:subagent-context",
+      "type": "command",
+      "timeout": 15
+    }
+  ]
+}

@@ -9,6 +9,10 @@ import { describe, expect, it } from "vitest";
 import * as taskLibModule from "../scripts/tasks/lib.mjs";
 // @ts-expect-error The task runner executes this JavaScript helper directly.
 import * as hostNativeModule from "../scripts/tasks/host-native.mjs";
+// @ts-expect-error The task runner executes this JavaScript helper directly.
+import * as formatFilesModule from "../scripts/tasks/format-files.mjs";
+// @ts-expect-error The task runner executes this JavaScript helper directly.
+import * as trellisTaskModule from "../scripts/tasks/trellis.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -120,6 +124,101 @@ describe("canonical mise task API", () => {
 
     for (const command of ["npm", "npx", "pnpx", "node", "cargo"]) {
       expect(resolveTaskExecutable(command, "win32"), command).toBe(command);
+    }
+  });
+
+  it("invokes Trellis scripts directly through uv without a system Python executable name", () => {
+    const args = trellisTaskModule.trellisUvArguments(
+      ".trellis/scripts/task.py",
+      ["list", "--json"],
+    ) as string[];
+    expect(args).toEqual([
+      "run",
+      "--locked",
+      ".trellis/scripts/task.py",
+      "list",
+      "--json",
+    ]);
+    expect(args).not.toEqual(
+      expect.arrayContaining(["python", "python3", "py"]),
+    );
+  });
+
+  it("formats only reviewed repository files and preserves argv boundaries", () => {
+    const fixture = fs.mkdtempSync(path.join(ROOT, ".format-files-test-"));
+    const relativeFixture = path.relative(ROOT, fixture);
+    const spaced = path.join(relativeFixture, "with space.json");
+    const unicode = path.join(relativeFixture, "配置.json");
+    fs.writeFileSync(path.join(ROOT, spaced), "{}\n");
+    fs.writeFileSync(path.join(ROOT, unicode), "{}\n");
+
+    const calls: Array<{ command: string; args: string[] }> = [];
+    try {
+      formatFilesModule.formatFiles(
+        [spaced, path.join(ROOT, unicode)],
+        (command: string, args: string[]) => calls.push({ command, args }),
+      );
+      expect(calls).toEqual([
+        {
+          command: "pnpm",
+          args: [
+            "exec",
+            "prettier",
+            "--write",
+            "--",
+            spaced,
+            path.join(ROOT, unicode),
+          ],
+        },
+      ]);
+
+      for (const invalid of [
+        [],
+        ["--config"],
+        ["../outside.json"],
+        [path.join(os.tmpdir(), "outside.json")],
+        [relativeFixture],
+      ]) {
+        expect(
+          () => formatFilesModule.validateFormatFiles(invalid),
+          JSON.stringify(invalid),
+        ).toThrow();
+      }
+
+      if (process.platform !== "win32") {
+        const outside = path.join(os.tmpdir(), `fyagent-format-${process.pid}`);
+        const link = path.join(fixture, "escape.json");
+        fs.writeFileSync(outside, "{}\n");
+        fs.symlinkSync(outside, link);
+        expect(() =>
+          formatFilesModule.validateFormatFiles([path.relative(ROOT, link)]),
+        ).toThrow(/regular non-symlink file/);
+        fs.rmSync(outside, { force: true });
+      }
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("forwards whitespace and Unicode paths through the real format:files task", () => {
+    const fixture = fs.mkdtempSync(path.join(ROOT, ".format-files-mise-"));
+    const first = path.join(fixture, "with space.json");
+    const second = path.join(fixture, "配置.json");
+    fs.writeFileSync(first, '{"value":1}\n');
+    fs.writeFileSync(second, '{"value":2}\n');
+
+    try {
+      const result = mise(
+        "format:files",
+        "--",
+        path.relative(ROOT, first),
+        path.relative(ROOT, second),
+      );
+      expect(result.status, output(result)).toBe(0);
+      expect(fs.readFileSync(first, "utf8")).toBe('{ "value": 1 }\n');
+      expect(fs.readFileSync(second, "utf8")).toBe('{ "value": 2 }\n');
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
     }
   });
 

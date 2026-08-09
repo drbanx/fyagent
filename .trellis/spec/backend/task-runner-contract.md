@@ -38,10 +38,10 @@ Every public task has:
 - `interactive = true`, `raw = true`, or an explicit confirmation only when
   its I/O contract requires that behavior.
 
-The v0.3.0 baseline contains the eighty tasks generated in
+The canonical required subset is generated from live task metadata into
 `docs/fyagent/development/mise-tasks.md`. Later requirements may add tasks when
-they satisfy this contract; validation requires the canonical baseline as a
-subset instead of forbidding safe extensions.
+they satisfy this contract; validation requires the named baseline as a subset
+instead of freezing a task count.
 
 ## 3. Composition and Side Effects
 
@@ -104,6 +104,14 @@ read those values, parse variadic shell-escaped lists into argv arrays, validate
 SemVer/package/tag/enum/path inputs, and spawn a command without a shell.
 Arguments must never be concatenated into a command string.
 
+Trellis wrappers invoke each uv-managed `.py` script directly with
+`uv run --locked <script>`; they do not insert a system `python`, `python3`, or
+`py` executable token. `format:files` accepts one or more reviewed files and
+forwards them as distinct argv entries to the repository-locked Prettier. It
+rejects empty input, option-like values, parent traversal, repository-external
+paths, directories, symlinks, and realpath escapes. Repository-relative and
+absolute-inside-repository paths may contain whitespace or Unicode.
+
 On native Windows, local mise tasks resolve only the actually used `pnpm`
 command to `pnpm.exe`. This matches the audited `mise.lock` assets
 `pnpm-win-x64.exe` and `pnpm-win-arm64.exe`; both carry required SHA-256
@@ -121,7 +129,12 @@ values reach the wrapper.
 
 - `bootstrap` may install locked tools/dependencies but may not trust, install
   system packages, change Git, refresh locks, build, or publish.
-- Formatting is an explicit source-modifying leaf and does not prompt.
+- Formatting is an explicit source-modifying leaf and does not prompt. The
+  full `format` task retains its frontend-wide behavior; `format:files` is the
+  safe reviewed-subset entrypoint.
+- `trellis:reconcile` is source-modifying and applies only exact declared
+  overlays after a complete no-write preflight. `trellis:verify` is read-only
+  and belongs to `check:contracts`.
 - Version, dependency, toolchain, Python lock/dependency, icon, task-doc, and
   clean tasks preview by default; `--apply` is required to write.
 - `version:set` and `version:bump` delegate to the canonical atomic version
@@ -151,12 +164,12 @@ are an explicit Child 6 handoff allowlist. A new legacy occurrence fails
 `docs-contract-check.mjs`; removing an allowlisted occurrence is always safe.
 Retired local cross-build tasks have no alias or deprecation forwarder.
 
-The same checker owns a narrower, explicit operational-Trellis document set:
-`.trellis/workflow.md`, the project-local `fyagent-trellis` entry skill, and the
-`trellis-start`, `trellis-continue`, `trellis-before-dev`,
-`trellis-brainstorm`, `trellis-check`, and `trellis-finish-work` lifecycle
-skills. In that set, every use of mise's retired execution subcommand with its
-double-dash separator, or a bare `/finish-work` occurrence, is forbidden.
+The same checker owns one explicit operational-Trellis document: the
+project-local `fyagent-trellis` entry skill. Bundled Trellis workflow and
+lifecycle skills remain byte-for-byte upstream-owned templates; FyAgent setup,
+command, native-evidence, and update rules must not be reintroduced there. In
+the project entrypoint, every use of mise's retired execution subcommand with
+its double-dash separator, or a bare `/finish-work` occurrence, is forbidden.
 Direct `python`/`python3`/`py` commands are forbidden only when their first
 script operand is `.trellis/scripts/*.py`; `uv run` is forbidden when its
 command is such a script or a Python launcher whose first script operand is
@@ -165,9 +178,9 @@ of applying those rules to arbitrary prose: fenced lines, inline code,
 `Run`/`Execute` imperatives, list items, blockquotes, shell prompts, and
 backslash, PowerShell-backtick, or cmd-caret continuations are command
 contexts. Unrelated Python/uv commands and prose remain outside this narrow
-entrypoint rule. In `trellis-check`, command candidates may not use recursive
-grep through `-r`, `-R`, a combined short-option cluster, or `--recursive`;
-the skill uses `rg` instead.
+entrypoint rule. Command candidates may not use recursive grep through `-r`,
+`-R`, a combined short-option cluster, or `--recursive`; the project entrypoint
+uses `rg` instead.
 
 Every concrete `mise run <task>` reference must resolve through the live
 task-definition loader. The parser accepts the current documented boolean
@@ -176,10 +189,8 @@ supported), and the `--` option boundary. An unknown option fails closed, and
 task membership uses an own-property check so inherited object keys are not
 treated as task definitions.
 
-The workflow must retain its host-native local-execution and synchronous
-whole-run GitHub Actions normative lines byte-for-byte. The workflow,
-`trellis-start`, and `fyagent-trellis` each contain exactly one setup block
-bounded by the project-owned
+The `fyagent-trellis` entrypoint contains exactly one setup block bounded by the
+project-owned
 `<!-- fyagent:new-checkout-environment-gate:start -->` and matching `:end`
 markers. Inside that block, an affirmative new/fresh-checkout rule assigns
 explicit configuration review and manual execution to a human developer;
@@ -188,12 +199,13 @@ exactly one fenced command block contains, in order and with no extra command,
 ties the prohibition on automatic trust/bootstrap execution to skills, hooks,
 and repository tasks.
 
-This operational scan is intentionally not recursive. Generic
-`trellis-meta/**` and `trellis-channel/**`, `.trellis/scripts/**`, historical
-design packages and task archives, hook-contract Wrong examples, and CI's
-documented non-mise execution boundary remain outside it. Those files describe
-reusable architecture, implementation leaves, frozen evidence, negative
-examples, or GitHub Actions rather than FyAgent's routine local command API.
+This operational scan is intentionally not recursive. Upstream lifecycle
+templates, generic `trellis-meta/**` and `trellis-channel/**`,
+`.trellis/scripts/**`, historical design packages and task archives,
+hook-contract Wrong examples, and CI's documented non-mise execution boundary
+remain outside it. Those files describe reusable architecture, implementation
+leaves, frozen evidence, negative examples, or GitHub Actions rather than
+FyAgent's routine local command API.
 
 ## 7. Validation / Error Matrix
 
@@ -219,7 +231,10 @@ examples, or GitHub Actions rather than FyAgent's routine local command API.
 | Generated task reference differs by one byte                          | `tasks:docs:check` fails               |
 | New active doc uses a legacy entrypoint                               | `docs-contract-check.mjs` fails        |
 | Operational Trellis doc bypasses mise or names an unknown task        | `docs-contract-check.mjs` fails        |
-| Workflow/setup safety marker disappears during a Trellis update       | `docs-contract-check.mjs` fails        |
+| Project setup safety marker disappears during a Trellis update        | `docs-contract-check.mjs` fails        |
+| Trellis wrapper names a system Python executable                      | Task contract test fails               |
+| `format:files` receives an option, directory, symlink, or escape      | Reject before Prettier starts          |
+| Managed Trellis divergence is undeclared or stale                     | `trellis:verify` fails                 |
 
 ## 8. Tests Required
 
@@ -228,6 +243,11 @@ examples, or GitHub Actions rather than FyAgent's routine local command API.
   Rust order, retired task, and forbidden command scans.
 - Real parameter/flag transport smoke tests, including dry-run `version:set`,
   a test filter, Python preview input, and upstream tag validation.
+- Pure Trellis uv-argv tests requiring direct script invocation without a
+  system Python executable name.
+- `format:files` tests for empty input, option injection, parent/outside paths,
+  directories, symlinks, realpath escape, and successful multi-file whitespace,
+  Unicode, and absolute-inside-repository argv transport.
 - Pure executable-resolution tests must require `pnpm.exe` only on Win32,
   preserve direct non-Windows commands, bind both native Windows pnpm lock
   assets and checksums, and prove the DEP0040 checker uses the shared resolver
@@ -256,12 +276,12 @@ examples, or GitHub Actions rather than FyAgent's routine local command API.
 - Clean preview tests proving canonical repository-only targets and zero writes.
 - Docs generation/check tests including a description containing `|` to prove
   table escaping.
-- Operational-Trellis documentation fixtures covering direct Python/py, uv,
+- Project-entrypoint documentation fixtures covering direct Python/py, uv,
   `mise exec`, bare `/finish-work`, every recursive-grep spelling, Markdown
   command contexts and continuations, mise options and own-property task
-  lookup, the bounded new-checkout quality gate, exact host-native/Actions
-  lines, and the explicit generic, internal, historical, Wrong-example, and CI
-  exclusions.
+  lookup, the bounded new-checkout quality gate, update/native evidence rules,
+  and the explicit upstream, generic, internal, historical, Wrong-example, and
+  CI exclusions.
 - `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
   `taskDocs.test.ts`, `systemCheck.test.ts`, and
   `localBuildBoundary.test.ts`.

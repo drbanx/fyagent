@@ -42,3 +42,13 @@ arg "[task]" help="Optional task identifier"
 '''
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = "node scripts/tasks/trellis.mjs validate"
+
+["trellis:reconcile"]
+description = "Reapply declared FyAgent overlays to exact known Trellis templates"
+env = { FYAGENT_TASK_EFFECT = "source-modifying" }
+run = "node scripts/trellis/reconcile.mjs"
+
+["trellis:verify"]
+description = "Verify managed Trellis files and declared FyAgent overlays without writes"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/trellis/verify.mjs"

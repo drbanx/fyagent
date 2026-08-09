@@ -3,7 +3,7 @@
   "name": "trellis-mise-local-contracts",
   "title": "Trellis and mise local contracts",
   "description": "Make Trellis overlays, uv execution, and stable mise task contracts deterministic and verifiable.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "Trellis managed files, mise tasks, tooling tests, and project runbook",
   "package": null,
@@ -22,5 +22,7 @@
   "parent": "08-09-fyagent-modernization",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "status": "completed"
+  }
 }

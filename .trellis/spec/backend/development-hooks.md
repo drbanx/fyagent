@@ -27,6 +27,31 @@ SubagentStart (trellis-implement|trellis-check|trellis-research):
 Both registrations keep the nested Codex hook schema and a 15-second timeout.
 They must not call Python, uv, or a hook script directly.
 
+### Trellis template overlay ownership
+
+Trellis owns the canonical bases for `.codex/hooks.json`,
+`.codex/hooks/inject-workflow-state.py`, and
+`.codex/hooks/inject-subagent-context.py`. FyAgent preserves its reviewed task
+boundary and hook hardening through exactly three declared overlays in
+`scripts/trellis/overlay-manifest.json` using schema
+`fyagent-trellis-overlay/v1`.
+
+The JSON registration uses a structural transform that validates the event,
+matcher, command-hook shape, and timeout before replacing only the two
+canonical commands. Each Python hook uses an exact-preimage unified patch.
+Every entry records its owner, reason, accepted upstream base SHA-256 values,
+transform file, and expected output SHA-256.
+
+`mise run trellis:reconcile` accepts only an exact expected output (idempotent
+no-op) or an exact declared upstream base. It preflights every entry and output
+hash before atomically writing any target. `mise run trellis:verify` is
+read-only: it dynamically compares all paths in
+`.trellis/.template-hashes.json`, requires every divergence to map uniquely to
+one exact overlay output, and rejects missing files, undeclared divergence,
+stale overlays, unknown owners, mismatched base metadata, or output drift.
+The project-owned `fyagent-trellis` skill must never become a managed upstream
+path or overlay target.
+
 The three task names are stable:
 
 ```text

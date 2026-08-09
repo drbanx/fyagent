@@ -120,21 +120,9 @@ describe("operational Trellis documentation contract", () => {
     "This gate is not automatic. Skills, hooks, and repository tasks must not automatically invoke `mise trust` or trigger `mise run bootstrap`.",
   ].join("\n");
   const manualSetup = [gateStart, manualSetupBody, gateEnd].join("\n");
-  const workflowBoundaries = [
-    "6. **Keep local execution host-native** — local build, test, package, and verification commands target only the current OS and architecture; matching native GitHub Actions runners own every non-host gate",
-    "7. **Keep Actions evidence synchronous** — after an authorized trigger, the initiating flow waits for the whole run to complete, inspects the final result once, and fetches failed-job logs only on failure",
-  ].join("\n");
-
-  it("scans only the project entrypoint, workflow, and six lifecycle skills", () => {
+  it("scans only the project-owned entrypoint, not upstream Trellis templates", () => {
     expect(docsChecker.OPERATIONAL_TRELLIS_DOCUMENTS).toEqual([
-      ".trellis/workflow.md",
       ".agents/skills/fyagent-trellis/SKILL.md",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      ".agents/skills/trellis-brainstorm/SKILL.md",
-      ".agents/skills/trellis-check/SKILL.md",
-      ".agents/skills/trellis-continue/SKILL.md",
-      ".agents/skills/trellis-finish-work/SKILL.md",
-      ".agents/skills/trellis-start/SKILL.md",
     ]);
     expect(docsChecker.NEW_CHECKOUT_GATE_MARKERS).toEqual({
       start: gateStart,
@@ -145,6 +133,8 @@ describe("operational Trellis documentation contract", () => {
   it.each([
     ".agents/skills/trellis-meta/references/customize-local/overview.md",
     ".agents/skills/trellis-channel/references/progress-debugging.md",
+    ".agents/skills/trellis-start/SKILL.md",
+    ".trellis/workflow.md",
     ".trellis/scripts/task.py",
     ".trellis/spec/backend/development-hooks.md",
     ".trellis/spec/backend/github-ci-workflow.md",
@@ -542,13 +532,13 @@ describe("operational Trellis documentation contract", () => {
     ).toThrow(expected);
   });
 
-  it.each([
-    [".agents/skills/fyagent-trellis/SKILL.md", manualSetup],
-    [".agents/skills/trellis-start/SKILL.md", manualSetup],
-    [".trellis/workflow.md", `${manualSetup}\n${workflowBoundaries}`],
-  ])("accepts explicit human-controlled setup in %s", (file, source) => {
+  it("accepts explicit human-controlled setup in the project entrypoint", () => {
     expect(() =>
-      docsChecker.validateOperationalTrellisDocument(file, source, tasks),
+      docsChecker.validateOperationalTrellisDocument(
+        ".agents/skills/fyagent-trellis/SKILL.md",
+        manualSetup,
+        tasks,
+      ),
     ).not.toThrow();
   });
 
@@ -627,38 +617,26 @@ describe("operational Trellis documentation contract", () => {
   ])("rejects setup quality drift: %s", (_label, source, expected) => {
     expect(() =>
       docsChecker.validateOperationalTrellisDocument(
-        ".agents/skills/trellis-start/SKILL.md",
+        ".agents/skills/fyagent-trellis/SKILL.md",
         source,
         tasks,
       ),
     ).toThrow(expected);
   });
 
-  it.each([
-    [
-      "host-native suffix",
-      workflowBoundaries.replace(
-        "matching native GitHub Actions runners own every non-host gate",
-        "GitHub Actions may cover another platform",
-      ),
-    ],
-    [
-      "synchronous Actions suffix",
-      workflowBoundaries.replace(
-        "inspects the final result once, and fetches failed-job logs only on failure",
-        "periodically samples the result",
-      ),
-    ],
-  ])(
-    "requires the complete normative workflow line: %s",
-    (_label, boundaries) => {
-      expect(() =>
-        docsChecker.validateOperationalTrellisDocument(
-          ".trellis/workflow.md",
-          `${manualSetup}\n${boundaries}`,
-          tasks,
-        ),
-      ).toThrow(/missing workflow boundary/);
-    },
-  );
+  it("keeps FyAgent update and native-evidence rules in the project entrypoint", () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, ".agents/skills/fyagent-trellis/SKILL.md"),
+      "utf8",
+    );
+    for (const contract of [
+      "trellis update --dry-run",
+      "mise run trellis:reconcile",
+      "mise run trellis:verify",
+      "matching native GitHub Actions runners own",
+      "Local structure checks and cross-compilation do not replace native",
+    ]) {
+      expect(source).toContain(contract);
+    }
+  });
 });

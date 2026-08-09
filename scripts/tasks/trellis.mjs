@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import process from "node:process";
-import { capture, fail, run, usageList, usageValue } from "./lib.mjs";
+import { capture, fail, isMain, run, usageList, usageValue } from "./lib.mjs";
 
 const scripts = Object.freeze({
   "init-developer": ".trellis/scripts/init_developer.py",
@@ -11,19 +11,19 @@ const scripts = Object.freeze({
   "session-add": ".trellis/scripts/add_session.py",
 });
 
+export function trellisUvArguments(script, args = []) {
+  return ["run", "--locked", script, ...args];
+}
+
 function invoke(script, args = []) {
-  run("uv", ["run", "--locked", "python", script, ...args]);
+  run("uv", trellisUvArguments(script, args));
 }
 
 function activeTaskDirectories() {
-  const output = capture("uv", [
-    "run",
-    "--locked",
-    "python",
-    scripts.task,
-    "list",
-    "--json",
-  ]);
+  const output = capture(
+    "uv",
+    trellisUvArguments(scripts.task, ["list", "--json"]),
+  );
   const report = JSON.parse(output);
   if (!report || !Array.isArray(report.tasks)) {
     throw new Error("Trellis task list did not return a tasks array");
@@ -54,37 +54,43 @@ function forwardedArguments(name) {
   return usageArguments.length > 0 ? usageArguments : rawArguments;
 }
 
-try {
-  const command = process.argv[2];
-  if (command === "validate") {
-    const task = usageValue("task");
-    const directories = task ? [task] : activeTaskDirectories();
-    for (const directory of directories) {
-      invoke(scripts.task, ["validate", directory]);
+export function main() {
+  try {
+    const command = process.argv[2];
+    if (command === "validate") {
+      const task = usageValue("task");
+      const directories = task ? [task] : activeTaskDirectories();
+      for (const directory of directories) {
+        invoke(scripts.task, ["validate", directory]);
+      }
+      if (!task) {
+        console.log(`Validated ${directories.length} active Trellis task(s)`);
+      }
+    } else if (command === "init-developer") {
+      const name = usageValue("name");
+      if (!name || !/^[\w.-]+$/u.test(name)) {
+        throw new Error(
+          "Developer identity may contain only letters, digits, _, -, and .",
+        );
+      }
+      invoke(scripts[command], [name]);
+    } else if (command === "get-developer") {
+      invoke(scripts[command]);
+    } else if (command === "context") {
+      invoke(scripts[command], forwardedArguments("args"));
+    } else if (command === "task" || command === "session-add") {
+      const args = forwardedArguments("args");
+      if (args.length === 0)
+        throw new Error("At least one forwarded argument is required");
+      invoke(scripts[command], args);
+    } else {
+      throw new Error(`Unknown Trellis task command: ${command ?? ""}`);
     }
-    if (!task) {
-      console.log(`Validated ${directories.length} active Trellis task(s)`);
-    }
-  } else if (command === "init-developer") {
-    const name = usageValue("name");
-    if (!name || !/^[\w.-]+$/u.test(name)) {
-      throw new Error(
-        "Developer identity may contain only letters, digits, _, -, and .",
-      );
-    }
-    invoke(scripts[command], [name]);
-  } else if (command === "get-developer") {
-    invoke(scripts[command]);
-  } else if (command === "context") {
-    invoke(scripts[command], forwardedArguments("args"));
-  } else if (command === "task" || command === "session-add") {
-    const args = forwardedArguments("args");
-    if (args.length === 0)
-      throw new Error("At least one forwarded argument is required");
-    invoke(scripts[command], args);
-  } else {
-    throw new Error(`Unknown Trellis task command: ${command ?? ""}`);
+  } catch (error) {
+    fail(error);
   }
-} catch (error) {
-  fail(error);
+}
+
+if (isMain(import.meta.url)) {
+  main();
 }

@@ -8,28 +8,15 @@ import { loadTaskDefinitions } from "./task-contract-check.mjs";
 
 const GENERATED_DOC = "docs/fyagent/development/mise-tasks.md";
 export const OPERATIONAL_TRELLIS_DOCUMENTS = Object.freeze([
-  ".trellis/workflow.md",
   ".agents/skills/fyagent-trellis/SKILL.md",
-  ".agents/skills/trellis-before-dev/SKILL.md",
-  ".agents/skills/trellis-brainstorm/SKILL.md",
-  ".agents/skills/trellis-check/SKILL.md",
-  ".agents/skills/trellis-continue/SKILL.md",
-  ".agents/skills/trellis-finish-work/SKILL.md",
-  ".agents/skills/trellis-start/SKILL.md",
 ]);
 const MANUAL_SETUP_DOCUMENTS = new Set([
-  ".trellis/workflow.md",
   ".agents/skills/fyagent-trellis/SKILL.md",
-  ".agents/skills/trellis-start/SKILL.md",
 ]);
 export const NEW_CHECKOUT_GATE_MARKERS = Object.freeze({
   start: "<!-- fyagent:new-checkout-environment-gate:start -->",
   end: "<!-- fyagent:new-checkout-environment-gate:end -->",
 });
-const WORKFLOW_BOUNDARIES = Object.freeze([
-  "6. **Keep local execution host-native** — local build, test, package, and verification commands target only the current OS and architecture; matching native GitHub Actions runners own every non-host gate",
-  "7. **Keep Actions evidence synchronous** — after an authorized trigger, the initiating flow waits for the whole run to complete, inspects the final result once, and fetches failed-job logs only on failure",
-]);
 const MISE_CLI = "mi" + "se";
 const TRUST_ACTION = "tr" + "ust";
 const MANUAL_SETUP_COMMAND_PARTS = Object.freeze([
@@ -769,11 +756,7 @@ function validateCommandCandidates(file, source) {
         }
       }
 
-      if (
-        file === ".agents/skills/trellis-check/SKILL.md" &&
-        /^grep(?:\.exe)?$/i.test(program) &&
-        hasRecursiveGrepOption(tokens)
-      ) {
+      if (/^grep(?:\.exe)?$/i.test(program) && hasRecursiveGrepOption(tokens)) {
         throw new Error(`recursive grep command found in ${file}; use rg`);
       }
     }
@@ -898,14 +881,6 @@ export function validateOperationalTrellisDocument(file, source, tasks) {
 
   if (MANUAL_SETUP_DOCUMENTS.has(file)) {
     validateManualSetupGuidance(file, source);
-  }
-
-  if (file === ".trellis/workflow.md") {
-    for (const boundary of WORKFLOW_BOUNDARIES) {
-      if (!source.split(/\r?\n/).includes(boundary)) {
-        throw new Error(`${file} is missing workflow boundary: ${boundary}`);
-      }
-    }
   }
 }
 

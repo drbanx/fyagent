@@ -1,0 +1,52 @@
+{
+  "schema": "fyagent-trellis-overlay/v1",
+  "hash": "sha256-lf",
+  "entries": [
+    {
+      "path": ".codex/hooks.json",
+      "owner": ".trellis/spec/backend/development-hooks.md",
+      "reason": "Route canonical Codex hook registrations through reviewed read-only mise tasks.",
+      "upstreamIdentities": {
+        "python": "c7c638e0982599b0692ad97bc835651c9fa83af5310be5d86a58c59132eb2dec",
+        "python3": "85a58ba7cdf1e19e7f75ddcc64e5680180c487ca266a74bd5005f31abeee2e02"
+      },
+      "transform": {
+        "type": "json-operations",
+        "file": "scripts/trellis/overlays/hooks-json-transform.json"
+      },
+      "expectedOutputSha256": "91d16e02245771d0769f907a9c4b613afbffcfe4643dce5a926f4f23676493fd"
+    },
+    {
+      "path": ".codex/hooks/inject-subagent-context.py",
+      "owner": ".trellis/spec/backend/development-hooks.md",
+      "reason": "Preserve reviewed import, containment, strict-input, and parent-session hardening around the upstream context hook.",
+      "upstreamIdentities": {
+        "python": "607ed624a042f974b3adf6301f19de976874446d3bcfc7475ce664b0e270c2a3",
+        "python3": "c2dff614dc1ca5cb9e225752d1c49291e277ef109e3640a065b835b61016bec6"
+      },
+      "transform": {
+        "type": "unified-diff",
+        "files": {
+          "python": "scripts/trellis/overlays/inject-subagent-context-python.patch",
+          "python3": "scripts/trellis/overlays/inject-subagent-context-python3.patch"
+        }
+      },
+      "expectedOutputSha256": "b5825c4b7f1e576337416b0d0ac4b85e0e8cf9a6678f32db1ffff7bf5cb7f31a"
+    },
+    {
+      "path": ".codex/hooks/inject-workflow-state.py",
+      "owner": ".trellis/spec/backend/development-hooks.md",
+      "reason": "Preserve reviewed import, task-path, strict-input, and breadcrumb hardening around the upstream workflow hook.",
+      "upstreamIdentities": {
+        "all": "89cef2b197dd61a731b946114207d2601b240058941ccf28622ee211d9c62eb3"
+      },
+      "transform": {
+        "type": "unified-diff",
+        "files": {
+          "all": "scripts/trellis/overlays/inject-workflow-state.patch"
+        }
+      },
+      "expectedOutputSha256": "916212b7c66cf09c543e73fc5d3446a8287a41d9a85ec5d7006372d2419570ce"
+    }
+  ]
+}

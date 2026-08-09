@@ -37,6 +37,7 @@ export const REQUIRED_TASKS = Object.freeze([
   "env:check",
   "format",
   "format:check",
+  "format:files",
   "python:add:dev",
   "python:check",
   "python:lock",
@@ -73,9 +74,11 @@ export const REQUIRED_TASKS = Object.freeze([
   "trellis:context",
   "trellis:get-developer",
   "trellis:init-developer",
+  "trellis:reconcile",
   "trellis:session:add",
   "trellis:task",
   "trellis:validate",
+  "trellis:verify",
   "typecheck",
   "upstream:audit",
   "upstream:check",
@@ -98,6 +101,7 @@ export const PARAMETERIZED_TASKS = Object.freeze([
   "deps:update:frontend",
   "deps:update:rust",
   "env:check",
+  "format:files",
   "python:add:dev",
   "python:lock",
   "python:remove:dev",
@@ -338,6 +342,18 @@ export function validateTaskContract() {
     JSON.stringify(expectedRustSequence)
   ) {
     throw new Error("check:backend must preserve fmt/check/clippy/test order");
+  }
+  if (!sequence(tasks["check:contracts"]).includes("trellis:verify")) {
+    throw new Error("check:contracts must include read-only trellis:verify");
+  }
+  for (const [name, effect] of [
+    ["format:files", "source-modifying"],
+    ["trellis:reconcile", "source-modifying"],
+    ["trellis:verify", "read-only"],
+  ]) {
+    if (tasks[name].env.FYAGENT_TASK_EFFECT !== effect) {
+      throw new Error(`${name} must declare ${effect} effects`);
+    }
   }
   if (
     !Array.isArray(tasks.check.run) ||

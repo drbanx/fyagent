@@ -35,6 +35,7 @@ mise run trellis:context
 mise run trellis:context -- --mode phase
 mise run trellis:task -- current --source
 mise run trellis:validate -- .trellis/tasks/<task-dir>
+mise run trellis:verify
 ```
 
 Use `trellis-start` or `trellis-continue` to enter the lifecycle,
@@ -43,9 +44,56 @@ Use `trellis-start` or `trellis-continue` to enter the lifecycle,
 after work commits exist. Planning approval, implementation approval, quality
 checks, work commits, task archive, and journal remain distinct gates.
 
+## Managed template updates
+
+Trellis owns its bundled lifecycle templates. FyAgent-specific setup, command,
+native-execution, and release-evidence rules belong here or in an active
+project spec; do not edit an upstream lifecycle skill to carry them.
+
+Use this reviewed update sequence when adopting a Trellis release:
+
+1. Run `trellis update --dry-run` and inspect every managed-path decision.
+2. Have a human developer review the proposed upstream changes, migrations,
+   and backups before applying them.
+3. Run `trellis update` with the reviewed options.
+4. Run `mise run trellis:reconcile` to apply only declared overlays whose
+   current bytes match an approved upstream base.
+5. Run `mise run trellis:verify` and review `git diff`, targeted tests, and all
+   affected active specs before committing.
+
+The overlay authority is `scripts/trellis/overlay-manifest.json`. Unknown
+preimages, missing managed files, undeclared divergence, stale overlays, and
+output-hash drift are errors. `trellis:reconcile` modifies source only after
+every declared transform passes its preflight; `trellis:verify` is read-only.
+The Trellis CLI remains the only owner of update dry-run, migration, and backup
+semantics.
+
+For a reviewed subset of repository files, use
+`mise run format:files -- <files...>`. The full `mise run format` task retains
+its existing frontend-wide behavior.
+
+## Execution and evidence
+
+- Resolve current task, phase, packages, and records through the mise-backed
+  Trellis tasks above. Treat `.trellis/scripts/**` as internal implementation.
+- Before changing code, load the active task artifacts and the relevant
+  `.trellis/spec/**` owners. Current task and active spec override historical
+  archives; archived task content is evidence, not current authority.
+- Local build, test, package, and verification commands target only the
+  current OS and architecture; matching native GitHub Actions runners own
+  every non-host gate.
+- After an authorized Actions trigger, the initiating flow waits for the whole
+  run to complete, inspects the final result once, and fetches failed-job logs
+  only on failure.
+- A cross-platform or release claim requires evidence from the matching native
+  job. Local structure checks and cross-compilation do not replace native
+  installer, runtime, signing, or architecture evidence.
+
 ## Boundaries
 
 - Do not call Trellis Python scripts directly in routine project instructions.
+- Do not add `fyagent-trellis` itself to upstream managed-template ownership or
+  to the overlay manifest.
 - Do not make a skill, hook, or repository task automatically trust or
   bootstrap a checkout. A repository task must never change mise trust state.
 - Do not make a repository task install system packages, change Git remotes,

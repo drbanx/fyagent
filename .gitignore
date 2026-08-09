@@ -17,7 +17,6 @@ mise.*.local.lock
 *.tsbuildinfo
 .npmrc
 CLAUDE.md
-AGENTS.md
 GEMINI.md
 /.claude
 /.gemini
