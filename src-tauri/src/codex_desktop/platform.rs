@@ -219,7 +219,10 @@ pub(crate) enum RestartCandidateInspection {
     NotInstalled,
     Trusted(Vec<TrustedInstallationCandidate>),
     AmbiguousInstallations,
-    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
+    // Only macOS currently constructs this cross-platform outcome. The common
+    // service still matches it on every target so the public state remains
+    // stable when another adapter gains equivalent fail-closed discovery.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     UntrustedTarget,
     Unsupported(UnsupportedReason),
 }

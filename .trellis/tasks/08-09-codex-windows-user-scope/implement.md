@@ -59,3 +59,13 @@ Windows-only compile graphs and adds a host-runnable source contract to the
 CI-safe release suite. Acceptance remains pending until a new dev HEAD passes
 the complete `CI / Required` workflow, including both matching-architecture
 native legs.
+
+The corrected source SHA `ad34cb107384ddf17f1141343f80c967935e4baf`
+then reached both native runners: GitHub Actions run `31332259714` passed the
+x64 and ARM64 explicit-SID/Main smoke jobs. Its sole required-job failure was
+the full Windows backend Clippy gate, which showed that the shared
+`UntrustedTarget` restart outcome is constructed by the macOS adapter but had
+an obsolete Windows-specific dead-code assumption. The required aggregate
+again failed closed. The next correction makes that platform ownership
+explicit without changing the outcome or public restart state; a new complete
+dev-push run remains mandatory.
