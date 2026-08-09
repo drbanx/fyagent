@@ -8,6 +8,13 @@ that may publish a FyAgent GitHub Release. Read it before changing release
 events, eligibility, native runners, signer configuration, artifact ownership,
 attestation, Release notes, or the final publication request.
 
+Per-asset NSIS mechanics, fixed-volume admission, Windows signing evidence, and
+native install/uninstall semantics are owned by
+[Windows Installer](./windows-installer.md). Formal startup and the protected
+machine-runtime descriptor are owned by
+[Windows Runtime Security](./windows-runtime-security.md). This workflow owns
+their orchestration, frozen inputs, aggregate evidence, and publication gate.
+
 The workflow supports two entry modes:
 
 ```yaml
@@ -130,9 +137,10 @@ A branch move, tag replacement, CI attempt change, identity drift, or API
 failure at either point stops publication. The workflow never moves/deletes
 the tag to repair a failed run.
 
-The independent Windows release/NSIS contract additionally requires every
-version component to fit `0..65535` before Tauri packages an installer. That
-narrow representation gate does not create a second application version.
+The independent [Windows Installer](./windows-installer.md) contract
+additionally requires every version component to fit `0..65535` before Tauri
+packages an installer. That narrow representation gate does not create a
+second application version.
 
 ## 4. Job and trust topology
 
@@ -277,9 +285,9 @@ FyAgent-X.Y.Z-Linux-arm64.deb
 FyAgent-X.Y.Z-Linux-arm64.rpm
 ```
 
-MSI, WiX, portable Windows ZIP, v-prefixed filenames, unversioned names,
-architecture aliases, missing files, extras, directories, symlinks, empty
-files, or overwrites are forbidden.
+Any Windows format other than the two NSIS setup executables, plus v-prefixed
+filenames, unversioned names, architecture aliases, missing files, extras,
+directories, symlinks, empty files, or overwrites is forbidden.
 
 `download-manifest.json` schema `fyagent-download-manifest/v2` binds each
 installer's exact name, platform, architecture, format, size, SHA-256, URL,

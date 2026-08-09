@@ -4,19 +4,19 @@
 
 ## Language / 语言 / 言語
 
-| Language | Link |
-|----------|------|
-| [中文](./zh/README.md) | 简体中文用户手册 |
-| [English](./en/README.md) | English User Manual |
-| [日本語](./ja/README.md) | 日本語ユーザーマニュアル |
+| Language                  | Link                     |
+| ------------------------- | ------------------------ |
+| [中文](./zh/README.md)    | 简体中文用户手册         |
+| [English](./en/README.md) | English User Manual      |
+| [日本語](./ja/README.md)  | 日本語ユーザーマニュアル |
 
-## Version / 版本 / バージョン
+## Scope / 范围 / 対象
 
-- Documentation version: v3.16.0
-- Last updated: 2026-05-29
-- Compatible with FyAgent v3.16.0+
+- This manual tracks the current FyAgent repository behavior.
+- Release-specific version, asset, and trust facts come from the matching
+  GitHub Release and its published evidence.
 
 ## Links
 
-- [GitHub Issues](https://github.com/NongHua123/cc-switch/issues)
-- [GitHub Repository](https://github.com/NongHua123/cc-switch)
+- [GitHub Issues](https://github.com/NongHua123/fyagent/issues)
+- [GitHub Repository](https://github.com/NongHua123/fyagent)

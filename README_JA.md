@@ -18,12 +18,12 @@
 </div>
 
 > [!WARNING]
-> **FyAgent 0.3.0 は、公開・安定版でありながら意図的に未署名とするリリース契約です。**
-> Windows の実行ファイルと MSI の Authenticode 状態は `NotSigned`、macOS
-> アプリは Developer ID 署名も公証もありません。インストール前に
-> [v0.3.0 リリースノート](docs/release-notes/v0.3.0-ja.md)と公開証拠を確認して
-> ください。正式 workflow が完了するまでは、この案内は Release の公開済みを
-> 意味しません。
+> **信頼状態は Release ごとに異なります。** インストール前に、対象の
+> [FyAgent Release](https://github.com/NongHua123/fyagent/releases) のノートを読み、
+> SHA-256、source SHA、`signing-status.json`、GitHub attestation を確認してください。
+> Windows setup は検証済み Authenticode 署名付き、または明示的な `NotSigned` として
+> 公開されます。未署名 installer では Windows の信頼警告が表示されます。現在の
+> macOS release workflow は Developer ID 署名や公証を行いません。
 
 ## FyAgent を選ぶ理由
 
@@ -47,7 +47,7 @@
 
 ## 特長
 
-[完全な更新履歴](CHANGELOG.md) | [v0.3.0 リリースノート](docs/release-notes/v0.3.0-ja.md)
+[完全な更新履歴](CHANGELOG.md) | [最新 Release](https://github.com/NongHua123/fyagent/releases/latest)
 
 ### プロバイダ管理
 
@@ -107,7 +107,7 @@ FyAgent には「共有設定スニペット」機能があり、APIキーやエ
 <details>
 <summary><strong>macOS のインストールについて</strong></summary>
 
-FyAgent 0.3.0 は意図的に未署名・未公証なので、macOS が初回起動をブロックする
+現在の正式 macOS workflow は未署名・未公証なので、macOS が初回起動をブロックする
 場合があります。一度 FyAgent を開こうとした後、Apple がサポートする
 **システム設定 → プライバシーとセキュリティ → このまま開く**の手順で確認して
 ください。先に該当 Release のノートと証拠を検証し、Gatekeeper の無効化や隔離
@@ -157,6 +157,10 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 各機能の詳しい使い方については、**[ユーザーマニュアル](docs/user-manual/ja/README.md)** をご覧ください。プロバイダ管理、MCP/Prompts/Skills、プロキシとフェイルオーバーなど、すべての機能を網羅しています。
 
+コントリビューターは、責務別の
+**[現在の開発ドキュメント](docs/fyagent/development/README.md)** から始め、そこから
+各 active spec の唯一の owner を参照してください。
+
 ## クイックスタート
 
 ### 基本的な使い方
@@ -187,23 +191,24 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### Windows ユーザー
 
-x64 Windows では `FyAgent-0.3.0-Windows.msi`、ARM64 Windows では
-`FyAgent-0.3.0-Windows-arm64.msi` を
+x64 Windows では `FyAgent-X.Y.Z-Windows-x64-setup.exe`、ARM64 Windows では
+`FyAgent-X.Y.Z-Windows-arm64-setup.exe` を
 [Releases](https://github.com/NongHua123/fyagent/releases) から取得してください。
-Windows ポータブル ZIP は配布せず、サポート対象の全マシン MSI パスを使用します。
+`X.Y.Z` は Release version です。これらは全マシン向け NSIS setup であり、FyAgent は
+MSI や Windows ポータブル ZIP を公開しません。
 
-> **未署名ビルド:** v0.3.0 の実行ファイルと MSI は Authenticode `NotSigned`
-> であり、Windows SmartScreen が警告する場合があります。続行前に資産名、manifest、
-> attestation 証拠を確認してください。SmartScreen を無効化したり、組織管理の
-> セキュリティポリシーを弱めたりしないでください。
+> **署名状態:** Release の Windows 署名表と `signing-status.json` を確認して
+> ください。installer が `NotSigned` の場合は Windows SmartScreen が警告することが
+> あります。続行前に正確な資産名、digest、source SHA、attestation を検証し、
+> SmartScreen や組織管理のセキュリティポリシーを弱めないでください。
 
 ### macOS ユーザー
 
 [Releases](https://github.com/NongHua123/fyagent/releases) から
-`FyAgent-0.3.0-macOS.dmg`（推奨）または `FyAgent-0.3.0-macOS.zip` を
+`FyAgent-X.Y.Z-macOS.dmg`（推奨）または `FyAgent-X.Y.Z-macOS.zip` を
 ダウンロードしてください。
 
-> **未署名ビルド:** v0.3.0 は Developer ID 署名も公証もありません。一度アプリを
+> **未署名ビルド:** 現在の正式 macOS workflow は Developer ID 署名も公証も行いません。一度アプリを
 > 開こうとした後、**システム設定 → プライバシーとセキュリティ → このまま開く**を
 > 使用して確認してください。Release 証拠を先に確認し、Gatekeeper の無効化や隔離
 > 属性の削除は行わないでください。
@@ -213,24 +218,24 @@ Windows ポータブル ZIP は配布せず、サポート対象の全マシン 
 [Releases](https://github.com/NongHua123/fyagent/releases) から現在の
 アーキテクチャに対応するネイティブ Linux ビルドを取得してください：
 
-- x64: `FyAgent-0.3.0-Linux-x86_64.AppImage`、
-  `FyAgent-0.3.0-Linux-x86_64.deb`、
-  `FyAgent-0.3.0-Linux-x86_64.rpm`
-- ARM64: `FyAgent-0.3.0-Linux-arm64.AppImage`、
-  `FyAgent-0.3.0-Linux-arm64.deb`、
-  `FyAgent-0.3.0-Linux-arm64.rpm`
+- x64: `FyAgent-X.Y.Z-Linux-x86_64.AppImage`、
+  `FyAgent-X.Y.Z-Linux-x86_64.deb`、
+  `FyAgent-X.Y.Z-Linux-x86_64.rpm`
+- ARM64: `FyAgent-X.Y.Z-Linux-arm64.AppImage`、
+  `FyAgent-X.Y.Z-Linux-arm64.deb`、
+  `FyAgent-X.Y.Z-Linux-arm64.rpm`
 
 > **Flatpak**：公式リリースには含まれていません。`.deb` から自分でビルドできます — 手順は [`flatpak/README.md`](flatpak/README.md) を参照してください。
 
 <details>
-<summary><strong>v0.3.0 の正確な添付ファイル契約</strong></summary>
+<summary><strong>安定版 Release の添付ファイル契約</strong></summary>
 
-正式 Release に許可されるインストーラーは、上記 macOS 2、Windows MSI 2、
-Linux 6 の **10 ファイル**だけです。証拠添付は、各インストーラーの SHA-256 を含む
-`download-manifest.json`、`build-metadata.json`、
-`artifact-attestation.sigstore.json` の 3 ファイルだけで、合計は **13** です。
-workflow は欠落、重複、改名、余分なファイルを拒否します。正式 workflow と公開後の
-独立検証が完了するまでは、これは公開済み結果ではなくリリース契約です。
+正式 Release には、上記 macOS 2、Windows NSIS setup EXE 2、Linux 6 の
+**10 installer** が含まれます。10 installer、`download-manifest.json`、
+`build-metadata.json`、`signing-status.json` が 13 の attestation subject です。
+`artifact-attestation.sigstore.json` が 14 番目かつ最後の添付ファイルです。
+workflow は欠落、重複、改名、余分なファイルを拒否し、正式 workflow と公開後の
+独立検証が両方成功した Release だけを受け入れます。
 
 </details>
 

@@ -2,3 +2,6 @@
 {"file":".trellis/spec/frontend/index.md","reason":"Check renderer references and current guidance remain valid."}
 {"file":".trellis/spec/backend/development-environment.md","reason":"Check protocol/toolchain versions were not mistaken for product history."}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check each mutable rule has one current owner and enforcing evidence."}
+{"file":".trellis/tasks/08-09-docs-spec-current-state-migration/migration-inventory.md","reason":"Check every former file and substantive section has one reviewed disposition and owner."}
+{"file":"docs/fyagent/development/README.md","reason":"Check normal context routes through current responsibility docs and active specs rather than history."}
+{"file":"docs/fyagent/development/validation.md","reason":"Check local, native, remote, protocol, and historical evidence claims remain distinct."}

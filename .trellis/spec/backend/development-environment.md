@@ -110,10 +110,11 @@ All maintained local project operations use `mise run <task>`. `pnpm dev` and
 wrapper. The lower-level `pnpm tauri` leaf remains available to reviewed
 GitHub Actions and repository maintenance code, but it is not a standard local
 development/build entrypoint and its direct output is not acceptance evidence.
-Legacy direct-execution examples are temporary migration debt owned by
-`08-07-migrate-docs-and-trellis-specs` and are explicitly allowlisted by
-`docs-contract-check.mjs`; new occurrences fail the contract. CI and Release
-remain the explicit non-mise execution boundary.
+Current developer instructions under `docs/fyagent/development/` and active
+specs use this command boundary; new direct-execution entrypoints fail the
+documentation contract. CI and Release remain the explicit non-mise execution
+boundary. Managed-template and project-overlay behavior is owned separately by
+[Trellis Tooling](./trellis-tooling.md).
 
 ## 5. Host-Native Local Execution
 
@@ -156,10 +157,8 @@ low-level maintenance commands own any such customization. `rust:fmt` and
 `rust:fmt:check` remain the exceptions because rustfmt does not compile or run
 a target executable.
 
-This is the active
-[D116](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
-execution boundary. It tightens the current interpretation of older local-build
-decisions without rewriting their historical rows.
+This spec is the active execution boundary. Historical build decisions may
+explain provenance, but they do not override the current host-native contract.
 
 The enforced current-host boundary covers `pnpm dev`, `pnpm build`, and the
 canonical `mise run dev`, `build`, `build:binary`, `build:debug`, `check`,
@@ -180,8 +179,9 @@ Matching native GitHub Actions runners are the only project path for non-host
 compilation, packaging, and verification. On a Linux x64 workstation this
 means that Windows, macOS, Linux ARM64, and every Windows/macOS architecture
 gate remain remote. Local WSL-to-Windows process bridging, Windows
-Candle/Light/MSI execution, and locally copied or staged Windows artifacts are
-diagnostic experiments at most and never acceptance evidence.
+installer execution, and locally copied or staged Windows artifacts are
+diagnostic experiments at most and never acceptance evidence. The current
+native setup contract is owned by [Windows Installer](./windows-installer.md).
 
 Repository tasks do not install non-host Rust targets or provision a
 cross-compilation environment. Adding a new supported platform therefore

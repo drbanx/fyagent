@@ -2,14 +2,16 @@
 
 ## 1. Scope / Trigger
 
-The Codex desktop installer spans Rust domain/source/platform code, seven Tauri
-commands, TypeScript query/hook/card consumers, and platform-specific
-verification. The historical v1.0.0 requirements are in
-`docs/fyagent/dev/v1-0.0/`. For the active v1.0.2 scope,
-`docs/fyagent/dev/v1-0.2/` is authoritative where it changes a contract. This
-specification preserves the executable cross-layer boundary so later work does
-not reintroduce user-controlled installer inputs, drift the wire format, or
-label a platform card with a version from another platform's release.
+The Codex desktop installer spans Rust domain/source/platform code, the fixed
+ordinary installer command surface, trusted application restart commands,
+TypeScript query/hook/card consumers, and platform-specific verification. This
+specification is the current owner of that executable cross-layer boundary: it
+prevents user-controlled installer inputs, wire-format drift, cross-platform
+version-label substitution, cross-user Windows package access, and untrusted
+process restart or launch. The interactive identity proof it consumes is owned
+by [Windows Runtime Security](./windows-runtime-security.md); the Codex Provider
+mutation that may offer a restart is owned by
+[Codex Provider Configuration](./codex-provider-configuration.md).
 
 ## 2. Signatures
 
@@ -30,6 +32,19 @@ StartInstallRequest serializes as:
 No ordinary command accepts a URL, path, hash, identity, installer scope, or
 validation-bypass flag. The hidden Windows all-users experiment is a
 pre-runtime headless boundary, never one of these commands.
+
+The separate trusted Codex application runtime surface is:
+
+    get_codex_desktop_runtime_status()
+    request_codex_desktop_restart()
+    continue_codex_desktop_restart_with_force(token)
+    cancel_codex_desktop_restart_with_force(token) -> ()
+
+These commands accept no PID, process name, executable path, user SID, or
+renderer-supplied launch command. The force token is opaque, short-lived,
+one-time, and bound server-side to the already verified installation, process,
+and interactive-user context. These four commands do not expand the exactly
+seven ordinary installer commands above.
 
 The safe remote status exposed by `codex_desktop_check_latest` is:
 
@@ -116,6 +131,35 @@ comparison value.
 - The all-users stage/provision helper remains outside the ordinary package
   facade and retains its all-user staged-package query. Ordinary code has no
   fallback or capability that can call it.
+
+### Trusted Provider-triggered application restart
+
+- The renderer offers a Codex application restart prompt only after a
+  successful Codex Provider mutation reports `liveConfigChanged: true` and the
+  backend reports exactly one trusted running instance. Configuration save and
+  application restart are separate outcomes; a failed or cancelled restart
+  never rolls back saved configuration.
+- Windows process identity derives from the already verified Stable Main
+  package and the frozen interactive-user SID. A same-PFN process owned by a
+  different SID is not a candidate. macOS requires the verified bundle
+  identity and path. Fuzzy image/process-name matching and generic termination
+  or launch commands are forbidden.
+- A restart requests graceful exit and waits at most 8 seconds. If the verified
+  process remains alive, return an opaque force-confirmation token. Only a
+  second explicit user confirmation may force-terminate it. Cancellation is a
+  best-effort discard of the pending capability only: it never closes,
+  terminates, or launches a process, and its empty response reveals neither
+  token validity nor installation/process existence.
+- Launch occurs only after the old verified process exits, through the
+  originally selected verified installation. Wait at most 15 seconds for a new
+  process belonging to that same trusted installation and context.
+  Installation, package owner, context, or identity drift is a no-launch/manual
+  failure, not an opportunity to select another candidate.
+- Not-running, unsupported, ambiguous, deferred/manual user choice, and restart
+  failure never auto-launch a process. On Windows, close and launch re-enumerate
+  only the frozen SID's trusted Main packages; zero or multiple matching Stable
+  records prevent automatic restart. The ordinary path never queries the
+  all-users capability or chooses another SID or highest version.
 
 ### Rust to renderer
 
@@ -231,6 +275,10 @@ comparison value.
 | Platform verification, signature, identity, architecture, or post-check fails                                                  | Stable platform/package error; do not launch or downgrade.                                                                                                              |
 | Interactive context is missing/drifts, an inventory receipt names another context, or a package/process belongs to another SID | Fail the ordinary operation before the next deploy, close, or launch side effect; never fall back to all-users inventory.                                               |
 | The same interactive SID has more than one trusted Stable Main package                                                         | Discovery returns non-retryable `MULTIPLE_INSTALLATIONS` plus `resolve_path_conflict`; restart reports `ambiguous/installations`; neither selects, closes, or launches. |
+| Provider save leaves live Codex bytes unchanged, or runtime status is not exactly one trusted running instance                 | Do not offer or start the Provider-triggered restart flow.                                                                                                              |
+| Graceful close exceeds 8 seconds                                                                                               | Return an opaque force-confirmation capability; do not terminate automatically.                                                                                         |
+| Force continuation is malformed, expired, reused, or bound to a drifted installation/process/context                           | Reject without closing, terminating, or launching another process.                                                                                                      |
+| The replacement process is absent after 15 seconds                                                                             | Return restart failure, preserve saved configuration, and direct the user to manual recovery.                                                                           |
 | Ordinary renderer tries to provide scope/URL/path/extra request field                                                          | DTO deserialization or validation rejects it.                                                                                                                           |
 | Elevated all-users job control is empty, oversized, reparse-backed, remote, or changes capability path                         | WINDOWS_ELEVATION_FAILED before the fresh anchor, validator, Stage, or Provision adapter runs.                                                                          |
 
@@ -313,6 +361,13 @@ such controls.
   Windows architectures calls only the real explicit-SID/Main WinRT adapter,
   permits an empty result, and uses no Store/network/real Codex/multi-account
   dependency.
+- Provider-triggered restart: cover unchanged/failed/non-Codex saves, exact-one
+  trusted-running admission, graceful success, 8-second force confirmation,
+  one-time/mismatched/expired/cancelled capabilities, context/package/process
+  drift, no launch before exit, 15-second launch verification, and
+  not-running/unsupported/ambiguous/manual outcomes. Multi-SID fixtures prove
+  another user's same-PFN process cannot be inspected, closed, or launched and
+  that the ordinary restart path never reaches all-users inventory.
 
 ## 7. Wrong vs Correct
 

@@ -7,6 +7,12 @@ This contract owns `.github/workflows/ci.yml`,
 fixture suites. It applies to pull requests, merge queue candidates, pushes to
 `main` and `dev/laiyongjie`, and manual diagnostics.
 
+This workflow owns scheduling and aggregation, not the underlying product
+contracts. Windows installer/runtime gates are defined by
+[Windows Installer](./windows-installer.md) and
+[Windows Runtime Security](./windows-runtime-security.md); managed-template
+divergence is defined by [Trellis Tooling](./trellis-tooling.md).
+
 The only stable aggregate result is:
 
 ```text

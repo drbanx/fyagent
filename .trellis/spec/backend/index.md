@@ -1,13 +1,13 @@
 # Backend Development Guidelines
 
-This layer records executable backend contracts for the Rust/Tauri host. The
-current modernization authority is `docs/fyagent/dev/v1-0.3.0/`, interpreted
-with its 2026-08-08 execution overrides and real implementation evidence. Older
-`docs/fyagent/dev/v1-0.*` packages are historical inputs: preserve their bodies
-and do not let an older version, release, signing, or tooling statement override
-the current contracts below. When a code contract changes, update its owning
-code-spec and enforcing test; update a product document only when that document
-is owned by the change.
+This layer records executable backend contracts for the Rust/Tauri host.
+Current authority is the unique active spec owner below, the current task's
+approved artifacts and evidence, and current developer-facing material under
+`docs/fyagent/development/`. Archived tasks and Git history are historical
+evidence only. They must not override an active version, installer, security,
+release, configuration, or tooling contract. When behavior changes, update its
+unique owner and enforcing test; update a product document only when that
+document is owned by the change.
 
 ## Pre-Development Checklist
 
@@ -28,26 +28,29 @@ Before changing Rust/Tauri host code:
    a non-host OS/architecture locally. Native compile/test entrypoints must use
    their guarded mise task (or the guarded `pnpm dev`/`pnpm build` alias), not
    the low-level `pnpm tauri` maintenance/Actions leaf.
-5. Keep versioned product documents in their documented ownership boundary;
-   record checkout-specific implementation contracts here rather than
-   mechanically rewriting historical/reference packages.
+5. Preserve protocol and schema versions as protocol facts, but never infer the
+   application version or current behavior from an archived design label.
 
 ## Guidelines
 
-| Guide                                                                      | Use it for                                                                                                                                                                                                                                   |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Codex Desktop Installer](./codex-desktop-installer.md)                    | The fixed-source installer service, IPC DTOs, job events, and platform boundaries.                                                                                                                                                           |
-| [Application Version and Installer Assets](./fyagent-version-contract.md)  | Cargo version single source, version commands, frozen release values, exact cross-platform asset names, and evidence sets.                                                                                                                   |
-| [GitHub CI Workflow](./github-ci-workflow.md)                              | Automatic PR/main/manual CI, exact-seven Required aggregation, pinned toolchains/Actions, trusted-base Labeler, x64/ARM64 Windows Native Contracts, synchronous whole-run observation, and the accepted D114 live-merge-group N/A exception. |
-| [GitHub Release Workflow](./github-release-workflow.md)                    | Reusable trusted-main same-SHA preflight/formal publish contract plus the Released/Verified v0.3.0 conformance record; D114 remains live-merge-group N/A and workflow-only governance risk remains explicit.                                 |
-| [Development Environment](./development-environment.md)                    | mise-first local tool versions, host-native-only compiler/runner/linker and Cargo-config boundary, compatibility declarations, platform boundaries, and WSL PATH isolation.                                                                  |
-| [Repository Task Runner](./task-runner-contract.md)                        | Canonical mise task metadata, host-native compiler/runner composition, no-shell Cargo argv transport, DAG side effects, maintenance safety, and generated documentation.                                                                     |
-| [Application Brand Assets](./application-brand-assets.md)                  | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                                                                                                                                 |
-| [Application Identity](./application-identity.md)                          | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                                                                                                                               |
-| [CC Switch Upstream Synchronization](./upstream-sync.md)                   | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                                                                                                                              |
-| [Deep-Link Import Security](./deeplink-import-security.md)                 | Untrusted `fyagent://` request validation, explicit provider activation approval, and credential-safe confirmation behavior.                                                                                                                 |
-| [FyAgent v1-0.1 Configuration Domains](./fyagent-v1-0-1-config-domains.md) | Codex capability/restart contracts and WorkBuddy's isolated secure configuration domain; versioning lives in its own contract.                                                                                                               |
-| [Windows Installer and Runtime Security](./windows-release-boundary.md)    | NSIS fixed-volume admission, bounded uninstall, signing/native lifecycle evidence, explicit elevated manifest selection, protected activation forwarding, and pre-CLI privilege gates.                                                       |
+| Guide                                                                     | Use it for                                                                                                                                 |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Codex Desktop Installer](./codex-desktop-installer.md)                   | Fixed-source installer service, IPC DTOs/job events, same-session Windows package ownership, and trusted Codex application restart/launch. |
+| [Codex Provider Configuration](./codex-provider-configuration.md)         | Lossless Codex Provider TOML, native capabilities, vendor/session projection, warnings, and live-config change evidence.                   |
+| [WorkBuddy Configuration](./workbuddy-configuration.md)                   | WorkBuddy model discovery, restricted third-party `/v1` access, credential-safe persistence, and renderer-domain isolation.                |
+| [Application Version and Installer Assets](./fyagent-version-contract.md) | Cargo version single source, version commands, frozen release values, exact cross-platform asset names, and evidence sets.                 |
+| [GitHub CI Workflow](./github-ci-workflow.md)                             | Repository-owned change classification, domain-aware PR/merge-group jobs, full dev/main pushes, and the stable `CI / Required` aggregate.  |
+| [GitHub Release Workflow](./github-release-workflow.md)                   | Exact dev-HEAD/tag/successful-push-CI identity, full preflight/formal topology, asset transaction, attestation, and public Release.        |
+| [Windows Installer](./windows-installer.md)                               | NSIS bundle, fixed-volume path admission, bounded uninstall, per-asset signing policy, and x64/ARM64 native lifecycle.                     |
+| [Windows Runtime Security](./windows-runtime-security.md)                 | Formal startup and interactive-user proof, protected machine runtime, authenticated activation, and elevated CLI boundary.                 |
+| [Development Environment](./development-environment.md)                   | Locked mise-first local tool versions, host-native compiler/runner/linker boundary, and WSL PATH isolation.                                |
+| [Repository Task Runner](./task-runner-contract.md)                       | Canonical mise task metadata, argv transport, DAG effects, maintenance safety, and generated task documentation.                           |
+| [Trellis Tooling](./trellis-tooling.md)                                   | Managed-template updates, deterministic project overlays, read-only divergence verification, and current-authority routing.                |
+| [Codex Development Hooks](./development-hooks.md)                         | Codex hook registration/protocol, strict context injection, and ownership of the three declared hook overlays.                             |
+| [Application Brand Assets](./application-brand-assets.md)                 | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                               |
+| [Application Identity](./application-identity.md)                         | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                             |
+| [CC Switch Upstream Synchronization](./upstream-sync.md)                  | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                            |
+| [Deep-Link Import Security](./deeplink-import-security.md)                | Untrusted `fyagent://v1/import` request validation, explicit provider activation approval, and credential-safe confirmation.               |
 
 ## Quality Check
 

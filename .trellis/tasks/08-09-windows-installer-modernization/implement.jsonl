@@ -1,3 +1,4 @@
 {"file":".trellis/spec/backend/fyagent-version-contract.md","reason":"Owns the current Windows package, version, and release asset contract."}
-{"file":".trellis/spec/backend/windows-release-boundary.md","reason":"Owns formal elevation and activation security that must remain."}
+{"file":".trellis/spec/backend/windows-installer.md","reason":"Owns NSIS path, uninstall, signing, and native lifecycle contracts."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Owns formal elevation and activation security that must remain."}
 {"file":".trellis/spec/backend/github-release-workflow.md","reason":"Owns multi-platform release and artifact verification boundaries."}

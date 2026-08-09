@@ -149,21 +149,7 @@ const COMMAND_WRAPPERS = Object.freeze({
   }),
   time: Object.freeze({}),
 });
-const LEGACY_ENTRYPOINT_HANDOFF = new Set([
-  ".github/pull_request_template.md",
-  ".trellis/spec/backend/application-brand-assets.md",
-  ".trellis/spec/backend/fyagent-v1-0-1-config-domains.md",
-  ".trellis/spec/backend/fyagent-version-contract.md",
-  ".trellis/spec/backend/github-release-workflow.md",
-  ".trellis/spec/frontend/index.md",
-  ".trellis/spec/frontend/quality-guidelines.md",
-  ".trellis/spec/frontend/type-safety.md",
-  "CONTRIBUTING.md",
-  "README.md",
-  "README_DE.md",
-  "README_JA.md",
-  "README_ZH.md",
-]);
+const LEGACY_ENTRYPOINT_HANDOFF = new Set();
 
 function walk(relativeRoot) {
   const absoluteRoot = path.join(ROOT, relativeRoot);
@@ -918,6 +904,7 @@ export function validateDocsContract() {
     ...walk(".github").filter((file) => file.endsWith(".md")),
     ...walk(".trellis/spec/backend"),
     ...walk(".trellis/spec/frontend"),
+    ...walk("docs/fyagent/development"),
   ];
   const legacy = [];
   for (const file of [...new Set(activeDocs)].sort()) {
@@ -935,7 +922,7 @@ export function validateDocsContract() {
     generated: GENERATED_DOC,
     operationalTrellisDocuments: [...OPERATIONAL_TRELLIS_DOCUMENTS],
     legacyEntrypointHandoff: legacy,
-    handoffOwner: "08-07-migrate-docs-and-trellis-specs",
+    handoffOwner: null,
   };
 }
 

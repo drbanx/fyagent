@@ -22,11 +22,11 @@ protocol/schema/toolchain contracts and immutable Trellis history.
 
 ## Acceptance Criteria
 
-- [ ] Every old current-doc section has one reviewed disposition and owner.
-- [ ] `docs/fyagent/dev/` no longer exists and current docs use responsibility-
+- [x] Every old current-doc section has one reviewed disposition and owner.
+- [x] `docs/fyagent/dev/` no longer exists and current docs use responsibility-
       based paths under `docs/fyagent/development/`.
-- [ ] Active specs contain no old package, `v0.3.0`, MSI/WiX rollout, or stale
+- [x] Active specs contain no old package, `v0.3.0`, MSI/WiX rollout, or stale
       main-provenance statement as current authority.
-- [ ] True protocol/schema/toolchain versions remain and their tests pass.
-- [ ] Current links/indexes/spec/task docs pass, archives are unchanged, and no
+- [x] True protocol/schema/toolchain versions remain and their tests pass.
+- [x] Current links/indexes/spec/task docs pass, archives are unchanged, and no
       operational repository file references the source planning package.

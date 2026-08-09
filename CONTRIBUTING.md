@@ -71,6 +71,10 @@ pnpm/Cargo/system-Python commands. GitHub Actions is the deliberate exception:
 workflows install their exact tools without trusting or executing repository
 mise configuration.
 
+Use the [current development documentation](docs/fyagent/development/README.md)
+to route each change to its responsibility owner and active spec. Versioned
+design packages are available through Git history, not as current authority.
+
 ### Local Build Boundary
 
 ```bash
@@ -281,6 +285,9 @@ mise run release:check
 [canonical task catalog](docs/fyagent/development/mise-tasks.md)。活动开发文档使用
 `mise run <task>`，不使用直接项目 pnpm/Cargo/系统 Python 命令。GitHub Actions 是
 明确例外：workflow 安装精确工具，但不会信任或执行仓库 mise 配置。
+
+每项变更先通过[当前开发文档](docs/fyagent/development/README.md)定位职责 owner 和
+active spec。版本化设计包只通过 Git history 查阅，不再作为当前权威。
 
 ### 本地构建边界
 

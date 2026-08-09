@@ -18,13 +18,14 @@
 </div>
 
 > [!WARNING]
-> **FyAgent 0.3.0 ist als stabiler, öffentlicher und bewusst unsignierter
-> Release definiert.** Windows-Programm und MSI haben den Authenticode-Status
-> `NotSigned`; die macOS-App ist weder mit Developer ID signiert noch
-> notarisiert. Lesen Sie vor der Installation die englischen
-> [v0.3.0 Release Notes](docs/release-notes/v0.3.0-en.md) und prüfen Sie die
-> Release-Nachweise. Bis der formale Workflow abgeschlossen ist, behauptet
-> dieser Hinweis nicht, dass der Release bereits veröffentlicht wurde.
+> **Der Vertrauensstatus gilt jeweils für den konkreten Release.** Lesen Sie vor
+> der Installation die Hinweise zum betreffenden
+> [FyAgent Release](https://github.com/NongHua123/fyagent/releases) und prüfen
+> Sie SHA-256, Source-SHA, `signing-status.json` und GitHub-Attestierung. Ein
+> Windows-Setup kann geprüft Authenticode-signiert oder ausdrücklich als
+> `NotSigned` veröffentlicht sein; unsignierte Installer können Windows-
+> Warnungen auslösen. Der aktuelle macOS-Release-Workflow bietet keine
+> Developer-ID-Signatur oder Notarisierung.
 
 ## Warum FyAgent?
 
@@ -48,7 +49,7 @@ Modernes KI-gestütztes Programmieren stützt sich auf Werkzeuge wie Claude Code
 
 ## Funktionen
 
-[Vollständiges Changelog](CHANGELOG.md) | [v0.3.0 Release Notes](docs/release-notes/v0.3.0-en.md)
+[Vollständiges Changelog](CHANGELOG.md) | [Neuester Release](https://github.com/NongHua123/fyagent/releases/latest)
 
 ### Anbieterverwaltung
 
@@ -108,7 +109,8 @@ FyAgent bietet eine Funktion „Gemeinsames Konfigurations-Snippet", um gemeinsa
 <details>
 <summary><strong>Installation unter macOS</strong></summary>
 
-FyAgent 0.3.0 ist bewusst unsigniert und nicht notarisiert; macOS kann den
+Der aktuelle formale macOS-Workflow ist unsigniert und nicht notarisiert;
+macOS kann den
 ersten Start blockieren. Versuchen Sie einmal, FyAgent zu öffnen, und verwenden
 Sie danach Apples unterstützten Weg **Systemeinstellungen → Datenschutz &
 Sicherheit → Dennoch öffnen**. Prüfen Sie zuerst Release Notes und Nachweise;
@@ -158,6 +160,10 @@ Wenn Sie über ein Desktop-Symbol starten, fügen Sie es der `Exec=`-Zeile der `
 
 Ausführliche Anleitungen zu jeder Funktion finden Sie im **[Benutzerhandbuch](docs/user-manual/en/README.md)** — es deckt Anbieterverwaltung, MCP/Prompts/Skills, Proxy & Failover und mehr ab.
 
+Mitwirkende beginnen mit der nach Zuständigkeit gegliederten
+**[aktuellen Entwicklungsdokumentation](docs/fyagent/development/README.md)**
+und folgen von dort dem jeweils einzigen aktiven Spec-Owner.
+
 ## Schnellstart
 
 ### Grundlegende Verwendung
@@ -188,24 +194,25 @@ Ausführliche Anleitungen zu jeder Funktion finden Sie im **[Benutzerhandbuch](d
 
 ### Windows-Nutzer
 
-Laden Sie auf x64 Windows `FyAgent-0.3.0-Windows.msi` und auf ARM64 Windows
-`FyAgent-0.3.0-Windows-arm64.msi` von
-[Releases](https://github.com/NongHua123/fyagent/releases). FyAgent
-veröffentlicht kein portables Windows-ZIP mehr; verwenden Sie den unterstützten
-systemweiten MSI-Pfad.
+Laden Sie auf x64 Windows `FyAgent-X.Y.Z-Windows-x64-setup.exe` und auf ARM64
+Windows `FyAgent-X.Y.Z-Windows-arm64-setup.exe` von
+[Releases](https://github.com/NongHua123/fyagent/releases). `X.Y.Z` steht für
+die Release-Version. Dies sind systemweite NSIS-Setups; FyAgent veröffentlicht
+weder MSI noch ein portables Windows-ZIP.
 
-> **Unsignierter Build:** Programm und MSI von v0.3.0 haben bewusst den
-> Authenticode-Status `NotSigned`; Windows SmartScreen kann warnen. Prüfen Sie
-> vor dem Fortfahren Dateiname, Manifest und Attestierungsnachweise. Deaktivieren
-> Sie SmartScreen nicht und schwächen Sie keine verwaltete Sicherheitsrichtlinie.
+> **Signaturstatus:** Prüfen Sie die Windows-Signaturtabelle des Release und
+> `signing-status.json`. Bei `NotSigned` kann Windows SmartScreen warnen.
+> Prüfen Sie vor dem Fortfahren den exakten Dateinamen, Digest, Source-SHA und
+> die Attestierung. Deaktivieren Sie SmartScreen nicht und schwächen Sie keine
+> verwaltete Sicherheitsrichtlinie.
 
 ### macOS-Nutzer
 
-Laden Sie `FyAgent-0.3.0-macOS.dmg` (empfohlen) oder
-`FyAgent-0.3.0-macOS.zip` von
+Laden Sie `FyAgent-X.Y.Z-macOS.dmg` (empfohlen) oder
+`FyAgent-X.Y.Z-macOS.zip` von
 [Releases](https://github.com/NongHua123/fyagent/releases) herunter.
 
-> **Unsignierter Build:** v0.3.0 ist weder mit Developer ID signiert noch
+> **Unsignierter Build:** Der aktuelle formale macOS-Workflow ist weder mit Developer ID signiert noch
 > notarisiert. Versuchen Sie einmal, die App zu öffnen, und verwenden Sie danach
 > **Systemeinstellungen → Datenschutz & Sicherheit → Dennoch öffnen**. Prüfen
 > Sie zuerst die Release-Nachweise; deaktivieren Sie Gatekeeper nicht und
@@ -216,26 +223,25 @@ Laden Sie `FyAgent-0.3.0-macOS.dmg` (empfohlen) oder
 Laden Sie den nativen Linux-Build für Ihre Architektur von
 [Releases](https://github.com/NongHua123/fyagent/releases) herunter:
 
-- x64: `FyAgent-0.3.0-Linux-x86_64.AppImage`,
-  `FyAgent-0.3.0-Linux-x86_64.deb` oder
-  `FyAgent-0.3.0-Linux-x86_64.rpm`
-- ARM64: `FyAgent-0.3.0-Linux-arm64.AppImage`,
-  `FyAgent-0.3.0-Linux-arm64.deb` oder
-  `FyAgent-0.3.0-Linux-arm64.rpm`
+- x64: `FyAgent-X.Y.Z-Linux-x86_64.AppImage`,
+  `FyAgent-X.Y.Z-Linux-x86_64.deb` oder
+  `FyAgent-X.Y.Z-Linux-x86_64.rpm`
+- ARM64: `FyAgent-X.Y.Z-Linux-arm64.AppImage`,
+  `FyAgent-X.Y.Z-Linux-arm64.deb` oder
+  `FyAgent-X.Y.Z-Linux-arm64.rpm`
 
 > **Flatpak**: Nicht in den offiziellen Releases enthalten. Sie können es selbst aus dem `.deb` bauen — eine Anleitung finden Sie unter [`flatpak/README.md`](flatpak/README.md).
 
 <details>
-<summary><strong>Exakter v0.3.0-Anhangsvertrag</strong></summary>
+<summary><strong>Anhangsvertrag für stabile Releases</strong></summary>
 
-Der formale Release erlaubt genau die oben genannten zehn Installer: zwei für
-macOS, zwei Windows-MSI und sechs Linux-Dateien. Hinzu kommen genau drei
-Nachweisdateien — `download-manifest.json` mit den SHA-256-Werten aller
-Installer, `build-metadata.json` und `artifact-attestation.sigstore.json` —,
-also **13 Anhänge insgesamt**. Der Workflow lehnt fehlende, doppelte,
-umbenannte oder zusätzliche Dateien ab. Bis formaler Workflow und unabhängige
-Nachprüfung abgeschlossen sind, ist dies ein Vertrag und kein veröffentlichtes
-Ergebnis.
+Der formale Release enthält genau zehn Installer: zwei macOS-Dateien, zwei
+Windows-NSIS-Setup-EXEs und sechs Linux-Dateien. Diese zehn Installer,
+`download-manifest.json`, `build-metadata.json` und `signing-status.json` sind
+die 13 Attestierungs-Subjects. `artifact-attestation.sigstore.json` ist der
+vierzehnte und letzte Anhang. Der Workflow lehnt fehlende, doppelte,
+umbenannte oder zusätzliche Dateien ab; akzeptiert wird der Release erst nach
+erfolgreichem formalem Lauf und unabhängiger Prüfung nach der Veröffentlichung.
 
 </details>
 

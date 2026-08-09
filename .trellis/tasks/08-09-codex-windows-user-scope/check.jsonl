@@ -1,5 +1,4 @@
 {"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Check trusted candidate and same-installation lifecycle behavior."}
-{"file":".trellis/spec/backend/windows-release-boundary.md","reason":"Check formal identity mismatch remains fail closed."}
-{"file":".trellis/spec/backend/fyagent-v1-0-1-config-domains.md","reason":"Check public restart ambiguity never authorizes close or launch."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Check formal identity mismatch remains fail closed."}
 {"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Check x64 and ARM64 Rust smoke jobs fail on host-architecture drift."}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check context and error propagation across all ordinary lifecycle steps."}

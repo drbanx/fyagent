@@ -186,7 +186,7 @@
       ],
       "validation": "candidate-only",
       "evidence": [
-        "docs/fyagent/dev/v1-0.2/07-验收标准与自动化测试计划.md",
+        ".trellis/spec/backend/windows-installer.md",
         "tests/desktop-acceptance/requirements-matrix.json"
       ]
     }

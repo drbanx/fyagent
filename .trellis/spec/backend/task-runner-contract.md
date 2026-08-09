@@ -134,7 +134,9 @@ values reach the wrapper.
   safe reviewed-subset entrypoint.
 - `trellis:reconcile` is source-modifying and applies only exact declared
   overlays after a complete no-write preflight. `trellis:verify` is read-only
-  and belongs to `check:contracts`.
+  and belongs to `check:contracts`. Overlay schema, managed-path discovery,
+  update sequencing, and failure semantics are owned by
+  [Trellis Tooling](./trellis-tooling.md).
 - Version, dependency, toolchain, Python lock/dependency, icon, task-doc, and
   clean tasks preview by default; `--apply` is required to write.
 - `version:set` and `version:bump` delegate to the canonical atomic version
@@ -159,9 +161,8 @@ pipe characters, emits every loaded task, and writes only when
 `tasks:docs:generate --apply` is used. `tasks:docs:check` regenerates in memory
 and byte-compares with the committed document.
 
-Active docs that still use the retired direct-execution project-entrypoint style
-are an explicit Child 6 handoff allowlist. A new legacy occurrence fails
-`docs-contract-check.mjs`; removing an allowlisted occurrence is always safe.
+Current developer docs and the project entrypoint must use the canonical task
+API. A legacy direct-execution occurrence fails `docs-contract-check.mjs`.
 Retired local cross-build tasks have no alias or deprecation forwarder.
 
 The same checker owns one explicit operational-Trellis document: the
@@ -201,11 +202,11 @@ and repository tasks.
 
 This operational scan is intentionally not recursive. Upstream lifecycle
 templates, generic `trellis-meta/**` and `trellis-channel/**`,
-`.trellis/scripts/**`, historical design packages and task archives,
-hook-contract Wrong examples, and CI's documented non-mise execution boundary
-remain outside it. Those files describe reusable architecture, implementation
-leaves, frozen evidence, negative examples, or GitHub Actions rather than
-FyAgent's routine local command API.
+`.trellis/scripts/**`, task archives and Git history, hook-contract Wrong
+examples, and CI's documented non-mise execution boundary remain outside it.
+Those files describe reusable architecture, implementation leaves, frozen
+evidence, negative examples, or GitHub Actions rather than FyAgent's routine
+local command API.
 
 ## 7. Validation / Error Matrix
 

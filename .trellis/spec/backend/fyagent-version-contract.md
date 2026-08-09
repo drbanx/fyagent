@@ -113,8 +113,9 @@ FyAgent-X.Y.Z-Linux-arm64.deb
 FyAgent-X.Y.Z-Linux-arm64.rpm
 ```
 
-MSI, WiX, Windows portable ZIP, v-prefixed filenames, architecture aliases,
-and unversioned installer names are not accepted release assets.
+Only the two versioned NSIS setup executables are accepted for Windows.
+Non-allowlisted Windows package formats, portable archives, v-prefixed names,
+architecture aliases, and unversioned installer names are rejected.
 
 `download-manifest.json` schema `fyagent-download-manifest/v2` binds product,
 version, tag, source SHA, publication time, and each installer's exact name,
@@ -158,8 +159,9 @@ attachment and does not attest itself.
   rollback after write or post-write failure.
 - `tests/versionConsistency.test.ts` delegates to the canonical script rather
   than implementing another version parser.
-- Download/release asset tests assert all ten exact names, Windows NSIS EXE
-  architecture mapping, URL shape, no MSI, and missing/extra/symlink rejection.
+- Download/release asset tests assert all ten exact names, the two Windows NSIS
+  setup executables and architecture mapping, URL shape, and
+  missing/extra/non-allowlisted/symlink rejection.
 - Release tests assert frozen output consumption and that the download,
   build, signing, attestation, and publication stages use the same version,
   source SHA, CI run, and attempt. They cover dev-branch movement, annotated
@@ -172,15 +174,16 @@ Safe local checks are run through the repository toolchain:
 
 ```bash
 mise run version:check
-mise exec -- node --test tests/version.test.mjs
 mise run test:unit -- tests/versionConsistency.test.ts \
   tests/downloadManifest.test.ts tests/releaseAssets.test.ts
 mise run release:check
 ```
 
-Native installer/signing evidence remains owned by the Windows release
-boundary. Local static tests do not establish an x64 or ARM64 installer,
-Authenticode state, installation lifecycle, attestation, or public Release.
+The standalone `tests/version.test.mjs` suite additionally exercises the
+atomic version utility. Native installer/signing evidence remains owned by
+[Windows Installer](./windows-installer.md). Local static tests do not
+establish an x64 or ARM64 installer, Authenticode state, installation
+lifecycle, attestation, or public Release.
 
 ## 7. Wrong vs Correct
 
@@ -190,7 +193,7 @@ Wrong:
 package.json.version = "X.Y.Z"
 tauri.conf.json.version = "X.Y.Z"
 GITHUB_REF_NAME is stripped and reused as an installer version
-FyAgent-vX.Y.Z-Windows.msi
+FyAgent-vX.Y.Z-Windows-setup.exe
 ```
 
 Correct:

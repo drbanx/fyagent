@@ -101,7 +101,8 @@ const CURRENT_DOCUMENTS = [
   ".trellis/spec/backend/index.md",
   ".trellis/spec/backend/development-environment.md",
   ".trellis/spec/backend/fyagent-version-contract.md",
-  ".trellis/spec/backend/windows-release-boundary.md",
+  ".trellis/spec/backend/windows-installer.md",
+  ".trellis/spec/backend/windows-runtime-security.md",
 ];
 
 function executableRepositoryFiles(): string[] {

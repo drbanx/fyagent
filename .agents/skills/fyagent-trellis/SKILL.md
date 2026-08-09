@@ -48,7 +48,10 @@ checks, work commits, task archive, and journal remain distinct gates.
 
 Trellis owns its bundled lifecycle templates. FyAgent-specific setup, command,
 native-execution, and release-evidence rules belong here or in an active
-project spec; do not edit an upstream lifecycle skill to carry them.
+project spec; do not edit an upstream lifecycle skill to carry them. Before
+changing a managed path or overlay, read
+`.trellis/spec/backend/trellis-tooling.md`; the exact three hook divergences are
+owned by `.trellis/spec/backend/development-hooks.md`.
 
 Use this reviewed update sequence when adopting a Trellis release:
 
@@ -77,8 +80,11 @@ its existing frontend-wide behavior.
 - Resolve current task, phase, packages, and records through the mise-backed
   Trellis tasks above. Treat `.trellis/scripts/**` as internal implementation.
 - Before changing code, load the active task artifacts and the relevant
-  `.trellis/spec/**` owners. Current task and active spec override historical
-  archives; archived task content is evidence, not current authority.
+  `.trellis/spec/**` owners. Current authority comes from the unique active
+  spec owner, the current task's approved artifacts/evidence, and
+  `docs/fyagent/development/`. Archived tasks and Git history are evidence, not
+  current authority; a protocol or schema suffix remains a protocol fact and
+  is not an application-version source.
 - Local build, test, package, and verification commands target only the
   current OS and architecture; matching native GitHub Actions runners own
   every non-host gate.

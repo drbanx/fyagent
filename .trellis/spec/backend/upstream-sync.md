@@ -9,8 +9,10 @@ licensing provenance, and the boundary between an upstream merge and later
 FyAgent modernization commits.
 
 FyAgent product versions are independent from CC Switch versions. The current
-product target is `0.3.0`; merging CC Switch `v3.19.2` must not set any FyAgent
-package or artifact version to `3.19.2`.
+application version comes only from
+[Application Version and Installer Assets](./fyagent-version-contract.md);
+merging CC Switch `v3.19.2` must not set any FyAgent package or artifact
+version to `3.19.2`.
 
 ## 2. Signatures
 
@@ -22,7 +24,7 @@ upstream fetch    = https://github.com/farion1231/cc-switch.git
 upstream push     = DISABLED
 ```
 
-The v0.3.0 synchronization anchor is:
+The reviewed `v3.19.2` synchronization evidence is:
 
 | Field                     | Verified value                             |
 | ------------------------- | ------------------------------------------ |

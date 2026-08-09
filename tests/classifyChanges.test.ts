@@ -84,7 +84,7 @@ describe("repository change classifier", () => {
   it.each([
     [
       "docs/spec",
-      ["docs/fyagent/development/ci.md"],
+      ["docs/fyagent/development/ci-release/ci.md"],
       domains("contracts", "docsSpec"),
     ],
     ["frontend", ["src/components/App.tsx"], domains("frontend")],
@@ -149,7 +149,7 @@ describe("repository change classifier", () => {
       classifyChangedPaths([
         "src/components/App.tsx",
         "src-tauri/src/proxy/server.rs",
-        "docs/fyagent/development/ci.md",
+        "docs/fyagent/development/ci-release/ci.md",
         "src/components/App.tsx",
       ]),
     ).toEqual({

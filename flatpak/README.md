@@ -2,7 +2,7 @@
 
 This directory contains the `com.fyagent.desktop` Flatpak manifest. It converts
 a current-host Linux DEB into a local diagnostic `.flatpak`; Flatpak is **not**
-one of the ten formal FyAgent 0.3.0 installer assets and this path does not
+one of the ten formal FyAgent installer assets and this path does not
 produce Release evidence.
 
 ## Prerequisites

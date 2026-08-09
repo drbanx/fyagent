@@ -18,11 +18,12 @@
 </div>
 
 > [!WARNING]
-> **FyAgent 0.3.0 的合同是公开、稳定、明确无签名的发布。** Windows
-> 可执行文件和 MSI 的 Authenticode 状态为 `NotSigned`，macOS 应用没有
-> Developer ID 签名或公证。安装前请阅读
-> [v0.3.0 发布说明](docs/release-notes/v0.3.0-zh.md)并核对发布证据。正式
-> workflow 尚未完成前，本提示不代表 Release 已经存在。
+> **信任状态以具体 Release 为准。** 安装前请阅读对应
+> [FyAgent Release](https://github.com/NongHua123/fyagent/releases) 的说明，
+> 并核对 SHA-256、源码 SHA、`signing-status.json` 与 GitHub attestation。
+> Windows setup 可能是已验证的 Authenticode 签名，也可能明确发布为
+> `NotSigned`；无签名安装程序会触发 Windows 信任提示。当前 macOS 发布
+> workflow 不提供 Developer ID 签名或公证。
 
 ## 为什么选择 FyAgent？
 
@@ -46,7 +47,7 @@
 
 ## 功能特性
 
-[完整更新日志](CHANGELOG.md) | [v0.3.0 发布说明](docs/release-notes/v0.3.0-zh.md)
+[完整更新日志](CHANGELOG.md) | [最新 Release](https://github.com/NongHua123/fyagent/releases/latest)
 
 ### 供应商管理
 
@@ -106,9 +107,9 @@ FyAgent 使用“通用配置片段”功能，在不同的供应商之间传递
 <details>
 <summary><strong>macOS 安装</strong></summary>
 
-FyAgent 0.3.0 明确不签名、不公证，macOS 可能阻止首次启动。先尝试打开
+当前正式 macOS workflow 不签名、不公证，macOS 可能阻止首次启动。先尝试打开
 FyAgent，然后使用 Apple 支持的“**系统设置 → 隐私与安全性 → 仍要打开**”流程并
-确认提示。请先核对该版本的发布说明和证据；不要关闭 Gatekeeper，也不要移除隔离属性。
+确认提示。请先核对该 Release 的说明和证据；不要关闭 Gatekeeper，也不要移除隔离属性。
 
 </details>
 
@@ -156,6 +157,10 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 如需了解各项功能的详细使用方法，请查阅 **[用户手册](docs/user-manual/zh/README.md)** — 涵盖供应商管理、MCP/Prompts/Skills、代理与故障转移等全部功能。
 
+贡献者请从按职责组织的
+**[当前开发文档](docs/fyagent/development/README.md)** 开始，并按其中链接进入唯一的
+active spec owner。
+
 ## 快速开始
 
 ### 基本使用
@@ -186,21 +191,22 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 
 ### Windows 用户
 
-从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载：x64 Windows 使用
-`FyAgent-0.3.0-Windows.msi`，ARM64 Windows 使用
-`FyAgent-0.3.0-Windows-arm64.msi`。FyAgent 不再发布 Windows 绿色版 ZIP；
-请使用受支持的全机器 MSI 安装路径。
+从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载：x64 Windows
+使用 `FyAgent-X.Y.Z-Windows-x64-setup.exe`，ARM64 Windows 使用
+`FyAgent-X.Y.Z-Windows-arm64-setup.exe`，其中 `X.Y.Z` 是 Release 版本。这些是
+全机器 NSIS 安装程序；FyAgent 不再发布 MSI 或 Windows 绿色版 ZIP。
 
-> **无签名构建：** v0.3.0 可执行文件和 MSI 的 Authenticode 状态明确为
-> `NotSigned`，Windows SmartScreen 可能显示警告。继续前请核对资产名称、manifest
-> 和 attestation 证据；不要关闭 SmartScreen，也不要削弱组织管理的安全策略。
+> **签名状态：** 请查看 Release 的 Windows 签名表和 `signing-status.json`。如果
+> 安装程序为 `NotSigned`，Windows SmartScreen 可能显示警告。继续前请核对完整资产
+> 名称、digest、源码 SHA 和 attestation；不要关闭 SmartScreen，也不要削弱组织管理
+> 的安全策略。
 
 ### macOS 用户
 
 从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载
-`FyAgent-0.3.0-macOS.dmg`（推荐）或 `FyAgent-0.3.0-macOS.zip`。
+`FyAgent-X.Y.Z-macOS.dmg`（推荐）或 `FyAgent-X.Y.Z-macOS.zip`。
 
-> **无签名构建：** v0.3.0 没有 Developer ID 签名或公证。先尝试打开应用，
+> **无签名构建：** 当前正式 macOS workflow 不提供 Developer ID 签名或公证。先尝试打开应用，
 > 再使用“**系统设置 → 隐私与安全性 → 仍要打开**”并确认提示。请先核对 Release
 > 证据；不要关闭 Gatekeeper 或移除隔离属性。
 
@@ -209,24 +215,24 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载与当前
 架构匹配的原生 Linux 构建：
 
-- x64：`FyAgent-0.3.0-Linux-x86_64.AppImage`、
-  `FyAgent-0.3.0-Linux-x86_64.deb` 或
-  `FyAgent-0.3.0-Linux-x86_64.rpm`
-- ARM64：`FyAgent-0.3.0-Linux-arm64.AppImage`、
-  `FyAgent-0.3.0-Linux-arm64.deb` 或
-  `FyAgent-0.3.0-Linux-arm64.rpm`
+- x64：`FyAgent-X.Y.Z-Linux-x86_64.AppImage`、
+  `FyAgent-X.Y.Z-Linux-x86_64.deb` 或
+  `FyAgent-X.Y.Z-Linux-x86_64.rpm`
+- ARM64：`FyAgent-X.Y.Z-Linux-arm64.AppImage`、
+  `FyAgent-X.Y.Z-Linux-arm64.deb` 或
+  `FyAgent-X.Y.Z-Linux-arm64.rpm`
 
 > **Flatpak**：官方 Release 不包含 Flatpak 包。如需使用，可从 `.deb` 自行构建 — 参见 [`flatpak/README.md`](flatpak/README.md)。
 
 <details>
-<summary><strong>v0.3.0 精确附件合同</strong></summary>
+<summary><strong>稳定 Release 附件合同</strong></summary>
 
-正式 Release 只允许上述 2 个 macOS 文件、2 个 Windows MSI 和 6 个 Linux
-文件，共 **10 个安装资产**。另外只允许 3 个证据附件：包含每个安装资产 SHA-256
-的 `download-manifest.json`、`build-metadata.json` 和
-`artifact-attestation.sigstore.json`，所以总数必须为 **13**。workflow 会拒绝
-缺失、重复、改名或额外文件。在正式 workflow 完成并独立复核前，这些内容只是发布
-合同，不是已发布结果。
+正式 Release 包含上述 2 个 macOS 文件、2 个 Windows NSIS setup EXE 和 6 个
+Linux 文件，共 **10 个安装资产**。这 10 个安装资产与
+`download-manifest.json`、`build-metadata.json`、`signing-status.json` 组成
+13 个 attestation subject；`artifact-attestation.sigstore.json` 是第 14 个、也是
+最后一个附件。workflow 会拒绝缺失、重复、改名或额外文件；只有正式 workflow 与
+发布后独立复核都成功时才接受该 Release。
 
 </details>
 

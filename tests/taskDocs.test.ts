@@ -138,7 +138,7 @@ describe("operational Trellis documentation contract", () => {
     ".trellis/scripts/task.py",
     ".trellis/spec/backend/development-hooks.md",
     ".trellis/spec/backend/github-ci-workflow.md",
-    "docs/fyagent/dev/v1-0.3.0/VALIDATION-REPORT.md",
+    "docs/fyagent/development/mise-tasks.md",
     ".trellis/tasks/archive/2026-08/example/task.json",
   ])(
     "excludes generic, internal, historical, Wrong, and CI material: %s",
