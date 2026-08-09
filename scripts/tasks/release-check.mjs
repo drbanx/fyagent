@@ -15,6 +15,7 @@ const CI_SAFE_TESTS = Object.freeze([
   "tests/githubWorkflowTriggers.test.ts",
   "tests/ciWorkflow.test.ts",
   "tests/currentDocsContract.test.ts",
+  "tests/codexWindowsUserScopeContract.test.ts",
   "tests/requiredCiGate.test.ts",
   "tests/ciToolchainContract.test.ts",
   "tests/dep0040Contract.test.ts",

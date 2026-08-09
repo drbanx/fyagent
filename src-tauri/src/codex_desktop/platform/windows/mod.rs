@@ -988,7 +988,7 @@ mod tests {
     use crate::codex_desktop::{
         all_users::{AllUsersProvisioner, ValidatedAllUsersJob},
         download::DownloadedArtifact,
-        error::InstallerErrorCode,
+        error::{InstallerErrorCode, SuggestedAction},
         temp::JobTempDir,
         types::{PlatformVersion, TrustedDownloadEndpoint},
         verify::{sha256_hex, ArtifactKind},

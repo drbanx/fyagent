@@ -13,7 +13,9 @@ const deployment = read(
 );
 const adapter = read("src-tauri/src/codex_desktop/platform/windows/mod.rs");
 const runtime = read("src-tauri/src/codex_desktop/platform/windows/runtime.rs");
+const domainTest = read("src-tauri/tests/codex_desktop_domain.rs");
 const ci = read(".github/workflows/ci.yml");
+const releaseCheck = read("scripts/tasks/release-check.mjs");
 
 describe("Codex Windows interactive-user contract", () => {
   it("uses the Shell process as the sole ordinary startup identity proof", () => {
@@ -68,6 +70,23 @@ describe("Codex Windows interactive-user contract", () => {
     );
     expect(startup).toMatch(
       /pub\(super\) fn revalidate_interactive_user_context\([\s\S]{0,800}interactive_user_proof_matches_context\(/,
+    );
+  });
+
+  it("keeps Windows-only test targets connected to their compile-time dependencies", () => {
+    const adapterTests = adapter.match(
+      /#\[cfg\(test\)\]\s+mod tests \{[\s\S]*$/,
+    )?.[0];
+    expect(adapterTests).toBeDefined();
+    expect(adapterTests).toContain("SuggestedAction::ResolvePathConflict");
+    expect(adapterTests).toMatch(
+      /error::\{[^}]*InstallerErrorCode[^}]*SuggestedAction[^}]*\}/,
+    );
+    expect(domainTest).toMatch(
+      /#\[cfg\(target_os = "windows"\)\]\s+#\[allow\(dead_code\)\]\s+#\[path = "\.\.\/src\/windows_runtime\/mod\.rs"\]\s+mod windows_runtime;/,
+    );
+    expect(releaseCheck).toContain(
+      '"tests/codexWindowsUserScopeContract.test.ts"',
     );
   });
 

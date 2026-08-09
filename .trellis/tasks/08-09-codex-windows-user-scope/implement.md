@@ -43,3 +43,19 @@ empty package result, and has no Store, network, real Codex, or multi-account
 dependency. Matching x64 and ARM64 GitHub runners must each compile and execute
 that one exact smoke before this child can be accepted and archived; runner
 scheduling or native failure remains blocking.
+
+## Remote correction evidence
+
+The first complete dev-branch push run, GitHub Actions run `31331434192` for
+source SHA `4fb00890348b418e5eac593973ef43fc5785d9ac`, failed closed before
+release preflight. Both native Windows legs exposed a missing test-only
+`SuggestedAction` import, and the Windows backend additionally exposed the
+path-included domain test's missing crate-root `windows_runtime` module.
+Neither failure was a runner-capacity or transient platform error, so the
+failed SHA is not eligible for rerun or release.
+
+The follow-up correction adds no product behavior: it restores those two
+Windows-only compile graphs and adds a host-runnable source contract to the
+CI-safe release suite. Acceptance remains pending until a new dev HEAD passes
+the complete `CI / Required` workflow, including both matching-architecture
+native legs.

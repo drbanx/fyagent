@@ -16,6 +16,11 @@ mod platform {
     }
 }
 
+#[cfg(target_os = "windows")]
+#[allow(dead_code)]
+#[path = "../src/windows_runtime/mod.rs"]
+mod windows_runtime;
+
 #[allow(dead_code)]
 #[path = "../src/codex_desktop/mod.rs"]
 mod codex_desktop;
