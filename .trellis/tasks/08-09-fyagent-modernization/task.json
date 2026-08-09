@@ -1,0 +1,32 @@
+{
+  "id": "fyagent-modernization",
+  "name": "fyagent-modernization",
+  "title": "FyAgent modernization",
+  "description": "Coordinate five modernization workstreams, exact-SHA v0.3.1 release, and final archive closeout on dev/laiyongjie.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "repository-wide coordination and release closeout",
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-09",
+  "completedAt": null,
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-09-trellis-mise-local-contracts",
+    "08-09-windows-installer-modernization",
+    "08-09-codex-windows-user-scope",
+    "08-09-ci-release-modernization",
+    "08-09-docs-spec-current-state-migration"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "No PR or main merge. Parent has no direct implementation; it closes only after child evidence, formal Release, and remote CI.",
+  "meta": {}
+}

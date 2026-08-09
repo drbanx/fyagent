@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/index.md","reason":"Routes existing backend owners that must be migrated without duplication."}
+{"file":".trellis/spec/frontend/index.md","reason":"Routes renderer contracts and cross-layer references that must remain current."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Preserve true tooling versions and current-context boundaries."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace mutable rules to one owner across code, specs, docs, and tests."}
