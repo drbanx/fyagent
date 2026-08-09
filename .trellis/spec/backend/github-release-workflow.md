@@ -187,7 +187,9 @@ The preflight and formal Windows paths are mutually exclusive:
 - `windows-lifecycle` runs on another fresh matching native runner. It has no
   signer secrets or upload step, rebinds the sealed installer to its fragment,
   executes the complete elevated lifecycle, and cannot change the artifacts
-  later consumed by aggregation.
+  later consumed by aggregation. Each matrix child has a 45-minute hard job
+  timeout; a timeout fails the lifecycle dependency and cannot admit asset
+  aggregation, attestation, or publication.
 
 The formal provider therefore has authority to transform its candidate or
 cause a denial of service, but it cannot replace pinned build inputs or create

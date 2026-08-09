@@ -57,3 +57,22 @@ exact-SHA run filter. They did not create or modify a run, tag, Release, or
 repository setting. Real `dev/laiyongjie` push CI, dispatch preflight, annotated
 tag, formal Release, and closeout CI remain parent-task acceptance gates; this
 child stays open until those observations exist.
+
+## Preflight lifecycle timeout follow-up
+
+Dispatch preflight run `31336520793` for exact source commit
+`6830fc5b48f37376998835808734952cac19ec3a` reached the secret-free Windows
+lifecycle after eligibility, builds, input pinning, and unsigned sealing had
+succeeded. Both x64 job `93305791602` and ARM64 job `93305791528` remained in
+the lifecycle step for more than 60 minutes. Normal cancellation did not stop
+them, and force-cancel was required at `2026-08-09T22:49:23Z`. Both job log
+endpoints remained 404/empty through `2026-08-09T23:20:11Z`, with no job-level
+post-checkout execution observed. The exact last `CASE` is therefore unknown.
+Downstream asset verification, attestation, and publication did not
+materialize, and no tag or Release exists.
+
+The workflow correction gives each `windows-lifecycle` matrix child an exact
+45-minute hard timeout. Lifecycle-local process deadlines and case diagnostics
+remain owned by the Windows installer contract. This is not native acceptance:
+a new exact-SHA dispatch must complete both architecture jobs before the
+preflight or release gate can close.

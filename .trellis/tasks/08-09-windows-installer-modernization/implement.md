@@ -109,3 +109,32 @@ rules. The correction pins those text inputs to LF, normalizes only the
 descriptive gzip OS byte to `255` (unknown), and continues to require exact
 compressed bytes plus exact decompressed source. A new full dev push CI and
 same-SHA dispatch preflight remain mandatory before tagging.
+
+## Native lifecycle timeout correction evidence
+
+The next dispatch preflight, run `31336520793` for exact source commit
+`6830fc5b48f37376998835808734952cac19ec3a`, passed eligibility, native builds,
+input pinning, and unsigned sealing. Its x64 lifecycle job `93305791602` and
+ARM64 lifecycle job `93305791528` both then remained for more than 60 minutes
+in `Run native install lifecycle against sealed Windows setup bytes`. Normal
+cancellation did not stop them; force-cancel at `2026-08-09T22:49:23Z` was
+required. Both job log endpoints remained 404/empty through
+`2026-08-09T23:20:11Z`, and no job-level post-checkout execution was observed.
+Consequently the exact last executed `CASE` cannot be recovered or claimed.
+`verify-assets`, attestation, and publication never materialized, and no tag
+or Release was created.
+
+The harness correction adds a 45-minute lifecycle-job ceiling; direct,
+bounded process waits for NSIS and cleanup; bounded asynchronously drained
+Windows PowerShell signature and native `signtool` execution; case-owned
+process-tree kill requests on timeout with only the direct root exit reported;
+handle disposal; and UTC start/end, PID, elapsed, exit, and outcome markers. It
+preserves all installer and uninstall assertions. The production WebView2
+helper is intentionally unchanged because the missing logs do not prove that
+helper was the stalled owner, while the bounded outer NSIS process tree
+contains its execution without changing the reviewed download or Authenticode
+policy.
+
+Local structure and mutation tests cannot replace matching native evidence.
+Both x64 and ARM64 lifecycle acceptance criteria remain open until a new
+exact-SHA preflight completes normally.

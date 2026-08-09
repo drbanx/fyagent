@@ -133,6 +133,26 @@ function expectExactLine(source: string, line: string) {
   ).toEqual([line]);
 }
 
+function assertWindowsLifecycleJobTimeout(source: string): void {
+  const start = source.indexOf("\n  windows-lifecycle:\n");
+  const end = source.indexOf("\n  build-linux:\n", start + 1);
+  if (start < 0 || end <= start) {
+    throw new Error("Windows lifecycle job block is missing");
+  }
+  const lifecycleJob = source.slice(start, end);
+  const timeoutLines = lifecycleJob
+    .split(/\r?\n/u)
+    .filter((line) => line.includes("timeout-minutes:"));
+  if (
+    timeoutLines.length !== 1 ||
+    timeoutLines[0] !== "    timeout-minutes: 45"
+  ) {
+    throw new Error(
+      "Windows lifecycle job must have the exact 45-minute hard timeout",
+    );
+  }
+}
+
 function createBuildInputFixture(version: string) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-release-pin-"));
   temporaryRoots.push(root);
@@ -882,6 +902,7 @@ describe("FyAgent release workflow", () => {
     );
     expect(lifecycleJob).toContain("runner: windows-2025");
     expect(lifecycleJob).toContain("runner: windows-11-arm");
+    expectExactLine(lifecycleJob, "    timeout-minutes: 45");
     expect(lifecycleJob).toContain("permissions:\n      contents: read");
     expect(lifecycleJob).not.toContain("${{ secrets.");
     expect(lifecycleJob).not.toContain("SIGNER_ADAPTER");
@@ -919,6 +940,19 @@ describe("FyAgent release workflow", () => {
 
     const verify = workflowJobBlock(source, "verify-assets", "attest");
     expectExactLine(verify, "        pin-release-build-inputs,");
+  });
+
+  it("rejects a missing or drifted Windows lifecycle job timeout", () => {
+    expect(() => assertWindowsLifecycleJobTimeout(source)).not.toThrow();
+    for (const mutation of [
+      source.replace("    timeout-minutes: 45\n", ""),
+      source.replace("    timeout-minutes: 45", "    timeout-minutes: 60"),
+      source.replace("    timeout-minutes: 45", "      timeout-minutes: 45"),
+    ]) {
+      expect(() => assertWindowsLifecycleJobTimeout(mutation)).toThrow(
+        /exact 45-minute hard timeout/u,
+      );
+    }
   });
 
   it("pins all build outputs before the provider receives an artifact token", () => {

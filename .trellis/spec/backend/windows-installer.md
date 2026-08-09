@@ -209,6 +209,19 @@ runner and proves:
 - silent uninstall removes bounded installer-owned state while preserving every
   user-data sentinel.
 
+The release lifecycle job has a 45-minute hard timeout. Within the harness,
+each installer or ordinary uninstall waits on its direct `Process` for at most
+10 minutes; best-effort cleanup waits at most 2 minutes. The lifecycle-only
+Windows PowerShell signature verifier and native `signtool` fixture wait at
+most 3 and 2 minutes respectively, drain redirected stdout and stderr
+asynchronously with a bounded completion wait, and dispose every owned process
+handle. A timed-out helper issues `Kill(true)` only for the process tree rooted
+at that case's PID, waits a further bounded interval for the direct root
+process to exit, makes no stronger claim about descendant exit, and then fails.
+Every launched case emits UTC start/end markers with its PID, elapsed
+milliseconds, exit code (or an explicit unavailable marker), and outcome so a
+remote failure can be localized without weakening any later state assertion.
+
 Lifecycle cleanup is best effort only for installations created by that test.
 It does not use Store access, a real Codex installation, or application UI.
 Preview ARM64 runner unavailability blocks acceptance; it does not authorize a

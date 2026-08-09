@@ -1076,6 +1076,7 @@ jobs:
         seal-windows-formal,
       ]
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     permissions:
       contents: read
     strategy:

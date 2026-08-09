@@ -35,6 +35,266 @@ if ($actualOsArchitecture -cne $expectedOsArchitecture) {
 $uninstallRegistrySubKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\FyAgent'
 $protocolRegistrySubKey = 'Software\Classes\fyagent'
 $installLocationRegistrySubKey = 'Software\fyagent\FyAgent'
+$nsisProcessTimeoutMilliseconds = 10 * 60 * 1000
+$cleanupNsisTimeoutMilliseconds = 2 * 60 * 1000
+$signatureVerifierTimeoutMilliseconds = 3 * 60 * 1000
+$nativeToolTimeoutMilliseconds = 2 * 60 * 1000
+$processRootExitAfterTreeKillTimeoutMilliseconds = 15 * 1000
+$redirectedOutputDrainTimeoutMilliseconds = 15 * 1000
+
+function Stop-CaseOwnedProcessTree {
+  param(
+    [Parameter(Mandatory = $true)]
+    [Diagnostics.Process]$Process,
+
+    [Parameter(Mandatory = $true)]
+    [string]$CaseName
+  )
+
+  try {
+    if ($Process.HasExited) {
+      return 'root-already-exited-before-tree-kill'
+    }
+    $Process.Kill($true)
+    if (-not $Process.WaitForExit($processRootExitAfterTreeKillTimeoutMilliseconds)) {
+      return "tree-kill-issued-root-still-running-after-${processRootExitAfterTreeKillTimeoutMilliseconds}ms"
+    }
+    # .NET's direct-process wait does not prove that every descendant has
+    # exited after Kill(true); report only the state this handle can establish.
+    return 'tree-kill-issued-root-exited'
+  } catch {
+    return "termination-failed-for-${CaseName}: $($_.Exception.Message)"
+  }
+}
+
+function Receive-RedirectedProcessOutput {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$StandardOutputTask,
+
+    [Parameter(Mandatory = $true)]
+    [object]$StandardErrorTask
+  )
+
+  try {
+    $tasks = [Threading.Tasks.Task[]]@($StandardOutputTask, $StandardErrorTask)
+    if (-not [Threading.Tasks.Task]::WaitAll(
+      $tasks,
+      $redirectedOutputDrainTimeoutMilliseconds
+    )) {
+      return [pscustomobject]@{
+        Completed = $false
+        StandardOutput = ''
+        StandardError = ''
+        Failure = "output-drain-timeout-after-${redirectedOutputDrainTimeoutMilliseconds}ms"
+      }
+    }
+    return [pscustomobject]@{
+      Completed = $true
+      StandardOutput = $StandardOutputTask.GetAwaiter().GetResult()
+      StandardError = $StandardErrorTask.GetAwaiter().GetResult()
+      Failure = $null
+    }
+  } catch {
+    return [pscustomobject]@{
+      Completed = $false
+      StandardOutput = ''
+      StandardError = ''
+      Failure = "output-drain-failed: $($_.Exception.Message)"
+    }
+  }
+}
+
+function Invoke-BoundedCaseProcess {
+  param(
+    [Parameter(Mandatory = $true)]
+    [Diagnostics.ProcessStartInfo]$StartInfo,
+
+    [Parameter(Mandatory = $true)]
+    [string]$CaseName,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 2147483647)]
+    [int]$TimeoutMilliseconds,
+
+    [switch]$CaptureOutput,
+
+    [ValidateSet('Any', 'Zero', 'NonZero')]
+    [string]$ExpectedExit = 'Any'
+  )
+
+  if (
+    $CaptureOutput -and
+    (-not $StartInfo.RedirectStandardOutput -or -not $StartInfo.RedirectStandardError)
+  ) {
+    throw "${CaseName} must redirect both stdout and stderr before launch."
+  }
+  if (
+    -not $CaptureOutput -and
+    ($StartInfo.RedirectStandardOutput -or $StartInfo.RedirectStandardError)
+  ) {
+    throw "${CaseName} must capture every configured redirected stream."
+  }
+
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $StartInfo
+  $startedUtc = [DateTime]::UtcNow
+  $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+  $processId = 'not-started'
+  $exitCode = 'unavailable'
+  $outcome = 'start-failed'
+  $startMarkerWritten = $false
+  $standardOutput = ''
+  $standardError = ''
+  $result = $null
+  $operationFailure = $null
+  $disposalFailure = $null
+  try {
+    if (-not $process.Start()) {
+      throw "${CaseName} failed to start $($StartInfo.FileName)"
+    }
+    $processId = [string]$process.Id
+    Write-Host (
+      'CASE START name={0} utc={1} pid={2} timeoutMs={3}' -f
+        $CaseName,
+        $startedUtc.ToString('o'),
+        $processId,
+        $TimeoutMilliseconds
+    )
+    $startMarkerWritten = $true
+    if ($CaptureOutput) {
+      $standardOutputTask = $process.StandardOutput.ReadToEndAsync()
+      $standardErrorTask = $process.StandardError.ReadToEndAsync()
+    }
+    if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+      $outcome = 'timed-out'
+      $termination = Stop-CaseOwnedProcessTree -Process $process -CaseName $CaseName
+      $drainStatus = 'not-captured'
+      if ($CaptureOutput) {
+        $drain = Receive-RedirectedProcessOutput `
+          -StandardOutputTask $standardOutputTask `
+          -StandardErrorTask $standardErrorTask
+        $drainStatus = if ($drain.Completed) { 'completed' } else { $drain.Failure }
+        if ($drain.Completed) {
+          $standardOutput = $drain.StandardOutput
+          $standardError = $drain.StandardError
+        }
+      }
+      try {
+        if ($process.HasExited) {
+          $exitCode = [string]$process.ExitCode
+        }
+      } catch {
+        $exitCode = 'unavailable'
+      }
+      $standardErrorDetail = if (
+        $CaptureOutput -and
+        -not [string]::IsNullOrWhiteSpace($standardError)
+      ) {
+        "; stderr=$($standardError.TrimEnd())"
+      } else {
+        ''
+      }
+      throw (
+        "${CaseName} timed out after ${TimeoutMilliseconds}ms (pid=${processId}; " +
+        "termination=${termination}; outputDrain=${drainStatus})${standardErrorDetail}."
+      )
+    }
+
+    $exitCode = [string]$process.ExitCode
+    if ($CaptureOutput) {
+      $drain = Receive-RedirectedProcessOutput `
+        -StandardOutputTask $standardOutputTask `
+        -StandardErrorTask $standardErrorTask
+      if (-not $drain.Completed) {
+        $outcome = 'output-drain-failed'
+        throw "${CaseName} $($drain.Failure) (pid=${processId})."
+      }
+      $standardOutput = $drain.StandardOutput
+      $standardError = $drain.StandardError
+    }
+    $unexpectedExitMessage = if (
+      $ExpectedExit -eq 'Zero' -and $process.ExitCode -ne 0
+    ) {
+      "${CaseName} failed with exit code $($process.ExitCode)"
+    } elseif ($ExpectedExit -eq 'NonZero' -and $process.ExitCode -eq 0) {
+      "${CaseName} unexpectedly succeeded"
+    } else {
+      $null
+    }
+    if ($null -ne $unexpectedExitMessage) {
+      $outcome = 'unexpected-exit'
+      $standardErrorDetail = if (
+        $CaptureOutput -and
+        -not [string]::IsNullOrWhiteSpace($standardError)
+      ) {
+        ": $($standardError.TrimEnd())"
+      } else {
+        ''
+      }
+      throw "${unexpectedExitMessage}${standardErrorDetail}"
+    }
+    $outcome = 'completed'
+    $result = [pscustomobject]@{
+      ExitCode = $process.ExitCode
+      StandardOutput = $standardOutput
+      StandardError = $standardError
+    }
+  } catch {
+    $operationFailure = $_
+  } finally {
+    $stopwatch.Stop()
+    if (-not $startMarkerWritten) {
+      Write-Host (
+        'CASE START name={0} utc={1} pid={2} timeoutMs={3}' -f
+          $CaseName,
+          $startedUtc.ToString('o'),
+          $processId,
+          $TimeoutMilliseconds
+      )
+    }
+    if ($processId -ne 'not-started' -and $exitCode -eq 'unavailable') {
+      try {
+        if ($process.HasExited) {
+          $exitCode = [string]$process.ExitCode
+        }
+      } catch {
+        $exitCode = 'unavailable'
+      }
+    }
+    try {
+      $process.Dispose()
+    } catch {
+      $disposalFailure = $_
+      if ($null -eq $operationFailure) {
+        $outcome = 'dispose-failed'
+      }
+    }
+    Write-Host (
+      'CASE END name={0} utc={1} pid={2} elapsedMs={3} exitCode={4} outcome={5}' -f
+        $CaseName,
+        ([DateTime]::UtcNow).ToString('o'),
+        $processId,
+        $stopwatch.ElapsedMilliseconds,
+        $exitCode,
+        $outcome
+    )
+  }
+  if ($null -ne $operationFailure) {
+    if ($null -ne $disposalFailure) {
+      try {
+        Write-Warning "${CaseName} process disposal also failed: $($disposalFailure.Exception.Message)"
+      } catch {
+        # Diagnostics are best effort and must not replace the process failure.
+      }
+    }
+    throw $operationFailure
+  }
+  if ($null -ne $disposalFailure) {
+    throw "${CaseName} process disposal failed: $($disposalFailure.Exception.Message)"
+  }
+  return $result
+}
 
 function Get-Registry64Value {
   param(
@@ -148,24 +408,53 @@ function Invoke-NsisProcess {
     [string]$CaseName,
 
     [Parameter(Mandatory = $true)]
-    [string]$WorkingDirectory
+    [string]$WorkingDirectory,
+
+    [ValidateRange(1, 2147483647)]
+    [int]$TimeoutMilliseconds = $nsisProcessTimeoutMilliseconds
   )
 
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $FilePath
+  $startInfo.WorkingDirectory = $WorkingDirectory
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  if (
+    $Arguments.Count -lt 1 -or
+    $Arguments.Count -gt 2 -or
+    $Arguments[0] -cne '/S' -or
+    (
+      $Arguments.Count -eq 2 -and
+      (
+        $Arguments[1].Length -le 3 -or
+        -not $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)
+      )
+    )
+  ) {
+    throw "${CaseName} has an invalid NSIS argument shape."
+  }
+  foreach ($argument in $Arguments) {
+    if ($argument.Contains([char]34)) {
+      throw "${CaseName} contains a forbidden NSIS command-line character."
+    }
+    foreach ($character in $argument.ToCharArray()) {
+      if ([char]::IsControl($character)) {
+        throw "${CaseName} contains a forbidden NSIS command-line character."
+      }
+    }
+  }
+  # NSIS requires a final /D= value to remain unquoted even when its path has
+  # spaces. ProcessStartInfo.ArgumentList would quote it, so this validated
+  # NSIS-only command line intentionally uses the raw Arguments property.
+  $startInfo.Arguments = [string]::Join(' ', $Arguments)
   Write-Host "CASE ${CaseName}: $FilePath $($Arguments -join ' ')"
-  $process = Start-Process `
-    -FilePath $FilePath `
-    -ArgumentList ($Arguments -join ' ') `
-    -WorkingDirectory $WorkingDirectory `
-    -Wait `
-    -PassThru `
-    -WindowStyle Hidden
-  if ($ShouldSucceed -and $process.ExitCode -ne 0) {
-    throw "${CaseName} failed with exit code $($process.ExitCode)"
-  }
-  if (-not $ShouldSucceed -and $process.ExitCode -eq 0) {
-    throw "${CaseName} unexpectedly succeeded"
-  }
-  return $process.ExitCode
+  $expectedExit = if ($ShouldSucceed) { 'Zero' } else { 'NonZero' }
+  $result = Invoke-BoundedCaseProcess `
+    -StartInfo $startInfo `
+    -CaseName $CaseName `
+    -TimeoutMilliseconds $TimeoutMilliseconds `
+    -ExpectedExit $expectedExit
+  return $result.ExitCode
 }
 
 function Invoke-BestEffortNsisUninstall {
@@ -180,22 +469,19 @@ function Invoke-BestEffortNsisUninstall {
     [string]$WorkingDirectory
   )
 
-  $uninstaller = Join-Path $InstallDirectory 'uninstall.exe'
-  if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
-    return
-  }
   try {
-    Write-Warning "Cleanup ${CaseName}: invoking $uninstaller /S"
-    $process = Start-Process `
-      -FilePath $uninstaller `
-      -ArgumentList '/S' `
-      -WorkingDirectory $WorkingDirectory `
-      -Wait `
-      -PassThru `
-      -WindowStyle Hidden
-    if ($process.ExitCode -ne 0) {
-      Write-Warning "Cleanup ${CaseName} exited with $($process.ExitCode)."
+    $uninstaller = Join-Path $InstallDirectory 'uninstall.exe'
+    if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
+      return
     }
+    Write-Warning "Cleanup ${CaseName}: invoking $uninstaller /S"
+    [void](Invoke-NsisProcess `
+      -FilePath $uninstaller `
+      -Arguments @('/S') `
+      -ShouldSucceed $true `
+      -CaseName "cleanup-${CaseName}" `
+      -WorkingDirectory $WorkingDirectory `
+      -TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds)
   } catch {
     Write-Warning "Cleanup ${CaseName} failed: $($_.Exception.Message)"
   }
@@ -871,28 +1157,18 @@ function Invoke-WebView2SignatureVerification {
   $startInfo.Environment['PSModulePath'] = $MaliciousModuleRoot
   $startInfo.Environment['FYAGENT_MALICIOUS_MODULE_MARKER'] = $MarkerPath
   Write-Host "CASE ${CaseName}: trusted Windows PowerShell VerifyOnly"
-  $process = [Diagnostics.Process]::new()
-  $process.StartInfo = $startInfo
-  try {
-    if (-not $process.Start()) {
-      throw "${CaseName} failed to start Windows PowerShell."
-    }
-    $standardOutput = $process.StandardOutput.ReadToEndAsync()
-    $standardError = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
-    $outputText = $standardOutput.GetAwaiter().GetResult()
-    $errorText = $standardError.GetAwaiter().GetResult()
-    if (-not [string]::IsNullOrWhiteSpace($outputText)) {
-      Write-Host $outputText.TrimEnd()
-    }
-    if ($ShouldSucceed -and $process.ExitCode -ne 0) {
-      throw "${CaseName} failed with exit code $($process.ExitCode): $errorText"
-    }
-    if (-not $ShouldSucceed -and $process.ExitCode -eq 0) {
-      throw "${CaseName} unexpectedly accepted a tampered executable"
-    }
-  } finally {
-    $process.Dispose()
+  $expectedExit = if ($ShouldSucceed) { 'Zero' } else { 'NonZero' }
+  $result = Invoke-BoundedCaseProcess `
+    -StartInfo $startInfo `
+    -CaseName $CaseName `
+    -TimeoutMilliseconds $signatureVerifierTimeoutMilliseconds `
+    -CaptureOutput `
+    -ExpectedExit $expectedExit
+  if (-not [string]::IsNullOrWhiteSpace($result.StandardOutput)) {
+    Write-Host $result.StandardOutput.TrimEnd()
+  }
+  if (-not [string]::IsNullOrWhiteSpace($result.StandardError)) {
+    Write-Host $result.StandardError.TrimEnd()
   }
   if (Test-Path -LiteralPath $MarkerPath) {
     throw "${CaseName} imported a user-controlled PowerShell module."
@@ -1022,21 +1298,22 @@ function Invoke-NativeTool {
   $startInfo.FileName = $FilePath
   $startInfo.UseShellExecute = $false
   $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
   foreach ($argument in $Arguments) {
     [void]$startInfo.ArgumentList.Add($argument)
   }
-  $process = [Diagnostics.Process]::new()
-  $process.StartInfo = $startInfo
-  try {
-    if (-not $process.Start()) {
-      throw "${CaseName} failed to start $FilePath"
-    }
-    $process.WaitForExit()
-    if ($process.ExitCode -ne 0) {
-      throw "${CaseName} failed with exit code $($process.ExitCode)"
-    }
-  } finally {
-    $process.Dispose()
+  $result = Invoke-BoundedCaseProcess `
+    -StartInfo $startInfo `
+    -CaseName $CaseName `
+    -TimeoutMilliseconds $nativeToolTimeoutMilliseconds `
+    -CaptureOutput `
+    -ExpectedExit Zero
+  if (-not [string]::IsNullOrWhiteSpace($result.StandardOutput)) {
+    Write-Host $result.StandardOutput.TrimEnd()
+  }
+  if (-not [string]::IsNullOrWhiteSpace($result.StandardError)) {
+    Write-Host $result.StandardError.TrimEnd()
   }
 }
 

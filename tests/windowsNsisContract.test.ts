@@ -88,6 +88,230 @@ function temporaryFile(name: string, source: string): string {
   return filePath;
 }
 
+function powershellFunctionBlock(
+  source: string,
+  name: string,
+  nextName: string,
+): string {
+  const start = source.indexOf(`function ${name} {`);
+  const end = source.indexOf(`\nfunction ${nextName} {`, start + 1);
+  if (start < 0 || end <= start) {
+    throw new Error(`PowerShell function ${name} is missing or unterminated`);
+  }
+  return source.slice(start, end);
+}
+
+function withoutPowerShellComments(source: string): string {
+  return source.replace(/<#[\s\S]*?#>/gu, "").replace(/#[^\r\n]*/gu, "");
+}
+
+function requireExecutableMarker(
+  source: string,
+  marker: string,
+  description: string,
+): void {
+  if (!source.includes(marker)) {
+    throw new Error(`native lifecycle is missing ${description}: ${marker}`);
+  }
+}
+
+function assertBoundedLifecycleProcessContract(source: string): void {
+  const executable = withoutPowerShellComments(source);
+  if (/Start-Process[\s\S]{0,320}?\s-Wait\b/u.test(executable)) {
+    throw new Error("native lifecycle must not use Start-Process -Wait");
+  }
+  if (/\.WaitForExit\(\s*\)/u.test(executable)) {
+    throw new Error("native lifecycle contains an unbounded WaitForExit call");
+  }
+
+  for (const timeout of [
+    "$nsisProcessTimeoutMilliseconds = 10 * 60 * 1000",
+    "$cleanupNsisTimeoutMilliseconds = 2 * 60 * 1000",
+    "$signatureVerifierTimeoutMilliseconds = 3 * 60 * 1000",
+    "$nativeToolTimeoutMilliseconds = 2 * 60 * 1000",
+    "$processRootExitAfterTreeKillTimeoutMilliseconds = 15 * 1000",
+    "$redirectedOutputDrainTimeoutMilliseconds = 15 * 1000",
+  ]) {
+    requireExecutableMarker(executable, timeout, "bounded timeout");
+  }
+
+  const stopTree = powershellFunctionBlock(
+    executable,
+    "Stop-CaseOwnedProcessTree",
+    "Receive-RedirectedProcessOutput",
+  );
+  for (const marker of [
+    "$Process.Kill($true)",
+    "$Process.WaitForExit($processRootExitAfterTreeKillTimeoutMilliseconds)",
+    "root-already-exited-before-tree-kill",
+    "tree-kill-issued-root-still-running-after-",
+    "tree-kill-issued-root-exited",
+  ]) {
+    requireExecutableMarker(stopTree, marker, "process-tree kill behavior");
+  }
+  if (stopTree.includes("return 'terminated'")) {
+    throw new Error(
+      "process-tree diagnostics must not claim descendant termination",
+    );
+  }
+
+  const receiveOutput = powershellFunctionBlock(
+    executable,
+    "Receive-RedirectedProcessOutput",
+    "Invoke-BoundedCaseProcess",
+  );
+  const waitAll = receiveOutput.indexOf("[Threading.Tasks.Task]::WaitAll(");
+  const firstGetResult = receiveOutput.indexOf(".GetAwaiter().GetResult()");
+  if (waitAll < 0 || firstGetResult <= waitAll) {
+    throw new Error(
+      "native lifecycle may read redirected output only after bounded Task.WaitAll",
+    );
+  }
+  if (
+    (receiveOutput.match(/\.GetAwaiter\(\)\.GetResult\(\)/gu) ?? []).length !==
+    2
+  ) {
+    throw new Error("bounded output drain must collect both completed streams");
+  }
+
+  const boundedProcess = powershellFunctionBlock(
+    executable,
+    "Invoke-BoundedCaseProcess",
+    "Get-Registry64Value",
+  );
+  if ((boundedProcess.match(/ReadToEndAsync\(\)/gu) ?? []).length !== 2) {
+    throw new Error(
+      "native lifecycle must asynchronously drain both stdout and stderr",
+    );
+  }
+  for (const marker of [
+    "$process.WaitForExit($TimeoutMilliseconds)",
+    "Stop-CaseOwnedProcessTree -Process $process -CaseName $CaseName",
+    "$outcome = 'timed-out'",
+    "$outcome = 'unexpected-exit'",
+    "$outcome = 'output-drain-failed'",
+    "$outcome = 'dispose-failed'",
+    "CASE START name={0} utc={1} pid={2} timeoutMs={3}",
+    "CASE END name={0} utc={1} pid={2} elapsedMs={3} exitCode={4} outcome={5}",
+    "throw $operationFailure",
+  ]) {
+    requireExecutableMarker(boundedProcess, marker, "bounded process behavior");
+  }
+  if ((boundedProcess.match(/\$process\.Dispose\(\)/gu) ?? []).length !== 1) {
+    throw new Error("native lifecycle must dispose every owned Process handle");
+  }
+  requireExecutableMarker(
+    boundedProcess,
+    "try {\n      $process.Dispose()\n    } catch {",
+    "non-masking process disposal",
+  );
+  requireExecutableMarker(
+    boundedProcess,
+    '": $($standardError.TrimEnd())"',
+    "captured stderr failure detail",
+  );
+
+  const nsisProcess = powershellFunctionBlock(
+    executable,
+    "Invoke-NsisProcess",
+    "Invoke-BestEffortNsisUninstall",
+  );
+  for (const marker of [
+    "$Arguments.Count -lt 1",
+    "$Arguments.Count -gt 2",
+    "$Arguments[0] -cne '/S'",
+    "$Arguments[1].Length -le 3",
+    "$argument.Contains([char]34)",
+    "foreach ($character in $argument.ToCharArray())",
+    "[char]::IsControl($character)",
+    "$startInfo.Arguments = [string]::Join(' ', $Arguments)",
+    "-ExpectedExit $expectedExit",
+  ]) {
+    requireExecutableMarker(
+      nsisProcess,
+      marker,
+      "NSIS process launch contract",
+    );
+  }
+  if (nsisProcess.includes("ArgumentList.Add")) {
+    throw new Error("NSIS /D= launch must preserve its unquoted raw syntax");
+  }
+  const controlValidation = nsisProcess.indexOf(
+    "[char]::IsControl($character)",
+  );
+  const rawArguments = nsisProcess.indexOf(
+    "$startInfo.Arguments = [string]::Join(' ', $Arguments)",
+  );
+  const caseLog = nsisProcess.indexOf(
+    "Write-Host \"CASE ${CaseName}: $FilePath $($Arguments -join ' ')\"",
+  );
+  if (
+    controlValidation < 0 ||
+    rawArguments <= controlValidation ||
+    caseLog <= rawArguments
+  ) {
+    throw new Error(
+      "NSIS arguments must be validated before raw transport or logging",
+    );
+  }
+
+  const cleanup = powershellFunctionBlock(
+    executable,
+    "Invoke-BestEffortNsisUninstall",
+    "Get-OwnerDaclSddl",
+  );
+  for (const marker of [
+    "try {\n    $uninstaller = Join-Path $InstallDirectory 'uninstall.exe'",
+    "-TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds)",
+    'Write-Warning "Cleanup ${CaseName} failed: $($_.Exception.Message)"',
+  ]) {
+    requireExecutableMarker(cleanup, marker, "best-effort cleanup isolation");
+  }
+
+  const signatureVerifier = powershellFunctionBlock(
+    executable,
+    "Invoke-WebView2SignatureVerification",
+    "Save-OfficialWebView2BootstrapperFixture",
+  );
+  const nativeTool = powershellFunctionBlock(
+    executable,
+    "Invoke-NativeTool",
+    "Invoke-FakeCurrentUserRootAttackFixture",
+  );
+  for (const [block, expectedExit] of [
+    [signatureVerifier, "-ExpectedExit $expectedExit"],
+    [nativeTool, "-ExpectedExit Zero"],
+  ] as const) {
+    requireExecutableMarker(
+      block,
+      "$startInfo.RedirectStandardOutput = $true",
+      "stdout redirect",
+    );
+    requireExecutableMarker(
+      block,
+      "$startInfo.RedirectStandardError = $true",
+      "stderr redirect",
+    );
+    requireExecutableMarker(
+      block,
+      "[void]$startInfo.ArgumentList.Add($argument)",
+      "lossless helper argument transport",
+    );
+    requireExecutableMarker(block, expectedExit, "helper exit expectation");
+  }
+  if (
+    (
+      executable.match(
+        /\[void\]\$startInfo\.ArgumentList\.Add\(\$argument\)/gu,
+      ) ?? []
+    ).length !== 2
+  ) {
+    throw new Error(
+      "only the PowerShell verifier and native tool may use ArgumentList",
+    );
+  }
+}
+
 function verifyTemplate(source: string): VerificationResult {
   return verifyWindowsNsisContract({
     baseConfigPath: BASE_CONFIG,
@@ -429,6 +653,140 @@ describe("Windows NSIS installer contract", () => {
     expect(lifecycle).not.toContain(
       "Remove-Item -LiteralPath $userProfileFyagentDirectory",
     );
+  });
+
+  it("rejects unbounded lifecycle process waits and missing timeout diagnostics", () => {
+    const lifecycle = fs.readFileSync(LIFECYCLE, "utf8");
+    expect(() =>
+      assertBoundedLifecycleProcessContract(lifecycle),
+    ).not.toThrow();
+
+    const mutations = [
+      {
+        label: "Start-Process process-tree wait",
+        source: `${lifecycle}\nStart-Process -FilePath $InstallerPath -Wait\n`,
+      },
+      {
+        label: "unbounded direct process wait",
+        source: lifecycle.replace(
+          "$process.WaitForExit($TimeoutMilliseconds)",
+          "$process.WaitForExit()\n      # $process.WaitForExit($TimeoutMilliseconds)",
+        ),
+      },
+      {
+        label: "single-process termination",
+        source: lifecycle.replace(
+          "$Process.Kill($true)",
+          "$Process.Kill()\n    # $Process.Kill($true)",
+        ),
+      },
+      {
+        label: "unbounded root wait after tree kill",
+        source: lifecycle.replace(
+          "$Process.WaitForExit($processRootExitAfterTreeKillTimeoutMilliseconds)",
+          "$Process.WaitForExit()\n    # $Process.WaitForExit($processRootExitAfterTreeKillTimeoutMilliseconds)",
+        ),
+      },
+      {
+        label: "descendant termination overclaim",
+        source: lifecycle.replace(
+          "return 'tree-kill-issued-root-exited'",
+          "return 'terminated'\n    # return 'tree-kill-issued-root-exited'",
+        ),
+      },
+      {
+        label: "unbounded cleanup",
+        source: lifecycle.replace(
+          "-TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds)",
+          "-TimeoutMilliseconds $nsisProcessTimeoutMilliseconds)\n      # -TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds)",
+        ),
+      },
+      {
+        label: "cleanup error isolation",
+        source: lifecycle.replace(
+          "try {\n    $uninstaller = Join-Path $InstallDirectory 'uninstall.exe'",
+          "$uninstaller = Join-Path $InstallDirectory 'uninstall.exe'",
+        ),
+      },
+      {
+        label: "quoted NSIS ArgumentList transport",
+        source: lifecycle.replace(
+          "$startInfo.Arguments = [string]::Join(' ', $Arguments)",
+          "foreach ($argument in $Arguments) {\n    [void]$startInfo.ArgumentList.Add($argument)\n  }\n  # $startInfo.Arguments = [string]::Join(' ', $Arguments)",
+        ),
+      },
+      {
+        label: "empty NSIS /D admission",
+        source: lifecycle.replace(
+          "$Arguments[1].Length -le 3 -or",
+          "$false -or\n        # $Arguments[1].Length -le 3 -or",
+        ),
+      },
+      {
+        label: "NSIS control-character admission",
+        source: lifecycle.replace(
+          "if ([char]::IsControl($character)) {",
+          "if ($false) { # if ([char]::IsControl($character)) {",
+        ),
+      },
+      {
+        label: "stderr async drain",
+        source: lifecycle.replace(
+          "$process.StandardError.ReadToEndAsync()",
+          "$process.StandardError.ReadToEnd()\n      # $process.StandardError.ReadToEndAsync()",
+        ),
+      },
+      {
+        label: "unbounded redirected output result",
+        source: lifecycle.replace(
+          "if (-not [Threading.Tasks.Task]::WaitAll(",
+          "$null = $StandardOutputTask.GetAwaiter().GetResult()\n    if (-not [Threading.Tasks.Task]::WaitAll(",
+        ),
+      },
+      {
+        label: "signature verifier exit outcome",
+        source: lifecycle.replace(
+          "    -CaptureOutput `\n    -ExpectedExit $expectedExit",
+          "    -CaptureOutput\n    # -ExpectedExit $expectedExit",
+        ),
+      },
+      {
+        label: "native tool exit outcome",
+        source: lifecycle.replace(
+          "    -CaptureOutput `\n    -ExpectedExit Zero",
+          "    -CaptureOutput\n    # -ExpectedExit Zero",
+        ),
+      },
+      {
+        label: "captured stderr failure detail",
+        source: lifecycle.replace(
+          '": $($standardError.TrimEnd())"',
+          "''\n        # \": $($standardError.TrimEnd())\"",
+        ),
+      },
+      {
+        label: "case end diagnostics",
+        source: lifecycle.replace(
+          "'CASE END name={0} utc={1} pid={2} elapsedMs={3} exitCode={4} outcome={5}' -f",
+          "'CASE FINISH name={0} utc={1} pid={2} elapsedMs={3} exitCode={4} outcome={5}' -f\n      # 'CASE END name={0} utc={1} pid={2} elapsedMs={3} exitCode={4} outcome={5}' -f",
+        ),
+      },
+      {
+        label: "process disposal",
+        source: lifecycle.replace(
+          "$process.Dispose()",
+          "$null = $process\n      # $process.Dispose()",
+        ),
+      },
+    ];
+
+    for (const mutation of mutations) {
+      expect(mutation.source, mutation.label).not.toBe(lifecycle);
+      expect(
+        () => assertBoundedLifecycleProcessContract(mutation.source),
+        mutation.label,
+      ).toThrow();
+    }
   });
 
   it("rejects making the required native unsupported-drive cases unreachable", () => {

@@ -69,3 +69,33 @@ Rollback: before tag creation, add an owning follow-up commit rather than
 amending history. After a tag exists, never move/delete it or mutate a
 published Release automatically; keep the parent open and request a new
 version decision if source changes are required.
+
+## Windows lifecycle timeout correction
+
+Dispatch preflight run `31336520793` targeted exact source commit
+`6830fc5b48f37376998835808734952cac19ec3a`. Its x64 lifecycle job
+`93305791602` and ARM64 lifecycle job `93305791528` both remained in
+`Run native install lifecycle against sealed Windows setup bytes` for more
+than 60 minutes. A normal cancellation did not stop either job; force-cancel
+at `2026-08-09T22:49:23Z` was required. Both job log endpoints remained
+404/empty through `2026-08-09T23:20:11Z`, and no job-level post-checkout
+execution was observed. The exact last executed `CASE` is therefore
+unobservable and is not claimed.
+
+Eligibility, native builds, input pinning, and unsigned sealing had completed
+successfully before the lifecycle jobs. `verify-assets`, attestation, and
+publication did not materialize; no tag or Release was created. Source audit
+found no job timeout, `Start-Process -Wait` around lifecycle NSIS and cleanup
+execution, and unbounded lifecycle-only signature/native-tool waits. The
+correction bounds the job and every harness-owned process, issues a tree-kill
+only for the timed-out case's PID and reports the direct root exit without
+claiming every descendant exited, and adds UTC/PID/elapsed/exit diagnostics
+while preserving the complete WebView2, Authenticode, path, install, registry,
+shortcut, runtime, uninstall, and user-data assertions. The production
+WebView2 helper remains unchanged: the unavailable logs do not prove a defect
+inside that helper, and the outer NSIS case deadline already bounds it without
+changing production trust or download semantics.
+
+This correction is local/static evidence only. A new exact-SHA preflight must
+complete both matching native lifecycle jobs before either architecture, the
+preflight, or release readiness can be accepted.
