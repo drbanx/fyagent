@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -64,6 +65,12 @@ const WINDOWS_SIGNING_EVIDENCE = path.join(
   "scripts",
   "release",
   "windows-signing-evidence.ps1",
+);
+const MACOS_ADHOC_VERIFIER = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "verify-macos-adhoc-app.sh",
 );
 const PLATFORM_METADATA_WRITER = path.join(
   ROOT,
@@ -170,6 +177,63 @@ function createBuildInputFixture(version: string) {
   return root;
 }
 
+function runMacAdhocVerifier(mode: string) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-macos-adhoc-"));
+  temporaryRoots.push(root);
+  const binRoot = path.join(root, "bin");
+  const appPath = path.join(root, "FyAgent.app");
+  const callLog = path.join(root, "codesign.log");
+  fs.mkdirSync(binRoot);
+  fs.mkdirSync(appPath);
+  fs.writeFileSync(
+    path.join(binRoot, "codesign"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$FYAGENT_FAKE_CODESIGN_LOG"
+if [ "$1" = '--display' ]; then
+  printf '%s\\n' \\
+    'Executable=FyAgent' \\
+    'Identifier=com.fyagent.desktop' \\
+    "CodeDirectory v=20400 size=1 flags=$([ "$FYAGENT_FAKE_MODE" = linker ] && printf '0x20002(adhoc,linker-signed)' || printf '0x2(adhoc)') hashes=1+0 location=embedded" \\
+    'CMSDigest=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \\
+    'CMSDigestType=2' \\
+    'Signature=adhoc' \\
+    "$([ "$FYAGENT_FAKE_MODE" = team ] && printf 'TeamIdentifier=ABCDE12345' || printf 'TeamIdentifier=not set')" \\
+    "$([ "$FYAGENT_FAKE_MODE" = unsealed ] && printf 'Sealed Resources=none' || printf 'Sealed Resources version=2 rules=13 files=4')"
+  [ "$FYAGENT_FAKE_MODE" = authority ] && printf '%s\\n' 'Authority=Developer ID Application: Example'
+  [ "$FYAGENT_FAKE_MODE" = timestamp ] && printf '%s\\n' 'Timestamp=10 Aug 2026 at 00:00:00'
+  exit 0
+fi
+if [ "$1" = '--verify' ]; then
+  [ "$FYAGENT_FAKE_MODE" != verify-fail ]
+  exit
+fi
+exit 2
+`,
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(
+    path.join(binRoot, "xcrun"),
+    `#!/usr/bin/env bash
+[ "$FYAGENT_FAKE_MODE" = stapled ]
+`,
+    { mode: 0o755 },
+  );
+  const result = spawnSync("bash", [MACOS_ADHOC_VERIFIER, appPath], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      FYAGENT_FAKE_CODESIGN_LOG: callLog,
+      FYAGENT_FAKE_MODE: mode,
+      PATH: `${binRoot}:${process.env.PATH ?? ""}`,
+    },
+  });
+  return {
+    ...result,
+    calls: fs.existsSync(callLog) ? read(callLog).trim().split("\n") : [],
+  };
+}
+
 afterAll(() => {
   for (const root of temporaryRoots) {
     fs.rmSync(root, { force: true, recursive: true });
@@ -210,8 +274,8 @@ describe("FyAgent release workflow", () => {
     expect(notes).toContain("NotSigned");
     expect(notes).toMatch(/Developer\s+ID/u);
     expect(notes).toContain("not notarized");
-    expect(notes).toContain("unsigned universal application");
-    expect(notes).not.toMatch(/ad-hoc(?: signed| application signing)/iu);
+    expect(notes).toMatch(/universal app is ad-hoc signed/iu);
+    expect(notes).toContain("DMG container is unsigned");
     for (const retiredInstaller of [
       `FyAgent-${canonicalVersion}-Windows.msi`,
       `FyAgent-${canonicalVersion}-Windows-arm64.msi`,
@@ -938,11 +1002,13 @@ describe("FyAgent release workflow", () => {
     expect(publish).toContain("(.assets | length) == 14");
   });
 
-  it("preserves the unsigned universal macOS and complete Linux asset contracts", () => {
+  it("seals the universal macOS app ad-hoc while keeping the DMG unsigned", () => {
     const macJob = source.slice(
       source.indexOf("\n  build-macos:\n"),
       source.indexOf("\n  pin-release-build-inputs:\n"),
     );
+    const macAdhocVerifier = read(MACOS_ADHOC_VERIFIER);
+    expect(fs.statSync(MACOS_ADHOC_VERIFIER).mode & 0o111).not.toBe(0);
     const tauriConfig = JSON.parse(read(TAURI_CONFIG)) as {
       bundle?: { macOS?: { signingIdentity?: string } };
     };
@@ -958,20 +1024,64 @@ describe("FyAgent release workflow", () => {
     expect(tauriConfig.bundle?.macOS).not.toHaveProperty("signingIdentity");
     expect(macJob).not.toContain("APPLE_SIGNING_IDENTITY");
     expect(macJob).toContain(
-      'if signature_info="$(codesign -dvvv "$app_path" 2>&1)"; then',
+      'codesign --force --sign - --timestamp=none "$app_path"',
+    );
+    expect(
+      macJob.match(/scripts\/release\/verify-macos-adhoc-app\.sh/gu),
+    ).toHaveLength(3);
+    expect(macAdhocVerifier).toContain("for architecture in arm64 x86_64; do");
+    expect(macAdhocVerifier).toContain("Signature=adhoc");
+    expect(macAdhocVerifier).toContain("flags=.*adhoc");
+    expect(macAdhocVerifier).toContain("TeamIdentifier=not set");
+    expect(macAdhocVerifier).toContain("^Sealed Resources version=");
+    expect(macAdhocVerifier).toContain(
+      "codesign --verify --deep --strict --verbose=4",
+    );
+    expect(macAdhocVerifier).toContain("xcrun stapler validate");
+    expect(macAdhocVerifier).not.toMatch(/codesign\s+--force[^\n]*--deep/gu);
+    expect(macAdhocVerifier).toMatch(
+      /linker-signed\|\^Authority=\|Developer ID/u,
     );
     expect(macJob).toContain(
       'if dmg_signature="$(codesign -dvvv "$dmg_path" 2>&1)"; then',
     );
-    expect(macJob.match(/unexpectedly has a code signature/gu)).toHaveLength(2);
-    expect(macJob.match(/code object is not signed at all/gu)).toHaveLength(2);
-    expect(macJob.match(/Signature=adhoc\|flags=\.\*adhoc/gu)).toHaveLength(2);
-    expect(macJob).not.toContain('codesign -dvvv "$app_path" 2>&1 || true');
+    expect(macJob.match(/unexpectedly has a code signature/gu)).toHaveLength(1);
+    expect(macJob.match(/code object is not signed at all/gu)).toHaveLength(1);
+    expect(macJob).toContain(
+      "^Signature=|^Authority=|Developer ID|^TeamIdentifier=|^Timestamp=|^CMSDigest",
+    );
     expect(macJob).not.toContain('codesign -dvvv "$dmg_path" 2>&1 || true');
     expect(source).toContain(
       "FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.AppImage",
     );
     expect(source).toContain("FyAgent-${APP_VERSION}-macOS.dmg");
+  });
+
+  it("executes the ad-hoc verifier for both slices and fails closed on trust drift", () => {
+    const accepted = runMacAdhocVerifier("accepted");
+    expect(accepted.status, accepted.stderr).toBe(0);
+    expect(
+      accepted.calls.filter((call) => call.startsWith("--display ")),
+    ).toEqual([
+      expect.stringContaining("--architecture arm64"),
+      expect.stringContaining("--architecture x86_64"),
+    ]);
+    expect(accepted.calls).toContainEqual(
+      expect.stringContaining("--verify --deep --strict"),
+    );
+
+    for (const rejected of [
+      "authority",
+      "linker",
+      "stapled",
+      "team",
+      "timestamp",
+      "unsealed",
+      "verify-fail",
+    ]) {
+      const result = runMacAdhocVerifier(rejected);
+      expect(result.status, `${rejected}: ${result.stderr}`).not.toBe(0);
+    }
   });
 
   it("publishes once through a verified draft and never auto-deletes failure residue", () => {

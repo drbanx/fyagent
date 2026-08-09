@@ -1401,7 +1401,7 @@ jobs:
           retention-days: 7
 
   build-macos:
-    name: macOS Universal unsigned installers
+    name: macOS Universal ad-hoc app and unsigned DMG
     needs: eligibility
     runs-on: macos-15
     env:
@@ -1457,10 +1457,10 @@ jobs:
       - name: Install locked frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build unsigned universal macOS app
+      - name: Build universal macOS app
         run: pnpm tauri build --target universal-apple-darwin --bundles app
 
-      - name: Verify app identity and absence of distribution trust
+      - name: Seal and verify ad-hoc app identity without distribution trust
         id: app
         shell: bash
         run: |
@@ -1487,26 +1487,12 @@ jobs:
             exit 1
           fi
 
-          if signature_info="$(codesign -dvvv "$app_path" 2>&1)"; then
-            echo "Unsigned $RELEASE_TAG app unexpectedly has a code signature" >&2
-            exit 1
-          fi
-          grep -Fq 'code object is not signed at all' <<<"$signature_info" || {
-            echo "Unable to prove that the $RELEASE_TAG app is unsigned: $signature_info" >&2
-            exit 1
-          }
-          if grep -Eqi 'Signature=adhoc|flags=.*adhoc|^Authority=|Developer ID|^TeamIdentifier=' <<<"$signature_info"; then
-            echo "Unsigned $RELEASE_TAG app produced contradictory signature evidence" >&2
-            exit 1
-          fi
-          if xcrun stapler validate "$app_path" >/dev/null 2>&1; then
-            echo "Unsigned $RELEASE_TAG app unexpectedly contains a notarization ticket" >&2
-            exit 1
-          fi
+          codesign --force --sign - --timestamp=none "$app_path"
+          scripts/release/verify-macos-adhoc-app.sh "$app_path"
           printf 'app_path=%s\n' "$app_path" >> "$GITHUB_OUTPUT"
           printf 'executable=%s\n' "$executable" >> "$GITHUB_OUTPUT"
 
-      - name: Create and verify unsigned ZIP and DMG from the same app
+      - name: Create and verify ZIP and unsigned DMG from the same ad-hoc app
         shell: bash
         env:
           APP_PATH: ${{ steps.app.outputs.app_path }}
@@ -1538,6 +1524,7 @@ jobs:
           [ -d "$unzip_root/FyAgent.app" ]
           [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$unzip_root/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
           [ "$(shasum -a 256 "$unzip_root/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
+          scripts/release/verify-macos-adhoc-app.sh "$unzip_root/FyAgent.app"
 
           ditto "$APP_PATH" "$stage/FyAgent.app"
           hdiutil create -volname 'FyAgent' -srcfolder "$stage" -ov -format UDZO "$dmg_path"
@@ -1547,6 +1534,7 @@ jobs:
           [ -d "$mount_point/FyAgent.app" ]
           [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mount_point/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
           [ "$(shasum -a 256 "$mount_point/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
+          scripts/release/verify-macos-adhoc-app.sh "$mount_point/FyAgent.app"
           hdiutil detach "$mount_point"
           mounted=false
           if xcrun stapler validate "$dmg_path" >/dev/null 2>&1; then
@@ -1561,7 +1549,7 @@ jobs:
             echo "Unable to prove that the $RELEASE_TAG DMG is unsigned: $dmg_signature" >&2
             exit 1
           }
-          if grep -Eqi 'Signature=adhoc|flags=.*adhoc|^Authority=|Developer ID|^TeamIdentifier=' <<<"$dmg_signature"; then
+          if grep -Eqi '^Signature=|^Authority=|Developer ID|^TeamIdentifier=|^Timestamp=|^CMSDigest' <<<"$dmg_signature"; then
             echo "Unsigned $RELEASE_TAG DMG produced contradictory signature evidence" >&2
             exit 1
           fi

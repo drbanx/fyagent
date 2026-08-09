@@ -40,9 +40,30 @@ This proves host-runnable implementation and static workflow contracts only.
 It does not replace native Windows x64/ARM64 CI, the exact-SHA push gate,
 release preflight, formal signing-state verification, publication,
 attestation, or closeout-CI evidence. Final frozen-diff engineering and
-documentation reviews found no remaining P0-P3 issues, and the security review
-found no remaining Critical/High/Medium/Low finding after the macOS unsigned
-gate was made fail-closed for both the application and DMG.
+documentation reviews found no remaining P0-P3 issues, and the initial
+security review found no remaining Critical/High/Medium/Low finding. Native
+preflight later invalidated one premise of that local review: run `31333558714`
+on exact SHA `2047bc67ebc7ae0b3b30fb79526082c62e79ccb4` observed that the
+universal app carried a code signature while the workflow required a truly
+unsigned app. The correction explicitly re-seals the complete app using the
+identity-free ad-hoc mode, verifies the original app and the copies reopened
+from ZIP and DMG, requires the same app in both containers, and continues to
+require a truly unsigned DMG. Public documentation now distinguishes ad-hoc
+integrity from Developer ID, certificate-backed identity, notarization, and
+Apple trust.
+
+The correction is locally covered by an executable fake-`codesign` fixture:
+both universal slices and the strict verification path succeed only for the
+expected identity-free resource seal, while authority, linker-only, stapled,
+real-team, timestamped, unsealed, and verify-failure states are
+rejected. `mise run release:check` passed 22/22 files and 552/552 contract tests
+plus the 4/4 native-fetch suite, and the post-correction `mise run check`
+completed with exit code zero. These results do not replace the next native
+`macos-15` build and preflight. Push CI run `31334049521` separately completed
+10/10 jobs successfully for exact SHA
+`265a9a8b8e26799afcdd6a5cda0b528672180de7`, including native Windows x64 and
+ARM64; that SHA predates this macOS correction and is not eligible for the
+final tag.
 
 Rollback: before tag creation, add an owning follow-up commit rather than
 amending history. After a tag exists, never move/delete it or mutate a

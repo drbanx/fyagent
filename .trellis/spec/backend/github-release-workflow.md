@@ -255,11 +255,15 @@ re-evaluated when the locked Tauri CLI/bundler changes.
 
 - one universal app contains `arm64` and `x86_64`, the frozen version, and
   bundle identifier `com.fyagent.desktop`;
-- the current public policy is unsigned: no code-signing identity is configured
-  or verified. A Developer ID authority, real TeamIdentifier, notarization, or
-  stapled ticket is rejected;
-- ZIP and DMG originate from the same app and are re-opened to prove version
-  and executable digest identity.
+- the workflow explicitly re-seals the complete app with an identity-free
+  ad-hoc signature, then requires strict deep signature verification. The
+  result must report an ad-hoc signature and no real TeamIdentifier
+  (`TeamIdentifier=not set`); a certificate authority, Developer ID identity,
+  notarization, or stapled ticket is rejected. Ad-hoc integrity is not
+  Developer ID or Apple trust;
+- the DMG container itself must remain truly unsigned. ZIP and DMG package the
+  same verified ad-hoc-sealed app and are re-opened to prove version and
+  executable digest identity.
 
 ### Linux
 

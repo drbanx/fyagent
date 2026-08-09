@@ -23,7 +23,8 @@
 > 并核对 SHA-256、源码 SHA、`signing-status.json` 与 GitHub attestation。
 > Windows setup 可能是已验证的 Authenticode 签名，也可能明确发布为
 > `NotSigned`；无签名安装程序会触发 Windows 信任提示。当前 macOS 发布
-> workflow 不提供 Developer ID 签名或公证。
+> workflow 不提供 Developer ID 签名或公证：完整应用仅使用无证书
+> 身份的 ad-hoc 签名，这不建立 Apple 信任，DMG 容器本身未签名。
 
 ## 为什么选择 FyAgent？
 
@@ -107,9 +108,11 @@ FyAgent 使用“通用配置片段”功能，在不同的供应商之间传递
 <details>
 <summary><strong>macOS 安装</strong></summary>
 
-当前正式 macOS workflow 不签名、不公证，macOS 可能阻止首次启动。先尝试打开
-FyAgent，然后使用 Apple 支持的“**系统设置 → 隐私与安全性 → 仍要打开**”流程并
-确认提示。请先核对该 Release 的说明和证据；不要关闭 Gatekeeper，也不要移除隔离属性。
+当前正式 macOS workflow 仅使用无证书身份的 ad-hoc 签名封装应用；它没有
+Developer ID 签名，也未经公证，DMG 容器本身未签名。ad-hoc 签名不建立
+Apple 信任，因此 macOS 可能阻止首次启动。先尝试打开 FyAgent，然后使用
+Apple 支持的“**系统设置 → 隐私与安全性 → 仍要打开**”流程并确认提示。请先核对该 Release 的
+说明和证据；不要关闭 Gatekeeper，也不要移除隔离属性。
 
 </details>
 
@@ -206,7 +209,9 @@ active spec owner。
 从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载
 `FyAgent-X.Y.Z-macOS.dmg`（推荐）或 `FyAgent-X.Y.Z-macOS.zip`。
 
-> **无签名构建：** 当前正式 macOS workflow 不提供 Developer ID 签名或公证。先尝试打开应用，
+> **ad-hoc 应用、未签名 DMG：** 当前正式 macOS workflow 使用无证书身份的
+> ad-hoc 签名封装完整应用，ZIP 和 DMG 内含同一应用，DMG 容器本身未签名。
+> 这不是 Developer ID 签名、证书背书身份、公证或 Apple 信任。先尝试打开应用，
 > 再使用“**系统设置 → 隐私与安全性 → 仍要打开**”并确认提示。请先核对 Release
 > 证据；不要关闭 Gatekeeper 或移除隔离属性。
 

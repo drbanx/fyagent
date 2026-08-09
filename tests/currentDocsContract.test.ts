@@ -223,7 +223,7 @@ describe("current FyAgent documentation authority", () => {
         expect(source, `${file} -> ${installer}`).toContain(installer);
       }
       expect(source, file).toContain("NSIS");
-      expect(source, file).not.toMatch(/\bad-hoc\b/iu);
+      expect(source, file).toMatch(/\bad-hoc\b/iu);
       expect(source, file).not.toMatch(
         /FyAgent-X\.Y\.Z-Windows(?:-(?:x64|arm64))?\.msi/i,
       );

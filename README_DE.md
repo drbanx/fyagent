@@ -24,8 +24,9 @@
 > Sie SHA-256, Source-SHA, `signing-status.json` und GitHub-Attestierung. Ein
 > Windows-Setup kann geprüft Authenticode-signiert oder ausdrücklich als
 > `NotSigned` veröffentlicht sein; unsignierte Installer können Windows-
-> Warnungen auslösen. Der aktuelle macOS-Release-Workflow bietet keine
-> Developer-ID-Signatur oder Notarisierung.
+> Warnungen auslösen. Die vollständige macOS-App ist nur ad-hoc und ohne
+> Zertifikatsidentität signiert. Das schafft kein Apple-Vertrauen; es gibt keine
+> Developer ID-Signatur oder Notarisierung, und der DMG-Container ist unsigniert.
 
 ## Warum FyAgent?
 
@@ -109,9 +110,10 @@ FyAgent bietet eine Funktion „Gemeinsames Konfigurations-Snippet", um gemeinsa
 <details>
 <summary><strong>Installation unter macOS</strong></summary>
 
-Der aktuelle formale macOS-Workflow ist unsigniert und nicht notarisiert;
-macOS kann den
-ersten Start blockieren. Versuchen Sie einmal, FyAgent zu öffnen, und verwenden
+Die vollständige App ist nur ad-hoc und ohne Zertifikatsidentität signiert. Sie
+ist weder mit Developer ID signiert noch notarisiert; der DMG-Container ist
+unsigniert. Eine ad-hoc-Signatur schafft kein Apple-Vertrauen, daher kann macOS
+den ersten Start blockieren. Versuchen Sie einmal, FyAgent zu öffnen, und verwenden
 Sie danach Apples unterstützten Weg **Systemeinstellungen → Datenschutz &
 Sicherheit → Dennoch öffnen**. Prüfen Sie zuerst Release Notes und Nachweise;
 deaktivieren Sie Gatekeeper nicht und entfernen Sie keine Quarantäneattribute.
@@ -212,11 +214,13 @@ Laden Sie `FyAgent-X.Y.Z-macOS.dmg` (empfohlen) oder
 `FyAgent-X.Y.Z-macOS.zip` von
 [Releases](https://github.com/NongHua123/fyagent/releases) herunter.
 
-> **Unsignierter Build:** Der aktuelle formale macOS-Workflow ist weder mit Developer ID signiert noch
-> notarisiert. Versuchen Sie einmal, die App zu öffnen, und verwenden Sie danach
-> **Systemeinstellungen → Datenschutz & Sicherheit → Dennoch öffnen**. Prüfen
-> Sie zuerst die Release-Nachweise; deaktivieren Sie Gatekeeper nicht und
-> entfernen Sie keine Quarantäneattribute.
+> **Ad-hoc-App, unsigniertes DMG:** Die vollständige App ist ohne
+> Zertifikatsidentität ad-hoc signiert; ZIP und DMG enthalten dieselbe App, der
+> DMG-Container selbst ist unsigniert. Dies ist keine Developer ID-Signatur,
+> Notarisierung oder Apple-Vertrauensbestätigung. Versuchen Sie einmal, die App
+> zu öffnen, und verwenden Sie danach **Systemeinstellungen → Datenschutz &
+> Sicherheit → Dennoch öffnen**. Prüfen Sie zuerst die Release-Nachweise;
+> deaktivieren Sie Gatekeeper nicht und entfernen Sie keine Quarantäneattribute.
 
 ### Linux-Nutzer
 

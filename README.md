@@ -17,7 +17,9 @@ English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_
 > attestation. A Windows setup may be Authenticode signed and verified or
 > explicitly published as `NotSigned`; unsigned installers can trigger Windows
 > trust warnings. The current macOS release workflow does not provide Developer
-> ID signing or notarization.
+> ID signing or notarization: its complete app is sealed only with an
+> identity-free ad-hoc signature, which does not establish Apple trust, and the
+> DMG container is unsigned.
 
 ## Why FyAgent?
 
@@ -101,8 +103,10 @@ FyAgent provides a "Shared Config Snippet" feature to pass common data (beyond A
 <details>
 <summary><strong>macOS installation</strong></summary>
 
-The current formal macOS workflow is unsigned and not notarized, so macOS may
-block the first launch. After attempting to open FyAgent once, use Apple's supported
+The complete macOS app is ad-hoc signed with no certificate identity. It is
+not signed with an Apple Developer ID and is not notarized; the DMG container
+is unsigned. Ad-hoc signing does not establish Apple trust, so macOS may block
+the first launch. After attempting to open FyAgent once, use Apple's supported
 **System Settings → Privacy & Security → Open Anyway** flow and confirm the
 prompt. Verify the exact Release Notes and evidence first; do not disable
 Gatekeeper or remove quarantine metadata.
@@ -203,11 +207,13 @@ Download `FyAgent-X.Y.Z-macOS.dmg` (recommended) or
 `FyAgent-X.Y.Z-macOS.zip` from the
 [Releases](https://github.com/NongHua123/fyagent/releases) page.
 
-> **Unsigned build:** The current formal macOS workflow does not Developer ID
-> sign or notarize these files. After attempting to open the app once, use
-> **System Settings → Privacy & Security → Open Anyway** and confirm the prompt.
-> Verify the exact Release evidence first; do not disable Gatekeeper or strip
-> quarantine metadata.
+> **Ad-hoc app, unsigned DMG:** The complete app is ad-hoc signed with no
+> certificate identity; both the ZIP and DMG contain that same app. It is not
+> signed with an Apple Developer ID and is not notarized, while the DMG
+> container is unsigned. Ad-hoc signing does not provide Apple trust. After
+> attempting to open the app once, use **System Settings → Privacy & Security →
+> Open Anyway** and confirm the prompt. Verify the exact Release evidence first;
+> do not disable Gatekeeper or strip quarantine metadata.
 
 ### Linux Users
 

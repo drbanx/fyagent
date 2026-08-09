@@ -23,7 +23,9 @@
 > SHA-256、source SHA、`signing-status.json`、GitHub attestation を確認してください。
 > Windows setup は検証済み Authenticode 署名付き、または明示的な `NotSigned` として
 > 公開されます。未署名 installer では Windows の信頼警告が表示されます。現在の
-> macOS release workflow は Developer ID 署名や公証を行いません。
+> macOS release workflow は Developer ID 署名や公証を行いません。完全な
+> app には証明書 identity のない ad-hoc 署名だけが付与され、これは Apple
+> の信頼を確立しません。DMG container 自体は未署名です。
 
 ## FyAgent を選ぶ理由
 
@@ -107,11 +109,12 @@ FyAgent には「共有設定スニペット」機能があり、APIキーやエ
 <details>
 <summary><strong>macOS のインストールについて</strong></summary>
 
-現在の正式 macOS workflow は未署名・未公証なので、macOS が初回起動をブロックする
-場合があります。一度 FyAgent を開こうとした後、Apple がサポートする
-**システム設定 → プライバシーとセキュリティ → このまま開く**の手順で確認して
-ください。先に該当 Release のノートと証拠を検証し、Gatekeeper の無効化や隔離
-属性の削除は行わないでください。
+現在の正式 macOS workflow では、証明書 identity のない ad-hoc 署名だけで app を
+封印します。Developer ID 署名も公証もなく、DMG container 自体は未署名です。
+ad-hoc 署名は Apple の信頼を確立しないため、macOS が初回起動をブロックする場合が
+あります。一度 FyAgent を開こうとした後、Apple がサポートする **システム設定 →
+プライバシーとセキュリティ → このまま開く**の手順で確認してください。先に該当 Release のノートと
+証拠を検証し、Gatekeeper の無効化や隔離属性の削除は行わないでください。
 
 </details>
 
@@ -208,10 +211,12 @@ MSI や Windows ポータブル ZIP を公開しません。
 `FyAgent-X.Y.Z-macOS.dmg`（推奨）または `FyAgent-X.Y.Z-macOS.zip` を
 ダウンロードしてください。
 
-> **未署名ビルド:** 現在の正式 macOS workflow は Developer ID 署名も公証も行いません。一度アプリを
-> 開こうとした後、**システム設定 → プライバシーとセキュリティ → このまま開く**を
-> 使用して確認してください。Release 証拠を先に確認し、Gatekeeper の無効化や隔離
-> 属性の削除は行わないでください。
+> **ad-hoc app、未署名 DMG:** 現在の正式 macOS workflow は、証明書 identity のない
+> ad-hoc 署名で完全な app を封印し、ZIP と DMG に同じ app を収録します。DMG
+> container 自体は未署名です。これは Developer ID 署名、証明書による identity、公証、
+> Apple の信頼ではありません。一度アプリを開こうとした後、**システム設定 → プライバシーと
+> セキュリティ → このまま開く**を使用して確認してください。Release 証拠を先に確認し、
+> Gatekeeper の無効化や隔離属性の削除は行わないでください。
 
 ### Linux ユーザー
 
