@@ -153,7 +153,7 @@ export interface DevReleaseEligibilityOutput {
 }
 
 export const DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA: "fyagent-dev-release-eligibility-input/v1";
-export const EXPECTED_REPOSITORY: "NongHua123/fyagent";
+export const EXPECTED_REPOSITORY: "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID: "1313497021";
 export const RELEASE_WORKFLOW_NAME: "Release";
 export const RELEASE_WORKFLOW_PATH: ".github/workflows/release.yml";

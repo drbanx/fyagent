@@ -4,14 +4,14 @@
 
 ### Der All-in-One-Manager für Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw & Hermes Agent
 
-[![Version](https://img.shields.io/github/v/release/NongHua123/fyagent?color=blue&label=version)](https://github.com/NongHua123/fyagent/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/NongHua123/fyagent/releases)
+[![Version](https://img.shields.io/github/v/release/fy-agent/fyagent?color=blue&label=version)](https://github.com/fy-agent/fyagent/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/fy-agent/fyagent/releases)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-[![Downloads](https://img.shields.io/github/downloads/NongHua123/fyagent/total)](https://github.com/NongHua123/fyagent/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/fy-agent/fyagent/total)](https://github.com/fy-agent/fyagent/releases/latest)
 
-<a href="https://www.star-history.com/#NongHua123/fyagent&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=NongHua123/fyagent&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=NongHua123/fyagent" width="196" height="55" /></picture></a>
+<a href="https://www.star-history.com/#fy-agent/fyagent&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=fy-agent/fyagent&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=fy-agent/fyagent" width="196" height="55" /></picture></a>
 
-### 🌐 Projekt-Repository: **[GitHub](https://github.com/NongHua123/fyagent)**
+### 🌐 Projekt-Repository: **[GitHub](https://github.com/fy-agent/fyagent)**
 
 [English](README.md) | [中文](README_ZH.md) | [日本語](README_JA.md) | Deutsch | [Changelog](CHANGELOG.md)
 
@@ -20,7 +20,7 @@
 > [!WARNING]
 > **Der Vertrauensstatus gilt jeweils für den konkreten Release.** Lesen Sie vor
 > der Installation die Hinweise zum betreffenden
-> [FyAgent Release](https://github.com/NongHua123/fyagent/releases) und prüfen
+> [FyAgent Release](https://github.com/fy-agent/fyagent/releases) und prüfen
 > Sie SHA-256, Source-SHA, `signing-status.json` und GitHub-Attestierung. Ein
 > Windows-Setup kann geprüft Authenticode-signiert oder ausdrücklich als
 > `NotSigned` veröffentlicht sein; unsignierte Installer können Windows-
@@ -50,7 +50,7 @@ Modernes KI-gestütztes Programmieren stützt sich auf Werkzeuge wie Claude Code
 
 ## Funktionen
 
-[Vollständiges Changelog](CHANGELOG.md) | [Neuester Release](https://github.com/NongHua123/fyagent/releases/latest)
+[Vollständiges Changelog](CHANGELOG.md) | [Neuester Release](https://github.com/fy-agent/fyagent/releases/latest)
 
 ### Anbieterverwaltung
 
@@ -198,7 +198,7 @@ und folgen von dort dem jeweils einzigen aktiven Spec-Owner.
 
 Laden Sie auf x64 Windows `FyAgent-X.Y.Z-Windows-x64-setup.exe` und auf ARM64
 Windows `FyAgent-X.Y.Z-Windows-arm64-setup.exe` von
-[Releases](https://github.com/NongHua123/fyagent/releases). `X.Y.Z` steht für
+[Releases](https://github.com/fy-agent/fyagent/releases). `X.Y.Z` steht für
 die Release-Version. Dies sind systemweite NSIS-Setups; FyAgent veröffentlicht
 weder MSI noch ein portables Windows-ZIP.
 
@@ -212,7 +212,7 @@ weder MSI noch ein portables Windows-ZIP.
 
 Laden Sie `FyAgent-X.Y.Z-macOS.dmg` (empfohlen) oder
 `FyAgent-X.Y.Z-macOS.zip` von
-[Releases](https://github.com/NongHua123/fyagent/releases) herunter.
+[Releases](https://github.com/fy-agent/fyagent/releases) herunter.
 
 > **Ad-hoc-App, unsigniertes DMG:** Die vollständige App ist ohne
 > Zertifikatsidentität ad-hoc signiert; ZIP und DMG enthalten dieselbe App, der
@@ -225,7 +225,7 @@ Laden Sie `FyAgent-X.Y.Z-macOS.dmg` (empfohlen) oder
 ### Linux-Nutzer
 
 Laden Sie den nativen Linux-Build für Ihre Architektur von
-[Releases](https://github.com/NongHua123/fyagent/releases) herunter:
+[Releases](https://github.com/fy-agent/fyagent/releases) herunter:
 
 - x64: `FyAgent-X.Y.Z-Linux-x86_64.AppImage`,
   `FyAgent-X.Y.Z-Linux-x86_64.deb` oder
@@ -477,7 +477,7 @@ Eröffnen Sie für neue Funktionen bitte vor dem Einreichen eines PR ein Issue z
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NongHua123/fyagent&type=Date)](https://www.star-history.com/#NongHua123/fyagent&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=fy-agent/fyagent&type=Date)](https://www.star-history.com/#fy-agent/fyagent&Date)
 
 ## Lizenz
 

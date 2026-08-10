@@ -25,7 +25,7 @@
     "docs/fyagent/development/",
     "docs/fyagent/dev/"
   ],
-  "notes": "The task-local inventory reviewed all 197 versioned development-package files before the exact old tree was removed. Current development docs explain responsibility and route normative rules to active specs.",
+  "notes": "The task-local inventory reviewed all 197 versioned development-package files before the exact old tree was removed. Current development docs explain responsibility and route normative rules to active specs; repository authority now uses fy-agent/fyagent. Formal Release and later remote evidence were deferred by the 2026-08-10 strategy and are not claimed.",
   "meta": {
     "inventoryFileCount": 197,
     "archiveBaselineHead": "50cca3ac5863a323934b4b9071b318492590b7e8",

@@ -12,7 +12,7 @@ English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_
 
 > [!WARNING]
 > **Trust is release-specific.** Before installing, read the notes attached to
-> the exact [FyAgent Release](https://github.com/NongHua123/fyagent/releases)
+> the exact [FyAgent Release](https://github.com/fy-agent/fyagent/releases)
 > and verify its SHA-256, source SHA, `signing-status.json`, and GitHub
 > attestation. A Windows setup may be Authenticode signed and verified or
 > explicitly published as `NotSigned`; unsigned installers can trigger Windows
@@ -43,7 +43,7 @@ Modern AI-powered coding relies on tools like Claude Code, Claude Desktop, Codex
 
 ## Features
 
-[Full Changelog](CHANGELOG.md) | [Latest Release](https://github.com/NongHua123/fyagent/releases/latest)
+[Full Changelog](CHANGELOG.md) | [Latest Release](https://github.com/fy-agent/fyagent/releases/latest)
 
 ### Provider Management
 
@@ -191,7 +191,7 @@ follow its links to the owning active specs.
 
 Download `FyAgent-X.Y.Z-Windows-x64-setup.exe` on x64 or
 `FyAgent-X.Y.Z-Windows-arm64-setup.exe` on ARM64 from the
-[Releases](https://github.com/NongHua123/fyagent/releases) page, replacing
+[Releases](https://github.com/fy-agent/fyagent/releases) page, replacing
 `X.Y.Z` with the Release version. These are per-machine NSIS setup programs;
 FyAgent does not publish an MSI or Windows Portable ZIP.
 
@@ -205,7 +205,7 @@ FyAgent does not publish an MSI or Windows Portable ZIP.
 
 Download `FyAgent-X.Y.Z-macOS.dmg` (recommended) or
 `FyAgent-X.Y.Z-macOS.zip` from the
-[Releases](https://github.com/NongHua123/fyagent/releases) page.
+[Releases](https://github.com/fy-agent/fyagent/releases) page.
 
 > **Ad-hoc app, unsigned DMG:** The complete app is ad-hoc signed with no
 > certificate identity; both the ZIP and DMG contain that same app. It is not
@@ -218,7 +218,7 @@ Download `FyAgent-X.Y.Z-macOS.dmg` (recommended) or
 ### Linux Users
 
 Download the matching native Linux build from the
-[Releases](https://github.com/NongHua123/fyagent/releases) page:
+[Releases](https://github.com/fy-agent/fyagent/releases) page:
 
 - x64: `FyAgent-X.Y.Z-Linux-x86_64.AppImage`,
   `FyAgent-X.Y.Z-Linux-x86_64.deb`, or

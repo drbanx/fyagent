@@ -16,10 +16,9 @@
    rechecks, and preserve the existing pinned assets, Windows signing/sealing/
    proof boundary, direct exact-asset routing, 10/13/14 allowlists, draft
    re-download, attestation, and Latest transaction.
-7. [done locally; remote pending] Run local workflow/unit/release-contract
-   checks and frozen engineering/security/release review. The parent owns the
-   completed repository-wide local check and still owns the real dev push,
-   preflight, annotated tag, formal Release, and closeout-CI observations.
+7. [done for current scope] Run local workflow/unit/release-contract checks and
+   frozen engineering/security/release review; record already-observed CI and
+   preflight evidence separately from deferred formal publication.
 
 ## Local implementation evidence
 
@@ -164,3 +163,28 @@ commit must complete exact-SHA push CI and a same-SHA dispatch preflight in
 which attestation succeeds, `release-attachments` exists, all 17 workflow
 artifacts are present, and publish remains skipped. Tagging and formal
 publication remain pending until that evidence is observed.
+
+## Correction evidence, transfer cancellation, and strategy closeout
+
+The correction was later committed as
+`99738a00260da3ea095f8d8750c6d8af97e07cf5`. Exact-source push CI run
+`31376383730` completed successfully. Same-source non-publishing preflight run
+`31377390554` also completed successfully with attestation, all 17 workflow
+artifacts, the exact 14-file attachment payload, and publication skipped. This
+supersedes the prior pending-correction statement without retroactively
+upgrading run `31358299654`.
+
+The observed annotated `v0.3.1` tag object was
+`42edfcdbc5545101d96105d575f1e3286c876e72`, peeled to the correction commit.
+Formal attempt `31379896485` ended cancelled during the repository-owner
+transfer window after six jobs and eight artifacts; it created no GitHub
+Release. Its `repository transferred` annotation and timing are recorded, but
+this task does not claim that the cancellation cause was independently audited.
+
+Current eligibility authority is the canonical `fy-agent/fyagent` name and
+unchanged repository ID `1313497021`; the pre-transfer redirect is historical
+continuity, not an accepted alias. By explicit 2026-08-10 user strategy, a new
+post-transfer CI/preflight, formal `v0.3.1`, public asset/attestation
+verification, and acceptance of closeout CI are deferred to a future
+independent task. The workflow implementation is complete and ready for
+archive; no deferred production result is claimed.

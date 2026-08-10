@@ -4,14 +4,14 @@
 
 ### Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw 和 Hermes Agent 的全方位管理工具
 
-[![Version](https://img.shields.io/github/v/release/NongHua123/fyagent?color=blue&label=version)](https://github.com/NongHua123/fyagent/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/NongHua123/fyagent/releases)
+[![Version](https://img.shields.io/github/v/release/fy-agent/fyagent?color=blue&label=version)](https://github.com/fy-agent/fyagent/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/fy-agent/fyagent/releases)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-[![Downloads](https://img.shields.io/github/downloads/NongHua123/fyagent/total)](https://github.com/NongHua123/fyagent/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/fy-agent/fyagent/total)](https://github.com/fy-agent/fyagent/releases/latest)
 
-<a href="https://www.star-history.com/#NongHua123/fyagent&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=NongHua123/fyagent&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=NongHua123/fyagent" width="196" height="55" /></picture></a>
+<a href="https://www.star-history.com/#fy-agent/fyagent&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=fy-agent/fyagent&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=fy-agent/fyagent" width="196" height="55" /></picture></a>
 
-### 🌐 项目仓库：**[GitHub](https://github.com/NongHua123/fyagent)**
+### 🌐 项目仓库：**[GitHub](https://github.com/fy-agent/fyagent)**
 
 [English](README.md) | 中文 | [日本語](README_JA.md) | [Deutsch](README_DE.md) | [更新日志](CHANGELOG.md)
 
@@ -19,7 +19,7 @@
 
 > [!WARNING]
 > **信任状态以具体 Release 为准。** 安装前请阅读对应
-> [FyAgent Release](https://github.com/NongHua123/fyagent/releases) 的说明，
+> [FyAgent Release](https://github.com/fy-agent/fyagent/releases) 的说明，
 > 并核对 SHA-256、源码 SHA、`signing-status.json` 与 GitHub attestation。
 > Windows setup 可能是已验证的 Authenticode 签名，也可能明确发布为
 > `NotSigned`；无签名安装程序会触发 Windows 信任提示。当前 macOS 发布
@@ -48,7 +48,7 @@
 
 ## 功能特性
 
-[完整更新日志](CHANGELOG.md) | [最新 Release](https://github.com/NongHua123/fyagent/releases/latest)
+[完整更新日志](CHANGELOG.md) | [最新 Release](https://github.com/fy-agent/fyagent/releases/latest)
 
 ### 供应商管理
 
@@ -194,7 +194,7 @@ active spec owner。
 
 ### Windows 用户
 
-从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载：x64 Windows
+从 [Releases](https://github.com/fy-agent/fyagent/releases) 页面下载：x64 Windows
 使用 `FyAgent-X.Y.Z-Windows-x64-setup.exe`，ARM64 Windows 使用
 `FyAgent-X.Y.Z-Windows-arm64-setup.exe`，其中 `X.Y.Z` 是 Release 版本。这些是
 全机器 NSIS 安装程序；FyAgent 不再发布 MSI 或 Windows 绿色版 ZIP。
@@ -206,7 +206,7 @@ active spec owner。
 
 ### macOS 用户
 
-从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载
+从 [Releases](https://github.com/fy-agent/fyagent/releases) 页面下载
 `FyAgent-X.Y.Z-macOS.dmg`（推荐）或 `FyAgent-X.Y.Z-macOS.zip`。
 
 > **ad-hoc 应用、未签名 DMG：** 当前正式 macOS workflow 使用无证书身份的
@@ -217,7 +217,7 @@ active spec owner。
 
 ### Linux 用户
 
-从 [Releases](https://github.com/NongHua123/fyagent/releases) 页面下载与当前
+从 [Releases](https://github.com/fy-agent/fyagent/releases) 页面下载与当前
 架构匹配的原生 Linux 构建：
 
 - x64：`FyAgent-X.Y.Z-Linux-x86_64.AppImage`、
@@ -460,7 +460,7 @@ mise run check:frontend
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=NongHua123/fyagent&type=Date)](https://www.star-history.com/#NongHua123/fyagent&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=fy-agent/fyagent&type=Date)](https://www.star-history.com/#fy-agent/fyagent&Date)
 
 ## License
 

@@ -9,9 +9,10 @@ import {
 const SOURCE_SHA = "a".repeat(40);
 const OTHER_SHA = "b".repeat(40);
 const TAG_OBJECT_SHA = "c".repeat(40);
+const PRE_TRANSFER_REPOSITORY = ["NongHua123", "fyagent"].join("/");
 const REPOSITORY = {
   id: 1_313_497_021,
-  full_name: "NongHua123/fyagent",
+  full_name: "fy-agent/fyagent",
 };
 const WORKFLOW_ID = 314_159;
 const OLD_RUN_ID = 9_000;
@@ -47,7 +48,7 @@ function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
   return {
     token: TOKEN,
     apiBase: "https://api.github.com",
-    repository: "NongHua123/fyagent",
+    repository: "fy-agent/fyagent",
     repositoryId: "1313497021",
     eventName: mode === "preflight" ? "workflow_dispatch" : "push",
     ref,
@@ -55,7 +56,7 @@ function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
     refType: mode === "preflight" ? "branch" : "tag",
     eventSha: SOURCE_SHA,
     workflowName: "Release",
-    workflowRef: `NongHua123/fyagent/.github/workflows/release.yml@${ref}`,
+    workflowRef: `fy-agent/fyagent/.github/workflows/release.yml@${ref}`,
     workflowSha: SOURCE_SHA,
     appVersion: "0.3.1",
     releaseTag,
@@ -115,8 +116,8 @@ function rawJob({
     run_attempt: RUN_ATTEMPT,
     status: "completed",
     conclusion: "success",
-    check_run_url: `https://api.github.com/repos/NongHua123/fyagent/check-runs/${checkId}`,
-    html_url: `https://github.com/NongHua123/fyagent/actions/runs/${RUN_ID}/job/${id}`,
+    check_run_url: `https://api.github.com/repos/fy-agent/fyagent/check-runs/${checkId}`,
+    html_url: `https://github.com/fy-agent/fyagent/actions/runs/${RUN_ID}/job/${id}`,
   };
 }
 
@@ -137,8 +138,8 @@ function rawCheck({
     head_sha: SOURCE_SHA,
     status: "completed",
     conclusion: "success",
-    url: `https://api.github.com/repos/NongHua123/fyagent/check-runs/${id}`,
-    details_url: `https://github.com/NongHua123/fyagent/actions/runs/${RUN_ID}/job/${jobId}`,
+    url: `https://api.github.com/repos/fy-agent/fyagent/check-runs/${id}`,
+    details_url: `https://github.com/fy-agent/fyagent/actions/runs/${RUN_ID}/job/${jobId}`,
   };
 }
 
@@ -166,16 +167,16 @@ function fixtureFetch(options: FixtureOptions = {}) {
       return jsonResponse({ message: TOKEN }, { status: 503 });
     }
 
-    if (path === "/repos/NongHua123/fyagent") {
+    if (path === "/repos/fy-agent/fyagent") {
       return jsonResponse(options.repository ?? REPOSITORY);
     }
-    if (path === "/repos/NongHua123/fyagent/git/ref/heads/dev/laiyongjie") {
+    if (path === "/repos/fy-agent/fyagent/git/ref/heads/dev/laiyongjie") {
       return jsonResponse({
         ref: "refs/heads/dev/laiyongjie",
         object: { type: "commit", sha: options.branchSha ?? SOURCE_SHA },
       });
     }
-    if (path === "/repos/NongHua123/fyagent/git/ref/tags/v0.3.1") {
+    if (path === "/repos/fy-agent/fyagent/git/ref/tags/v0.3.1") {
       if (mode !== "formal") throw new Error("preflight fetched a tag");
       return jsonResponse({
         ref: "refs/tags/v0.3.1",
@@ -185,7 +186,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
         },
       });
     }
-    if (path === `/repos/NongHua123/fyagent/git/tags/${TAG_OBJECT_SHA}`) {
+    if (path === `/repos/fy-agent/fyagent/git/tags/${TAG_OBJECT_SHA}`) {
       return jsonResponse({
         sha: TAG_OBJECT_SHA,
         tag: "v0.3.1",
@@ -195,7 +196,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
         },
       });
     }
-    if (path === "/repos/NongHua123/fyagent/actions/workflows/ci.yml") {
+    if (path === "/repos/fy-agent/fyagent/actions/workflows/ci.yml") {
       return jsonResponse({
         id: WORKFLOW_ID,
         name: "CI",
@@ -204,7 +205,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
       });
     }
     if (
-      path === `/repos/NongHua123/fyagent/actions/workflows/${WORKFLOW_ID}/runs`
+      path === `/repos/fy-agent/fyagent/actions/workflows/${WORKFLOW_ID}/runs`
     ) {
       expect(url.searchParams.get("branch")).toBe("dev/laiyongjie");
       expect(url.searchParams.get("event")).toBe("push");
@@ -228,7 +229,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
         });
       }
       const next =
-        "<https://api.github.com/repos/NongHua123/fyagent/actions/workflows/314159/runs?branch=dev%2Flaiyongjie&event=push&head_sha=" +
+        "<https://api.github.com/repos/fy-agent/fyagent/actions/workflows/314159/runs?branch=dev%2Flaiyongjie&event=push&head_sha=" +
         `${SOURCE_SHA}&per_page=100&page=2>; rel="next"`;
       return jsonResponse(
         {
@@ -250,7 +251,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
     }
     if (
       path ===
-      `/repos/NongHua123/fyagent/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs`
+      `/repos/fy-agent/fyagent/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs`
     ) {
       if (url.searchParams.get("page") === "2") {
         return jsonResponse({
@@ -282,14 +283,14 @@ function fixtureFetch(options: FixtureOptions = {}) {
     }
     if (
       path ===
-      `/repos/NongHua123/fyagent/check-suites/${CHECK_SUITE_ID}/check-runs`
+      `/repos/fy-agent/fyagent/check-suites/${CHECK_SUITE_ID}/check-runs`
     ) {
       return jsonResponse({
         total_count: 3,
         check_runs: [
           {
             ...rawCheck({ id: 7_999, name: "Old attempt", jobId: 6_999 }),
-            url: "https://api.github.com/repos/NongHua123/fyagent/check-runs/7999",
+            url: "https://api.github.com/repos/fy-agent/fyagent/check-runs/7999",
           },
           rawCheck({
             id: CONTRACTS_CHECK_ID,
@@ -451,7 +452,15 @@ describe("dev release remote evidence", () => {
   });
 
   it.each([
-    ["repository", { repository: { id: 99, full_name: "fork/fyagent" } }],
+    [
+      "repository",
+      {
+        repository: {
+          id: REPOSITORY.id,
+          full_name: PRE_TRANSFER_REPOSITORY,
+        },
+      },
+    ],
     [
       "head repository",
       { headRepository: { id: 99, full_name: "fork/fyagent" } },
@@ -463,7 +472,7 @@ describe("dev release remote evidence", () => {
       collectDevReleaseRemoteEvidence(context(), {
         fetchImpl: fixture.fetchImpl,
       }),
-    ).rejects.toThrow(/must be "NongHua123\/fyagent"/);
+    ).rejects.toThrow(/must be "fy-agent\/fyagent"/);
   });
 
   it("hard fails an incomplete paginated response", async () => {
@@ -547,7 +556,7 @@ describe("dev release remote evidence", () => {
         const headers = new Headers(response.headers);
         headers.set(
           "link",
-          '<https://api.github.com/repos/NongHua123/fyagent/actions/runs?page=2>; rel="next"',
+          '<https://api.github.com/repos/fy-agent/fyagent/actions/runs?page=2>; rel="next"',
         );
         return new Response(await response.text(), {
           headers,
@@ -568,7 +577,7 @@ describe("remote verifier environment", () => {
     const ctx = contextFromEnvironment({
       GITHUB_TOKEN: TOKEN,
       GITHUB_API_URL: "https://api.github.com",
-      GITHUB_REPOSITORY: "NongHua123/fyagent",
+      GITHUB_REPOSITORY: "fy-agent/fyagent",
       GITHUB_REPOSITORY_ID: "1313497021",
       GITHUB_EVENT_NAME: "workflow_dispatch",
       GITHUB_REF: "refs/heads/dev/laiyongjie",
@@ -577,7 +586,7 @@ describe("remote verifier environment", () => {
       GITHUB_SHA: SOURCE_SHA,
       GITHUB_WORKFLOW: "Release",
       GITHUB_WORKFLOW_REF:
-        "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
+        "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
       GITHUB_WORKFLOW_SHA: SOURCE_SHA,
       RELEASE_APP_VERSION: "0.3.1",
       RELEASE_TAG: "v0.3.1",

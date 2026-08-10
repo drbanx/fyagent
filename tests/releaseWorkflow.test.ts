@@ -1001,7 +1001,7 @@ describe("FyAgent release workflow", () => {
       source.indexOf("\n  eligibility:\n"),
       source.indexOf("\n  build-windows:\n"),
     );
-    expect(eligibility).toContain("expected_repository='NongHua123/fyagent'");
+    expect(eligibility).toContain("expected_repository='fy-agent/fyagent'");
     expect(eligibility).toContain("expected_repository_id='1313497021'");
     expect(eligibility).toContain("GITHUB_WORKFLOW_REF");
     expect(eligibility).toContain("GITHUB_WORKFLOW_SHA");

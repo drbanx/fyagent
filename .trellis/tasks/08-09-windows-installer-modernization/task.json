@@ -21,6 +21,6 @@
   "children": [],
   "parent": "08-09-fyagent-modernization",
   "relatedFiles": [],
-  "notes": "",
+  "notes": "NSIS implementation/local contracts and prior native x64/ARM64 package evidence are recorded. Corrected runtime creation has not been manually installed, and formal Release/public asset validation is deferred by the 2026-08-10 strategy; neither is claimed as passed.",
   "meta": {}
 }

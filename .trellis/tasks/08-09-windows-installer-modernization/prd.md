@@ -41,13 +41,15 @@ data.
 
 ## Acceptance Criteria
 
-- [ ] Windows outputs are exactly versioned x64/ARM64 setup EXEs with no MSI.
-- [ ] Native x64 and ARM64 runners successfully build and package the matching
+- [x] Windows outputs are exactly versioned x64/ARM64 setup EXEs with no MSI.
+- [x] Native x64 and ARM64 runners successfully build and package the matching
       setup executable.
-- [ ] GUI and silent `/D` installation retain standard NSIS path behavior and
-      tests prove the absence of a FyAgent custom path-admission policy.
-- [ ] Setup and uninstaller use the canonical FyAgent icon.
-- [ ] WebView2, language, elevation, uninstall ownership, asset naming, signing
+- [x] GUI and silent `/D` configuration retain standard NSIS path behavior and
+      tests prove the absence of a FyAgent custom path-admission policy; no
+      manual corrected-runtime install is inferred.
+- [x] Setup and uninstaller contracts use the canonical FyAgent icon, and final
+      setup PE resources are checked against that canonical icon.
+- [x] WebView2, language, elevation, uninstall ownership, asset naming, signing
       state, disclosure, and attestation contracts pass automatically.
 - [x] Tests prove the five-stage preflight and six-stage formal trust chains,
       immutable-ID pinning of every pre-signer platform artifact,
@@ -56,3 +58,12 @@ data.
       signature proof, exact success/skip admission, direct sealed-asset
       verification, and absence of a Release lifecycle job or evidence
       replacement.
+
+## Deferred Follow-up
+
+The 2026-08-10 completion strategy defers manual observation of corrected
+`%ProgramData%\FyAgent\runtime` creation, a new post-transfer native cycle,
+formal `v0.3.1`, and public Release asset/signing/attestation verification to a
+future independent task. The child closes on implementation contracts, local
+checks, and already-observed native package/preflight evidence; it does not
+claim any deferred observation passed.

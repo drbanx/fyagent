@@ -6,6 +6,9 @@ import { expectedInstallerNames } from "../scripts/release/release-contract.mjs"
 
 const ROOT = path.resolve(__dirname, "..");
 const EXTERNAL_PLAN_MARKER = ["fyagent", "modernization", "plan"].join("-");
+const LEGACY_REPOSITORY_SLUG = ["NongHua123", "fyagent"].join("/");
+const HISTORICAL_RELEASE_NOTE_PREFIX = "docs/release-notes/v0.3.0-";
+const HISTORICAL_TRELLIS_ARCHIVE_PREFIX = ".trellis/tasks/archive/";
 
 const CURRENT_DEVELOPMENT_DOCS = [
   "docs/fyagent/development/README.md",
@@ -79,6 +82,19 @@ const PUBLIC_READMES = [
   "README_ZH.md",
 ] as const;
 
+const CURRENT_PUBLIC_REPOSITORY_FILES = [
+  ...PUBLIC_READMES,
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "SUPPORT.md",
+  ".github/ISSUE_TEMPLATE/bug_report.yml",
+  ".github/ISSUE_TEMPLATE/config.yml",
+  ".github/ISSUE_TEMPLATE/doc_issue.yml",
+  ".github/ISSUE_TEMPLATE/feature_request.yml",
+  ".github/ISSUE_TEMPLATE/question.yml",
+  "flatpak/com.fyagent.desktop.metainfo.xml",
+] as const;
+
 const INSTALLER_NAME_TEMPLATES = expectedInstallerNames("1.2.3").map((name) =>
   name.replace("1.2.3", "X.Y.Z"),
 );
@@ -126,6 +142,18 @@ function currentAuthorityMarkdownFiles(): string[] {
   ].sort();
 }
 
+function currentPublicRepositoryFiles(): string[] {
+  return [
+    ...new Set([
+      ...CURRENT_PUBLIC_REPOSITORY_FILES,
+      ...markdownFilesUnder("docs/user-manual"),
+      ...markdownFilesUnder("docs/release-notes").filter(
+        (file) => !file.startsWith(HISTORICAL_RELEASE_NOTE_PREFIX),
+      ),
+    ]),
+  ].sort();
+}
+
 function markdownTargets(source: string): string[] {
   return [...source.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)].map(
     (match) => match[1],
@@ -142,7 +170,7 @@ function operationalTextFiles(): string[] {
     .filter(
       (file) =>
         file.length > 0 &&
-        !file.startsWith(".trellis/tasks/archive/") &&
+        !file.startsWith(HISTORICAL_TRELLIS_ARCHIVE_PREFIX) &&
         fs.existsSync(path.join(ROOT, file)) &&
         !fs.readFileSync(path.join(ROOT, file)).includes(0),
     );
@@ -269,9 +297,12 @@ describe("current FyAgent documentation authority", () => {
     }
   });
 
-  it("does not make the external planning package an operational dependency", () => {
+  it("keeps current public links independent of retired external authorities", () => {
     for (const file of operationalTextFiles()) {
       expect(read(file), file).not.toContain(EXTERNAL_PLAN_MARKER);
+    }
+    for (const file of currentPublicRepositoryFiles()) {
+      expect(read(file), file).not.toContain(LEGACY_REPOSITORY_SLUG);
     }
   });
 });

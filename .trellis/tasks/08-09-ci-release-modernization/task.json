@@ -21,6 +21,6 @@
   "children": [],
   "parent": "08-09-fyagent-modernization",
   "relatedFiles": [],
-  "notes": "",
+  "notes": "CI/release implementation and local contract acceptance are complete. Correction SHA 99738a00260da3ea095f8d8750c6d8af97e07cf5 has successful CI/preflight evidence; formal run 31379896485 was cancelled with no Release. Post-transfer CI/preflight, formal publication, asset verification, and closeout CI are deferred by the 2026-08-10 strategy.",
   "meta": {}
 }

@@ -10,13 +10,16 @@
    stable.
 6. [done] Bump all canonical versions to `0.3.1`, run targeted gates and full
    `mise run check`, and complete code/security/release reviews.
-7. [pending] Push the final unpushed correction batch once, synchronously wait
-   for full CI, and run the non-publishing release preflight for the same SHA.
-8. [pending] Freeze branch writes, verify the remote SHA again, create/push annotated
-   `v0.3.1`, synchronously wait for formal release, and verify the published
-   release and attestations.
-9. [pending] Archive children in dependency order, archive the parent, record the
-   journal with work hashes, push closeout commits once, and wait for final CI.
+7. [done for current scope] Record the successful exact-SHA CI and
+   non-publishing preflight for correction commit `99738a00260da3ea095f8d8750c6d8af97e07cf5`,
+   plus the later owner-transfer/cancelled-formal evidence without upgrading it.
+8. [deferred by user decision] Move formal `v0.3.1`, new post-transfer
+   CI/preflight, public asset/attestation verification, and closeout CI to a
+   future independent task. Do not perform those operations during this closeout.
+9. [ready for archive] Validate the transparent closeout documents, then archive
+   children in dependency order, archive the parent, record the journal, commit
+   locally, and push the closeout commits once to `dev/laiyongjie`. Do not wait
+   for or accept the automatic CI from that push.
 
 ## Local release-preparation evidence
 
@@ -278,3 +281,35 @@ These results do not upgrade the rejected preflight or authorize publication.
 The correction still requires a new commit, exact-SHA push CI, a same-SHA
 preflight with successful attestation and all 17 artifacts, the formal tag and
 Release, and dependency-ordered Trellis closeout. Step 7 remains pending.
+
+## 2026-08-10 strategy closeout and repository transfer evidence
+
+The paragraph above records the status at the local integration checkpoint.
+The correction was subsequently committed as
+`99738a00260da3ea095f8d8750c6d8af97e07cf5`. Exact-source push CI run
+`31376383730` completed successfully, including the complete required matrix.
+Non-publishing preflight run `31377390554` then completed successfully for the
+same source with mandatory attestation, all 17 workflow artifacts, the exact
+14-file `release-attachments` payload, and publication skipped as designed.
+
+The observed annotated `v0.3.1` tag object was
+`42edfcdbc5545101d96105d575f1e3286c876e72`, peeled to correction commit
+`99738a00260da3ea095f8d8750c6d8af97e07cf5`. Formal attempt `31379896485`
+overlapped the repository-owner transfer window and ended cancelled after six
+jobs and eight workflow artifacts, with no GitHub Release. A run annotation
+reported `repository transferred`; that observation and timing are retained,
+but this task does not claim an independently audited causal explanation.
+
+The canonical repository is now `fy-agent/fyagent`, still numeric repository
+ID `1313497021`. The pre-transfer URL redirects with HTTP 301 to that same
+repository, but current release eligibility intentionally does not accept the
+former owner name as an alias.
+
+On 2026-08-10 the user revised the completion strategy to prioritize archival
+of the implemented task tree. A new post-transfer CI/preflight, any tag action,
+formal `v0.3.1`, published asset/attestation verification, and acceptance of
+the automatic closeout CI are explicitly deferred to a future independent
+task. Ordered archive/journal commits and one push to `dev/laiyongjie` remain
+in the current scope, but the task does not wait for that push's CI. Earlier
+sections that say the deferred gates were pending remain accurate historical
+checkpoints; they no longer block archival under the revised scope.

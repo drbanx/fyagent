@@ -12,11 +12,11 @@
    preflight sealing wholly secret-free; formal signing first emits only an
    untrusted transformed candidate, then a fresh secret-free runner compares it
    with raw bytes, independently verifies policy, and owns trusted evidence.
-6. [done locally] Remove the Release lifecycle job. Route the exact successful
+6. [done] Remove the Release lifecycle job. Route the exact successful
    preflight/formal result tuples directly into immutable sealed-asset
    verification, attestation, and publication; retain the lifecycle script only
    as an optional manual diagnostic.
-7. [done locally] Run config/release/unit/Rust checks locally; require matching
+7. [done] Run config/release/unit/Rust checks locally; require matching
    native x64/ARM64 build and package success without an Actions
    install/verify/uninstall gate.
 
@@ -285,3 +285,20 @@ observation for protected runtime-directory creation remains unverified and
 non-blocking; it is not a child-acceptance or archive gate. The child remains
 open for the exact-SHA CI/preflight and formal Release evidence; the retired
 Actions lifecycle is not reinstated.
+
+## 2026-08-10 strategy closeout
+
+Correction commit `99738a00260da3ea095f8d8750c6d8af97e07cf5` subsequently
+completed exact-source push CI run `31376383730` and same-source
+non-publishing preflight run `31377390554`. That preflight successfully built
+and packaged native Windows x64 and ARM64 setups, completed the corrected
+proof/sealing and attestation path, produced all 17 workflow artifacts and the
+exact 14-file attachment payload, and kept publication skipped. This closes
+the child-owned native package evidence; it is not a manual installation or
+public Release claim.
+
+The user then deferred a new post-transfer native cycle, formal `v0.3.1`, and
+public asset/signing/attestation validation to a future independent task. The
+corrected `%ProgramData%\FyAgent\runtime` creation remains unobserved in a real
+install and is recorded as non-blocking rather than silently upgraded. Under
+the revised scope, this child is ready for ordered archive.

@@ -30,3 +30,11 @@ protocol/schema/toolchain contracts and immutable Trellis history.
 - [x] True protocol/schema/toolchain versions remain and their tests pass.
 - [x] Current links/indexes/spec/task docs pass, archives are unchanged, and no
       operational repository file references the source planning package.
+
+## Deferred Follow-up
+
+The current repository authority is `fy-agent/fyagent`; dated pre-transfer
+URLs remain historical evidence only. Formal `v0.3.1`, new remote
+CI/preflight, public Release assets, and closeout CI were deferred by the
+2026-08-10 strategy to a future independent task. Current documentation must
+not claim those future observations exist.

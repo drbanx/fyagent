@@ -41,3 +41,10 @@ affecting discovery, updates, verification, or restart/launch.
       real Codex, or a real multi-account VM.
 - [x] Matching x64 and ARM64 native CI legs execute that exact smoke once;
       scheduling or native API failure blocks acceptance.
+
+## Deferred Follow-up
+
+Formal `v0.3.1`, post-transfer CI/preflight, public asset verification, and
+closeout CI were moved to a future independent task by the 2026-08-10
+completion strategy. They do not alter this child's already-complete local and
+matching-architecture native acceptance, and are not claimed here.

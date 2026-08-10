@@ -19,10 +19,15 @@ version to `3.19.2`.
 The verified integration topology is:
 
 ```text
-origin fetch/push = https://github.com/NongHua123/fyagent.git
+origin fetch/push = https://github.com/fy-agent/fyagent.git
 upstream fetch    = https://github.com/farion1231/cc-switch.git
 upstream push     = DISABLED
 ```
+
+The pre-transfer origin remains valid only in dated repository evidence and
+currently redirects to the canonical origin with the same numeric repository
+ID. Configure `origin` with the canonical URL above. Redirect continuity does
+not make a former owner name acceptable to current release eligibility.
 
 The reviewed `v3.19.2` synchronization evidence is:
 
@@ -129,6 +134,7 @@ unless its real behavior and deprecation evidence justify a new decision.
 | Condition                                                                            | Required result                                                                       |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | `upstream` has a usable push URL                                                     | Stop before fetch/merge; restore the reviewed disabled-push configuration explicitly. |
+| `origin` still uses the pre-transfer owner URL                                       | Replace it with the canonical origin; do not treat the redirect as current authority. |
 | Tag object or peeled commit differs from the approved full SHA                       | Stop as a source-identity failure; do not merge a similarly named tag.                |
 | Unrecognized dirty files overlap the merge                                           | Stop and preserve them; do not stash, reset, or overwrite them implicitly.            |
 | Merge result changes FyAgent to the upstream product/version/data root               | Reject the resolution and restore the FyAgent invariant before testing.               |
@@ -143,7 +149,8 @@ unless its real behavior and deprecation evidence justify a new decision.
 
 - Good: the reviewed tag is verified by full object identities, merged in a
   two-parent commit, shared fixes work under FyAgent identity, schema remains
-  `16`, and later modernization remains independently reviewable.
+  `16`, the canonical FyAgent origin is used, and later modernization remains
+  independently reviewable.
 - Base: an upstream file contains historical `CC Switch` issue URLs or license
   attribution. Preserve those factual references while keeping current-product
   UI, runtime errors, paths, and comments FyAgent-specific.
@@ -153,8 +160,9 @@ unless its real behavior and deprecation evidence justify a new decision.
 
 ## 6. Tests Required
 
-- Verify remote fetch/push URLs, local tag object, peeled commit, merge base,
-  parent count, parent order, and `git merge-base --is-ancestor`.
+- Verify the exact canonical origin fetch/push URL, upstream's disabled push
+  URL, local tag object, peeled commit, merge base, parent count, parent order,
+  and `git merge-base --is-ancestor`.
 - Run conflict-marker and unmerged-index scans before committing.
 - Run the application-identity audit and promotion-boundary tests; classify
   historical/source/negative-fixture exceptions explicitly.

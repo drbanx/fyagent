@@ -33,6 +33,7 @@ import {
 
 const temporaryRoots: string[] = [];
 const repositoryRoot = path.resolve(__dirname, "..");
+const preTransferRepository = ["NongHua123", "fyagent"].join("/");
 const collectorScript = path.join(
   repositoryRoot,
   "scripts",
@@ -43,11 +44,11 @@ const identity: ReleaseIdentity = {
   productVersion: "0.3.0",
   tag: "v0.3.0",
   sourceSha: "b".repeat(40),
-  repository: "NongHua123/fyagent",
+  repository: "fy-agent/fyagent",
   repositoryId: "1313497021",
   workflowPath: ".github/workflows/release.yml",
   workflowRef:
-    "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
+    "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
   workflowSha: "b".repeat(40),
   runId: "123456",
   runAttempt: "2",
@@ -567,7 +568,7 @@ describe("release asset and metadata contract", () => {
       tag: "v0.3.0",
       sourceSha: "b".repeat(40),
       repository: {
-        nameWithOwner: "NongHua123/fyagent",
+        nameWithOwner: "fy-agent/fyagent",
         id: "1313497021",
       },
       workflow: {
@@ -576,7 +577,7 @@ describe("release asset and metadata contract", () => {
         runAttempt: "2",
         event: "workflow_dispatch",
         mode: "preflight",
-        ref: "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
+        ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
         sha: "b".repeat(40),
       },
       requiredCi: {
@@ -651,7 +652,7 @@ describe("release asset and metadata contract", () => {
     const formalIdentity = {
       ...identity,
       workflowRef:
-        "NongHua123/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0",
+        "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0",
       workflowSha: identity.sourceSha,
       event: "push",
       mode: "formal",
@@ -697,7 +698,7 @@ describe("release asset and metadata contract", () => {
       productVersion: "12.34.56",
       tag: "v12.34.56",
       workflowRef:
-        "NongHua123/fyagent/.github/workflows/release.yml@refs/tags/v12.34.56",
+        "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v12.34.56",
       event: "push",
       mode: "formal",
     };
@@ -718,7 +719,7 @@ describe("release asset and metadata contract", () => {
   it.each([
     [
       "repository",
-      { repository: "fork/fyagent" },
+      { repository: preTransferRepository },
       /Repository identity drifted/,
     ],
     ["repository id", { repositoryId: "42" }, /Repository ID drifted/],
@@ -731,7 +732,7 @@ describe("release asset and metadata contract", () => {
       "preflight workflow ref",
       {
         workflowRef:
-          "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/main",
+          "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
       },
       /Preflight must use the trusted dev\/laiyongjie workflow ref/,
     ],
@@ -739,7 +740,7 @@ describe("release asset and metadata contract", () => {
       "formal workflow ref",
       {
         workflowRef:
-          "NongHua123/fyagent/.github/workflows/release.yml@refs/tags/v12.34.56",
+          "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v12.34.56",
         event: "push",
         mode: "formal",
       },

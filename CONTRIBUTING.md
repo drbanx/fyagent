@@ -8,9 +8,9 @@ Thank you for your interest in contributing to FyAgent! Please read our [Code of
 
 There are many ways to contribute:
 
-- **Report bugs** — Found something broken? [Open a bug report](https://github.com/NongHua123/fyagent/issues/new?template=bug_report.yml).
-- **Suggest features** — Have an idea? [Submit a feature request](https://github.com/NongHua123/fyagent/issues/new?template=feature_request.yml).
-- **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/NongHua123/fyagent/issues/new?template=doc_issue.yml).
+- **Report bugs** — Found something broken? [Open a bug report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml).
+- **Suggest features** — Have an idea? [Submit a feature request](https://github.com/fy-agent/fyagent/issues/new?template=feature_request.yml).
+- **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/fy-agent/fyagent/issues/new?template=doc_issue.yml).
 - **Contribute code** — Fix bugs or implement features via pull requests.
 - **Translate** — Help us improve English, Simplified Chinese, Traditional Chinese, and Japanese translations.
 
@@ -214,8 +214,8 @@ FyAgent maintains four locale resources. When modifying user-facing text:
 
 ## Questions?
 
-- [Open a question](https://github.com/NongHua123/fyagent/issues/new?template=question.yml)
-- [GitHub Discussions](https://github.com/NongHua123/fyagent/discussions)
+- [Open a question](https://github.com/fy-agent/fyagent/issues/new?template=question.yml)
+- [GitHub Discussions](https://github.com/fy-agent/fyagent/discussions)
 
 ---
 
@@ -229,9 +229,9 @@ FyAgent maintains four locale resources. When modifying user-facing text:
 
 你可以通过多种方式参与贡献：
 
-- **报告 Bug** — 发现问题？[提交 Bug 报告](https://github.com/NongHua123/fyagent/issues/new?template=bug_report.yml)。
-- **建议功能** — 有想法？[提交功能请求](https://github.com/NongHua123/fyagent/issues/new?template=feature_request.yml)。
-- **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/NongHua123/fyagent/issues/new?template=doc_issue.yml)。
+- **报告 Bug** — 发现问题？[提交 Bug 报告](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml)。
+- **建议功能** — 有想法？[提交功能请求](https://github.com/fy-agent/fyagent/issues/new?template=feature_request.yml)。
+- **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/fy-agent/fyagent/issues/new?template=doc_issue.yml)。
 - **贡献代码** — 通过 Pull Request 修复 Bug 或实现新功能。
 - **翻译** — 帮助改进英文、简体中文、繁体中文和日文翻译。
 
@@ -416,5 +416,5 @@ FyAgent 维护四份 locale 资源。修改用户可见文本时：
 
 ## 有疑问？
 
-- [提问](https://github.com/NongHua123/fyagent/issues/new?template=question.yml)
-- [GitHub 讨论区](https://github.com/NongHua123/fyagent/discussions)
+- [提问](https://github.com/fy-agent/fyagent/issues/new?template=question.yml)
+- [GitHub 讨论区](https://github.com/fy-agent/fyagent/discussions)

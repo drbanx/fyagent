@@ -129,5 +129,5 @@ FyAgent ユーザーマニュアル
 
 Issue や PR でドキュメントの改善にご協力ください：
 
-- [GitHub Issues](https://github.com/NongHua123/fyagent/issues)
-- [GitHub Repository](https://github.com/NongHua123/fyagent)
+- [GitHub Issues](https://github.com/fy-agent/fyagent/issues)
+- [GitHub Repository](https://github.com/fy-agent/fyagent)

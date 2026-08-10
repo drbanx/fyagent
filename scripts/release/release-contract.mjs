@@ -9,7 +9,7 @@ import {
 import { basename, join } from "node:path";
 
 export const PRODUCT_NAME = "FyAgent";
-export const EXPECTED_REPOSITORY = "NongHua123/fyagent";
+export const EXPECTED_REPOSITORY = "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID = "1313497021";
 export const RELEASE_BRANCH = "dev/laiyongjie";
 export const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";

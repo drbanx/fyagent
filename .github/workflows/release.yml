@@ -49,7 +49,7 @@ jobs:
           DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
-          expected_repository='NongHua123/fyagent'
+          expected_repository='fy-agent/fyagent'
           expected_repository_id='1313497021'
           expected_workflow_ref_prefix="${expected_repository}/.github/workflows/release.yml@"
           [ "$GITHUB_REPOSITORY" = "$expected_repository" ]
@@ -122,7 +122,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          expected_repository='NongHua123/fyagent'
+          expected_repository='fy-agent/fyagent'
           expected_repository_id='1313497021'
           expected_workflow_ref_prefix="${expected_repository}/.github/workflows/release.yml@"
           [ "$GITHUB_REPOSITORY" = "$expected_repository" ] || {
@@ -1634,7 +1634,7 @@ jobs:
             --output verified-subjects/signing-status.json
           node scripts/generate-download-manifest.mjs \
             installers "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
-            'https://github.com/NongHua123/fyagent/releases/download' "$GENERATED_AT" \
+            'https://github.com/fy-agent/fyagent/releases/download' "$GENERATED_AT" \
             verified-subjects/download-manifest.json
           node scripts/release/generate-build-metadata.mjs \
             platform-metadata "$APP_VERSION" "$RELEASE_TAG" "$SOURCE_SHA" \
@@ -1798,7 +1798,7 @@ jobs:
           set -euo pipefail
           [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" ]
           [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" = "$RELEASE_TAG" ]
-          [ "$GITHUB_WORKFLOW_REF" = "NongHua123/fyagent/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" ]
+          [ "$GITHUB_WORKFLOW_REF" = "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" ]
           [ "$GITHUB_WORKFLOW_SHA" = "$SOURCE_SHA" ] && [ "$TRUSTED_WORKFLOW_SHA" = "$SOURCE_SHA" ]
           [ "$RELEASE_TAG" = "v$APP_VERSION" ]
           [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]
@@ -1824,7 +1824,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          repository='NongHua123/fyagent'
+          repository='fy-agent/fyagent'
           api_root='https://api.github.com'
           uploads_root='https://uploads.github.com'
           transaction_root="$(mktemp -d "$RUNNER_TEMP/fyagent-release-transaction.XXXXXX")"

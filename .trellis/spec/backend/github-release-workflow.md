@@ -98,7 +98,7 @@ may compare against a previously frozen output.
 
 Eligibility fails closed unless all of these facts agree:
 
-1. repository name/id are `NongHua123/fyagent` / `1313497021`;
+1. repository name/id are `fy-agent/fyagent` / `1313497021`;
 2. the workflow is `Release` at `.github/workflows/release.yml` and its
    workflow SHA equals the candidate source;
 3. the canonical version is stable `X.Y.Z` and the tag is exactly `vX.Y.Z`;
@@ -124,6 +124,17 @@ Unknown keys, malformed IDs/SHA/statuses, incomplete pagination, HTTP errors,
 wrong repository/workflow/event/branch, a moved branch, a lightweight tag,
 missing evidence, duplicate Required results, or evidence URL drift are
 failures. Tokens and API responses are not written to Release notes or logs.
+
+### Repository owner-transfer boundary
+
+Before the 2026-08-10 owner transfer, the factual repository URL was
+`https://github.com/NongHua123/fyagent`. GitHub now redirects that URL with
+HTTP 301 to `https://github.com/fy-agent/fyagent`, and both locations resolve
+to numeric repository ID `1313497021`. That continuity preserves historical
+run and source evidence only. It is not an eligibility alias: current
+collection and evaluation require the exact canonical name
+`fy-agent/fyagent`, and a payload, workflow reference, metadata URL, or
+head-repository name that still presents the former owner fails closed.
 
 Initial eligibility freezes the decision before any build. Formal publication
 then performs two independent live rechecks with the same collector and exact
@@ -321,7 +332,9 @@ directories, symlinks, empty files, or overwrites is forbidden.
 
 `download-manifest.json` schema `fyagent-download-manifest/v2` binds each
 installer's exact name, platform, architecture, format, size, SHA-256, URL,
-version, tag, source SHA, and publication instant.
+version, tag, source SHA, and publication instant. Its download URL uses the
+canonical `https://github.com/fy-agent/fyagent/releases/download/` prefix;
+redirecting pre-transfer URLs are not emitted as current metadata.
 
 Five `fyagent-platform-build/v1` records bind target/runner/container,
 toolchain, repository/workflow/run, source, release mode, and the same Required
@@ -381,22 +394,23 @@ never called private or successful.
 
 ## 9. Failure matrix
 
-| Condition                                                                                                                  | Required result                                             |
-| -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Candidate/version/tag/event/workflow/dev HEAD differs                                                                      | Fail before native builds.                                  |
-| Formal tag is lightweight, points elsewhere, or changes                                                                    | Fail; never repair or move the tag.                         |
-| Exact-source dev CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.           |
-| Preflight reaches a publish path or provider secret                                                                        | Static/remote gate fails.                                   |
-| Native runner, architecture, toolchain, Linux digest/OS, or source drifts                                                  | Fail that target; no fallback.                              |
-| Pinned build input ID/digest/manifest/file set drifts                                                                      | Fail before provider or trusted consumption.                |
-| Signer configuration is partial/invalid or fresh signature proof fails                                                     | Fail; do not downgrade to unsigned.                         |
-| Windows proof/sealed binding, macOS identity, or Linux package set fails                                                   | Stop aggregation and publication.                           |
-| An intentional producer skip propagates past successful asset verification                                                 | Attestation still runs; abnormal direct needs fail visibly. |
-| Ten/thirteen/fourteen file allowlist or digest differs                                                                     | Stop verification, attestation, or publication.             |
-| Live dev/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.       |
-| A draft/published Release already exists                                                                                   | Refuse update, replacement, or deletion.                    |
-| Upload/re-download/pre-PATCH verification fails                                                                            | Leave draft untouched and report it.                        |
-| Final PATCH is failed or ambiguous                                                                                         | Observe once; do not retry/delete or claim completion.      |
+| Condition                                                                                                                  | Required result                                              |
+| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Candidate/version/tag/event/workflow/dev HEAD differs                                                                      | Fail before native builds.                                   |
+| Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                     | Fail before native builds; require exact `fy-agent/fyagent`. |
+| Formal tag is lightweight, points elsewhere, or changes                                                                    | Fail; never repair or move the tag.                          |
+| Exact-source dev CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
+| Preflight reaches a publish path or provider secret                                                                        | Static/remote gate fails.                                    |
+| Native runner, architecture, toolchain, Linux digest/OS, or source drifts                                                  | Fail that target; no fallback.                               |
+| Pinned build input ID/digest/manifest/file set drifts                                                                      | Fail before provider or trusted consumption.                 |
+| Signer configuration is partial/invalid or fresh signature proof fails                                                     | Fail; do not downgrade to unsigned.                          |
+| Windows proof/sealed binding, macOS identity, or Linux package set fails                                                   | Stop aggregation and publication.                            |
+| An intentional producer skip propagates past successful asset verification                                                 | Attestation still runs; abnormal direct needs fail visibly.  |
+| Ten/thirteen/fourteen file allowlist or digest differs                                                                     | Stop verification, attestation, or publication.              |
+| Live dev/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.        |
+| A draft/published Release already exists                                                                                   | Refuse update, replacement, or deletion.                     |
+| Upload/re-download/pre-PATCH verification fails                                                                            | Leave draft untouched and report it.                         |
+| Final PATCH is failed or ambiguous                                                                                         | Observe once; do not retry/delete or claim completion.       |
 
 ## 10. Validation and evidence boundary
 

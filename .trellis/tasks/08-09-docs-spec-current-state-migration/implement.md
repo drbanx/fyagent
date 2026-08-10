@@ -8,10 +8,9 @@
 5. [done] Update references/tests and delete replaced specs plus `docs/fyagent/dev/`.
 6. [done] Audit every remaining version/MSI/WiX match semantically, preserving true
    machine contracts and excluding immutable archives from rewrite.
-7. [done locally; archive pending] Run task/docs, link/reference, protocol, and
-   release checks; compare the archive tree against the pre-task commit. The
-   parent recorded the successful canonical `0.3.1` repository-wide check and
-   keeps this child open until remote Release evidence permits archival.
+7. [done for current scope] Run task/docs, link/reference, protocol, and release
+   checks; compare the archive tree against the pre-task commit and preserve a
+   transparent boundary between observed evidence and deferred publication.
 
 ## Local migration evidence
 
@@ -38,7 +37,20 @@ was removed:
   issue. It confirmed the public installer/trust statements, active-owner
   signatures, local-link coverage, inventory disposition, archive integrity,
   and the separation between local evidence and pending native/remote gates.
-- The complete inventory is intentionally retained at 36,906 bytes so no
+- The complete inventory is intentionally retained at 37,131 bytes so no
   per-file evidence is discarded. Trellis reports a non-failing 32,768-byte
   automatic context-injection warning; reviewers can read the task-local file
   directly.
+
+## 2026-08-10 strategy closeout
+
+Following the repository-owner transfer, current source/release authority is
+`fy-agent/fyagent`; dated pre-transfer URLs remain historical evidence and may
+redirect, but are not current eligibility aliases. The active specs and task
+evidence record that boundary without rewriting immutable archives.
+
+Formal `v0.3.1`, a new post-transfer CI/preflight, public Release assets and
+attestations, and acceptance of closeout CI were explicitly deferred to a
+future independent task. This documentation child is ready for ordered archive
+on its completed migration and current-link contracts; it does not claim any
+deferred Release observation.

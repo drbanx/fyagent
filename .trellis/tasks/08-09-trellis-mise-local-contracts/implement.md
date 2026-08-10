@@ -47,8 +47,10 @@ reconfirmed by the parent repository-wide check on 2026-08-10:
 - task validation, task-documentation checks, fixture rehearsal, reviewed-file
   formatting, and `git diff --check` passed.
 
-These local acceptance criteria are complete. The task remains open only for
-the parent-owned formal Release and dependency-ordered archive boundary.
+These local acceptance criteria are complete. Under the 2026-08-10 strategy,
+the parent-owned formal Release and new remote gates are deferred to a future
+independent task; this child is ready for dependency-ordered archival without
+claiming those gates passed.
 
 ## JSONL formatter follow-up
 
@@ -82,6 +84,7 @@ The CI-safe shared-writer suite passed 3/3 for unique same-directory temporary
 files, mode preservation, partial-write rollback, cleanup, and recovery-error
 aggregation.
 `mise run typecheck` and the repository-wide `mise run check` also exited zero
-on the same local snapshot. This follow-up changes no remote evidence boundary:
-the child remains open until the parent-owned Release and ordered archive
-closeout complete.
+on the same local snapshot. This follow-up changes no remote evidence boundary.
+The implementation is complete and archive-ready; formal publication,
+post-transfer CI/preflight, public asset verification, and closeout-CI
+acceptance remain explicitly unclaimed future work.

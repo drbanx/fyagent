@@ -38,3 +38,10 @@ and testable while preserving stable `mise run` developer entrypoints.
       record before Prettier, rejects drift observed by its precommit check,
       and remains separate from Trellis schema validation.
 - [x] A temporary update rehearsal proves idempotence and upstream-drift failure.
+
+## Deferred Follow-up
+
+The 2026-08-10 completion strategy makes formal `v0.3.1`, new remote
+CI/preflight, public asset verification, and closeout CI responsibilities of a
+future independent parent task. They are not acceptance criteria for this
+local-contract child and are not claimed as completed here.

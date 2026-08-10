@@ -2,10 +2,10 @@
   "id": "fyagent-modernization",
   "name": "fyagent-modernization",
   "title": "FyAgent modernization",
-  "description": "Coordinate five modernization workstreams, exact-SHA v0.3.1 release, and final archive closeout on dev/laiyongjie.",
+  "description": "Coordinate and close out five implemented FyAgent modernization workstreams on dev/laiyongjie.",
   "status": "in_progress",
   "dev_type": null,
-  "scope": "repository-wide coordination and release closeout",
+  "scope": "repository-wide modernization coordination and evidence closeout",
   "package": null,
   "priority": "P2",
   "creator": "pythonrust",
@@ -27,6 +27,6 @@
   ],
   "parent": null,
   "relatedFiles": [],
-  "notes": "No PR or main merge. Parent has no direct implementation; it closes only after child evidence, formal Release, and remote CI.",
+  "notes": "No PR or main merge. On 2026-08-10 the user deferred the formal v0.3.1 Release, post-transfer CI/preflight, public asset verification, and closeout CI to a future independent task; this parent closes on child implementation, local checks, and already-observed remote evidence without claiming those deferred gates passed.",
   "meta": {}
 }

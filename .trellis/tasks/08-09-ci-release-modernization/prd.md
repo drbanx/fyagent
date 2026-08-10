@@ -52,3 +52,12 @@ full-CI HEAD of `dev/laiyongjie`.
 - [x] Existing `main` workflow behavior remains unchanged and this workstream
       performs no repository-setting mutation. The parent retains the final
       remote settings observation.
+
+## Deferred Follow-up
+
+This task delivers the executable CI and Release contracts. By explicit
+2026-08-10 user strategy, a new exact-SHA CI/preflight after the repository
+owner transfer, formal `v0.3.1`, public Release asset/attestation validation,
+and closeout CI are production executions for a future independent task, not
+acceptance criteria for archiving this implementation task. No deferred run or
+publication is represented as successful.

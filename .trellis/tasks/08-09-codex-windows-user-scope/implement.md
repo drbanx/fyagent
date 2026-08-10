@@ -86,6 +86,7 @@ same-context, ambiguity, owner-drift, and zero-all-users-fallback tests.
 The accepted Codex work commits are `5556b3f4`, `ad34cb10`, and `2047bc67`;
 the closeout journal must retain all three rather than treating the single
 `task.json.commit` field as a complete history. This closes the child-owned
-local and native acceptance criteria. The task intentionally remains open
-until the parent completes the formal `v0.3.1` Release and ordered archive
-closeout.
+local and native acceptance criteria. By the 2026-08-10 strategy, formal
+`v0.3.1`, post-transfer CI/preflight, public asset verification, and
+closeout-CI acceptance are deferred to a future independent task. This child
+is ready for ordered archive without claiming those deferred gates.

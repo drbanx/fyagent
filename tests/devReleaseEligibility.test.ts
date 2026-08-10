@@ -8,8 +8,9 @@ import {
 const SOURCE_SHA = "a".repeat(40);
 const OTHER_SHA = "c".repeat(40);
 const TAG_OBJECT_SHA = "b".repeat(40);
+const PRE_TRANSFER_REPOSITORY = ["NongHua123", "fyagent"].join("/");
 const REPOSITORY = {
-  nameWithOwner: "NongHua123/fyagent",
+  nameWithOwner: "fy-agent/fyagent",
   id: "1313497021",
 } as const;
 const CI_WORKFLOW_ID = "314159";
@@ -29,8 +30,8 @@ function requiredJob(runId = CI_RUN_ID, runAttempt = CI_RUN_ATTEMPT) {
     runAttempt,
     status: "completed" as const,
     conclusion: "success" as const,
-    checkRunUrl: `https://api.github.com/repos/NongHua123/fyagent/check-runs/${REQUIRED_CHECK_ID}`,
-    htmlUrl: `https://github.com/NongHua123/fyagent/actions/runs/${runId}/job/${REQUIRED_JOB_ID}`,
+    checkRunUrl: `https://api.github.com/repos/fy-agent/fyagent/check-runs/${REQUIRED_CHECK_ID}`,
+    htmlUrl: `https://github.com/fy-agent/fyagent/actions/runs/${runId}/job/${REQUIRED_JOB_ID}`,
   };
 }
 
@@ -45,8 +46,8 @@ function requiredCheck(runId = CI_RUN_ID, runAttempt = CI_RUN_ATTEMPT) {
     headSha: SOURCE_SHA,
     status: "completed" as const,
     conclusion: "success" as const,
-    url: `https://api.github.com/repos/NongHua123/fyagent/check-runs/${REQUIRED_CHECK_ID}`,
-    detailsUrl: `https://github.com/NongHua123/fyagent/actions/runs/${runId}/job/${REQUIRED_JOB_ID}`,
+    url: `https://api.github.com/repos/fy-agent/fyagent/check-runs/${REQUIRED_CHECK_ID}`,
+    detailsUrl: `https://github.com/fy-agent/fyagent/actions/runs/${runId}/job/${REQUIRED_JOB_ID}`,
   };
 }
 
@@ -96,7 +97,7 @@ function validInput(
     workflow: {
       name: "Release",
       path: ".github/workflows/release.yml",
-      ref: `NongHua123/fyagent/.github/workflows/release.yml@${ref}`,
+      ref: `fy-agent/fyagent/.github/workflows/release.yml@${ref}`,
       sha: SOURCE_SHA,
     },
     candidate: {
@@ -230,7 +231,7 @@ describe("dev release identity", () => {
     [
       "repository name",
       (input: MutableRecord) =>
-        (input.repository.nameWithOwner = "fork/fyagent"),
+        (input.repository.nameWithOwner = PRE_TRANSFER_REPOSITORY),
     ],
     ["repository id", (input: MutableRecord) => (input.repository.id = "99")],
     [
@@ -325,7 +326,7 @@ describe("dev release identity", () => {
       "workflow ref",
       (input: MutableRecord) =>
         (input.workflow.ref =
-          "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie"),
+          "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie"),
     ],
     [
       "missing annotated tag",

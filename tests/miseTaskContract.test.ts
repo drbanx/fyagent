@@ -430,6 +430,15 @@ describe("canonical mise task API", () => {
   });
 
   it("forwards upstream parameters before any Git mutation can run", () => {
+    const upstreamTask = fs.readFileSync(
+      path.join(ROOT, "scripts", "tasks", "upstream.mjs"),
+      "utf8",
+    );
+    expect(upstreamTask).toContain(
+      "const ORIGIN = /^https:\\/\\/github\\.com\\/fy-agent\\/fyagent(?:\\.git)?$/i;",
+    );
+    expect(upstreamTask).not.toContain(["NongHua123", "fyagent"].join("\\/"));
+
     const result = mise("upstream:merge:prepare", "not-a-release-tag");
     expect(result.status).not.toBe(0);
     expect(output(result)).toContain("Upstream tag must be exact vX.Y.Z");

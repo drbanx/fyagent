@@ -39,13 +39,13 @@ function releaseIdentity(mode: "preflight" | "formal"): ReleaseIdentity {
     productVersion: "0.3.0",
     tag: "v0.3.0",
     sourceSha,
-    repository: "NongHua123/fyagent",
+    repository: "fy-agent/fyagent",
     repositoryId: "1313497021",
     workflowPath: ".github/workflows/release.yml",
     workflowRef:
       mode === "formal"
-        ? "NongHua123/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0"
-        : "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
+        ? "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0"
+        : "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
     workflowSha: sourceSha,
     runId: "123456",
     runAttempt: "2",
