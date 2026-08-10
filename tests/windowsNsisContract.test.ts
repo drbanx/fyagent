@@ -101,8 +101,37 @@ function powershellFunctionBlock(
   return source.slice(start, end);
 }
 
+function powershellCaseBody(
+  source: string,
+  name: string,
+  nextMarker: string,
+): string {
+  const marker = `  # CASE: ${name}\n`;
+  const start = source.indexOf(marker);
+  const end = source.indexOf(nextMarker, start + marker.length);
+  if (start < 0 || end <= start) {
+    throw new Error(`PowerShell case ${name} is missing or unterminated`);
+  }
+  return withoutPowerShellComments(
+    source.slice(start + marker.length, end),
+  ).trim();
+}
+
 function withoutPowerShellComments(source: string): string {
   return source.replace(/<#[\s\S]*?#>/gu, "").replace(/#[^\r\n]*/gu, "");
+}
+
+function powershellBraceDepthBetween(
+  source: string,
+  start: number,
+  end: number,
+): number {
+  const executable = withoutPowerShellComments(source.slice(start, end));
+  return [...executable].reduce((depth, character) => {
+    if (character === "{") return depth + 1;
+    if (character === "}") return depth - 1;
+    return depth;
+  }, 0);
 }
 
 function requireExecutableMarker(
@@ -158,7 +187,7 @@ function assertBoundedLifecycleProcessContract(source: string): void {
   const receiveOutput = powershellFunctionBlock(
     executable,
     "Receive-RedirectedProcessOutput",
-    "Invoke-BoundedCaseProcess",
+    "Get-CapturedProcessOutputFailureDetail",
   );
   const waitAll = receiveOutput.indexOf("[Threading.Tasks.Task]::WaitAll(");
   const firstGetResult = receiveOutput.indexOf(".GetAwaiter().GetResult()");
@@ -173,6 +202,35 @@ function assertBoundedLifecycleProcessContract(source: string): void {
   ) {
     throw new Error("bounded output drain must collect both completed streams");
   }
+  for (const marker of [
+    "$StandardOutputTask.Status -eq [Threading.Tasks.TaskStatus]::RanToCompletion",
+    "$StandardErrorTask.Status -eq [Threading.Tasks.TaskStatus]::RanToCompletion",
+    "StandardOutput = $standardOutput",
+    "StandardError = $standardError",
+  ]) {
+    requireExecutableMarker(
+      receiveOutput,
+      marker,
+      "completed redirected stream salvage",
+    );
+  }
+
+  const outputDetail = powershellFunctionBlock(
+    executable,
+    "Get-CapturedProcessOutputFailureDetail",
+    "Invoke-BoundedCaseProcess",
+  );
+  for (const marker of [
+    '"stdout=$($StandardOutput.TrimEnd())"',
+    '"stderr=$($StandardError.TrimEnd())"',
+    "return '; captured-output-formatting-failed'",
+  ]) {
+    requireExecutableMarker(
+      outputDetail,
+      marker,
+      "non-masking captured output diagnostics",
+    );
+  }
 
   const boundedProcess = powershellFunctionBlock(
     executable,
@@ -182,6 +240,25 @@ function assertBoundedLifecycleProcessContract(source: string): void {
   if ((boundedProcess.match(/ReadToEndAsync\(\)/gu) ?? []).length !== 2) {
     throw new Error(
       "native lifecycle must asynchronously drain both stdout and stderr",
+    );
+  }
+  const stdoutDrainStart = boundedProcess.indexOf(
+    "$standardOutputTask = $process.StandardOutput.ReadToEndAsync()",
+  );
+  const stderrDrainStart = boundedProcess.indexOf(
+    "$standardErrorTask = $process.StandardError.ReadToEndAsync()",
+  );
+  const processWait = boundedProcess.indexOf(
+    "$process.WaitForExit($TimeoutMilliseconds)",
+  );
+  if (
+    stdoutDrainStart < 0 ||
+    stderrDrainStart < 0 ||
+    processWait <= stdoutDrainStart ||
+    processWait <= stderrDrainStart
+  ) {
+    throw new Error(
+      "native lifecycle must begin draining both redirected streams before waiting",
     );
   }
   for (const marker of [
@@ -205,22 +282,57 @@ function assertBoundedLifecycleProcessContract(source: string): void {
     "try {\n      $process.Dispose()\n    } catch {",
     "non-masking process disposal",
   );
-  requireExecutableMarker(
-    boundedProcess,
-    '": $($standardError.TrimEnd())"',
-    "captured stderr failure detail",
+  if (
+    (boundedProcess.match(/Get-CapturedProcessOutputFailureDetail/gu) ?? [])
+      .length !== 3
+  ) {
+    throw new Error(
+      "timeout, output-drain, and unexpected-exit failures must retain captured output",
+    );
+  }
+  if (
+    (boundedProcess.match(/\$standardOutput = \$drain\.StandardOutput/gu) ?? [])
+      .length !== 2 ||
+    (boundedProcess.match(/\$standardError = \$drain\.StandardError/gu) ?? [])
+      .length !== 2
+  ) {
+    throw new Error(
+      "timeout and completed-process drain paths must retain both captured streams",
+    );
+  }
+  const finalStdoutAssignment = boundedProcess.lastIndexOf(
+    "$standardOutput = $drain.StandardOutput",
   );
+  const finalStderrAssignment = boundedProcess.lastIndexOf(
+    "$standardError = $drain.StandardError",
+  );
+  const drainFailureCheck = boundedProcess.lastIndexOf(
+    "if (-not $drain.Completed)",
+  );
+  if (
+    finalStdoutAssignment < 0 ||
+    finalStderrAssignment < 0 ||
+    drainFailureCheck <= finalStdoutAssignment ||
+    drainFailureCheck <= finalStderrAssignment
+  ) {
+    throw new Error(
+      "completed redirected streams must be retained before reporting drain failure",
+    );
+  }
 
   const nsisProcess = powershellFunctionBlock(
     executable,
     "Invoke-NsisProcess",
-    "Invoke-BestEffortNsisUninstall",
+    "Invoke-NsisUninstall",
   );
   for (const marker of [
-    "$Arguments.Count -lt 1",
-    "$Arguments.Count -gt 2",
-    "$Arguments[0] -cne '/S'",
-    "$Arguments[1].Length -le 3",
+    "[ValidateSet('Install', 'Uninstall')]",
+    "$ArgumentKind -ceq 'Install'",
+    "$ArgumentKind -ceq 'Uninstall'",
+    "$Arguments.Count -eq 1 -or $Arguments.Count -eq 2",
+    "$Arguments[0] -ceq '/S'",
+    "$Arguments[1].Length -gt 3 -and\n        $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)",
+    "$Arguments[1].Length -gt 3 -and\n    $Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)",
     "$argument.Contains([char]34)",
     "foreach ($character in $argument.ToCharArray())",
     "[char]::IsControl($character)",
@@ -255,6 +367,68 @@ function assertBoundedLifecycleProcessContract(source: string): void {
     );
   }
 
+  const uninstall = powershellFunctionBlock(
+    executable,
+    "Invoke-NsisUninstall",
+    "Invoke-BestEffortNsisUninstall",
+  );
+  for (const marker of [
+    "$sourceUninstaller = [IO.Path]::GetFullPath(",
+    "(Join-Path $InstallDirectory 'uninstall.exe')",
+    "$resolvedWorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path",
+    "$copyRoot = [IO.Path]::GetFullPath(",
+    "'nsis-uninstall-' + [Guid]::NewGuid().ToString('N')",
+    "$copyRootInfo.Parent.FullName",
+    "$workingDirectoryInfo.FullName",
+    "$copiedUninstaller = [IO.Path]::GetFullPath(",
+    "[IO.Path]::GetDirectoryName($copiedUninstaller)",
+    "[IO.File]::Copy($sourceUninstaller, $copiedUninstaller, $false)",
+    "-FilePath $copiedUninstaller",
+    "-Arguments @('/S', \"_?=$InstallDirectory\")",
+    "-ArgumentKind Uninstall",
+    "Remove-Item -LiteralPath $copiedUninstaller -Force -ErrorAction Stop",
+    "Remove-Item -LiteralPath $copyRoot -Force -ErrorAction Stop",
+    "throw $operationFailure",
+    "case-local uninstaller cleanup also failed",
+    "case-local uninstaller cleanup failed",
+  ]) {
+    requireExecutableMarker(
+      uninstall,
+      marker,
+      "NSIS uninstall execution contract",
+    );
+  }
+  if (uninstall.includes("-Arguments @('/S')")) {
+    throw new Error("NSIS uninstall must never fall back to a bare /S launch");
+  }
+  const copyUninstaller = uninstall.indexOf(
+    "[IO.File]::Copy($sourceUninstaller, $copiedUninstaller, $false)",
+  );
+  const invokeCopiedUninstaller = uninstall.indexOf(
+    "-FilePath $copiedUninstaller",
+  );
+  const removeCopiedUninstaller = uninstall.indexOf(
+    "Remove-Item -LiteralPath $copiedUninstaller -Force -ErrorAction Stop",
+  );
+  const removeCopyRoot = uninstall.indexOf(
+    "Remove-Item -LiteralPath $copyRoot -Force -ErrorAction Stop",
+  );
+  if (
+    copyUninstaller < 0 ||
+    invokeCopiedUninstaller <= copyUninstaller ||
+    removeCopiedUninstaller <= invokeCopiedUninstaller ||
+    removeCopyRoot <= removeCopiedUninstaller
+  ) {
+    throw new Error(
+      "NSIS uninstall must copy, execute, then remove its case-local uninstaller",
+    );
+  }
+  if (uninstall.includes("Remove-Item -LiteralPath $copyRoot -Recurse")) {
+    throw new Error(
+      "NSIS uninstall cleanup must never recursively widen beyond its copied file",
+    );
+  }
+
   const cleanup = powershellFunctionBlock(
     executable,
     "Invoke-BestEffortNsisUninstall",
@@ -262,10 +436,90 @@ function assertBoundedLifecycleProcessContract(source: string): void {
   );
   for (const marker of [
     "try {\n    $uninstaller = Join-Path $InstallDirectory 'uninstall.exe'",
-    "-TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds)",
+    "Invoke-NsisUninstall `",
+    "-TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds",
     'Write-Warning "Cleanup ${CaseName} failed: $($_.Exception.Message)"',
   ]) {
     requireExecutableMarker(cleanup, marker, "best-effort cleanup isolation");
+  }
+  if (
+    cleanup.includes("Invoke-NsisProcess") ||
+    cleanup.includes("-Arguments @('/S')")
+  ) {
+    throw new Error(
+      "best-effort cleanup must share the case-local NSIS uninstall path",
+    );
+  }
+
+  const mainTryMarker = "$sentinelParentsCreatedByTest = @{}\n\ntry {";
+  const mainTryMarkerIndex = source.indexOf(mainTryMarker);
+  const mainTryStart = source.indexOf("try {", mainTryMarkerIndex);
+  if (mainTryMarkerIndex < 0 || mainTryStart < 0) {
+    throw new Error("native lifecycle main try block is missing");
+  }
+  for (const caseName of [
+    "default-uninstall-user-data-preservation",
+    "custom-uninstall-user-data-preservation",
+  ]) {
+    const caseMarker = `  # CASE: ${caseName}\n`;
+    const caseMarkerIndex = source.indexOf(caseMarker, mainTryStart);
+    const helperIndex = source.indexOf(
+      "Invoke-NsisUninstall `",
+      caseMarkerIndex + caseMarker.length,
+    );
+    if (
+      caseMarkerIndex < 0 ||
+      helperIndex < 0 ||
+      powershellBraceDepthBetween(source, mainTryStart, caseMarkerIndex) !==
+        1 ||
+      powershellBraceDepthBetween(source, mainTryStart, helperIndex) !== 1
+    ) {
+      throw new Error(
+        "ordinary uninstall helpers must be direct statements in the main lifecycle try block",
+      );
+    }
+  }
+
+  for (const [actual, expected] of [
+    [
+      powershellCaseBody(
+        source,
+        "default-uninstall-user-data-preservation",
+        "  # CASE: preexisting-runtime-extra-ace-negative",
+      ),
+      `Invoke-NsisUninstall \`
+    -InstallDirectory $defaultInstallDir \`
+    -CaseName 'default-uninstall-user-data-preservation' \`
+    -WorkingDirectory $testRoot
+  Assert-UninstalledState -InstallDirectory $defaultInstallDir -UserSentinels $userSentinels`,
+    ],
+    [
+      powershellCaseBody(
+        source,
+        "custom-uninstall-user-data-preservation",
+        '  Write-Host "Windows NSIS native lifecycle verified for $Architecture."',
+      ),
+      `Invoke-NsisUninstall \`
+    -InstallDirectory $customInstallDir \`
+    -CaseName 'custom-uninstall-user-data-preservation' \`
+    -WorkingDirectory $testRoot
+  Assert-UninstalledState -InstallDirectory $customInstallDir -UserSentinels $userSentinels`,
+    ],
+  ] as const) {
+    if (actual !== expected) {
+      throw new Error(
+        "ordinary uninstall cases must contain only the shared uninstall helper followed by their state assertion",
+      );
+    }
+  }
+  if (
+    (executable.match(/Invoke-NsisUninstall `$/gmu) ?? []).length !== 3 ||
+    executable.includes("$defaultUninstaller") ||
+    executable.includes("$customUninstaller")
+  ) {
+    throw new Error(
+      "every ordinary and cleanup uninstall must use the shared case-local helper",
+    );
   }
 
   const signatureVerifier = powershellFunctionBlock(
@@ -697,8 +951,8 @@ describe("Windows NSIS installer contract", () => {
       {
         label: "unbounded cleanup",
         source: lifecycle.replace(
-          "-TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds)",
-          "-TimeoutMilliseconds $nsisProcessTimeoutMilliseconds)\n      # -TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds)",
+          "-TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds",
+          "-TimeoutMilliseconds $nsisProcessTimeoutMilliseconds\n      # -TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds",
         ),
       },
       {
@@ -716,10 +970,31 @@ describe("Windows NSIS installer contract", () => {
         ),
       },
       {
+        label: "non-Ordinal NSIS /D prefix admission",
+        source: lifecycle.replace(
+          "$Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)",
+          "$Arguments[1].StartsWith('/D=')\n        # $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)",
+        ),
+      },
+      {
         label: "empty NSIS /D admission",
         source: lifecycle.replace(
-          "$Arguments[1].Length -le 3 -or",
-          "$false -or\n        # $Arguments[1].Length -le 3 -or",
+          "$Arguments[1].Length -gt 3 -and\n        $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)",
+          "$true -and\n        $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)\n        # nonempty /D= check removed",
+        ),
+      },
+      {
+        label: "non-Ordinal NSIS uninstall prefix admission",
+        source: lifecycle.replace(
+          "$Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)",
+          "$Arguments[1].StartsWith('_?=')\n    # $Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)",
+        ),
+      },
+      {
+        label: "empty NSIS uninstall prefix admission",
+        source: lifecycle.replace(
+          "$Arguments[1].Length -gt 3 -and\n    $Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)",
+          "$true -and\n    $Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)\n    # nonempty _?= check removed",
         ),
       },
       {
@@ -730,10 +1005,31 @@ describe("Windows NSIS installer contract", () => {
         ),
       },
       {
+        label: "stdout async drain",
+        source: lifecycle.replace(
+          "$standardOutputTask = $process.StandardOutput.ReadToEndAsync()",
+          "$standardOutputTask = $process.StandardOutput.ReadToEnd()\n      # $standardOutputTask = $process.StandardOutput.ReadToEndAsync()",
+        ),
+      },
+      {
         label: "stderr async drain",
         source: lifecycle.replace(
-          "$process.StandardError.ReadToEndAsync()",
-          "$process.StandardError.ReadToEnd()\n      # $process.StandardError.ReadToEndAsync()",
+          "$standardErrorTask = $process.StandardError.ReadToEndAsync()",
+          "$standardErrorTask = $process.StandardError.ReadToEnd()\n      # $standardErrorTask = $process.StandardError.ReadToEndAsync()",
+        ),
+      },
+      {
+        label: "stdout drain starts after process wait",
+        source: lifecycle.replace(
+          "$standardOutputTask = $process.StandardOutput.ReadToEndAsync()",
+          "$null = $process.WaitForExit($TimeoutMilliseconds)\n      $standardOutputTask = $process.StandardOutput.ReadToEndAsync()",
+        ),
+      },
+      {
+        label: "stderr drain starts after process wait",
+        source: lifecycle.replace(
+          "$standardErrorTask = $process.StandardError.ReadToEndAsync()",
+          "$null = $process.WaitForExit($TimeoutMilliseconds)\n      $standardErrorTask = $process.StandardError.ReadToEndAsync()",
         ),
       },
       {
@@ -741,6 +1037,34 @@ describe("Windows NSIS installer contract", () => {
         source: lifecycle.replace(
           "if (-not [Threading.Tasks.Task]::WaitAll(",
           "$null = $StandardOutputTask.GetAwaiter().GetResult()\n    if (-not [Threading.Tasks.Task]::WaitAll(",
+        ),
+      },
+      {
+        label: "completed stdout salvage after drain failure",
+        source: lifecycle.replace(
+          "$StandardOutputTask.Status -eq [Threading.Tasks.TaskStatus]::RanToCompletion",
+          "$false\n      # $StandardOutputTask.Status -eq [Threading.Tasks.TaskStatus]::RanToCompletion",
+        ),
+      },
+      {
+        label: "completed stderr salvage after drain failure",
+        source: lifecycle.replace(
+          "$StandardErrorTask.Status -eq [Threading.Tasks.TaskStatus]::RanToCompletion",
+          "$false\n      # $StandardErrorTask.Status -eq [Threading.Tasks.TaskStatus]::RanToCompletion",
+        ),
+      },
+      {
+        label: "captured stdout retained on timeout",
+        source: lifecycle.replace(
+          "$standardOutput = $drain.StandardOutput",
+          "$standardOutput = ''\n        # $standardOutput = $drain.StandardOutput",
+        ),
+      },
+      {
+        label: "captured stderr retained on timeout",
+        source: lifecycle.replace(
+          "$standardError = $drain.StandardError",
+          "$standardError = ''\n        # $standardError = $drain.StandardError",
         ),
       },
       {
@@ -758,10 +1082,113 @@ describe("Windows NSIS installer contract", () => {
         ),
       },
       {
+        label: "captured stdout failure detail",
+        source: lifecycle.replace(
+          '"stdout=$($StandardOutput.TrimEnd())"',
+          "'discarded-stdout'\n      # \"stdout=$($StandardOutput.TrimEnd())\"",
+        ),
+      },
+      {
         label: "captured stderr failure detail",
         source: lifecycle.replace(
-          '": $($standardError.TrimEnd())"',
-          "''\n        # \": $($standardError.TrimEnd())\"",
+          '"stderr=$($StandardError.TrimEnd())"',
+          "'discarded-stderr'\n      # \"stderr=$($StandardError.TrimEnd())\"",
+        ),
+      },
+      {
+        label: "captured output diagnostic non-masking fallback",
+        source: lifecycle.replace(
+          "return '; captured-output-formatting-failed'",
+          "throw\n    # return '; captured-output-formatting-failed'",
+        ),
+      },
+      {
+        label: "timeout captured output propagation",
+        source: lifecycle.replace(
+          "$capturedOutputDetail = Get-CapturedProcessOutputFailureDetail `",
+          "$capturedOutputDetail = ''\n      # Get-CapturedProcessOutputFailureDetail `",
+        ),
+      },
+      {
+        label: "case-local uninstaller copy",
+        source: lifecycle.replace(
+          "[IO.File]::Copy($sourceUninstaller, $copiedUninstaller, $false)",
+          "$null = $sourceUninstaller\n    # [IO.File]::Copy($sourceUninstaller, $copiedUninstaller, $false)",
+        ),
+      },
+      {
+        label: "case-local uninstaller execution",
+        source: lifecycle.replace(
+          "-FilePath $copiedUninstaller",
+          "-FilePath $sourceUninstaller\n      # -FilePath $copiedUninstaller",
+        ),
+      },
+      {
+        label: "bare silent uninstall",
+        source: lifecycle.replace(
+          "-Arguments @('/S', \"_?=$InstallDirectory\")",
+          "-Arguments @('/S')\n      # -Arguments @('/S', \"_?=$InstallDirectory\")",
+        ),
+      },
+      {
+        label: "reordered NSIS uninstall arguments",
+        source: lifecycle.replace(
+          "-Arguments @('/S', \"_?=$InstallDirectory\")",
+          "-Arguments @(\"_?=$InstallDirectory\", '/S')\n      # -Arguments @('/S', \"_?=$InstallDirectory\")",
+        ),
+      },
+      {
+        label: "recursive case-local uninstaller cleanup",
+        source: lifecycle.replace(
+          "Remove-Item -LiteralPath $copyRoot -Force -ErrorAction Stop",
+          "Remove-Item -LiteralPath $copyRoot -Recurse -Force -ErrorAction Stop\n        # Remove-Item -LiteralPath $copyRoot -Force -ErrorAction Stop",
+        ),
+      },
+      {
+        label: "cleanup uninstall bypasses shared helper",
+        source: lifecycle.replace(
+          "Invoke-NsisUninstall `\n      -InstallDirectory $InstallDirectory `",
+          "Invoke-NsisProcess `\n      -FilePath $uninstaller `\n      -Arguments @('/S') `\n      # Invoke-NsisUninstall `\n      # -InstallDirectory $InstallDirectory `",
+        ),
+      },
+      {
+        label: "ordinary uninstall bypasses shared helper",
+        source: lifecycle.replace(
+          "Invoke-NsisUninstall `\n    -InstallDirectory $defaultInstallDir `",
+          "Invoke-NsisProcess `\n    -FilePath (Join-Path $defaultInstallDir 'uninstall.exe') `\n    -Arguments @('/S') `\n    # Invoke-NsisUninstall `\n    # -InstallDirectory $defaultInstallDir `",
+        ),
+      },
+      {
+        label: "dead helper with live bare silent uninstall",
+        source: lifecycle.replace(
+          "Invoke-NsisUninstall `\n    -InstallDirectory $defaultInstallDir `\n    -CaseName 'default-uninstall-user-data-preservation' `\n    -WorkingDirectory $testRoot",
+          "if ($false) {\n    Invoke-NsisUninstall `\n      -InstallDirectory $defaultInstallDir `\n      -CaseName 'default-uninstall-user-data-preservation' `\n      -WorkingDirectory $testRoot\n  }\n  [void](Invoke-NsisProcess `\n    -FilePath (Join-Path $defaultInstallDir 'uninstall.exe') `\n    -Arguments @('/S') `\n    -ShouldSucceed $true `\n    -CaseName 'default-uninstall-user-data-preservation' `\n    -WorkingDirectory $testRoot)",
+        ),
+      },
+      {
+        label: "dead ordinary case with aliased live bare silent uninstall",
+        source: lifecycle.replace(
+          `  # CASE: default-uninstall-user-data-preservation
+  Invoke-NsisUninstall \`
+    -InstallDirectory $defaultInstallDir \`
+    -CaseName 'default-uninstall-user-data-preservation' \`
+    -WorkingDirectory $testRoot
+  Assert-UninstalledState -InstallDirectory $defaultInstallDir -UserSentinels $userSentinels`,
+          `  if ($false) {
+  # CASE: default-uninstall-user-data-preservation
+  Invoke-NsisUninstall \`
+    -InstallDirectory $defaultInstallDir \`
+    -CaseName 'default-uninstall-user-data-preservation' \`
+    -WorkingDirectory $testRoot
+  Assert-UninstalledState -InstallDirectory $defaultInstallDir -UserSentinels $userSentinels
+  }
+  $installedUninstallerPath = Join-Path $defaultInstallDir 'uninstall.exe'
+  [void](Invoke-NsisProcess \`
+    -FilePath $installedUninstallerPath \`
+    -Arguments @('/S') \`
+    -ShouldSucceed $true \`
+    -CaseName 'default-uninstall-user-data-preservation' \`
+    -WorkingDirectory $testRoot)`,
         ),
       },
       {

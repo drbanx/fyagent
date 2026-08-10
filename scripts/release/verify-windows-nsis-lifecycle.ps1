@@ -76,32 +76,79 @@ function Receive-RedirectedProcessOutput {
     [object]$StandardErrorTask
   )
 
+  $failure = $null
   try {
     $tasks = [Threading.Tasks.Task[]]@($StandardOutputTask, $StandardErrorTask)
     if (-not [Threading.Tasks.Task]::WaitAll(
       $tasks,
       $redirectedOutputDrainTimeoutMilliseconds
     )) {
-      return [pscustomobject]@{
-        Completed = $false
-        StandardOutput = ''
-        StandardError = ''
-        Failure = "output-drain-timeout-after-${redirectedOutputDrainTimeoutMilliseconds}ms"
-      }
-    }
-    return [pscustomobject]@{
-      Completed = $true
-      StandardOutput = $StandardOutputTask.GetAwaiter().GetResult()
-      StandardError = $StandardErrorTask.GetAwaiter().GetResult()
-      Failure = $null
+      $failure = "output-drain-timeout-after-${redirectedOutputDrainTimeoutMilliseconds}ms"
     }
   } catch {
-    return [pscustomobject]@{
-      Completed = $false
-      StandardOutput = ''
-      StandardError = ''
-      Failure = "output-drain-failed: $($_.Exception.Message)"
+    $failure = "output-drain-failed: $($_.Exception.Message)"
+  }
+
+  $standardOutput = ''
+  $standardError = ''
+  try {
+    if ($StandardOutputTask.Status -eq [Threading.Tasks.TaskStatus]::RanToCompletion) {
+      $standardOutput = $StandardOutputTask.GetAwaiter().GetResult()
     }
+  } catch {
+    if ($null -eq $failure) {
+      $failure = "output-drain-failed: $($_.Exception.Message)"
+    }
+  }
+  try {
+    if ($StandardErrorTask.Status -eq [Threading.Tasks.TaskStatus]::RanToCompletion) {
+      $standardError = $StandardErrorTask.GetAwaiter().GetResult()
+    }
+  } catch {
+    if ($null -eq $failure) {
+      $failure = "output-drain-failed: $($_.Exception.Message)"
+    }
+  }
+
+  return [pscustomobject]@{
+    Completed = $null -eq $failure
+    StandardOutput = $standardOutput
+    StandardError = $standardError
+    Failure = $failure
+  }
+}
+
+function Get-CapturedProcessOutputFailureDetail {
+  param(
+    [switch]$CaptureOutput,
+
+    [AllowEmptyString()]
+    [string]$StandardOutput,
+
+    [AllowEmptyString()]
+    [string]$StandardError
+  )
+
+  if (-not $CaptureOutput) {
+    return ''
+  }
+
+  try {
+    $details = @()
+    if (-not [string]::IsNullOrWhiteSpace($StandardOutput)) {
+      $details += "stdout=$($StandardOutput.TrimEnd())"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($StandardError)) {
+      $details += "stderr=$($StandardError.TrimEnd())"
+    }
+    if ($details.Count -eq 0) {
+      return ''
+    }
+    return '; ' + [string]::Join('; ', $details)
+  } catch {
+    # Output diagnostics are best effort and must not replace the process
+    # timeout, drain failure, or unexpected-exit error being reported.
+    return '; captured-output-formatting-failed'
   }
 }
 
@@ -175,10 +222,8 @@ function Invoke-BoundedCaseProcess {
           -StandardOutputTask $standardOutputTask `
           -StandardErrorTask $standardErrorTask
         $drainStatus = if ($drain.Completed) { 'completed' } else { $drain.Failure }
-        if ($drain.Completed) {
-          $standardOutput = $drain.StandardOutput
-          $standardError = $drain.StandardError
-        }
+        $standardOutput = $drain.StandardOutput
+        $standardError = $drain.StandardError
       }
       try {
         if ($process.HasExited) {
@@ -187,17 +232,13 @@ function Invoke-BoundedCaseProcess {
       } catch {
         $exitCode = 'unavailable'
       }
-      $standardErrorDetail = if (
-        $CaptureOutput -and
-        -not [string]::IsNullOrWhiteSpace($standardError)
-      ) {
-        "; stderr=$($standardError.TrimEnd())"
-      } else {
-        ''
-      }
+      $capturedOutputDetail = Get-CapturedProcessOutputFailureDetail `
+        -CaptureOutput:$CaptureOutput `
+        -StandardOutput $standardOutput `
+        -StandardError $standardError
       throw (
         "${CaseName} timed out after ${TimeoutMilliseconds}ms (pid=${processId}; " +
-        "termination=${termination}; outputDrain=${drainStatus})${standardErrorDetail}."
+        "termination=${termination}; outputDrain=${drainStatus})${capturedOutputDetail}."
       )
     }
 
@@ -206,12 +247,16 @@ function Invoke-BoundedCaseProcess {
       $drain = Receive-RedirectedProcessOutput `
         -StandardOutputTask $standardOutputTask `
         -StandardErrorTask $standardErrorTask
-      if (-not $drain.Completed) {
-        $outcome = 'output-drain-failed'
-        throw "${CaseName} $($drain.Failure) (pid=${processId})."
-      }
       $standardOutput = $drain.StandardOutput
       $standardError = $drain.StandardError
+      if (-not $drain.Completed) {
+        $outcome = 'output-drain-failed'
+        $capturedOutputDetail = Get-CapturedProcessOutputFailureDetail `
+          -CaptureOutput:$CaptureOutput `
+          -StandardOutput $standardOutput `
+          -StandardError $standardError
+        throw "${CaseName} $($drain.Failure) (pid=${processId})${capturedOutputDetail}."
+      }
     }
     $unexpectedExitMessage = if (
       $ExpectedExit -eq 'Zero' -and $process.ExitCode -ne 0
@@ -224,15 +269,11 @@ function Invoke-BoundedCaseProcess {
     }
     if ($null -ne $unexpectedExitMessage) {
       $outcome = 'unexpected-exit'
-      $standardErrorDetail = if (
-        $CaptureOutput -and
-        -not [string]::IsNullOrWhiteSpace($standardError)
-      ) {
-        ": $($standardError.TrimEnd())"
-      } else {
-        ''
-      }
-      throw "${unexpectedExitMessage}${standardErrorDetail}"
+      $capturedOutputDetail = Get-CapturedProcessOutputFailureDetail `
+        -CaptureOutput:$CaptureOutput `
+        -StandardOutput $standardOutput `
+        -StandardError $standardError
+      throw "${unexpectedExitMessage}${capturedOutputDetail}"
     }
     $outcome = 'completed'
     $result = [pscustomobject]@{
@@ -410,6 +451,9 @@ function Invoke-NsisProcess {
     [Parameter(Mandatory = $true)]
     [string]$WorkingDirectory,
 
+    [ValidateSet('Install', 'Uninstall')]
+    [string]$ArgumentKind = 'Install',
+
     [ValidateRange(1, 2147483647)]
     [int]$TimeoutMilliseconds = $nsisProcessTimeoutMilliseconds
   )
@@ -419,18 +463,24 @@ function Invoke-NsisProcess {
   $startInfo.WorkingDirectory = $WorkingDirectory
   $startInfo.UseShellExecute = $false
   $startInfo.CreateNoWindow = $true
-  if (
-    $Arguments.Count -lt 1 -or
-    $Arguments.Count -gt 2 -or
-    $Arguments[0] -cne '/S' -or
+  $hasValidInstallArguments =
+    $ArgumentKind -ceq 'Install' -and
+    ($Arguments.Count -eq 1 -or $Arguments.Count -eq 2) -and
+    $Arguments[0] -ceq '/S' -and
     (
-      $Arguments.Count -eq 2 -and
+      $Arguments.Count -eq 1 -or
       (
-        $Arguments[1].Length -le 3 -or
-        -not $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)
+        $Arguments[1].Length -gt 3 -and
+        $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)
       )
     )
-  ) {
+  $hasValidUninstallArguments =
+    $ArgumentKind -ceq 'Uninstall' -and
+    $Arguments.Count -eq 2 -and
+    $Arguments[0] -ceq '/S' -and
+    $Arguments[1].Length -gt 3 -and
+    $Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)
+  if (-not $hasValidInstallArguments -and -not $hasValidUninstallArguments) {
     throw "${CaseName} has an invalid NSIS argument shape."
   }
   foreach ($argument in $Arguments) {
@@ -443,9 +493,10 @@ function Invoke-NsisProcess {
       }
     }
   }
-  # NSIS requires a final /D= value to remain unquoted even when its path has
-  # spaces. ProcessStartInfo.ArgumentList would quote it, so this validated
-  # NSIS-only command line intentionally uses the raw Arguments property.
+  # NSIS requires final /D= and _?= values to remain unquoted even when their
+  # paths have spaces. ProcessStartInfo.ArgumentList would quote them, so this
+  # validated NSIS-only command line intentionally uses the raw Arguments
+  # property.
   $startInfo.Arguments = [string]::Join(' ', $Arguments)
   Write-Host "CASE ${CaseName}: $FilePath $($Arguments -join ' ')"
   $expectedExit = if ($ShouldSucceed) { 'Zero' } else { 'NonZero' }
@@ -455,6 +506,104 @@ function Invoke-NsisProcess {
     -TimeoutMilliseconds $TimeoutMilliseconds `
     -ExpectedExit $expectedExit
   return $result.ExitCode
+}
+
+function Invoke-NsisUninstall {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$InstallDirectory,
+
+    [Parameter(Mandatory = $true)]
+    [string]$CaseName,
+
+    [Parameter(Mandatory = $true)]
+    [string]$WorkingDirectory,
+
+    [ValidateRange(1, 2147483647)]
+    [int]$TimeoutMilliseconds = $nsisProcessTimeoutMilliseconds
+  )
+
+  $sourceUninstaller = [IO.Path]::GetFullPath(
+    (Join-Path $InstallDirectory 'uninstall.exe')
+  )
+  if (-not (Test-Path -LiteralPath $sourceUninstaller -PathType Leaf)) {
+    throw "NSIS uninstaller is missing: $sourceUninstaller"
+  }
+
+  $resolvedWorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
+  $copyRoot = [IO.Path]::GetFullPath(
+    (Join-Path $resolvedWorkingDirectory (
+      'nsis-uninstall-' + [Guid]::NewGuid().ToString('N')
+    ))
+  )
+  $workingDirectoryInfo = [IO.DirectoryInfo]::new($resolvedWorkingDirectory)
+  $copyRootInfo = [IO.DirectoryInfo]::new($copyRoot)
+  if (-not [string]::Equals(
+    $copyRootInfo.Parent.FullName,
+    $workingDirectoryInfo.FullName,
+    [StringComparison]::OrdinalIgnoreCase
+  )) {
+    throw "NSIS uninstaller copy root escaped its case working directory: $copyRoot"
+  }
+  $copiedUninstaller = [IO.Path]::GetFullPath(
+    (Join-Path $copyRoot 'uninstall.exe')
+  )
+  if (-not [string]::Equals(
+    [IO.Path]::GetDirectoryName($copiedUninstaller),
+    $copyRootInfo.FullName,
+    [StringComparison]::OrdinalIgnoreCase
+  )) {
+    throw "NSIS uninstaller copy escaped its unique case root: $copiedUninstaller"
+  }
+
+  $operationFailure = $null
+  $copyCleanupFailure = $null
+  try {
+    New-Item -ItemType Directory -Path $copyRoot | Out-Null
+    [IO.File]::Copy($sourceUninstaller, $copiedUninstaller, $false)
+
+    # A normal uninstall.exe /S launch exits after spawning its self-copied
+    # worker. Launching a case-local copy with final raw _?= disables that
+    # handoff, so the bounded direct Process owns the actual uninstall and its
+    # exit code.
+    [void](Invoke-NsisProcess `
+      -FilePath $copiedUninstaller `
+      -Arguments @('/S', "_?=$InstallDirectory") `
+      -ShouldSucceed $true `
+      -CaseName $CaseName `
+      -WorkingDirectory $WorkingDirectory `
+      -ArgumentKind Uninstall `
+      -TimeoutMilliseconds $TimeoutMilliseconds)
+  } catch {
+    $operationFailure = $_
+  } finally {
+    try {
+      if (Test-Path -LiteralPath $copiedUninstaller) {
+        Remove-Item -LiteralPath $copiedUninstaller -Force -ErrorAction Stop
+      }
+      if (Test-Path -LiteralPath $copyRoot) {
+        # This deliberately has no -Recurse: any unexpected child turns a
+        # successful uninstall into a failed case instead of widening cleanup.
+        Remove-Item -LiteralPath $copyRoot -Force -ErrorAction Stop
+      }
+    } catch {
+      $copyCleanupFailure = $_
+    }
+  }
+
+  if ($null -ne $operationFailure) {
+    if ($null -ne $copyCleanupFailure) {
+      try {
+        Write-Warning "${CaseName} case-local uninstaller cleanup also failed: $($copyCleanupFailure.Exception.Message)"
+      } catch {
+        # Diagnostics are best effort and must not replace the uninstall failure.
+      }
+    }
+    throw $operationFailure
+  }
+  if ($null -ne $copyCleanupFailure) {
+    throw "${CaseName} case-local uninstaller cleanup failed: $($copyCleanupFailure.Exception.Message)"
+  }
 }
 
 function Invoke-BestEffortNsisUninstall {
@@ -474,14 +623,12 @@ function Invoke-BestEffortNsisUninstall {
     if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) {
       return
     }
-    Write-Warning "Cleanup ${CaseName}: invoking $uninstaller /S"
-    [void](Invoke-NsisProcess `
-      -FilePath $uninstaller `
-      -Arguments @('/S') `
-      -ShouldSucceed $true `
+    Write-Warning "Cleanup ${CaseName}: invoking a case-local uninstaller copy"
+    Invoke-NsisUninstall `
+      -InstallDirectory $InstallDirectory `
       -CaseName "cleanup-${CaseName}" `
       -WorkingDirectory $WorkingDirectory `
-      -TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds)
+      -TimeoutMilliseconds $cleanupNsisTimeoutMilliseconds
   } catch {
     Write-Warning "Cleanup ${CaseName} failed: $($_.Exception.Message)"
   }
@@ -589,7 +736,6 @@ function Assert-InstalledState {
   $programDataRuntime = Join-Path $programDataParent 'runtime'
   Assert-StrictRuntimeRoot -Path $programDataParent
   Assert-StrictRuntimeRoot -Path $programDataRuntime
-  return $uninstaller
 }
 
 function Assert-UninstalledState {
@@ -1793,12 +1939,15 @@ throw 'malicious module import fixture'
 
   # CASE: default-install
   [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S') -ShouldSucceed $true -CaseName 'default-install' -WorkingDirectory $testRoot)
-  $defaultUninstaller = Assert-InstalledState `
+  Assert-InstalledState `
     -InstallDirectory $defaultInstallDir `
     -ExpectedArchitecture $Architecture `
     -ExpectedVersion $AppVersion
   # CASE: default-uninstall-user-data-preservation
-  [void](Invoke-NsisProcess -FilePath $defaultUninstaller -Arguments @('/S') -ShouldSucceed $true -CaseName 'default-uninstall-user-data-preservation' -WorkingDirectory $testRoot)
+  Invoke-NsisUninstall `
+    -InstallDirectory $defaultInstallDir `
+    -CaseName 'default-uninstall-user-data-preservation' `
+    -WorkingDirectory $testRoot
   Assert-UninstalledState -InstallDirectory $defaultInstallDir -UserSentinels $userSentinels
 
   # CASE: preexisting-runtime-extra-ace-negative
@@ -1860,12 +2009,15 @@ throw 'malicious module import fixture'
   if ((Test-Path -LiteralPath $legacyState) -or (Test-Path -LiteralPath $legacyLock)) {
     throw 'Trusted legacy runtime state was not retired with the old directory object.'
   }
-  $customUninstaller = Assert-InstalledState `
+  Assert-InstalledState `
     -InstallDirectory $customInstallDir `
     -ExpectedArchitecture $Architecture `
     -ExpectedVersion $AppVersion
   # CASE: custom-uninstall-user-data-preservation
-  [void](Invoke-NsisProcess -FilePath $customUninstaller -Arguments @('/S') -ShouldSucceed $true -CaseName 'custom-uninstall-user-data-preservation' -WorkingDirectory $testRoot)
+  Invoke-NsisUninstall `
+    -InstallDirectory $customInstallDir `
+    -CaseName 'custom-uninstall-user-data-preservation' `
+    -WorkingDirectory $testRoot
   Assert-UninstalledState -InstallDirectory $customInstallDir -UserSentinels $userSentinels
 
   Write-Host "Windows NSIS native lifecycle verified for $Architecture."

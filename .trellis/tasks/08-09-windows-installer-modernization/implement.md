@@ -138,3 +138,28 @@ policy.
 Local structure and mutation tests cannot replace matching native evidence.
 Both x64 and ARM64 lifecycle acceptance criteria remain open until a new
 exact-SHA preflight completes normally.
+
+### NSIS uninstall direct-process correction
+
+Exact-SHA push CI run `31342815741` completed 10/10 jobs successfully for
+`91a9799a945b4fa612afa23ce5a7b245de0f913d`, including Backend Windows, both
+native Windows architectures, and `CI / Required`. A final review before the
+next dispatch found that direct bounded waiting was not yet equivalent for a
+bare `uninstall.exe /S`: NSIS may let the directly launched stub exit after it
+starts a temporary self-copy, racing all subsequent uninstall state checks.
+No preflight, tag, or Release was started from that source commit.
+
+The lifecycle now copies the installed uninstaller into a GUID-named directory
+under the unique case test root and launches the copy with final, unquoted raw
+`/S _?=<install-directory>`. This disables the NSIS self-copy handoff, binds the
+bounded direct process and exit code to the real uninstall, and is shared by
+default, custom Unicode/space, and best-effort cleanup cases. Installer calls
+remain restricted to `/S` or final `/D=`; uninstaller calls require exactly
+`/S` plus final `_?=`. Both forms reject quotes and control characters. Cleanup
+deletes only the copied executable and its empty directory, without recursion.
+
+Windows PowerShell 5.1 parsing, the NSIS verifier, 25 focused contract tests,
+typecheck, `git diff --check`, and `release:check` (22 files, 554 contract tests
+plus 4 native-fetch tests) pass. Matching x64 and ARM64 native lifecycle
+execution remains the acceptance boundary and is not inferred from these local
+checks.

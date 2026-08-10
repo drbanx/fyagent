@@ -210,13 +210,20 @@ runner and proves:
   user-data sentinel.
 
 The release lifecycle job has a 45-minute hard timeout. Within the harness,
-each installer or ordinary uninstall waits on its direct `Process` for at most
-10 minutes; best-effort cleanup waits at most 2 minutes. The lifecycle-only
-Windows PowerShell signature verifier and native `signtool` fixture wait at
-most 3 and 2 minutes respectively, drain redirected stdout and stderr
-asynchronously with a bounded completion wait, and dispose every owned process
-handle. A timed-out helper issues `Kill(true)` only for the process tree rooted
-at that case's PID, waits a further bounded interval for the direct root
+each installer waits on its direct `Process` for at most 10 minutes. An ordinary
+uninstall first copies the installed uninstaller into a GUID-named directory
+under that case's test root, then starts the copy with exact raw
+`/S _?=<install-directory>` arguments. The final, unquoted `_?=` disables the
+NSIS self-copy handoff, so the bounded direct `Process` is the real uninstall
+execution and supplies its real exit code before state assertions run. The
+copied executable is deleted exactly and its now-empty directory is removed
+without recursive cleanup. Best-effort uninstall cleanup uses the same path
+with a 2-minute limit. The lifecycle-only Windows PowerShell signature verifier
+and native `signtool` fixture wait at most 3 and 2 minutes respectively, drain
+redirected stdout and stderr asynchronously with a bounded completion wait,
+retain any completed stream in failure diagnostics, and dispose every owned
+process handle. A timed-out helper issues `Kill(true)` only for the process tree
+rooted at that case's PID, waits a further bounded interval for the direct root
 process to exit, makes no stronger claim about descendant exit, and then fails.
 Every launched case emits UTC start/end markers with its PID, elapsed
 milliseconds, exit code (or an explicit unavailable marker), and outcome so a

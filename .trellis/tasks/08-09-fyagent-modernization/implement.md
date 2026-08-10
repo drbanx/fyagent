@@ -99,3 +99,31 @@ changing production trust or download semantics.
 This correction is local/static evidence only. A new exact-SHA preflight must
 complete both matching native lifecycle jobs before either architecture, the
 preflight, or release readiness can be accepted.
+
+### NSIS uninstall wait follow-up
+
+Push CI run `31342815741` completed 10/10 jobs successfully for exact source
+commit `91a9799a945b4fa612afa23ce5a7b245de0f913d`, including Backend Windows,
+native Windows x64 and ARM64, and `CI / Required`. Before dispatching another
+preflight, final source review found that a bare `uninstall.exe /S` can return
+from the directly launched NSIS stub after it starts its temporary self-copy,
+before the actual uninstall and the following state assertions complete. The
+green CI therefore remained compilation/static evidence rather than native
+uninstall acceptance, and no dispatch, tag, or Release was created from that
+commit.
+
+The harness now copies the installed uninstaller into a GUID-named directory
+under the case test root and starts that copy with exact raw
+`/S _?=<install-directory>` arguments. Final, unquoted `_?=` disables the NSIS
+self-copy handoff, making the bounded direct `Process` the actual uninstall and
+preserving its exit code. Default, custom Unicode/space, and best-effort cleanup
+uninstalls share this single path. Temporary cleanup deletes only the copied
+file and its empty directory, never recursively widens from the copy root.
+Failure diagnostics also retain whichever redirected stdout/stderr streams
+completed without replacing the primary process error.
+
+The Windows PowerShell 5.1 parser, NSIS source verifier, 25 focused installer
+contract tests, typecheck, `git diff --check`, and `release:check` (22 files,
+554 contract tests plus 4 native-fetch tests) pass locally. This follow-up is
+still local/static evidence: a new exact-SHA CI and matching x64/ARM64 preflight
+must complete before tag creation.
