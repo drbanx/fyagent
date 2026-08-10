@@ -11,6 +11,7 @@
 > - implementation_approval_required: false
 > - implementation_approved: 2026-08-10
 > - implementation_completed: 2026-08-11
+> - post_completion_visual_revision: 2026-08-11（v2 线路问题修正为 v3）
 > - slug: docs-restructure-v0.3.0
 > - source_of_truth: `origin/dev/laiyongjie` / `b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527`
 > - delta_report: `docs/fyagent/audits/docs-restructure-v0.3.0.md`
@@ -30,7 +31,7 @@
 5. `README_DE.md` 已删除，Session Manager PRD 已归档，三语 README 与四个手册索引已
    瘦身，README 不再引用 6 张旧品牌截图。
 6. 三语手册已重组为每语 28 篇；40 张旧截图、84 处引用和 16 份 shot-card 文档已登记。
-   营销资产矩阵、提示词库、VibeKey 对照和 v2 概念样例也已落地。
+   营销资产矩阵、提示词库、VibeKey 对照和概念样例也已落地；完成后又根据视觉复核将 v2 的线路系统修正为 v3。
 
 ## v5 评审修订摘要
 
@@ -49,7 +50,7 @@
 13. 远端存在 `v0.3.1` 标签与 `origin/dev/laiyongjie` 开发线，其文档拓扑、合同脚本和手册正文已大幅变化；原 v4 的数量、路径和 Waves 1–4 不再可直接执行。
 14. 新增目标基线 Gate：必须先在 `origin/main` 与 v0.3.1 开发线之间确定目标 SHA，再重跑基线、生成 delta 任务和验证命令。
 15. 完成本地 VibeKey 历史材料审计，形成“继承 / 改造 / 放弃”决策；继续遵守 ADR-006，不复制旧生产代码，也不恢复硬件耦合。
-16. 新增 VibeKey 经验驱动的 v2 主视觉样例。v1 保留为 `superseded` 记录；v2 使用空白徽章位，避免生图重画 Logo，并将硬件插头感改为软件 token 与数据轨道。
+16. 新增 VibeKey 经验驱动的主视觉样例。v1 保留近似 Logo 的失败记录；v2 验证空白徽章位、软件 token 和数据轨道，后因左右线路粗糙改为 `superseded`；v3 用统一网格重做六路输入和六路输出，成为当前 `concept_candidate`。
 17. 将 README 现有截图中的 `CC Switch` 可见身份列为 P0 宣发可信度问题；任何正式 Hero 必须和真实 FyAgent 运行时截图成对出现。
 
 ---
@@ -74,33 +75,33 @@
 
 下表记录 Gate 0 锁定后的目标事实。旧基线只用于解释计划怎样演进，不能再驱动实施。
 
-| 项目 | 当前值 | 证据 |
-|---|---:|---|
-| 规划工作分支 | `ccde71d1` | `codex/docs-restructure-visual-plan`，只保存规划与营销样例，尚未迁入目标基线 |
-| 当前远端 main | `ed20d04a` | PR #9 已被 PR #10 revert，不含本计划资产 |
-| 目标基线 | `b6f60dfe` | `origin/dev/laiyongjie` 当前提交，包含 v0.3.1 标签后的仓库迁移 |
-| 目标三语手册 Markdown | 78 | zh/en/ja 各 26 个，含各语言索引 |
-| 目标三语图片引用 | 84 | zh/en/ja 各 28 处；共享 PNG 共 40 张 |
-| 活动文档本地链接 | 372 / 0 失效 | 三份 README、三语手册和 12 份当前开发文档 |
-| 当前开发文档 | 12 | `docs/fyagent/development/`；`docs/fyagent/dev/` 在目标基线已删除 |
-| v4 旧基线 | 75 个既有章节、40 张 PNG、84 处引用 | 仅适用于 `3adc72ae` 附近，不得当作目标基线事实 |
-| `docs/guides/` 文件 | 22 | 其中 6 个旧名称命中均为上游来源说明 |
-| `deplink.html` / `flatpak/README.md` 旧名称命中 | 0 / 0 | 评审时 `rg` 检查 |
-| 工具版本探测 | 7 个 | `TOOL_NAMES` |
-| 可安装/升级工具 | 6 个 | `LIFECYCLE_TOOLS`，排除 Codex |
-| WorkBuddy 错误码 | 22 个 | `WorkBuddyErrorCode` |
-| 目标产品线 | v0.3.1 开发线 | 文案避免把滚动开发分支写成已经发布的 Release |
-| README 截图身份 | 不合格 | 6 张中/英/日截图的 Git blob 均未变化，可见身份仍属于 `CC Switch` |
-| VibeKey 本地归档 | 178,272 bytes | SHA-256 `9C54280EB1EB700800AB2022CEF32C392690ECB301D21DC7BBCB07A2BDE9F0C1` |
-| 营销样例 | v1 `superseded`；v2 `concept_candidate` | v2 为 1672×941，SHA-256 `4B3328E85352A61C579B403CF61703634213BB9C7E647C3D956DC45FBDBC5F40` |
+| 项目                                            |                                     当前值 | 证据                                                                                       |
+| ----------------------------------------------- | -----------------------------------------: | ------------------------------------------------------------------------------------------ |
+| 规划工作分支                                    |                                 `ccde71d1` | `codex/docs-restructure-visual-plan`，只保存规划与营销样例，尚未迁入目标基线               |
+| 当前远端 main                                   |                                 `ed20d04a` | PR #9 已被 PR #10 revert，不含本计划资产                                                   |
+| 目标基线                                        |                                 `b6f60dfe` | `origin/dev/laiyongjie` 当前提交，包含 v0.3.1 标签后的仓库迁移                             |
+| 目标三语手册 Markdown                           |                                         78 | zh/en/ja 各 26 个，含各语言索引                                                            |
+| 目标三语图片引用                                |                                         84 | zh/en/ja 各 28 处；共享 PNG 共 40 张                                                       |
+| 活动文档本地链接                                |                               372 / 0 失效 | 三份 README、三语手册和 12 份当前开发文档                                                  |
+| 当前开发文档                                    |                                         12 | `docs/fyagent/development/`；`docs/fyagent/dev/` 在目标基线已删除                          |
+| v4 旧基线                                       |        75 个既有章节、40 张 PNG、84 处引用 | 仅适用于 `3adc72ae` 附近，不得当作目标基线事实                                             |
+| `docs/guides/` 文件                             |                                         22 | 其中 6 个旧名称命中均为上游来源说明                                                        |
+| `deplink.html` / `flatpak/README.md` 旧名称命中 |                                      0 / 0 | 评审时 `rg` 检查                                                                           |
+| 工具版本探测                                    |                                       7 个 | `TOOL_NAMES`                                                                               |
+| 可安装/升级工具                                 |                                       6 个 | `LIFECYCLE_TOOLS`，排除 Codex                                                              |
+| WorkBuddy 错误码                                |                                      22 个 | `WorkBuddyErrorCode`                                                                       |
+| 目标产品线                                      |                              v0.3.1 开发线 | 文案避免把滚动开发分支写成已经发布的 Release                                               |
+| README 截图身份                                 |                                     不合格 | 6 张中/英/日截图的 Git blob 均未变化，可见身份仍属于 `CC Switch`                           |
+| VibeKey 本地归档                                |                              178,272 bytes | SHA-256 `9C54280EB1EB700800AB2022CEF32C392690ECB301D21DC7BBCB07A2BDE9F0C1`                 |
+| 营销样例                                        | v1/v2 `superseded`；v3 `concept_candidate` | v3 为 1672×941，SHA-256 `C0EBE3C401B077DE804A37C3C0D4CC65000125121D4E19A366BF9FD2E5E78555` |
 
 下表是 v4 在旧工作树上记录的 README 边界，只保留为历史证据。实施必须在 Gate 0 选定的 SHA 上按 `<summary>` 或标题语义重新定位，不得按这些行号切割：
 
-| 文件 | 架构 | 开发指南 | 项目结构 |
-|---|---|---|---|
-| `README.md` | 233–274 | 276–401 | 403–442 |
-| `README_ZH.md` | 233–274 | 276–395 | 397–436 |
-| `README_JA.md` | 237–278 | 280–404 | 406–445 |
+| 文件           | 架构    | 开发指南 | 项目结构 |
+| -------------- | ------- | -------- | -------- |
+| `README.md`    | 233–274 | 276–401  | 403–442  |
+| `README_ZH.md` | 233–274 | 276–395  | 397–436  |
+| `README_JA.md` | 237–278 | 280–404  | 406–445  |
 
 ---
 
@@ -110,10 +111,10 @@
 
 2026-08-10，用户接受推荐方案 B。下表保留为决策记录：
 
-| 选项 | 适用条件 | 影响 |
-|---|---|---|
+| 选项                          | 适用条件                               | 影响                                                   |
+| ----------------------------- | -------------------------------------- | ------------------------------------------------------ |
 | A. `origin/main` / `ed20d04a` | 必须立即在当前主线完成 v0.3.0 文档收口 | 可继续使用部分 v4 任务，但需承认 v0.3.1 开发线尚未纳入 |
-| B. v0.3.1 开发线 / `b6f60dfe` | 面向“现在的项目”和下一发布线开展 | **已选择**；delta 见稳定审计报告 |
+| B. v0.3.1 开发线 / `b6f60dfe` | 面向“现在的项目”和下一发布线开展       | **已选择**；delta 见稳定审计报告                       |
 
 Gate 0 已完成：
 
@@ -169,9 +170,10 @@ Gate 0 已完成：
 - 以 `docs/fyagent/marketing/vibekey-reference-audit.md` 为历史参考边界，落实“继承 / 改造 / 放弃”，不得把硬件、语音、试用额度、众筹或 Claude-only 叙事带入当前产品。
 - 新建 `docs/fyagent/marketing/visual-asset-plan.md`，记录受众、渠道、资产矩阵、尺寸/裁切、文案承载方式、优先级和负责人。
 - 新建 `docs/fyagent/marketing/prompts/README.md`，沉淀主视觉、功能插图、讲解图和 UI 辅助插图的结构化提示词卡。
-- 保留并区分两轮概念样例：
+- 保留并区分三轮概念样例：
   - v1：`fyagent-unified-control-hero-v1.png` + `visual-direction-sample-v1.md`，状态 `superseded`；
-  - v2：`fyagent-tactile-orchestration-hero-v2.png` + `visual-direction-sample-v2.md`，状态 `concept_candidate`。
+  - v2：`fyagent-tactile-orchestration-hero-v2.png` + `visual-direction-sample-v2.md`，线路规则不一致，状态 `superseded`；
+  - v3：`fyagent-tactile-orchestration-hero-v3.png` + `visual-direction-sample-v3.md`，统一六入六出线路网格，状态 `concept_candidate`。
 - 对样例做构图、品牌一致性、第三方标识、文字、响应式裁切、文件体积和可访问性评审；决定保留、定向迭代或废弃。
 - 正式 Hero 采用“生成背景 + 原始 Logo/文字确定性合成 + 真实 UI proof frame”；只有三部分一起评审通过才可发布。
 - 本 Wave 只完成规划、提示词库、历史审计和 1 张当前候选主视觉样例；矩阵内其余正式资产另行排期，不以占位图冒充完成。
@@ -213,12 +215,12 @@ Gate 0 已完成：
 
 精确替换：
 
-| 原模式 | 新模式 | 规则 |
-|---|---|---|
+| 原模式                              | 新模式                        | 规则                               |
+| ----------------------------------- | ----------------------------- | ---------------------------------- |
 | 旧的 `cc-switch` / 个人名下仓库链接 | `github.com/fy-agent/fyagent` | 当前项目仓库链接；上游来源链接除外 |
-| `ccswitch://` | `fyagent://` | 当前 Deep Link |
-| `~/.cc-switch/` | `~/.fyagent/` | 当前数据路径 |
-| `.cc-switch` | `.fyagent` | 其他当前路径语境 |
+| `ccswitch://`                       | `fyagent://`                  | 当前 Deep Link                     |
+| `~/.cc-switch/`                     | `~/.fyagent/`                 | 当前数据路径                       |
+| `.cc-switch`                        | `.fyagent`                    | 其他当前路径语境                   |
 
 `CC Switch`（带空格）按语境处理：
 
@@ -336,9 +338,9 @@ docs/user-manual/{zh,en,ja}/
 
 `docs/release-notes/README.md` 至少包含：
 
-| 范围 | 产品 | 说明 |
-|---|---|---|
-| v0.3.0+ | FyAgent | 独立版本体系 |
+| 范围                         | 产品      | 说明                   |
+| ---------------------------- | --------- | ---------------------- |
+| v0.3.0+                      | FyAgent   | 独立版本体系           |
 | 仓库现存 v3.6.0–v3.19.1 文件 | CC Switch | 上游历史 Release Notes |
 
 并说明：FyAgent v0.3.0 的源码基线包含 CC Switch v3.19.2；该来源记录位于 `docs/upstream/cc-switch-v3.19.2.md`，仓库当前没有 v3.19.2 Release Note 文件，不得虚构。
@@ -352,23 +354,23 @@ docs/user-manual/{zh,en,ja}/
 
 15 张人物卡：
 
-| # | 章节 | 目标文件名 | 主题 |
-|---:|---|---|---|
-| 001 | 1.3 | `main-overview.png` | 主界面全景 |
-| 002 | 1.4 | `quickstart-add-provider.png` | 添加供应商流程 |
-| 003 | 1.5 | `settings-general.png` | 设置页通用区 |
-| 004 | 2.1 | `about-tool-install.png` | 工具安装区 |
-| 005 | 2.2 | `about-diagnose-conflict.png` | 冲突诊断结果 |
-| 006 | 3.1 | `provider-card-list.png` | 供应商列表 |
-| 007 | 3.3 | `provider-edit-form.png` | 编辑供应商 |
-| 008 | 4.1 | `mcp-panel.png` | MCP 管理 |
-| 009 | 4.2 | `prompts-editor.png` | 提示词编辑器 |
-| 010 | 4.3 | `skills-panel.png` | Skills 管理 |
-| 011 | 4.4 | `sessions-list.png` | 会话列表 |
-| 012 | 4.6 | `workbuddy-connection.png` | WorkBuddy 连接 |
-| 013 | 4.6 | `workbuddy-models.png` | WorkBuddy 模型选择 |
-| 014 | 5.1 | `proxy-service.png` | 代理服务 |
-| 015 | 5.3 | `failover-queue.png` | 故障转移队列 |
+|   # | 章节 | 目标文件名                    | 主题               |
+| --: | ---- | ----------------------------- | ------------------ |
+| 001 | 1.3  | `main-overview.png`           | 主界面全景         |
+| 002 | 1.4  | `quickstart-add-provider.png` | 添加供应商流程     |
+| 003 | 1.5  | `settings-general.png`        | 设置页通用区       |
+| 004 | 2.1  | `about-tool-install.png`      | 工具安装区         |
+| 005 | 2.2  | `about-diagnose-conflict.png` | 冲突诊断结果       |
+| 006 | 3.1  | `provider-card-list.png`      | 供应商列表         |
+| 007 | 3.3  | `provider-edit-form.png`      | 编辑供应商         |
+| 008 | 4.1  | `mcp-panel.png`               | MCP 管理           |
+| 009 | 4.2  | `prompts-editor.png`          | 提示词编辑器       |
+| 010 | 4.3  | `skills-panel.png`            | Skills 管理        |
+| 011 | 4.4  | `sessions-list.png`           | 会话列表           |
+| 012 | 4.6  | `workbuddy-connection.png`    | WorkBuddy 连接     |
+| 013 | 4.6  | `workbuddy-models.png`        | WorkBuddy 模型选择 |
+| 014 | 5.1  | `proxy-service.png`           | 代理服务           |
+| 015 | 5.3  | `failover-queue.png`          | 故障转移队列       |
 
 ### 4.10 对外营销与讲解视觉系统
 
@@ -376,40 +378,40 @@ docs/user-manual/{zh,en,ja}/
 
 VibeKey 迁移规则：
 
-| 决策 | 内容 |
-|---|---|
-| 继承 | “一个动作、一个状态、一个结果”的可读性；首次使用四步路径；90 秒内讲清价值 |
-| 改造 | 触觉控制感转译为软件 token、选择器和数据轨道；“插上即用”改为“一处管理、快速切换” |
+| 决策 | 内容                                                                                |
+| ---- | ----------------------------------------------------------------------------------- |
+| 继承 | “一个动作、一个状态、一个结果”的可读性；首次使用四步路径；90 秒内讲清价值           |
+| 改造 | 触觉控制感转译为软件 token、选择器和数据轨道；“插上即用”改为“一处管理、快速切换”    |
 | 放弃 | 键盘/屏幕/旋钮硬件、语音输入、Claude-only、试用额度、众筹、定价和未经验证的市场数字 |
 
 真实证据规则：README、官网和发布文章的 Hero 下方必须出现至少一个来自目标 SHA 的 FyAgent 真实运行时 proof frame。概念插图只解释关系，不能证明功能；截图仍显示 `CC Switch` 时，不得发布新的 FyAgent 宣发页。
 
 设计 token：
 
-| Token | 值/规则 |
-|---|---|
-| `bg` | `#0B1017` 深石墨 |
-| `surface` | `#121A26` / `#EEF5FA` 深浅两级表面 |
-| `accent-primary` | `#27D9C4` 青绿 |
-| `accent-secondary` | `#2F7DFF` 电蓝 |
-| `signal` | `#FF9D2E`，只作少量状态点 |
-| `radius` | 圆形连接器 + 12–20 px 面板圆角 |
-| `lighting` | 单一柔和棚拍光，克制边缘高光 |
-| `texture` | 哑光石墨、雾面浅色表面、抛光连接管线 |
+| Token              | 值/规则                              |
+| ------------------ | ------------------------------------ |
+| `bg`               | `#0B1017` 深石墨                     |
+| `surface`          | `#121A26` / `#EEF5FA` 深浅两级表面   |
+| `accent-primary`   | `#27D9C4` 青绿                       |
+| `accent-secondary` | `#2F7DFF` 电蓝                       |
+| `signal`           | `#FF9D2E`，只作少量状态点            |
+| `radius`           | 圆形连接器 + 12–20 px 面板圆角       |
+| `lighting`         | 单一柔和棚拍光，克制边缘高光         |
+| `texture`          | 哑光石墨、雾面浅色表面、抛光连接管线 |
 
 优先资产矩阵：
 
-| 优先级 | 资产 | 主要用途 | 画幅 | 生产方式 |
-|---|---|---|---|---|
-| P0 | 统一管理主视觉 | README、官网首屏、发布文章 | 16:9 | ChatGPT 生图概念 + 原始 Logo/文案确定性合成 |
-| P0 | OG / 社媒横图 | GitHub、X、公众号分享卡 | 1200×630 | 主视觉安全裁切 + 确定性标题 |
-| P1 | 多工具统一管理讲解图 | 产品介绍、路演 | 16:9 | `infographic-diagram` 无文字底图 + SVG/HTML 标签 |
-| P1 | 安装/升级/冲突诊断插图 | 2.1、2.2 章节与功能营销 | 3:2 | `stylized-concept`，真实能力由源码合同约束 |
-| P1 | Skills 生命周期插图 | 4.3 章节 | 3:2 | 下载→SSOT→同步→备份流程；文字后置 |
-| P1 | WorkBuddy 模型注入插图 | 4.6 章节 | 3:2 | 连接→获取→选择→写入流程；文字后置 |
-| P1 | 本地优先与配置安全图 | 官网“为什么选择”/演示稿 | 16:9 | 结构化讲解图 + 确定性数据/标签 |
-| P2 | 发布海报 | 中文社区、更新公告 | 4:5 / 1:1 | 主视觉变体 + 版本文案后置 |
-| P2 | 空状态/引导插图组 | 文档、未来 UI 候选 | 4:3 | 只生成插图主体；按钮、图标、控件保持代码/矢量原生 |
+| 优先级 | 资产                   | 主要用途                   | 画幅      | 生产方式                                          |
+| ------ | ---------------------- | -------------------------- | --------- | ------------------------------------------------- |
+| P0     | 统一管理主视觉         | README、官网首屏、发布文章 | 16:9      | ChatGPT 生图概念 + 原始 Logo/文案确定性合成       |
+| P0     | OG / 社媒横图          | GitHub、X、公众号分享卡    | 1200×630  | 主视觉安全裁切 + 确定性标题                       |
+| P1     | 多工具统一管理讲解图   | 产品介绍、路演             | 16:9      | `infographic-diagram` 无文字底图 + SVG/HTML 标签  |
+| P1     | 安装/升级/冲突诊断插图 | 2.1、2.2 章节与功能营销    | 3:2       | `stylized-concept`，真实能力由源码合同约束        |
+| P1     | Skills 生命周期插图    | 4.3 章节                   | 3:2       | 下载→SSOT→同步→备份流程；文字后置                 |
+| P1     | WorkBuddy 模型注入插图 | 4.6 章节                   | 3:2       | 连接→获取→选择→写入流程；文字后置                 |
+| P1     | 本地优先与配置安全图   | 官网“为什么选择”/演示稿    | 16:9      | 结构化讲解图 + 确定性数据/标签                    |
+| P2     | 发布海报               | 中文社区、更新公告         | 4:5 / 1:1 | 主视觉变体 + 版本文案后置                         |
+| P2     | 空状态/引导插图组      | 文档、未来 UI 候选         | 4:3       | 只生成插图主体；按钮、图标、控件保持代码/矢量原生 |
 
 提示词合同：
 
@@ -422,7 +424,7 @@ VibeKey 迁移规则：
 7. 历史参考图必须登记来源与 SHA-256，并说明只借鉴哪些属性；来源不清或与文档决策冲突时，只能作内部 concept 参考。
 8. 任何会让软件被误解为实体硬件、USB Hub、键盘或终端设备的输出必须定向迭代或淘汰。
 
-历史 v1 与当前 v2 样例分别见 `docs/fyagent/marketing/visual-direction-sample-v1.md` 和 `docs/fyagent/marketing/visual-direction-sample-v2.md`。v1 因中心生成近似 Logo 被标记为 `superseded`；v2 中心保留空白徽章位，是当前 `concept_candidate`。正式发布时仍必须以原始 `assets/fyagent.png` 确定性合成并复核清晰度。
+三轮样例分别见 `docs/fyagent/marketing/visual-direction-sample-v1.md`、`visual-direction-sample-v2.md` 和 `visual-direction-sample-v3.md`。v1 因生成近似 Logo、v2 因线路和端口规则不一致被标记为 `superseded`；v3 保留空白徽章位并统一六入六出线路网格，是当前 `concept_candidate`。正式发布时仍必须以原始 `assets/fyagent.png` 确定性合成并复核清晰度。
 
 ---
 
@@ -477,8 +479,8 @@ VibeKey 迁移规则：
 19. 复核 VibeKey 历史审计的来源、哈希、证据冲突和“继承 / 改造 / 放弃”边界。
 20. 写入视觉资产矩阵与渠道/尺寸/裁切合同。
 21. 写入至少 4 类结构化提示词卡：主视觉、功能插图、讲解图、UI 辅助插图。
-22. 登记 v1 `superseded` 和 v2 `concept_candidate` 的提示词、参考图、尺寸、SHA-256、限制与替代关系。
-23. 完成 v2 桌面安全区评审；移动画幅、原始 Logo 合成和真实 proof frame 配对仍是从
+22. 登记 v1/v2 `superseded` 和 v3 `concept_candidate` 的提示词、参考图、尺寸、SHA-256、限制与替代关系。
+23. 完成 v3 桌面安全区和线路完整性评审；移动画幅、原始 Logo 合成和真实 proof frame 配对仍是从
     `concept_candidate` 升级为可发布资产的门禁，本任务不直接发布。
 24. 将未生产的正式资产转成后续任务，不在本计划内批量生成。
 
@@ -506,10 +508,10 @@ C1–C8 是 v4 问题域的条件项。若目标基线已经完成或取消某�
 - [x] C7. 每语 28 个章节、旧目录不存在、三语索引与文件系统一致。
 - [x] C8. 提交 `a12ef395` 将 60 个迁移文件识别为 100% rename，旧路径无副本。
 - [x] C9. 40 张截图与 84 处引用均有审计结论，16 个 shot-card Markdown 存在；README
-  已移除旧品牌截图引用，并明确不以概念图冒充运行时证据。真实三语重拍作为独立拍摄阶段保留。
+      已移除旧品牌截图引用，并明确不以概念图冒充运行时证据。真实三语重拍作为独立拍摄阶段保留。
 - [x] C10. 活动范围品牌、版本、旧章节路径和本地链接检查全部通过。
 - [x] C11. 目标测试、`check:contracts`、完整 `mise run check` 和 `git diff --check` 全部通过。
-- [x] C12. 视觉资产矩阵、至少 4 类提示词卡和 1 张当前候选样例完成；v1/v2 状态、替代关系与发布前限制明确。
+- [x] C12. 视觉资产矩阵、至少 4 类提示词卡和 1 张当前候选样例完成；v1/v2/v3 状态、替代关系与发布前限制明确。
 - [x] C13. VibeKey 对照审计存在；所有借鉴点均标记为继承、改造或放弃，且没有恢复旧硬件/授权耦合。
 
 ---
@@ -595,18 +597,18 @@ mise run check
 ### 7.6 营销视觉样例
 
 ```powershell
-$sample = 'docs/fyagent/marketing/assets/samples/fyagent-tactile-orchestration-hero-v2.png'
+$sample = 'docs/fyagent/marketing/assets/samples/fyagent-tactile-orchestration-hero-v3.png'
 if (-not (Test-Path $sample)) { throw 'marketing sample missing' }
 Get-FileHash -Algorithm SHA256 $sample
 ```
 
 预期：
 
-- v2 样例尺寸为 1672×941，约 16:9；左侧具备标题安全区，右侧表达“多个配置入口 → 一个控制中枢 → 多个工具结果”。
+- v3 样例尺寸为 1672×941，约 16:9；左侧具备标题安全区，右侧表达“六路配置入口 → 一个控制中枢 → 六路工具结果”。
 - 无内嵌文字、水印、第三方 Logo 或生成 Logo；中心徽章位为空，实际发布前用项目原始 Logo 做确定性合成。
-- SHA-256 为 `4B3328E85352A61C579B403CF61703634213BB9C7E647C3D956DC45FBDBC5F40`。
-- `visual-direction-sample-v2.md` 保存主提示词、单变量修订提示词、历史参考角色、生成方式、已知限制和发布前工作。
-- `visual-direction-sample-v1.md` 仍存在且状态为 `superseded`，不得被误当当前候选。
+- SHA-256 为 `C0EBE3C401B077DE804A37C3C0D4CC65000125121D4E19A366BF9FD2E5E78555`。
+- `visual-direction-sample-v3.md` 保存定向修订提示词、编辑目标、生成方式、线路评审、已知限制和发布前工作。
+- `visual-direction-sample-v1.md` 和 `visual-direction-sample-v2.md` 仍存在且状态为 `superseded`，不得被误当当前候选。
 
 ### 7.7 当前基线与 VibeKey 边界
 
@@ -637,7 +639,7 @@ rg -n "status: completed|Gate 0|vibekey-reference-audit|concept_candidate" .omo/
 6. 最终命令、exit code、关键输出摘要和证据等级。
 7. 目标 Git SHA、v4 动作 delta（保留/已完成/取消/改写）及其依据。
 8. VibeKey 审计路径、本地归档 SHA-256、迁移决策与禁止迁移项。
-9. v1/v2 营销样例的路径、提示词文档、SHA-256、状态、替代关系、视觉评审结论与是否获准发布。
+9. v1/v2/v3 营销样例的路径、提示词文档、SHA-256、状态、替代关系、视觉评审结论与是否获准发布。
 
 审计报告是交付物；commit message 只链接它，不承载唯一证据。
 
@@ -645,23 +647,23 @@ rg -n "status: completed|Gate 0|vibekey-reference-audit|concept_candidate" .omo/
 
 ## 9. 风险与回退
 
-| 风险 | 影响 | 缓解/回退 |
-|---|---|---|
-| 删除 DE README 未更新依赖清单 | 合同检查/测试读文件失败 | 同 Wave 原子修改 1 个脚本 + 2 个测试，先跑目标门禁 |
-| 三语 README 瘦身后入口不清楚 | 中文/日文读者找不到工程资料 | 三语保留本语言短说明，并链接同一 current-state 入口 |
-| 连续替换造成 2→3→4→5→6 级联 | 路径和章节号错乱 | 一次性映射或降序替换；旧路径扫描 + 链接解析 |
-| 大量正文修改降低 rename 相似度 | Git 历史难追踪 | 纯移动与正文修改分提交；用 `-M` 复核 |
-| 当前产品替换误伤上游/法律事实 | 来源失真 | 活动范围 + 逐条白名单；历史 Release Notes 和上游来源不改 |
-| Skills 文档把 copy 回退写成“总是 symlink” | 用户预期错误 | 按 `sync_to_app_dir` 的 Auto/Symlink/Copy 行为写作 |
-| 新章节引用未来截图 | 文档立即出现 404 | 本计划只写人物卡，不嵌入未生成图片 |
-| 截图审计发现大量需重截 | 后续工作量扩大 | 本计划只分类并产出人物卡；实际拍摄拆成后续任务 |
-| 生成式 Logo/文字变形 | 对外品牌失真、可读性差 | 生图只做概念主体；原始 Logo 和准确文字后期确定性合成 |
-| 生成近似第三方商标或虚构 UI | 法务/信任风险 | 使用通用几何节点；发布前人工检查；真实 UI 只用运行时截图 |
-| 目标基线在 v0.3.0 main 与 v0.3.1 开发线间漂移 | 旧计划重复删除、移动或改写已经变化的文档 | Gate 0 锁定 SHA；重算 delta；旧动作逐项取消或改写 |
-| README 截图仍显示 `CC Switch` | FyAgent 宣发自相矛盾 | 真实运行时重拍为 P0；新 Hero 不得绕过 proof frame 门禁 |
-| VibeKey 概念图被当作实物或当前产品 | 恢复错误硬件叙事 | 登记历史来源与矛盾；只迁移控制感，不迁移产品形态 |
-| 一张样例被误当完整营销系统 | 资产覆盖不足 | 样例标为 concept；矩阵未完成项必须进入后续任务 |
-| 实施环境缺少 `mise` | 无法提供质量门禁证据 | 已用校验过的 portable mise 完成 Preflight；仍只使用 canonical task 入口 |
+| 风险                                          | 影响                                     | 缓解/回退                                                               |
+| --------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------- |
+| 删除 DE README 未更新依赖清单                 | 合同检查/测试读文件失败                  | 同 Wave 原子修改 1 个脚本 + 2 个测试，先跑目标门禁                      |
+| 三语 README 瘦身后入口不清楚                  | 中文/日文读者找不到工程资料              | 三语保留本语言短说明，并链接同一 current-state 入口                     |
+| 连续替换造成 2→3→4→5→6 级联                   | 路径和章节号错乱                         | 一次性映射或降序替换；旧路径扫描 + 链接解析                             |
+| 大量正文修改降低 rename 相似度                | Git 历史难追踪                           | 纯移动与正文修改分提交；用 `-M` 复核                                    |
+| 当前产品替换误伤上游/法律事实                 | 来源失真                                 | 活动范围 + 逐条白名单；历史 Release Notes 和上游来源不改                |
+| Skills 文档把 copy 回退写成“总是 symlink”     | 用户预期错误                             | 按 `sync_to_app_dir` 的 Auto/Symlink/Copy 行为写作                      |
+| 新章节引用未来截图                            | 文档立即出现 404                         | 本计划只写人物卡，不嵌入未生成图片                                      |
+| 截图审计发现大量需重截                        | 后续工作量扩大                           | 本计划只分类并产出人物卡；实际拍摄拆成后续任务                          |
+| 生成式 Logo/文字变形                          | 对外品牌失真、可读性差                   | 生图只做概念主体；原始 Logo 和准确文字后期确定性合成                    |
+| 生成近似第三方商标或虚构 UI                   | 法务/信任风险                            | 使用通用几何节点；发布前人工检查；真实 UI 只用运行时截图                |
+| 目标基线在 v0.3.0 main 与 v0.3.1 开发线间漂移 | 旧计划重复删除、移动或改写已经变化的文档 | Gate 0 锁定 SHA；重算 delta；旧动作逐项取消或改写                       |
+| README 截图仍显示 `CC Switch`                 | FyAgent 宣发自相矛盾                     | 真实运行时重拍为 P0；新 Hero 不得绕过 proof frame 门禁                  |
+| VibeKey 概念图被当作实物或当前产品            | 恢复错误硬件叙事                         | 登记历史来源与矛盾；只迁移控制感，不迁移产品形态                        |
+| 一张样例被误当完整营销系统                    | 资产覆盖不足                             | 样例标为 concept；矩阵未完成项必须进入后续任务                          |
+| 实施环境缺少 `mise`                           | 无法提供质量门禁证据                     | 已用校验过的 portable mise 完成 Preflight；仍只使用 canonical task 入口 |
 
 回退按 Wave 进行；每个 Wave 保持独立提交。文件移动和内容编辑分开提交时，优先回退当前 Wave，不回退无关用户改动。
 

@@ -1,15 +1,16 @@
 ---
 type: asset
-status: concept_candidate
-updated: 2026-08-10
+status: superseded
+updated: 2026-08-11
 review_on: 2026-09-10
 authority: working_sample
 source: ChatGPT built-in image generation with local historical VibeKey concept reference
+superseded_by: visual-direction-sample-v3.md
 ---
 
 # FyAgent 触觉化软件编排主视觉样例 v2
 
-这张样例把 VibeKey “一个动作、一个状态”的控制感转译为 FyAgent 的软件编排隐喻。它不是硬件产品图、真实 UI 截图或已经批准发布的品牌母版。
+这张样例把 VibeKey “一个动作、一个状态”的控制感转译为 FyAgent 的软件编排隐喻。它不是硬件产品图、真实 UI 截图或已经批准发布的品牌母版。由于左右线路的网格、端口和弯折规则不一致，已经由 [v3 对称线路版](visual-direction-sample-v3.md) 替代。
 
 ![FyAgent 触觉化软件编排概念样例](assets/samples/fyagent-tactile-orchestration-hero-v2.png)
 
@@ -18,7 +19,7 @@ source: ChatGPT built-in image generation with local historical VibeKey concept 
 - 中心保留完全空白的八边形徽章位，避免模型重画 FyAgent Logo。
 - 参考 VibeKey 的触觉层级和状态反馈，但不复制键盘、屏幕、按键布局或文字。
 - 初稿两侧模块像 USB 设备，已做一次单变量迭代，改成软件配置 token 与发光数据轨道。
-- v1 保留为被替代的探索记录；v2 是当前推荐方向候选，仍未获准发布。
+- v1 保留为第一轮探索记录；v2 验证了构图和材质方向，但线路完成度不足，现已被 v3 替代。
 
 ## 主提示词
 
@@ -47,16 +48,16 @@ Constraints: preserve the exact 16:9 composition, deep graphite background, empt
 
 ## 生成记录
 
-| 字段 | 值 |
-|---|---|
-| 模式 | ChatGPT built-in image generation |
-| 历史参考 | 本地 VibeKey 概念图，仅参考材质、控制层级和状态反馈 |
+| 字段             | 值                                                                 |
+| ---------------- | ------------------------------------------------------------------ |
+| 模式             | ChatGPT built-in image generation                                  |
+| 历史参考         | 本地 VibeKey 概念图，仅参考材质、控制层级和状态反馈                |
 | 历史参考 SHA-256 | `BD5DB121CEE6ACAEB0F3D706E2054ED7B54B492878E4BBAB85AD260F82B8FB86` |
-| 输出 | `assets/samples/fyagent-tactile-orchestration-hero-v2.png` |
-| 尺寸 | 1672×941 |
-| 文件大小 | 1,553,252 bytes；concept 阶段未做发布压缩 |
-| SHA-256 | `4B3328E85352A61C579B403CF61703634213BB9C7E647C3D956DC45FBDBC5F40` |
-| 内嵌文字 / Logo | 无 / 无；中心徽章位为空 |
+| 输出             | `assets/samples/fyagent-tactile-orchestration-hero-v2.png`         |
+| 尺寸             | 1672×941                                                           |
+| 文件大小         | 1,553,252 bytes；concept 阶段未做发布压缩                          |
+| SHA-256          | `4B3328E85352A61C579B403CF61703634213BB9C7E647C3D956DC45FBDBC5F40` |
+| 内嵌文字 / Logo  | 无 / 无；中心徽章位为空                                            |
 
 ## 视觉评审
 
@@ -83,4 +84,3 @@ Constraints: preserve the exact 16:9 composition, deep graphite background, empt
 3. 分别制作 16:9、1200×630、4:5、1:1，不以自动裁切替代构图检查。
 4. 在同一页面紧邻放置真实 FyAgent 运行时截图，建立“概念解释 + 产品证据”关系。
 5. 完成品牌、第三方标识、文件体积、响应式裁切和 alt 文本审计后，才能从 `concept_candidate` 升级。
-

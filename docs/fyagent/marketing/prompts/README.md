@@ -13,7 +13,7 @@ source: visual-asset-plan.md and verified product contracts
 
 ## 1. 统一管理 Hero
 
-适用：官网 / README 首屏无字底图。当前样例见 [v2](../visual-direction-sample-v2.md)。
+适用：官网 / README 首屏无字底图。当前样例见 [v3](../visual-direction-sample-v3.md)。
 
 ```text
 Use case: ads-marketing
@@ -112,6 +112,7 @@ Input images: Image 1 is the current FyAgent concept draft.
 CHANGE ONLY: [one precise change].
 Preserve exactly: canvas ratio, composition, subject positions, copy safe area, blank logo plate, lighting, materials, palette, and all already-approved constraints.
 Constraints: no new text, logos, symbols, third-party icons, fake UI, hardware implication, or watermark.
+Routing edits: use one geometric grid, consistent stroke weight, corner radius and connector treatment. Every path must connect a node to a deliberate hub port; no floating fragments, broken lines or dead-end stubs.
 ```
 
 ## 每次生成后要记录

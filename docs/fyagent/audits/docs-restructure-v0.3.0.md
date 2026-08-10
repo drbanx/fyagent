@@ -24,15 +24,15 @@ VibeKey 对照审计和一张当前候选样例，但候选样例仍是概念图
 
 ## 执行边界
 
-| 项目 | 结果 |
-|---|---|
-| 目标基线 | `b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527` |
-| 工作分支 | `codex/docs-restructure-current` |
-| 基线祖先检查 | 通过，`git merge-base --is-ancestor` 退出码 0 |
-| 产品运行时代码 | `src/`、`src-tauri/` 未修改 |
-| 法律与社区文件 | 未修改 |
-| 用户目录 | `.omo/run-continuation/` 未修改、未暂存 |
-| 运行环境 | portable `mise 2026.8.2`；仓库已信任；`bootstrap` 与 Windows `system:check` 通过 |
+| 项目           | 结果                                                                             |
+| -------------- | -------------------------------------------------------------------------------- |
+| 目标基线       | `b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527`                                       |
+| 工作分支       | `codex/docs-restructure-current`                                                 |
+| 基线祖先检查   | 通过，`git merge-base --is-ancestor` 退出码 0                                    |
+| 产品运行时代码 | `src/`、`src-tauri/` 未修改                                                      |
+| 法律与社区文件 | 未修改                                                                           |
+| 用户目录       | `.omo/run-continuation/` 未修改、未暂存                                          |
+| 运行环境       | portable `mise 2026.8.2`；仓库已信任；`bootstrap` 与 Windows `system:check` 通过 |
 
 首次合同检查还暴露了两个原有 Windows 可移植性缺口：`.mjs` 没有固定 LF，Vitest 会在
 CRLF shebang 上解析失败；macOS shell 合同测试在 Windows 上错误调用 WSL 启动器，并
@@ -65,11 +65,11 @@ CRLF shebang 上解析失败；macOS shell 合同测试在 Windows 上错误调�
 
 ### 最终拓扑
 
-| 语言 | 索引 | 正文 | 章节分布 |
-|---|---:|---:|---|
-| 中文 | 1 | 28 | 5 + 2 + 6 + 6 + 5 + 4 |
-| English | 1 | 28 | 5 + 2 + 6 + 6 + 5 + 4 |
-| 日本語 | 1 | 28 | 5 + 2 + 6 + 6 + 5 + 4 |
+| 语言    | 索引 | 正文 | 章节分布              |
+| ------- | ---: | ---: | --------------------- |
+| 中文    |    1 |   28 | 5 + 2 + 6 + 6 + 5 + 4 |
+| English |    1 |   28 | 5 + 2 + 6 + 6 + 5 + 4 |
+| 日本語  |    1 |   28 | 5 + 2 + 6 + 6 + 5 + 4 |
 
 旧目录 `2-providers`、`3-extensions`、`4-proxy`、`5-faq` 已全部消失。提交
 `a12ef395` 把三种语言各 20 个旧章节、共 60 个文件识别为 `R100`，保留了纯移动证据。
@@ -100,12 +100,12 @@ CRLF shebang 上解析失败；macOS shell 合同测试在 Windows 上错误调�
 [用户手册截图审计](user-manual-screenshots.md)保存了 40 张 PNG 的逐图表格，包括尺寸、
 SHA-256 前缀、引用章节、当前语言和重拍结论。汇总结果为：
 
-| 项目 | 数量 | 结论 |
-|---|---:|---|
-| 手册 PNG | 40 | 全部 `replace_required` |
-| 三语引用 | 84 | `18 × 1 + 22 × 3` |
-| shot-card Markdown | 16 | 1 个索引 + 15 张任务卡 |
-| README 旧图引用 | 0 | 已停止使用 |
+| 项目               | 数量 | 结论                    |
+| ------------------ | ---: | ----------------------- |
+| 手册 PNG           |   40 | 全部 `replace_required` |
+| 三语引用           |   84 | `18 × 1 + 22 × 3`       |
+| shot-card Markdown |   16 | 1 个索引 + 15 张任务卡  |
+| README 旧图引用    |    0 | 已停止使用              |
 
 抽查覆盖主界面、供应商、Skills、用量和 Claude Desktop 三语截图，能够看到旧品牌、旧
 导航或中文界面被跨语言复用。证据等级是 `code_audit + sampled_visual_review`。当前主机
@@ -129,31 +129,32 @@ SHA-256 前缀、引用章节、当前语言和重拍结论。汇总结果为：
 
 概念样例状态保持清楚：
 
-| 样例 | 状态 | 结论 |
-|---|---|---|
-| `fyagent-unified-control-hero-v1.png` | `superseded` | 生成近似 Logo，仅保留探索记录 |
-| `fyagent-tactile-orchestration-hero-v2.png` | `concept_candidate` | 1672×941；左侧标题安全区；中心徽章位留空 |
+| 样例                                        | 状态                | 结论                                                               |
+| ------------------------------------------- | ------------------- | ------------------------------------------------------------------ |
+| `fyagent-unified-control-hero-v1.png`       | `superseded`        | 生成近似 Logo，仅保留探索记录                                      |
+| `fyagent-tactile-orchestration-hero-v2.png` | `superseded`        | 构图和材质方向可用，但左右线路、端口和弯折规则不一致               |
+| `fyagent-tactile-orchestration-hero-v3.png` | `concept_candidate` | 1672×941；统一六入六出线路网格；左侧标题安全区和中心空白徽章位保留 |
 
-v2 SHA-256 为
-`4B3328E85352A61C579B403CF61703634213BB9C7E647C3D956DC45FBDBC5F40`。
+v3 SHA-256 为
+`C0EBE3C401B077DE804A37C3C0D4CC65000125121D4E19A366BF9FD2E5E78555`。
 正式发布前仍需使用未经修改的 `assets/fyagent.png` 做确定性合成，补齐准确文字、移动画幅、
 压缩和可访问性检查，并与至少一张真实 FyAgent proof frame 配对。当前未获准发布。
 
 ## 验证记录
 
-| 命令 / 检查 | 结果 | 证据等级 |
-|---|---|---|
-| `mise run bootstrap` | 通过 | `local_runtime_check` |
-| `mise run system:check`（VS Developer PowerShell） | Git、`cl.exe`、WebView2 通过 | `local_runtime_check` |
-| 4 个聚焦测试文件 | 43 项通过 | `code_audit` |
-| Windows/CRLF 回归测试 | 66 项通过 | `code_audit` |
-| 手册拓扑 | zh/en/ja 各 28；旧目录 0 | `code_audit` |
-| 图片清单 | 40 个文件、84 处引用、16 个 shot-card Markdown | `code_audit` |
-| 活动旧路径扫描 | 0 个命中 | `code_audit` |
-| 本地 Markdown 链接 | 由 `currentDocsContract` 检查，0 个失效 | `code_audit` |
-| `mise run check:contracts` | 退出码 0；25 个测试文件、626 项通过、3 项按合同跳过，另有 4 项原生 Fetch 测试通过 | `code_audit` |
-| `mise run check` | 退出码 0；耗时 528.2 秒，TypeScript、格式、全量 Vitest、合同、Rust check/clippy/test 全部通过 | `local_host_quality_gate` |
-| `git diff --check` | 退出码 0 | `code_audit` |
+| 命令 / 检查                                        | 结果                                                                                          | 证据等级                  |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------- |
+| `mise run bootstrap`                               | 通过                                                                                          | `local_runtime_check`     |
+| `mise run system:check`（VS Developer PowerShell） | Git、`cl.exe`、WebView2 通过                                                                  | `local_runtime_check`     |
+| 4 个聚焦测试文件                                   | 43 项通过                                                                                     | `code_audit`              |
+| Windows/CRLF 回归测试                              | 66 项通过                                                                                     | `code_audit`              |
+| 手册拓扑                                           | zh/en/ja 各 28；旧目录 0                                                                      | `code_audit`              |
+| 图片清单                                           | 40 个文件、84 处引用、16 个 shot-card Markdown                                                | `code_audit`              |
+| 活动旧路径扫描                                     | 0 个命中                                                                                      | `code_audit`              |
+| 本地 Markdown 链接                                 | 由 `currentDocsContract` 检查，0 个失效                                                       | `code_audit`              |
+| `mise run check:contracts`                         | 退出码 0；25 个测试文件、626 项通过、3 项按合同跳过，另有 4 项原生 Fetch 测试通过             | `code_audit`              |
+| `mise run check`                                   | 退出码 0；耗时 528.2 秒，TypeScript、格式、全量 Vitest、合同、Rust check/clippy/test 全部通过 | `local_host_quality_gate` |
+| `git diff --check`                                 | 退出码 0                                                                                      | `code_audit`              |
 
 静态检查和概念图评审不能证明真实安装、运行时界面、签名或发布。本轮完成的是
 `code_audit + local_host_quality_gate`；真实三语截图仍需在独立拍摄阶段提供

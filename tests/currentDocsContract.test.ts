@@ -132,6 +132,7 @@ const VISUAL_DELIVERABLES = [
   "docs/fyagent/marketing/prompts/README.md",
   "docs/fyagent/marketing/visual-direction-sample-v1.md",
   "docs/fyagent/marketing/visual-direction-sample-v2.md",
+  "docs/fyagent/marketing/visual-direction-sample-v3.md",
   "docs/fyagent/marketing/vibekey-reference-audit.md",
   "docs/release-notes/README.md",
 ] as const;
@@ -381,6 +382,9 @@ describe("current FyAgent documentation authority", () => {
     ).toContain("status: superseded");
     expect(
       read("docs/fyagent/marketing/visual-direction-sample-v2.md"),
+    ).toContain("status: superseded");
+    expect(
+      read("docs/fyagent/marketing/visual-direction-sample-v3.md"),
     ).toContain("status: concept_candidate");
   });
 
