@@ -48,13 +48,14 @@ use std::sync::{Mutex, OnceLock};
 ///
 /// 解析顺序对齐 Hermes 自身的 `get_hermes_home()`:
 ///   1. CCS 设置 `hermes_config_dir`(显式覆盖)
-///   2. `HERMES_HOME` 环境变量(trim 后非空;按原样,不展开 `~`,与 Hermes `Path(val)` 一致)
-///   3. 平台默认(Windows: `%LOCALAPPDATA%\hermes`,Mac/Linux: `~/.hermes`)
+///   2. 非 Windows: `HERMES_HOME` 环境变量(trim 后非空)
+///   3. 平台默认(Windows: Shell 用户 LocalAppData 下的 `hermes`,Mac/Linux: `~/.hermes`)
 pub fn get_hermes_dir() -> PathBuf {
     if let Some(override_dir) = get_hermes_override_dir() {
         return override_dir;
     }
 
+    #[cfg(not(target_os = "windows"))]
     if let Some(raw) = std::env::var_os("HERMES_HOME") {
         let value = raw.to_string_lossy();
         let trimmed = value.trim();
@@ -66,14 +67,10 @@ pub fn get_hermes_dir() -> PathBuf {
     default_hermes_dir()
 }
 
-/// 平台默认 Hermes 目录(Windows):对齐 Hermes `_get_platform_default_hermes_home()`——
-/// 读 `LOCALAPPDATA` 环境变量,缺失/空时回退 `~\AppData\Local`,再拼 `hermes`。
+/// 平台默认 Hermes 目录(Windows)绑定启动时冻结的 Explorer Shell 用户。
 #[cfg(target_os = "windows")]
 fn default_hermes_dir() -> PathBuf {
-    windows_local_hermes_dir(
-        std::env::var_os("LOCALAPPDATA").as_deref(),
-        &crate::config::get_home_dir(),
-    )
+    crate::config::get_user_local_app_data_dir().join("hermes")
 }
 
 /// 平台默认 Hermes 目录(Mac/Linux):`~/.hermes`。
@@ -2250,6 +2247,7 @@ user_profile_enabled: false
 
     // ---- get_hermes_dir resolution (platform default + HERMES_HOME) ----
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     #[serial]
     fn hermes_home_env_takes_precedence_over_platform_default() {
@@ -2274,6 +2272,21 @@ user_profile_enabled: false
                 dir, custom,
                 "HERMES_HOME should take precedence over the platform default, got {dir:?}"
             );
+        });
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[serial]
+    fn hermes_home_env_cannot_override_frozen_user_default() {
+        with_test_home(|| {
+            let mut settings = crate::settings::get_settings();
+            settings.hermes_config_dir = None;
+            crate::settings::update_settings(settings).unwrap();
+
+            std::env::set_var("HERMES_HOME", r"C:\Users\Bob\hermes");
+            assert_eq!(get_hermes_dir(), default_hermes_dir());
+            std::env::remove_var("HERMES_HOME");
         });
     }
 

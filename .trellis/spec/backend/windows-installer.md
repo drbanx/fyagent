@@ -4,13 +4,12 @@
 
 Read this contract before changing the Windows Tauri bundle configuration,
 NSIS template or hooks, install-directory selection, WebView2 bootstrapper,
-machine-runtime bootstrap, uninstall ownership, Windows signing adapter, or
+legacy runtime cleanup, uninstall ownership, Windows signing adapter, or
 native installer packaging. It owns installer mechanics and per-asset Windows
 evidence. The GitHub job graph, frozen release identity, cross-platform asset
 set, attestation, and publication transaction remain owned by
-[GitHub Release Workflow](./github-release-workflow.md). Runtime startup,
-interactive-user proof, protected activation, and the security descriptor that
-the installer provisions are owned by
+[GitHub Release Workflow](./github-release-workflow.md). Shell-user startup,
+per-user paths, and untrusted single-instance activation are owned by
 [Windows Runtime Security](./windows-runtime-security.md).
 
 Windows x64 and ARM64 installer claims require matching native hosted runners.
@@ -107,10 +106,10 @@ become a second public signing authority.
 - The checked-in template is a minimal derivative of the template embedded by
   the locked Tauri CLI. The source verifier pins its upstream tag, commit, and
   SHA-256. A template change must retain the documented Tauri merge boundary,
-  standard NSIS directory page, protected machine-runtime bootstrap ordering,
-  and bounded uninstall behavior.
+  standard NSIS directory page, bounded legacy cleanup, and bounded uninstall
+  behavior.
 
-### Install-directory selection and protected runtime boundary
+### Install-directory selection and legacy runtime cleanup
 
 - The GUI uses the standard NSIS directory page. Silent installation forwards
   its final `/D=` value through the normal NSIS path without a repository-owned
@@ -123,28 +122,26 @@ become a second public signing authority.
   failure rather than a FyAgent pre-validation error.
 - Maintenance/reinstall uses the path recorded by the existing NSIS
   installation without reintroducing the retired custom path policy.
-- Before copying the application payload, the installer calls the machine
-  runtime bootstrap defined by
-  [Windows Runtime Security](./windows-runtime-security.md). It must not weaken,
-  repair in place, or independently reinterpret that descriptor contract. This
-  protected `%ProgramData%\FyAgent\runtime` owner/DACL gate is independent of
-  the user-selected `$INSTDIR` and remains mandatory.
-- The NSIS path to that protected root is the context-independent
-  `$COMMONPROGRAMDATA\FyAgent` alias. Unknown-variable warning 6000 is a
+- The installer never creates, repairs, admits, or requires
+  `%ProgramData%\FyAgent\runtime`. On install and uninstall it may only attempt
+  to retire `business-*.state` and `business-*.lock` from that fixed legacy
+  directory, then remove the two known directories if empty.
+- Legacy cleanup opens the fixed parent and leaf without following reparse
+  points, proves directory/non-reparse type from the handle, and pins each
+  directory against write/reparse mutation and rename/delete while its child
+  cleanup runs. A missing,
+  inaccessible, malformed, reparse, nonempty, or concurrently changing object
+  is preserved. Cleanup never creates a directory, changes a descriptor,
+  recurses, broadens the filename patterns, sets an installer error, or aborts.
+- The fixed legacy path uses the context-independent
+  `$COMMONPROGRAMDATA\FyAgent` alias. Unknown-variable warning 6000 remains a
   packaging error. Across the repo-owned executable NSIS closure, the template
-  carries the only pragma, `!pragma warning error 6000`, as a top-level directive
-  before the unique top-level installer-hook include; no literal, dynamically
-  expanded, conditional-decoy, per-code/all override, or warning-state stack
-  operation may weaken it. Repo-owned executable NSIS sources reject dynamic
-  preprocessor directive names beginning with `!${NAME}` and allow a line-start
-  `${NAME}` only for the inventoried NSIS/LogicLib runtime macros; those names
-  cannot be redefined or declared dynamically. This prevents a definition from
-  constructing `!pragma` or a conditional directive while retaining ordinary
-  `${If}`-style calls. A no-follow `CreateFileW` open captures its last
-  error in the same System plug-in call with `?e` and immediately pops it; only
-  `ERROR_FILE_NOT_FOUND` or `ERROR_PATH_NOT_FOUND` may select fresh atomic
-  creation. A separate `GetLastError` call or a spoofed `SetLastError` is not an
-  admissible missing-path proof.
+  carries the only pragma, `!pragma warning error 6000`, as a top-level
+  directive before the unique top-level installer-hook include; no literal,
+  dynamically expanded, conditional-decoy, per-code/all override, or warning
+  stack operation may weaken it. Repo-owned executable sources reject dynamic
+  preprocessor directive names and allow line-start `${NAME}` only for the
+  reviewed NSIS/LogicLib macro inventory.
 - Installer and uninstaller registry access uses the same 64-bit machine view
   on supported x64 and ARM64 systems. Shortcuts and protocol/uninstall records
   are machine-scoped.
@@ -160,8 +157,10 @@ become a second public signing authority.
   normalized to `255` (unknown); verification retains the full byte comparison
   and a separate decode-to-source comparison on every host.
 - HTTPS redirects, elapsed time, and response size are bounded. Download bytes
-  are created below the protected machine-runtime root and remain pinned against
-  replacement from signature verification through process exit.
+  are created in one GUID-named, descriptor-protected ephemeral directory
+  directly below Windows CommonApplicationData, independent of the retired
+  `ProgramData\FyAgent` parent, and remain pinned against replacement from
+  signature verification through process exit.
 - Execution requires Authenticode `Valid`, Microsoft Corporation subject
   identity, Code Signing EKU, a LocalMachine whole-chain build with online
   revocation, the reviewed leaf allowlist, and the reviewed Microsoft Code
@@ -173,7 +172,7 @@ become a second public signing authority.
 
 - Uninstall removes only installer-owned payload/external binaries/resources,
   matching shortcuts, product/protocol/uninstall registration, the uninstaller,
-  and bounded runtime state names delegated by the runtime contract.
+  and the bounded known-name legacy cleanup described above.
 - `$INSTDIR` is never removed recursively. Known children are removed first;
   ancestors are removed only when empty. An unrelated file beside the
   installation survives.
@@ -234,7 +233,7 @@ When invoked manually, the diagnostic proves:
   `/D=` and succeeds when NSIS/Windows can write it;
 - installed `fyagent.exe` is `0x8664` for x64 or `0xAA64` for ARM64;
 - version, HKLM registration, protocol registration, all-users shortcuts, and
-  machine-runtime bootstrap state match their contracts;
+  bounded legacy cleanup match their contracts;
 - silent uninstall removes bounded installer-owned state while preserving every
   user-data sentinel.
 
@@ -272,7 +271,7 @@ not make the optional manual lifecycle diagnostic a Release gate.
 | Release-profile build has no explicit manifest mode                                                                       | Fail before compiling/bundling; do not guess.                                                                    |
 | GUI or `/D=` selects a relative, UNC/network, removable, reparse, non-existing, or otherwise unusual path                 | Apply no FyAgent path-admission rule; let standard NSIS/Windows handling and actual writes determine the result. |
 | Install directory is user-writable or has an unusual owner/ACL                                                            | Do not add an ACL/owner warning, repair, or rejection.                                                           |
-| Machine-runtime root does not satisfy its exact runtime descriptor                                                        | Fail without repairing or weakening the preimage.                                                                |
+| Legacy ProgramData parent/leaf is absent, unsafe, inaccessible, nonempty, or cannot be cleaned                            | Preserve it and continue; never repair, recurse, or make cleanup an admission gate.                              |
 | Raw candidate contains any signature/security-directory evidence                                                          | Reject before signer or preflight sealing.                                                                       |
 | Provider configuration is partial, blank-active, malformed, or fails                                                      | Hard fail; never emit unsigned evidence as fallback.                                                             |
 | Signature is `HashMismatch`, `UnknownError`, wrong publisher/certificate/EKU/timestamp, or mutates non-Authenticode bytes | Reject the architecture and block release.                                                                       |
@@ -283,8 +282,8 @@ not make the optional manual lifecycle diagnostic a Release gate.
 ## 5. Good / Base / Bad Cases
 
 - Good: both GUI selection and `/S ... /D=C:\Program\FilesFyAgent` use standard
-  NSIS path handling without a custom FyAgent rejection; the independently
-  protected machine-runtime bootstrap still succeeds before payload copy.
+  NSIS path handling without a custom FyAgent rejection; any legacy runtime
+  preimage is handled only by bounded best-effort cleanup.
 - Base: signer configuration is completely absent. Both final setups remain
   byte-identical to raw, strict `NotSigned` evidence is aggregated, and public
   notes explicitly disclose the unsigned state with digests and attestation.
@@ -301,8 +300,9 @@ not make the optional manual lifecycle diagnostic a Release gate.
 - `tests/windowsNsisContract.test.ts` and
   `scripts/release/verify-windows-nsis-contract.mjs` pin configuration, template
   provenance, canonical setup/uninstaller icon, absence of a custom
-  installation-path gate, runtime bootstrap ordering, bounded uninstall, and
-  absence of retired package surfaces.
+  installation-path gate, absence of machine-runtime provisioning, no-follow
+  known-only legacy cleanup, bounded uninstall, and absence of retired package
+  surfaces.
 - `tests/windowsSetupIcon.test.ts` and
   `scripts/release/verify-windows-setup-icon.mjs` parse canonical ICO and PE
   resources and reject missing, extra, default, unreferenced, metadata-drifted,
@@ -343,7 +343,7 @@ Correct:
 
 ```text
 standard NSIS path selection -> actual Windows write result
-independent protected ProgramData runtime bootstrap -> exact owner/DACL contract
+legacy ProgramData runtime -> no-follow known-name best-effort cleanup only
 raw strict unsigned -> optional provider transform -> fresh independent seal
 delete allowlisted installer-owned children -> remove only empty owned ancestors
 ```

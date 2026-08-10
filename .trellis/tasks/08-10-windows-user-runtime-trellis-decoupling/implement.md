@@ -23,8 +23,8 @@ Commit: `chore(trellis): plan Windows user runtime and tooling decoupling`
 - [x] Write PRD, design, implementation plan, and task-local research.
 - [x] Curate real `implement.jsonl` and `check.jsonl` entries from active specs
       and task-local research.
-- [ ] Validate context, set task metadata/branch, and start the task.
-- [ ] Stage and commit only this task directory; preserve hook differences.
+- [x] Validate context, set task metadata/branch, and start the task.
+- [x] Stage and commit only this task directory; preserve hook differences.
 
 Validation:
 
@@ -43,9 +43,9 @@ archived predecessor.
 
 Commit: `chore(trellis): accept managed 0.6.14 hooks`
 
-- [ ] Confirm the three files match the reviewed upstream `0.6.14` bytes.
-- [ ] Commit only `.codex/hooks.json` and the two registered Python hooks.
-- [ ] Record the accepted containment/import/input/escaping regression in task
+- [x] Confirm the three files match the reviewed upstream `0.6.14` bytes.
+- [x] Commit only `.codex/hooks.json` and the two registered Python hooks.
+- [x] Record the accepted containment/import/input/escaping regression in task
       evidence and final report.
 
 Validation: byte hashes, JSON parse, Python compile, focused managed-template
@@ -59,15 +59,15 @@ old runner assumptions.
 
 Commit: `refactor(tooling): decouple Trellis from project contracts`
 
-- [ ] Remove Trellis task include/wrapper, overlay engine/manifest/transforms,
+- [x] Remove Trellis task include/wrapper, overlay engine/manifest/transforms,
       project skill, Codex hook runner/tasks, and bootstrap prompt injection.
-- [ ] Remove Trellis/overlay dependencies from aggregate check, CI contracts,
+- [x] Remove Trellis/overlay dependencies from aggregate check, CI contracts,
       task generation, classifier, environment checks, and contract fixtures.
-- [ ] Keep normal task metadata/effect/DAG, toolchain/lock, release, and docs
+- [x] Keep normal task metadata/effect/DAG, toolchain/lock, release, and docs
       consistency gates.
-- [ ] Preserve upstream `.trellis/**`, upstream skills/hooks/agents,
+- [x] Preserve upstream `.trellis/**`, upstream skills/hooks/agents,
       `AGENTS.md`, archives, and journals.
-- [ ] Confirm active runtime code/tests have no replacement Trellis wrapper.
+- [x] Confirm active runtime code/tests have no replacement Trellis wrapper.
 
 Targeted validation: task loader/contracts, environment/bootstrap tests,
 classifier fixtures, hook JSON/Python syntax, and `mise tasks validate`.
@@ -78,13 +78,13 @@ Rollback: revert this commit without touching the official hook commit.
 
 Commit: `docs: establish standalone developer workflow`
 
-- [ ] Update CONTRIBUTING and active development/tooling/validation/CI/release
+- [x] Update CONTRIBUTING and active development/tooling/validation/CI/release
       docs to the standalone mise flow.
-- [ ] Remove overlay-only active docs and obsolete Trellis prerequisite text.
-- [ ] Precisely update mixed active specs while retaining durable optional AI
+- [x] Remove overlay-only active docs and obsolete Trellis prerequisite text.
+- [x] Precisely update mixed active specs while retaining durable optional AI
       guidance.
-- [ ] Regenerate the mise task reference from live metadata.
-- [ ] Prove maintained docs contain no external input reference and no retired
+- [x] Regenerate the mise task reference from live metadata.
+- [x] Prove maintained docs contain no external input reference and no retired
       project Trellis API.
 
 Targeted validation: generated task docs, docs contract, link/reference scans,
@@ -96,19 +96,36 @@ Rollback: revert docs/spec changes together so they never contradict tooling.
 
 Commit: `refactor(windows): replace machine runtime with shell user context`
 
-- [ ] Delete active ProgramData bootstrap/state/lease/HMAC/capability/custom
+- [x] Delete active ProgramData bootstrap/state/lease/HMAC/capability/custom
       activation and pre-Tauri equal-SID startup gate.
-- [ ] Implement frozen Shell session/SID/profile/LocalAppData/RoamingAppData
+- [x] Implement frozen Shell session/SID/profile/LocalAppData/RoamingAppData
       context before any user path.
-- [ ] Route panic/config/database/log/provider/tray and all user-path consumers
+- [x] Route panic/config/database/log/provider/tray and all user-path consumers
       through that context on Windows.
-- [ ] Register Tauri single-instance on Windows and normalize bounded untrusted
+- [x] Register Tauri single-instance on Windows and normalize bounded untrusted
       arguments before deep-link/lightweight/focus behavior.
-- [ ] Keep only bounded best-effort legacy cleanup.
+- [x] Keep only bounded best-effort legacy cleanup.
 
 Targeted validation: Rust fmt/check/test filters for same-user, Bob/Alice,
 missing Shell/profile/path, context drift, every per-user path, activation
 bounds, invalid deep links, and focus-only input; static zero-reference scans.
+
+An independent staged-only review found one desktop-only dependency escaping
+into the mobile entry point plus five boundary/test gaps: Store write limits,
+non-Windows home-override compatibility, lightweight rejection wake policy,
+maximized cross-monitor persistence, and the Shell-user fail-closed matrix.
+All were fixed before this commit and rechecked in a rebuilt worktree whose
+tree hash exactly matched the index. Rust `fmt --check`, `check`, and Clippy
+with warnings denied passed; the complete library suite ran 2,667 tests (2,662
+passed and five platform-conditioned tests were ignored). Focused frontend and
+contract suites passed 129 tests, TypeScript type-check and Prettier passed, the
+release-contract gate passed 471 tests, the NSIS source verifier passed, and
+both task context files validated. Store, activation, window-state, and
+Shell-user/registry focused suites passed their edge matrices. The registry
+helper and native test module also passed isolated x64 Windows target
+check/Clippy; actual Shell/UAC/WebView/registry-link behavior remains owned by
+native CI. Final staged-only quality and security reviews reported no remaining
+P0, P1, or P2 findings.
 
 Rollback: revert as one runtime unit; do not revive machine runtime from a
 partial commit.

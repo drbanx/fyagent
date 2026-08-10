@@ -2,7 +2,6 @@
 {"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse existing Explorer launch, deep-link validation, package validators, and task infrastructure before adding utilities."}
 {"file":".trellis/spec/backend/development-environment.md","reason":"Preserve the standalone mise toolchain and host-native execution boundary while removing Trellis coupling."}
 {"file":".trellis/spec/backend/task-runner-contract.md","reason":"Own removal of Trellis and hook tasks without weakening remaining task metadata and DAG rules."}
-{"file":".trellis/spec/backend/trellis-tooling.md","reason":"Historical active owner being deliberately narrowed or removed by the approved decoupling."}
 {"file":".trellis/spec/backend/development-hooks.md","reason":"Record exact upstream hook adoption and the intentionally accepted hardening regression."}
 {"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Own the machine-runtime to immutable Shell-user context replacement."}
 {"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Own current-user helper, staging, validation continuity, and renderer compatibility."}

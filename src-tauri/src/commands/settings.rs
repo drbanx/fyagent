@@ -49,6 +49,13 @@ pub async fn get_settings() -> Result<crate::settings::AppSettings, String> {
     Ok(crate::settings::get_settings_for_frontend())
 }
 
+/// Returns the already-frozen host user home used by every default directory.
+/// On Windows this is Explorer's Shell user rather than the elevated process.
+#[tauri::command]
+pub async fn get_user_home_dir() -> Result<String, String> {
+    Ok(crate::config::get_home_dir().to_string_lossy().into_owned())
+}
+
 /// 保存设置
 #[tauri::command]
 pub async fn save_settings(

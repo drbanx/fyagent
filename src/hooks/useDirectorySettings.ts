@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { homeDir, join } from "@tauri-apps/api/path";
+import { join } from "@tauri-apps/api/path";
 import { settingsApi, type AppId } from "@/lib/api";
 import type { SettingsFormState } from "./useSettingsForm";
 
@@ -62,7 +62,7 @@ const sanitizeDir = (value?: string | null): string | undefined => {
 
 const computeDefaultAppConfigDir = async (): Promise<string | undefined> => {
   try {
-    const home = await homeDir();
+    const home = await settingsApi.getUserHomeDir();
     return await join(home, ".fyagent");
   } catch (error) {
     console.error(
@@ -77,7 +77,7 @@ const computeDefaultConfigDir = async (
   app: DirectoryAppId,
 ): Promise<string | undefined> => {
   try {
-    const home = await homeDir();
+    const home = await settingsApi.getUserHomeDir();
     return await join(home, APP_DIRECTORY_META[app].defaultFolder);
   } catch (error) {
     console.error(

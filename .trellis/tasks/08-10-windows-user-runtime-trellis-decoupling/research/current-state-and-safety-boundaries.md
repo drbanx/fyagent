@@ -73,6 +73,43 @@ peer capability. Therefore callback argv are local untrusted input. Existing
 deep-link envelope limits and validation should be reused; plugin input cannot
 directly invoke a privileged side effect.
 
+The same dependency decodes and forwards the raw process argv before the
+application callback can apply its limits. A same-Shell-user process can also
+pre-claim the predictable endpoint. In the elevated Bob/Shell Alice case this
+means a provider deep link that embeds an API key has no transport-level peer
+confidentiality from Alice-local processes. The approved replacement does not
+restore the retired capability/HMAC transport or patch the pinned plugin, so
+this remains an explicit dependency residual: never log raw argv, bound and
+parse it immediately after callback entry, queue only validated semantic
+requests, and never connect that callback to privileged work.
+
+Alice-owned profile/configuration directories are deliberately treated as the
+selected user's mutable data, not as trusted elevated input. Because the main
+process remains elevated and the approved design keeps existing custom data
+directory semantics, a hostile Alice can redirect/reparse paths that Bob later
+opens. The task adds absolute-directory validation for the application-data
+override and no ambient fallback, but does not claim that this is an
+impersonating filesystem broker or a full lower-integrity path-containment
+boundary. The install-candidate handoff is different: it crosses directly into
+PackageManager admission and therefore gets the explicit no-write/no-delete
+file pin described below.
+
+Switching ambient `HKCU` access to explicit `HKEY_USERS\<Alice SID>` adds a
+separate object-redirection risk: registry symbolic links are followed by the
+default `RegOpenKeyEx` behavior. The runtime therefore exposes only two fixed
+registry locations, traverses every component relative to a verified parent
+with `REG_OPTION_OPEN_LINK`, rejects link markers, and never mutates the handle
+returned when create-or-open reports an existing key until it has been reopened
+no-follow. This is required even though Alice legitimately owns the ordinary
+values, because the elevated Bob token must not be redirected to another
+registry object.
+
+Alice can also replace optional `app_paths.json` or `.window-state.json` with a
+very large file. These files are not authority inputs, but an unbounded
+`fs::read` in Bob would create an avoidable startup denial of service. The
+application streams them only through small fixed limits and treats overflow as
+invalid optional state; writes remain atomic at the frozen Alice path.
+
 ## Codex installer observations
 
 - The current experimental all-users path uses headless/runas job-control

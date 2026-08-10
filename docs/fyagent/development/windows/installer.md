@@ -25,10 +25,16 @@ drive-type, ACL, directory-owner, or protected-folder admission rule for the
 chosen installation directory. NSIS/Windows may still reject malformed input,
 and an actual filesystem or registration write can still fail.
 
-This product choice does not apply to the independent protected machine
-runtime. `%ProgramData%\FyAgent\runtime` must still satisfy its exact owner/DACL
-contract before application payload copy. The selected `$INSTDIR` does not
-weaken or relocate that security boundary.
+The former `%ProgramData%\FyAgent\runtime` is not provisioned or admitted. On
+install and uninstall, the template only attempts no-follow deletion of the
+two known legacy `business-*.state` / `business-*.lock` patterns while held
+directory handles deny write/delete races, and then empty known directories.
+Missing, reparse, inaccessible, nonempty, or unknown
+content is preserved and never blocks setup.
+
+The WebView2 bootstrapper uses a separate GUID-named, descriptor-protected
+ephemeral directory directly below Windows CommonApplicationData. It does not
+depend on or recreate the retired FyAgent runtime parent.
 
 `icons/icon.ico` is the canonical Windows package icon. The Windows Tauri
 configuration supplies it to the checked-in template, which uses it for both

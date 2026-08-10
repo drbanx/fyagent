@@ -12,9 +12,7 @@ pub struct EnvConflict {
 }
 
 #[cfg(target_os = "windows")]
-use winreg::enums::*;
-#[cfg(target_os = "windows")]
-use winreg::RegKey;
+use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
 
 /// Check environment variables for conflicts
 pub fn check_env_conflicts(app: &str) -> Result<Vec<EnvConflict>, String> {
@@ -67,18 +65,23 @@ fn matches_env_keyword(name: &str, keywords: &[EnvKeyword]) -> bool {
 fn check_system_env(keywords: &[EnvKeyword]) -> Result<Vec<EnvConflict>, String> {
     let mut conflicts = Vec::new();
 
-    // Check HKEY_CURRENT_USER\Environment
-    if let Ok(hkcu) = RegKey::predef(HKEY_CURRENT_USER).open_subkey("Environment") {
-        for (name, value) in hkcu.enum_values().filter_map(Result::ok) {
-            if matches_env_keyword(&name, keywords) {
-                conflicts.push(EnvConflict {
-                    var_name: name.clone(),
-                    var_value: value.to_string(),
-                    source_type: "system".to_string(),
-                    source_path: "HKEY_CURRENT_USER\\Environment".to_string(),
-                });
+    // Read the frozen Explorer user's hive explicitly. HKEY_CURRENT_USER would
+    // bind to the elevated administrator process instead.
+    match crate::windows_runtime::open_shell_user_environment_read() {
+        Ok(shell_user) => {
+            for (name, value) in shell_user.enum_values().filter_map(Result::ok) {
+                if matches_env_keyword(&name, keywords) {
+                    conflicts.push(EnvConflict {
+                        var_name: name.clone(),
+                        var_value: value.to_string(),
+                        source_type: "system".to_string(),
+                        source_path: "HKEY_CURRENT_USER\\Environment".to_string(),
+                    });
+                }
             }
         }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("读取 Shell 用户环境变量失败: {error}")),
     }
 
     // Check HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment

@@ -9,7 +9,7 @@ use std::process::Command;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tempfile::tempdir;
+use tempfile::tempdir_in;
 
 use crate::error::AppError;
 
@@ -110,7 +110,16 @@ pub(crate) fn build_local_snapshot(
     let db_sql = sql_string.into_bytes();
 
     // Pack skills into deterministic ZIP
-    let tmp = tempdir().map_err(|e| {
+    let temp_root = crate::config::get_user_temp_dir();
+    fs::create_dir_all(&temp_root).map_err(|e| {
+        io_context_localized(
+            "sync.snapshot_tmpdir_failed",
+            "创建快照临时目录失败",
+            "Failed to create temporary directory for snapshot",
+            e,
+        )
+    })?;
+    let tmp = tempdir_in(&temp_root).map_err(|e| {
         io_context_localized(
             "sync.snapshot_tmpdir_failed",
             "创建快照临时目录失败",

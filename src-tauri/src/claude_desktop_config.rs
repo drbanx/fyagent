@@ -1241,9 +1241,7 @@ fn macos_paths_from_home(home: &Path) -> ClaudeDesktopPaths {
 
 #[cfg(windows)]
 fn windows_local_app_data_dir() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| get_home_dir().join("AppData").join("Local"))
+    crate::config::get_user_local_app_data_dir()
 }
 
 #[cfg(windows)]

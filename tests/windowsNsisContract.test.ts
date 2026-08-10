@@ -588,6 +588,30 @@ function encodedIncludeForSource(source: string): string {
   return updated;
 }
 
+function padWebViewSourceToDeclaredChunkCount(source: string): string {
+  const include = fs.readFileSync(WEBVIEW_INCLUDE, "utf8");
+  const declaredCount = Number.parseInt(
+    include.match(/FYAGENT_WEBVIEW2_COMMAND_CHUNK_COUNT (\d+)/u)?.[1] ?? "0",
+    10,
+  );
+  let candidate = `${source.trimEnd()}\n# Contract mutation padding: `;
+  let state = 0x5f37_59df;
+  for (let index = 0; index < 4096; index += 1) {
+    const chunkCount = Math.ceil(
+      gzipDeterministically(Buffer.from(candidate, "utf16le")).toString(
+        "base64",
+      ).length / 768,
+    );
+    if (chunkCount === declaredCount) return `${candidate}\n`;
+    expect(chunkCount).toBeLessThan(declaredCount);
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    candidate += "abcdefghijklmnopqrstuvwxyz0123456789"[state % 36];
+  }
+  throw new Error(
+    "unable to pad mutated WebView2 source to the declared chunk count",
+  );
+}
+
 function encodedIncludeForLoader(loader: string): string {
   return fs
     .readFileSync(WEBVIEW_INCLUDE, "utf8")
@@ -614,7 +638,6 @@ describe("Windows NSIS installer contract", () => {
     });
     expect(result.lifecyclePath).toBeNull();
     expect(result.sectionOrder).toEqual([
-      "-FyAgentMachineRuntimeBootstrap",
       "EarlyChecks",
       "WebView2",
       "Install",
@@ -669,12 +692,12 @@ describe("Windows NSIS installer contract", () => {
         "!define FYAGENT_DRIVE_FIXED 3\n!define FYAGENT_FILE_ATTRIBUTE_DIRECTORY",
       ),
       source.replace(
-        "Section -FyAgentMachineRuntimeBootstrap",
-        'Section -FyAgentMachineRuntimeBootstrap\n  StrCmp $INSTDIR "C:\\\\Allowed" +2\n  Abort',
+        "Section EarlyChecks",
+        'Section EarlyChecks\n  StrCmp $INSTDIR "C:\\\\Allowed" +2\n  Abort',
       ),
       source.replace(
-        "Section -FyAgentMachineRuntimeBootstrap",
-        "Section -RenamedInstallPathCheck\n  Abort\nSectionEnd\n\nSection -FyAgentMachineRuntimeBootstrap",
+        "Section EarlyChecks",
+        "Section -RenamedInstallPathCheck\n  Abort\nSectionEnd\n\nSection EarlyChecks",
       ),
     ]) {
       expect(() => verifyTemplate(mutation)).toThrow(
@@ -1051,57 +1074,79 @@ describe("Windows NSIS installer contract", () => {
     }
   });
 
-  it("captures the CreateFileW last error atomically", () => {
+  it("opens legacy runtime directories without following or deleting them", () => {
     const source = fs.readFileSync(TEMPLATE, "utf8");
-    const capture = "p 0) p .r8 ?e'\n  Pop $9";
-    expect(source).toContain(capture);
+    const noFollowOpen =
+      "System::Call 'kernel32::CreateFileW(w \"${Path}\", i ${FYAGENT_FILE_READ_ATTRIBUTES}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8'";
+    expect(source).toContain(noFollowOpen);
     for (const mutation of [
-      source.replace(capture, "p 0) p .r8'\n  Pop $9"),
-      source.replace(capture, "p 0) p .r8 ?e'\n  Pop $8"),
-      source.replace(capture, "p 0) p .r8 ?e'\n  StrCpy $0 0\n  Pop $9"),
       source.replace(
-        capture,
-        "p 0) p .r8'\n  System::Call 'kernel32::GetLastError() i .r9'",
+        "${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}",
+        "${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}",
       ),
       source.replace(
-        capture,
-        `${capture}\n  System::Call 'kernel32::GetLastError() i .r9'`,
+        "i ${FYAGENT_FILE_SHARE_READ}, p 0",
+        "i ${FYAGENT_FILE_SHARE_READ}|${FYAGENT_FILE_SHARE_WRITE}, p 0",
       ),
       source.replace(
-        "  System::Call 'kernel32::CreateFileW",
-        "  System::Call 'kernel32::SetLastError(i 2)'\n  System::Call 'kernel32::CreateFileW",
+        "GetFileInformationByHandle(p r8, p r6)",
+        "GetFileInformationByPath(p r8, p r6)",
       ),
       source.replace(
-        capture,
-        `${capture}\n  System::Call 'kernel32::SetLastError(i 2)'`,
+        "  StrCpy ${OutputHandle} $8",
+        "  System::Call 'advapi32::GetSecurityInfo(p r8)'\n  StrCpy ${OutputHandle} $8",
       ),
     ]) {
       expect(mutation).not.toBe(source);
       expect(() => verifyTemplate(mutation)).toThrow(
-        /last error atomically with \?e|must not (?:use a separate GetLastError|allow SetLastError spoofing)/u,
+        /legacy runtime (?:no-follow validation is missing|validation must issue|validation must not inspect)|write\/delete races/u,
       );
     }
   });
 
-  it("rejects path-based ACL repair of an unsafe ProgramData preimage", () => {
+  it("rejects ACL repair or machine-runtime provisioning", () => {
     const source = fs
       .readFileSync(TEMPLATE, "utf8")
       .replace(
-        "Function FyAgentProvisionMachineRuntime",
-        "Function FyAgentProvisionMachineRuntime\n  nsExec::ExecToStack 'icacls \"$COMMONPROGRAMDATA\\FyAgent\" /grant:r Administrators:F'",
+        "!macro FyAgentCleanupLegacyMachineRuntime Label",
+        "!macro FyAgentCleanupLegacyMachineRuntime Label\n  nsExec::ExecToStack 'icacls \"$COMMONPROGRAMDATA\\FyAgent\" /grant:r Administrators:F'",
       );
     expect(() => verifyTemplate(source)).toThrow(
-      /must not repair path-based ACLs/u,
+      /best-effort, non-provisioning|must not inspect, repair, or recreate/u,
+    );
+
+    const reprovisioned = fs
+      .readFileSync(TEMPLATE, "utf8")
+      .replace(
+        "Section EarlyChecks",
+        "Function FyAgentProvisionMachineRuntime\nFunctionEnd\n\nSection EarlyChecks",
+      );
+    expect(() => verifyTemplate(reprovisioned)).toThrow(
+      /retired machine-runtime provisioning contract remains executable/u,
     );
   });
 
-  it("rejects removal of handle-based trusted legacy disposition", () => {
-    const source = fs
-      .readFileSync(TEMPLATE, "utf8")
-      .replace("SetFileInformationByHandle", "SetFileInformationByPath");
-    expect(() => verifyTemplate(source)).toThrow(
-      /handle-based runtime disposition/u,
-    );
+  it("keeps legacy cleanup known-only, non-recursive, and best-effort", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    for (const mutation of [
+      source.replace(
+        'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.state"',
+        'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\*"',
+      ),
+      source.replace(
+        "!macro FyAgentCleanupLegacyMachineRuntime Label",
+        '!macro FyAgentCleanupLegacyMachineRuntime Label\n  Abort "cleanup failed"',
+      ),
+      source.replace(
+        'RMDir "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
+        'RMDir /r "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
+      ),
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /known-only legacy runtime cleanup|best-effort, non-provisioning, and non-recursive/u,
+      );
+    }
   });
 
   it("rejects reintroduced MSI or WiX migration behavior", () => {
@@ -1141,6 +1186,48 @@ describe("Windows NSIS installer contract", () => {
         webviewIncludePath: includePath,
       }),
     ).toThrow(/deterministic level-9 gzip/u);
+  });
+
+  it("keeps WebView2 staging ephemeral and independent of the retired runtime parent", () => {
+    const source = fs.readFileSync(WEBVIEW_SOURCE, "utf8");
+    expect(source).not.toContain("$programDataParent");
+    expect(source).toContain(
+      "Join-Path $programDataRoot \"FyAgent-WebView2-$([Guid]::NewGuid().ToString('N'))\"",
+    );
+
+    for (const rawMutation of [
+      source.replace(
+        "Join-Path $programDataRoot \"FyAgent-WebView2-$([Guid]::NewGuid().ToString('N'))\"",
+        "Join-Path $programDataRoot 'FyAgent'",
+      ),
+      source.replace(
+        "if ([string]::IsNullOrWhiteSpace($programDataRoot) -or -not [IO.Path]::IsPathRooted($programDataRoot)) {",
+        "if ([string]::IsNullOrWhiteSpace($programDataRoot)) {",
+      ),
+      source.replace("$stage.Create($directorySecurity)", "$stage.Create()"),
+    ]) {
+      const mutation = padWebViewSourceToDeclaredChunkCount(rawMutation);
+      expect(mutation).not.toBe(source);
+      const sourcePath = temporaryFile(
+        "install-webview2-bootstrapper.ps1",
+        mutation,
+      );
+      const includePath = temporaryFile(
+        "webview2-command.nsh",
+        encodedIncludeForSource(mutation),
+      );
+      expect(() =>
+        verifyWindowsNsisContract({
+          baseConfigPath: BASE_CONFIG,
+          windowsConfigPath: WINDOWS_CONFIG,
+          templatePath: TEMPLATE,
+          webviewSourcePath: sourcePath,
+          webviewIncludePath: includePath,
+        }),
+      ).toThrow(
+        /ephemeral WebView2 staging|retired ProgramData FyAgent runtime parent/u,
+      );
+    }
   });
 
   it("canonicalizes the gzip OS header and pins NSIS text inputs to LF", () => {

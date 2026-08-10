@@ -42,6 +42,8 @@ mod usage_events;
 mod usage_script;
 mod window_layout;
 mod windows_runtime;
+#[cfg(any(target_os = "windows", test))]
+mod windows_window_state;
 
 use crate::codex_desktop::types::JobStage;
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
@@ -75,13 +77,14 @@ pub use settings::{update_settings, AppSettings};
 pub use store::AppState;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-pub use windows_runtime::{early_windows_startup_gate, WindowsStartupDisposition};
+pub use windows_runtime::{initialize_windows_user_context, WindowsStartupErrorCode};
 
 use std::{
+    collections::VecDeque,
     fmt,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex, OnceLock,
     },
     time::Duration,
 };
@@ -89,7 +92,8 @@ use std::{
 use tauri::image::Image;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::RunEvent;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Listener, Manager};
+#[cfg(not(target_os = "windows"))]
 use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
 /// Handles the two reserved experimental all-users installer flags before the
@@ -264,17 +268,77 @@ fn layout_mode_label(mode: window_layout::LayoutMode) -> &'static str {
 /// Converts the monitor work area to logical pixels before the layout policy
 /// sees it. The policy is deliberately independent of monitor identity so the
 /// diagnostic path never needs to retain a display name or serial number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PhysicalMonitorWorkArea {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+fn physical_monitor_work_area(monitor: &tauri::Monitor) -> PhysicalMonitorWorkArea {
+    let work_area = monitor.work_area();
+    PhysicalMonitorWorkArea {
+        x: work_area.position.x,
+        y: work_area.position.y,
+        width: work_area.size.width,
+        height: work_area.size.height,
+    }
+}
+
+fn fallback_monitor_index(
+    available: &[PhysicalMonitorWorkArea],
+    primary: Option<PhysicalMonitorWorkArea>,
+) -> Option<usize> {
+    primary
+        .and_then(|primary| available.iter().position(|candidate| *candidate == primary))
+        .or_else(|| (!available.is_empty()).then_some(0))
+}
+
+fn selected_window_monitor(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
+    match window.current_monitor() {
+        Ok(Some(monitor)) => return Some(monitor),
+        Ok(None) => {
+            log::debug!(
+                "Main window is not on a connected monitor; selecting a safe restore target"
+            );
+        }
+        Err(error) => {
+            log::debug!("Unable to read main-window monitor for layout policy: {error}");
+        }
+    }
+
+    let primary_monitor = match window.primary_monitor() {
+        Ok(primary) => primary,
+        Err(error) => {
+            log::debug!("Unable to identify the primary monitor for layout policy: {error}");
+            None
+        }
+    };
+    let available = match window.available_monitors() {
+        Ok(monitors) if !monitors.is_empty() => monitors,
+        Ok(_) => {
+            log::debug!("No connected monitor is available for main-window layout policy");
+            return primary_monitor;
+        }
+        Err(error) => {
+            log::debug!("Unable to enumerate monitors for main-window layout policy: {error}");
+            return primary_monitor;
+        }
+    };
+    let primary = primary_monitor.as_ref().map(physical_monitor_work_area);
+    let available_work_areas = available
+        .iter()
+        .map(physical_monitor_work_area)
+        .collect::<Vec<_>>();
+    let selected = fallback_monitor_index(&available_work_areas, primary)?;
+    Some(available[selected].clone())
+}
+
 fn current_logical_work_area(
     window: &tauri::WebviewWindow,
 ) -> Option<(window_layout::LogicalWorkArea, f64)> {
-    let monitor = match window.current_monitor() {
-        Ok(Some(monitor)) => monitor,
-        Ok(None) => return None,
-        Err(error) => {
-            log::debug!("Unable to read main-window monitor for layout policy: {error}");
-            return None;
-        }
-    };
+    let monitor = selected_window_monitor(window)?;
     let scale_factor = monitor.scale_factor();
     if !scale_factor.is_finite() || scale_factor <= 0.0 {
         log::debug!("Ignoring invalid main-window scale factor for layout policy");
@@ -325,6 +389,15 @@ fn refresh_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()
 /// geometry, and only then restores maximization. `window-state` continues to
 /// own persistence; this is a controlled migration layer above its raw state.
 fn restore_hidden_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    #[cfg(target_os = "windows")]
+    let _tracking_suspension = crate::windows_window_state::suspend_tracking();
+
+    #[cfg(target_os = "windows")]
+    if let Err(error) = crate::windows_window_state::restore(window) {
+        log::warn!("Unable to restore Shell-user main-window state: {error}");
+    }
+
+    #[cfg(not(target_os = "windows"))]
     if let Err(error) = window.restore_state(window_state_flags()) {
         // A corrupt or unavailable persisted state must not block startup.
         log::warn!("Unable to restore saved main-window state; using current geometry: {error}");
@@ -391,6 +464,231 @@ fn install_main_window_layout_listener(window: &tauri::WebviewWindow) {
     });
 }
 
+pub(crate) fn prepare_main_webview(window: &tauri::WebviewWindow) {
+    if let Err(error) = restore_hidden_main_window_layout(window) {
+        log::warn!("Unable to apply main-window layout policy: {error}");
+    }
+    install_main_window_layout_listener(window);
+}
+
+const FRONTEND_DEEPLINK_READY_EVENT: &str = "frontend-deeplink-ready";
+const MAX_PENDING_ACTIVATIONS: usize = 16;
+
+#[derive(Debug, Clone)]
+enum PendingActivation {
+    Focus,
+    InvalidDeepLink {
+        focus_main_window: bool,
+    },
+    DeepLink {
+        request: Box<crate::deeplink::DeepLinkImportRequest>,
+        focus_main_window: bool,
+    },
+}
+
+impl PendingActivation {
+    fn should_wake_main_window(&self) -> bool {
+        match self {
+            Self::Focus => true,
+            Self::InvalidDeepLink { focus_main_window }
+            | Self::DeepLink {
+                focus_main_window, ..
+            } => *focus_main_window,
+        }
+    }
+}
+
+fn should_exit_lightweight_mode(is_lightweight: bool, activation: &PendingActivation) -> bool {
+    is_lightweight && activation.should_wake_main_window()
+}
+
+#[derive(Debug, Default)]
+struct ActivationInbox {
+    renderer_ready: bool,
+    draining: bool,
+    pending: VecDeque<PendingActivation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActivationEnqueueResult {
+    Queued,
+    StartDrain,
+    Coalesced,
+    RejectedAtCapacity,
+}
+
+impl ActivationInbox {
+    fn enqueue(&mut self, activation: PendingActivation) -> ActivationEnqueueResult {
+        if matches!(activation, PendingActivation::Focus)
+            && self
+                .pending
+                .iter()
+                .any(|queued| matches!(queued, PendingActivation::Focus))
+        {
+            return ActivationEnqueueResult::Coalesced;
+        }
+        if self.pending.len() >= MAX_PENDING_ACTIVATIONS {
+            let evictable = if activation.should_wake_main_window() {
+                self.pending
+                    .iter()
+                    .position(|queued| !queued.should_wake_main_window())
+            } else {
+                None
+            };
+            if let Some(index) = evictable {
+                let _ = self.pending.remove(index);
+            } else {
+                return ActivationEnqueueResult::RejectedAtCapacity;
+            }
+        }
+
+        self.pending.push_back(activation);
+        if self.renderer_ready && !self.draining {
+            self.draining = true;
+            ActivationEnqueueResult::StartDrain
+        } else {
+            ActivationEnqueueResult::Queued
+        }
+    }
+
+    fn mark_ready(&mut self) -> bool {
+        self.renderer_ready = true;
+        if self.pending.is_empty() || self.draining {
+            false
+        } else {
+            self.draining = true;
+            true
+        }
+    }
+
+    fn mark_unready(&mut self) {
+        self.renderer_ready = false;
+    }
+
+    fn take_next(&mut self) -> Option<PendingActivation> {
+        if !self.renderer_ready {
+            self.draining = false;
+            return None;
+        }
+        let next = self.pending.pop_front();
+        if next.is_none() {
+            self.draining = false;
+        }
+        next
+    }
+}
+
+fn activation_inbox() -> &'static Mutex<ActivationInbox> {
+    static INBOX: OnceLock<Mutex<ActivationInbox>> = OnceLock::new();
+    INBOX.get_or_init(|| Mutex::new(ActivationInbox::default()))
+}
+
+fn with_activation_inbox<T>(f: impl FnOnce(&mut ActivationInbox) -> T) -> T {
+    let mut inbox = activation_inbox()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    f(&mut inbox)
+}
+
+pub(crate) fn mark_activation_renderer_unready() {
+    with_activation_inbox(ActivationInbox::mark_unready);
+}
+
+fn show_and_focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        #[cfg(target_os = "linux")]
+        {
+            linux_fix::nudge_main_window(window.clone());
+        }
+    }
+}
+
+fn dispatch_activation(app: &tauri::AppHandle, activation: PendingActivation) {
+    match activation {
+        PendingActivation::Focus => show_and_focus_main_window(app),
+        PendingActivation::InvalidDeepLink {
+            focus_main_window: should_focus,
+        } => {
+            emit_safe_deeplink_error(app);
+            if should_focus {
+                show_and_focus_main_window(app);
+            }
+        }
+        PendingActivation::DeepLink {
+            request,
+            focus_main_window: should_focus,
+        } => {
+            emit_deeplink_request(app, &request, false);
+            if should_focus {
+                show_and_focus_main_window(app);
+            }
+        }
+    }
+}
+
+fn drain_pending_activations(app: &tauri::AppHandle) {
+    loop {
+        let next = with_activation_inbox(ActivationInbox::take_next);
+        let Some(activation) = next else {
+            return;
+        };
+        dispatch_activation(app, activation);
+    }
+}
+
+fn mark_activation_renderer_ready(app: &tauri::AppHandle) {
+    if with_activation_inbox(ActivationInbox::mark_ready) {
+        drain_pending_activations(app);
+    }
+}
+
+fn activation_ready_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("activation-ready")
+        .setup(|app, _api| {
+            let activation_app = app.clone();
+            app.listen(FRONTEND_DEEPLINK_READY_EVENT, move |_| {
+                mark_activation_renderer_ready(&activation_app);
+            });
+            Ok(())
+        })
+        .build()
+}
+
+fn submit_activation(app: &tauri::AppHandle, activation: PendingActivation) {
+    let was_lightweight = crate::lightweight::is_lightweight_mode();
+    let should_exit_lightweight = should_exit_lightweight_mode(was_lightweight, &activation);
+    if was_lightweight {
+        // A destroyed WebView cannot still own a live listener even if an old
+        // ready event raced with the native single-instance callback. A
+        // non-focusing rejection remains queued without rebuilding the UI.
+        mark_activation_renderer_unready();
+    }
+
+    match with_activation_inbox(|inbox| inbox.enqueue(activation)) {
+        ActivationEnqueueResult::StartDrain => drain_pending_activations(app),
+        ActivationEnqueueResult::Queued | ActivationEnqueueResult::Coalesced => {}
+        ActivationEnqueueResult::RejectedAtCapacity => {
+            // A local sender can deliberately fill this queue while the
+            // renderer is unavailable. Rejecting excess semantics after a
+            // waking activation has tried to displace one non-waking item is
+            // the bounded DoS policy. Capacity never suppresses the separate
+            // decision to wake an existing or rebuilt main window.
+            log::warn!(
+                "Rejected a semantic activation because the bounded renderer-ready queue is full"
+            );
+        }
+    }
+
+    if should_exit_lightweight {
+        if let Err(error) = crate::lightweight::exit_lightweight_mode(app) {
+            log::error!("退出轻量模式重建窗口失败: {error}");
+        }
+    }
+}
+
 fn emit_safe_deeplink_error(app: &tauri::AppHandle) {
     // Do not expose the rejected URL or parser diagnostic. Deep links may
     // legitimately carry credentials, and the renderer only needs a safe,
@@ -400,6 +698,25 @@ fn emit_safe_deeplink_error(app: &tauri::AppHandle) {
         serde_json::json!({ "code": "invalid_deeplink" }),
     ) {
         log::error!("Failed to emit safe deep-link error event: {error}");
+    }
+}
+
+fn emit_deeplink_request(
+    app: &tauri::AppHandle,
+    request: &crate::deeplink::DeepLinkImportRequest,
+    focus_main_window: bool,
+) {
+    log::info!("Successfully parsed deep link request");
+
+    if let Err(e) = app.emit("deeplink-import", request) {
+        log::error!("✗ Failed to emit deeplink-import event: {e}");
+    } else {
+        log::info!("✓ Emitted deeplink-import event to frontend");
+    }
+
+    if focus_main_window {
+        show_and_focus_main_window(app);
+        log::info!("✓ Window shown and focused");
     }
 }
 
@@ -421,68 +738,44 @@ fn handle_deeplink_url(
     log::info!("Deep link URL detected from {source}");
 
     match crate::deeplink::parse_deeplink_url(url_str) {
-        Ok(request) => {
-            log::info!("Successfully parsed deep link request");
-
-            if let Err(e) = app.emit("deeplink-import", &request) {
-                log::error!("✗ Failed to emit deeplink-import event: {e}");
-            } else {
-                log::info!("✓ Emitted deeplink-import event to frontend");
-            }
-
-            if focus_main_window {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.unminimize();
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                    #[cfg(target_os = "linux")]
-                    {
-                        linux_fix::nudge_main_window(window.clone());
-                    }
-                    log::info!("✓ Window shown and focused");
-                }
-            }
-        }
+        Ok(request) => submit_activation(
+            app,
+            PendingActivation::DeepLink {
+                request: Box::new(request),
+                focus_main_window,
+            },
+        ),
         Err(_) => {
             log::warn!("Rejected invalid deep link from {source}");
-            emit_safe_deeplink_error(app);
+            submit_activation(
+                app,
+                PendingActivation::InvalidDeepLink { focus_main_window },
+            );
         }
     }
 
     true
 }
 
-/// Handles a raw, bounded activation envelope received before/alongside Tauri.
-/// The pipe protocol authenticates the sender but never attests to the content:
-/// every candidate URL returns through the ordinary deep-link parser before the
-/// renderer sees it, and a non-link activation merely restores the main window.
-#[cfg(target_os = "windows")]
-fn handle_windows_activation(
-    app: tauri::AppHandle,
-    activation: crate::windows_runtime::ActivationEnvelope,
-) {
-    if crate::lightweight::is_lightweight_mode() {
-        if let Err(error) = crate::lightweight::exit_lightweight_mode(&app) {
-            log::error!("Windows activation could not restore the main window: {error}");
-            return;
-        }
-    }
+/// Builds the configured main WebView. Windows supplies the frozen Shell
+/// user's absolute LocalAppData directory after disabling Tauri's automatic
+/// config-window creation; this bypasses the elevated process path resolver.
+pub(crate) fn create_main_webview(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
+    let window_config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == "main")
+        .cloned()
+        .ok_or_else(|| tauri::Error::Io(std::io::Error::other("main window config missing")))?;
 
-    let mut handled_deeplink = false;
-    for argument in activation.args() {
-        if handle_deeplink_url(&app, argument, true, "windows activation pipe") {
-            handled_deeplink = true;
-            break;
-        }
-    }
-
-    if !handled_deeplink {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
-        }
-    }
+    let builder = tauri::WebviewWindowBuilder::from_config(app, &window_config)?;
+    #[cfg(target_os = "windows")]
+    let builder = builder.data_directory(crate::windows_runtime::webview_user_data_dir(
+        &app.config().identifier,
+    ));
+    builder.build()
 }
 
 /// 更新托盘菜单的Tauri命令
@@ -525,61 +818,69 @@ pub fn run() {
     // 设置 panic hook，在应用崩溃时记录日志到 <app_config_dir>/crash.log（默认 ~/.fyagent/crash.log）
     panic_hook::setup_panic_hook();
 
-    // Windows 正式程序以管理员权限运行；在 Tauri、用户目录、数据库和托盘初始化前
-    // 清理 FyAgent 自身遗留的 Run 值。清理失败时不继续启动，避免把已禁用的自启
-    // 策略静默降级为“尽力而为”。
-    #[cfg(target_os = "windows")]
-    if let Err(error) = auto_launch::enforce_platform_auto_launch_policy() {
-        eprintln!("FyAgent cannot enforce the Windows auto-launch policy: {error}");
-        return;
-    }
+    let builder = tauri::Builder::default().plugin(activation_ready_plugin());
 
-    let builder = tauri::Builder::default();
-
-    // Windows owns single-business-instance detection before Tauri exists so a
-    // rejected second launch cannot initialize the runtime, logger, database,
-    // tray, or renderer. Keep the cross-platform plugin on its native
-    // macOS/Linux paths only.
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    // The plugin transport is only instance coordination, not authentication.
+    // Validate its complete argv envelope before the existing lightweight,
+    // deep-link, and focus-only behavior sees any local WM_COPYDATA content.
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             log::info!("=== Single Instance Callback Triggered ===");
             log::debug!("Args count: {}", args.len());
-            // Arguments can be arbitrary local paths or custom-protocol URLs
-            // carrying credentials. Retain only their count for diagnostics;
-            // parsing below is the sole consumer of their contents.
-
-            if crate::lightweight::is_lightweight_mode() {
-                if let Err(e) = crate::lightweight::exit_lightweight_mode(app) {
-                    log::error!("退出轻量模式重建窗口失败: {e}");
+            #[cfg(target_os = "windows")]
+            let args = match crate::windows_runtime::normalize_single_instance_args(args) {
+                Some(args) => args,
+                None => {
+                    log::warn!("Rejected an invalid single-instance argument envelope");
+                    return;
                 }
-            }
+            };
+            // A protocol-looking argument must pass scheme/version/action and
+            // DTO validation before even lightweight/focus behavior runs. The
+            // renderer receives only the parsed confirmation request, never
+            // the raw local transport payload.
+            let deeplink_request = match args.iter().find(|arg| arg.starts_with("fyagent://")) {
+                Some(candidate) => match crate::deeplink::parse_deeplink_url(candidate) {
+                    Ok(request) => Some(request),
+                    Err(_) => {
+                        log::warn!("Rejected invalid deep link from single_instance args");
+                        submit_activation(
+                            app,
+                            PendingActivation::InvalidDeepLink {
+                                // Preserve the historical macOS/Linux focus
+                                // behavior. Windows rejects protocol-looking
+                                // local input without giving it focus effects.
+                                focus_main_window: !cfg!(target_os = "windows"),
+                            },
+                        );
+                        return;
+                    }
+                },
+                None => None,
+            };
 
-            // Check for deep link URL in args (mainly for Windows/Linux command line)
-            let mut found_deeplink = false;
-            for arg in &args {
-                if handle_deeplink_url(app, arg, false, "single_instance args") {
-                    found_deeplink = true;
-                    break;
-                }
-            }
-
-            if !found_deeplink {
+            if let Some(request) = deeplink_request {
+                submit_activation(
+                    app,
+                    PendingActivation::DeepLink {
+                        request: Box::new(request),
+                        focus_main_window: true,
+                    },
+                );
+            } else {
                 log::info!("ℹ No deep link URL found in args (this is expected on macOS when launched via system)");
-            }
-
-            // Show and focus window regardless
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-                #[cfg(target_os = "linux")]
-                {
-                    linux_fix::nudge_main_window(window.clone());
-                }
+                submit_activation(app, PendingActivation::Focus);
             }
         }));
 
     let builder = builder
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main"
+                && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+            {
+                mark_activation_renderer_unready();
+            }
+        })
         // 注册 deep-link 插件（处理 macOS AppleEvent 和其他平台的深链接）
         .plugin(tauri_plugin_deep_link::init())
         // 拦截窗口关闭：根据设置决定是否最小化到托盘
@@ -616,29 +917,29 @@ pub fn run() {
         })
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_opener::init());
+
+    #[cfg(not(target_os = "windows"))]
+    let builder = builder
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(window_state_flags())
                 .skip_initial_state("main")
                 .build(),
-        )
+        );
+
+    let builder = builder
         .setup(|app| {
             #[cfg(target_os = "windows")]
             {
-                // The listener itself was bound before `Builder::default()`.
-                // Register the Tauri-side consumer at the first setup line so
-                // any envelope queued during construction is re-parsed and
-                // focused before user configuration or database work begins.
-                let activation_app = app.handle().clone();
-                crate::windows_runtime::install_activation_handler(move |activation| {
-                    let activation_app = activation_app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        handle_windows_activation(activation_app, activation);
-                    });
-                })
-                .map_err(|code| std::io::Error::other(code.as_str()))?;
+                create_main_webview(app.handle())?;
+                // Plugin setup has already admitted this process as the primary
+                // instance. Cleanup owns one known legacy value only and must
+                // never block startup if Alice's hive is temporarily unavailable.
+                if let Err(error) = auto_launch::enforce_platform_auto_launch_policy() {
+                    log::warn!("Unable to clean the legacy Shell-user auto-launch value: {error}");
+                }
             }
 
             let _ = rustls::crypto::ring::default_provider().install_default();
@@ -1554,10 +1855,7 @@ pub fn run() {
                 // The configured window begins hidden. Restore, clamp and
                 // reapply maximization before either normal or silent startup
                 // decides its visibility, avoiding off-screen/legacy flashes.
-                if let Err(error) = restore_hidden_main_window_layout(&window) {
-                    log::warn!("Unable to apply main-window layout policy: {error}");
-                }
-                install_main_window_layout_listener(&window);
+                prepare_main_webview(&window);
 
                 // 在窗口首次显示前同步装饰状态，避免前端加载后再切换导致标题栏闪烁
                 // 仅 Linux 生效：解决 Wayland 下系统窗口按钮不可用的问题
@@ -1632,6 +1930,7 @@ pub fn run() {
             commands::extract_common_config_snippet,
             commands::read_live_provider_settings,
             commands::get_settings,
+            commands::get_user_home_dir,
             commands::save_settings,
             commands::has_codex_unify_history_backup,
             commands::restore_codex_unified_history,
@@ -1945,8 +2244,25 @@ pub fn run() {
             commands::codex_desktop_open_log_directory,
         ]);
 
+    let context = tauri::generate_context!();
+    #[cfg(target_os = "windows")]
+    let context = {
+        let mut context = context;
+        if let Some(window) = context
+            .config_mut()
+            .app
+            .windows
+            .iter_mut()
+            .find(|window| window.label == "main")
+        {
+            window.create = false;
+            window.data_directory = None;
+        }
+        context
+    };
+
     let app = builder
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while running tauri application");
 
     app.run(|app_handle, event| {
@@ -2681,6 +2997,7 @@ fn classify_codex_desktop_exit_protection(
 // 在应用主动退出前显式持久化窗口状态
 // ============================================================
 
+#[cfg(not(target_os = "windows"))]
 fn window_state_flags() -> StateFlags {
     StateFlags::POSITION | StateFlags::SIZE | StateFlags::MAXIMIZED
 }
@@ -2688,7 +3005,14 @@ fn window_state_flags() -> StateFlags {
 /// 当前应用的退出路径会拦截 `ExitRequested` 并最终直接 `std::process::exit(0)`，
 /// 这里需要在真正结束进程前手动落盘，避免 window-state 插件的默认退出钩子被绕过。
 pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
-    if let Err(err) = app_handle.save_window_state(window_state_flags()) {
+    #[cfg(target_os = "windows")]
+    let result = crate::windows_window_state::save(app_handle);
+    #[cfg(not(target_os = "windows"))]
+    let result = app_handle
+        .save_window_state(window_state_flags())
+        .map_err(|error| error.to_string());
+
+    if let Err(err) = result {
         log::error!("退出前保存窗口状态失败: {err}");
     } else {
         log::info!("已在退出前保存窗口状态");
@@ -2697,18 +3021,14 @@ pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
 
 /// 主动释放 single-instance 锁。
 ///
-/// macOS/Linux 使用插件提供的 listener；Windows 在 Tauri 前绑定受认证的
-/// named-pipe guard。我们有若干路径会直接 `std::process::exit(0)`，不会触发
-/// 插件挂在 `RunEvent::Exit` 上的清理钩子。重启前主动释放可以避免新进程误连
-/// 旧 listener 后自行退出。
+/// 所有桌面平台使用 single-instance 插件。我们有若干路径会直接
+/// `std::process::exit(0)`，不会触发插件挂在 `RunEvent::Exit` 上的清理钩子。
+/// 重启前主动释放可以避免新进程误连旧 listener 后自行退出。
 pub fn destroy_single_instance_lock(app_handle: &tauri::AppHandle) {
-    #[cfg(target_os = "windows")]
-    crate::windows_runtime::release_instance_guard();
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     tauri_plugin_single_instance::destroy(app_handle);
 
-    #[cfg(target_os = "windows")]
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     let _ = app_handle;
 }
 
@@ -2732,12 +3052,236 @@ pub fn restart_process(app_handle: &tauri::AppHandle) -> ! {
 mod tests {
     use super::{
         classify_codex_desktop_exit_protection, classify_exit_request,
-        enabled_proxy_apps_on_startup, redact_url_for_log, redact_url_for_log_with_secrets,
-        redact_url_origin_for_log, runtime_log_level_allows, CodexDesktopExitProtection,
-        ExitRequestAction,
+        enabled_proxy_apps_on_startup, fallback_monitor_index, redact_url_for_log,
+        redact_url_for_log_with_secrets, redact_url_origin_for_log, runtime_log_level_allows,
+        should_exit_lightweight_mode, ActivationEnqueueResult, ActivationInbox,
+        CodexDesktopExitProtection, ExitRequestAction, PendingActivation, PhysicalMonitorWorkArea,
+        MAX_PENDING_ACTIVATIONS,
     };
     use crate::codex_desktop::types::JobStage;
     use crate::database::Database;
+
+    fn monitor_area(x: i32, width: u32) -> PhysicalMonitorWorkArea {
+        PhysicalMonitorWorkArea {
+            x,
+            y: 0,
+            width,
+            height: 1080,
+        }
+    }
+
+    #[test]
+    fn disconnected_monitor_fallback_prefers_primary_then_first_available() {
+        let available = [monitor_area(-1920, 1920), monitor_area(0, 2560)];
+
+        assert_eq!(
+            fallback_monitor_index(&available, Some(monitor_area(0, 2560))),
+            Some(1)
+        );
+        assert_eq!(fallback_monitor_index(&available, None), Some(0));
+        assert_eq!(
+            fallback_monitor_index(&available, Some(monitor_area(5000, 1280))),
+            Some(0)
+        );
+        assert_eq!(fallback_monitor_index(&[], None), None);
+    }
+
+    #[test]
+    fn semantic_activation_queue_waits_for_ready_and_drains_fifo() {
+        let mut inbox = ActivationInbox::default();
+        let request = crate::deeplink::DeepLinkImportRequest {
+            version: "v1".to_owned(),
+            resource: "provider".to_owned(),
+            name: Some("queued".to_owned()),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            inbox.enqueue(PendingActivation::DeepLink {
+                request: Box::new(request),
+                focus_main_window: true,
+            }),
+            ActivationEnqueueResult::Queued
+        );
+        assert_eq!(
+            inbox.enqueue(PendingActivation::InvalidDeepLink {
+                focus_main_window: false,
+            }),
+            ActivationEnqueueResult::Queued
+        );
+        assert_eq!(
+            inbox.enqueue(PendingActivation::Focus),
+            ActivationEnqueueResult::Queued
+        );
+        assert!(inbox.mark_ready());
+        assert!(matches!(
+            inbox.take_next(),
+            Some(PendingActivation::DeepLink { .. })
+        ));
+        assert!(matches!(
+            inbox.take_next(),
+            Some(PendingActivation::InvalidDeepLink { .. })
+        ));
+        assert!(matches!(inbox.take_next(), Some(PendingActivation::Focus)));
+        assert!(inbox.take_next().is_none());
+        assert!(!inbox.draining);
+    }
+
+    #[test]
+    fn semantic_activation_wake_policy_matches_its_focus_effect() {
+        let request = || {
+            Box::new(crate::deeplink::DeepLinkImportRequest {
+                version: "v1".to_owned(),
+                resource: "provider".to_owned(),
+                ..Default::default()
+            })
+        };
+
+        assert!(PendingActivation::Focus.should_wake_main_window());
+        assert!(PendingActivation::InvalidDeepLink {
+            focus_main_window: true,
+        }
+        .should_wake_main_window());
+        assert!(!PendingActivation::InvalidDeepLink {
+            focus_main_window: false,
+        }
+        .should_wake_main_window());
+        assert!(PendingActivation::DeepLink {
+            request: request(),
+            focus_main_window: true,
+        }
+        .should_wake_main_window());
+        assert!(!PendingActivation::DeepLink {
+            request: request(),
+            focus_main_window: false,
+        }
+        .should_wake_main_window());
+    }
+
+    #[test]
+    fn semantic_activation_queue_is_bounded_and_coalesces_focus() {
+        let mut inbox = ActivationInbox::default();
+        assert_eq!(
+            inbox.enqueue(PendingActivation::Focus),
+            ActivationEnqueueResult::Queued
+        );
+        assert_eq!(
+            inbox.enqueue(PendingActivation::Focus),
+            ActivationEnqueueResult::Coalesced
+        );
+
+        for index in 1..MAX_PENDING_ACTIVATIONS {
+            let request = crate::deeplink::DeepLinkImportRequest {
+                version: "v1".to_owned(),
+                resource: "provider".to_owned(),
+                name: Some(format!("queued-{index}")),
+                ..Default::default()
+            };
+            assert_eq!(
+                inbox.enqueue(PendingActivation::DeepLink {
+                    request: Box::new(request),
+                    focus_main_window: true,
+                }),
+                ActivationEnqueueResult::Queued
+            );
+        }
+
+        assert_eq!(inbox.pending.len(), MAX_PENDING_ACTIVATIONS);
+        assert_eq!(
+            inbox.enqueue(PendingActivation::DeepLink {
+                request: Box::new(crate::deeplink::DeepLinkImportRequest::default()),
+                focus_main_window: true,
+            }),
+            ActivationEnqueueResult::RejectedAtCapacity
+        );
+    }
+
+    #[test]
+    fn waking_activation_displaces_a_non_waking_item_at_capacity() {
+        let mut inbox = ActivationInbox::default();
+        for _ in 0..MAX_PENDING_ACTIVATIONS {
+            assert_eq!(
+                inbox.enqueue(PendingActivation::InvalidDeepLink {
+                    focus_main_window: false,
+                }),
+                ActivationEnqueueResult::Queued
+            );
+        }
+
+        let activation = PendingActivation::Focus;
+        assert!(should_exit_lightweight_mode(true, &activation));
+        assert_eq!(inbox.enqueue(activation), ActivationEnqueueResult::Queued);
+        assert_eq!(inbox.pending.len(), MAX_PENDING_ACTIVATIONS);
+        assert_eq!(
+            inbox
+                .pending
+                .iter()
+                .filter(|queued| !queued.should_wake_main_window())
+                .count(),
+            MAX_PENDING_ACTIVATIONS - 1
+        );
+        assert!(matches!(
+            inbox.pending.back(),
+            Some(PendingActivation::Focus)
+        ));
+    }
+
+    #[test]
+    fn capacity_rejection_does_not_change_a_waking_activation_exit_policy() {
+        let mut inbox = ActivationInbox::default();
+        for index in 0..MAX_PENDING_ACTIVATIONS {
+            assert_eq!(
+                inbox.enqueue(PendingActivation::DeepLink {
+                    request: Box::new(crate::deeplink::DeepLinkImportRequest {
+                        version: "v1".to_owned(),
+                        resource: "provider".to_owned(),
+                        name: Some(format!("waking-{index}")),
+                        ..Default::default()
+                    }),
+                    focus_main_window: true,
+                }),
+                ActivationEnqueueResult::Queued
+            );
+        }
+
+        let activation = PendingActivation::Focus;
+        let should_exit = should_exit_lightweight_mode(true, &activation);
+        assert_eq!(
+            inbox.enqueue(activation),
+            ActivationEnqueueResult::RejectedAtCapacity
+        );
+        assert!(should_exit);
+        assert_eq!(inbox.pending.len(), MAX_PENDING_ACTIVATIONS);
+    }
+
+    #[test]
+    fn renderer_reload_pauses_drain_without_losing_the_next_semantic() {
+        let mut inbox = ActivationInbox {
+            renderer_ready: true,
+            ..ActivationInbox::default()
+        };
+        assert_eq!(
+            inbox.enqueue(PendingActivation::Focus),
+            ActivationEnqueueResult::StartDrain
+        );
+        assert!(matches!(inbox.take_next(), Some(PendingActivation::Focus)));
+        assert_eq!(
+            inbox.enqueue(PendingActivation::InvalidDeepLink {
+                focus_main_window: false,
+            }),
+            ActivationEnqueueResult::Queued
+        );
+
+        inbox.mark_unready();
+        assert!(inbox.take_next().is_none());
+        assert_eq!(inbox.pending.len(), 1);
+        assert!(inbox.mark_ready());
+        assert!(matches!(
+            inbox.take_next(),
+            Some(PendingActivation::InvalidDeepLink { .. })
+        ));
+        assert!(inbox.take_next().is_none());
+    }
 
     #[test]
     fn log_url_redaction_strips_credentials_and_query_keeps_path() {

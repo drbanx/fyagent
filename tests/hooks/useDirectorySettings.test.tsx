@@ -7,7 +7,7 @@ const getAppConfigDirOverrideMock = vi.hoisted(() => vi.fn());
 const getConfigDirMock = vi.hoisted(() => vi.fn());
 const selectConfigDirectoryMock = vi.hoisted(() => vi.fn());
 const setAppConfigDirOverrideMock = vi.hoisted(() => vi.fn());
-const homeDirMock = vi.hoisted(() => vi.fn<() => Promise<string>>());
+const getUserHomeDirMock = vi.hoisted(() => vi.fn<() => Promise<string>>());
 const joinMock = vi.hoisted(() =>
   vi.fn(async (...segments: string[]) => segments.join("/")),
 );
@@ -17,13 +17,13 @@ vi.mock("@/lib/api", () => ({
   settingsApi: {
     getAppConfigDirOverride: getAppConfigDirOverrideMock,
     getConfigDir: getConfigDirMock,
+    getUserHomeDir: getUserHomeDirMock,
     selectConfigDirectory: selectConfigDirectoryMock,
     setAppConfigDirOverride: setAppConfigDirOverrideMock,
   },
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
-  homeDir: homeDirMock,
   join: joinMock,
 }));
 
@@ -59,7 +59,7 @@ describe("useDirectorySettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    homeDirMock.mockResolvedValue("/home/mock");
+    getUserHomeDirMock.mockResolvedValue("/home/mock");
     joinMock.mockImplementation(async (...segments: string[]) =>
       segments.join("/"),
     );

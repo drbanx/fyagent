@@ -3,14 +3,20 @@ import { server } from "./server";
 
 const TAURI_ENDPOINT = "http://tauri.local";
 const invokedCommands: string[] = [];
+const emittedEvents: Array<{ event: string; payload: unknown }> = [];
 let tauriRequestHeaders: HeadersInit | undefined;
 
 export const clearTauriInvocations = () => {
   invokedCommands.length = 0;
+  emittedEvents.length = 0;
   tauriRequestHeaders = undefined;
 };
 
 export const getTauriInvocations = (): readonly string[] => invokedCommands;
+export const getEmittedTauriEvents = (): ReadonlyArray<{
+  event: string;
+  payload: unknown;
+}> => emittedEvents;
 
 export const setTauriRequestHeaders = (headers: HeadersInit | undefined) => {
   tauriRequestHeaders = headers;
@@ -55,6 +61,9 @@ export const emitTauriEvent = (event: string, payload: unknown) => {
 };
 
 vi.mock("@tauri-apps/api/event", () => ({
+  emit: async (event: string, payload?: unknown) => {
+    emittedEvents.push({ event, payload });
+  },
   listen: async (
     event: string,
     handler: (event: { payload: unknown }) => void,

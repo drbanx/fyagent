@@ -2,7 +2,8 @@
 //!
 //! Codex stores thread metadata in `state_5.sqlite`, normally inside the Codex
 //! config dir (`CODEX_HOME` / `~/.codex`). The SQLite location can be moved with
-//! the `sqlite_home` key in `config.toml` or the `CODEX_SQLITE_HOME` env var;
+//! the `sqlite_home` key in `config.toml` or, outside Windows, the
+//! `CODEX_SQLITE_HOME` env var;
 //! when set, a second DB lives there. Both history migration and the session
 //! list's title lookup need the same resolution, so it lives here once.
 
@@ -18,6 +19,7 @@ use crate::config::get_home_dir;
 pub(crate) const CODEX_STATE_DB_FILENAME: &str = "state_5.sqlite";
 
 /// Env var that overrides the Codex SQLite state directory.
+#[cfg(not(target_os = "windows"))]
 const CODEX_SQLITE_HOME_ENV: &str = "CODEX_SQLITE_HOME";
 
 /// Resolve every candidate `state_5.sqlite` path: the config-dir DB plus, when
@@ -52,6 +54,7 @@ fn sqlite_home_from_codex_config(config_text: &str) -> Option<PathBuf> {
     Some(resolve_user_path(raw))
 }
 
+#[cfg(not(target_os = "windows"))]
 fn sqlite_home_from_env() -> Option<PathBuf> {
     let raw = std::env::var(CODEX_SQLITE_HOME_ENV).ok()?;
     let raw = raw.trim();
@@ -59,6 +62,13 @@ fn sqlite_home_from_env() -> Option<PathBuf> {
         return None;
     }
     Some(resolve_user_path(raw))
+}
+
+#[cfg(target_os = "windows")]
+fn sqlite_home_from_env() -> Option<PathBuf> {
+    // The elevated process environment may belong to Bob. Windows accepts the
+    // explicit sqlite_home in Alice's config.toml, but never this ambient path.
+    None
 }
 
 fn resolve_user_path(raw: &str) -> PathBuf {

@@ -1,62 +1,35 @@
-//! Windows early-runtime guards that must run before Tauri creates a runtime.
+//! Frozen Windows Shell-user authority and untrusted activation boundaries.
 //!
-//! The platform-neutral protocol and policy checks live here so they can be
-//! unit-tested without touching a Windows token, named pipe, process, or
-//! registry. Native Win32 calls are isolated in `native.rs`.
+//! Windows release processes are elevated, so process-scoped directory and
+//! registry APIs identify the administrator that approved UAC instead of the
+//! Explorer user who launched FyAgent.  The native adapter resolves Explorer's
+//! token once, before Tauri or any user data is initialized, and this module
+//! exposes only immutable projections of that result.
 
-// Protocol internals are consumed by the native Windows adapter and by the
-// platform-neutral unit tests. Keep dead-code linting active in both of those
-// configurations while avoiding false positives in a non-Windows library build.
-#![cfg_attr(not(any(target_os = "windows", test)), allow(dead_code))]
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 
-use hmac::{Hmac, Mac};
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use serde::Serialize;
+use std::{
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
-const ACTIVATION_MAGIC: [u8; 8] = *b"FYACTV1\0";
-const ACTIVATION_PROTOCOL_VERSION: u8 = 1;
-const ACTIVATION_KIND_REQUEST: u8 = 1;
-const ACTIVATION_KIND_STOP: u8 = 2;
-const ACTIVATION_HEADER_BYTES: usize = 16;
-/// The deep-link parser accepts a 64 KiB URL. Leave deterministic room for
-/// its argv envelope and JSON schema while retaining a fixed upper bound.
-pub(crate) const ACTIVATION_FRAME_BYTES: usize = 72 * 1024;
-const MAX_ACTIVATION_ARGUMENTS: usize = 8;
-const MAX_ACTIVATION_ARGUMENT_BYTES: usize = 64 * 1024;
-
-/// Release builds publish this fixed-size descriptor only inside the
-/// installer-owned ProgramData runtime root. The state file names are
-/// deterministic (from a SID/session hash), while every live pipe endpoint is
-/// a fresh secret.
-const INSTANCE_STATE_MAGIC: [u8; 8] = *b"FYAGST2\0";
-const INSTANCE_STATE_VERSION: u8 = 2;
-const INSTANCE_STATE_BYTES: usize = 96;
-pub(crate) const PIPE_NONCE_BYTES: usize = 31;
-pub(crate) const ACTIVATION_CAPABILITY_BYTES: usize = 32;
-
-const HANDSHAKE_MAGIC: [u8; 8] = *b"FYAGHS2\0";
-const HANDSHAKE_VERSION: u8 = 2;
-const HANDSHAKE_CLIENT_HELLO: u8 = 1;
-const HANDSHAKE_SERVER_PROOF: u8 = 2;
-pub(crate) const HANDSHAKE_FRAME_BYTES: usize = 80;
-pub(crate) const HANDSHAKE_CHALLENGE_BYTES: usize = 32;
-pub(crate) const ACTIVATION_AUTH_TAG_BYTES: usize = 32;
-pub(crate) const ACTIVATION_AUTH_FRAME_BYTES: usize = 44;
-
-const SERVER_PROOF_DOMAIN: &[u8] = b"fyagent/windows-activation/v2/server-proof\0";
-const REQUEST_AUTH_DOMAIN: &[u8] = b"fyagent/windows-activation/v2/request-auth\0";
-
-/// State and lease files must never be owned by a user SID. In a UAC
-/// split-token session, that owner SID is present in the medium token and can
-/// imply WRITE_DAC even when the visible DACL is otherwise restrictive.
 #[cfg(target_os = "windows")]
-pub(crate) const PROTECTED_STATIC_OBJECT_SDDL: &str = "O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)";
+mod native;
+mod registry;
 
-type HmacSha256 = Hmac<Sha256>;
+#[cfg(target_os = "windows")]
+pub(crate) use registry::{
+    create_or_open_shell_user_environment_update, open_shell_user_environment_read,
+    open_shell_user_environment_update, open_shell_user_run_update,
+};
 
-/// Only safe, renderer-facing facts about the current process are exposed.
-/// In particular this deliberately excludes SIDs, account names, token
-/// handles, paths, and raw Windows error information.
+pub(crate) const MAX_SINGLE_INSTANCE_ARGUMENTS: usize = 8;
+pub(crate) const MAX_SINGLE_INSTANCE_ARGUMENT_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_SINGLE_INSTANCE_JSON_BYTES: usize = 73_712;
+
+/// Only safe process telemetry is exposed to the renderer.  The Shell SID and
+/// paths deliberately remain crate-private.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimePrivilegeStatus {
@@ -82,192 +55,6 @@ pub enum InteractiveUserMatch {
     Unavailable,
 }
 
-/// Frozen proof of the same-session Windows Shell user selected at startup.
-///
-/// This type is crate-private and deliberately has no serialization support.
-/// Its SID is required by the ordinary Windows package adapter, but must never
-/// enter renderer DTOs or diagnostics.
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) struct InteractiveUserContext {
-    process_session_id: u32,
-    shell_session_id: u32,
-    canonical_sid: String,
-}
-
-impl std::fmt::Debug for InteractiveUserContext {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("InteractiveUserContext")
-            .field("process_session_id", &self.process_session_id)
-            .field("shell_session_id", &self.shell_session_id)
-            .field("canonical_sid", &"<redacted>")
-            .finish()
-    }
-}
-
-impl InteractiveUserContext {
-    pub(crate) const fn process_session_id(&self) -> u32 {
-        self.process_session_id
-    }
-
-    pub(crate) const fn shell_session_id(&self) -> u32 {
-        self.shell_session_id
-    }
-
-    pub(crate) fn canonical_sid(&self) -> &str {
-        &self.canonical_sid
-    }
-
-    #[cfg(test)]
-    pub(crate) fn for_test(canonical_sid: &str, session_id: u32) -> Self {
-        evaluate_interactive_user_proof(
-            Some(session_id),
-            Some(canonical_sid),
-            Some(session_id),
-            Some(canonical_sid),
-        )
-        .context()
-        .expect("test interactive-user context must use a canonical SID")
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum InteractiveUserProof<'a> {
-    Match {
-        process_session_id: u32,
-        shell_session_id: u32,
-        canonical_sid: &'a str,
-    },
-    SessionMismatch,
-    SidMismatch,
-    Unavailable,
-}
-
-impl std::fmt::Debug for InteractiveUserProof<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Match {
-                process_session_id,
-                shell_session_id,
-                canonical_sid: _,
-            } => formatter
-                .debug_struct("Match")
-                .field("process_session_id", process_session_id)
-                .field("shell_session_id", shell_session_id)
-                .field("canonical_sid", &"<redacted>")
-                .finish(),
-            Self::SessionMismatch => formatter.write_str("SessionMismatch"),
-            Self::SidMismatch => formatter.write_str("SidMismatch"),
-            Self::Unavailable => formatter.write_str("Unavailable"),
-        }
-    }
-}
-
-impl InteractiveUserProof<'_> {
-    const fn interactive_user_match(self) -> InteractiveUserMatch {
-        match self {
-            Self::Match { .. } => InteractiveUserMatch::Match,
-            Self::SessionMismatch | Self::SidMismatch => InteractiveUserMatch::Mismatch,
-            Self::Unavailable => InteractiveUserMatch::Unavailable,
-        }
-    }
-
-    fn context(self) -> Option<InteractiveUserContext> {
-        let Self::Match {
-            process_session_id,
-            shell_session_id,
-            canonical_sid,
-        } = self
-        else {
-            return None;
-        };
-
-        Some(InteractiveUserContext {
-            process_session_id,
-            shell_session_id,
-            canonical_sid: canonical_sid.to_owned(),
-        })
-    }
-}
-
-fn evaluate_interactive_user_proof<'a>(
-    process_session_id: Option<u32>,
-    process_sid: Option<&'a str>,
-    shell_session_id: Option<u32>,
-    shell_sid: Option<&'a str>,
-) -> InteractiveUserProof<'a> {
-    let (Some(process_session_id), Some(process_sid), Some(shell_session_id), Some(shell_sid)) =
-        (process_session_id, process_sid, shell_session_id, shell_sid)
-    else {
-        return InteractiveUserProof::Unavailable;
-    };
-
-    if !is_canonical_sid(process_sid) || !is_canonical_sid(shell_sid) {
-        return InteractiveUserProof::Unavailable;
-    }
-    if process_session_id != shell_session_id {
-        return InteractiveUserProof::SessionMismatch;
-    }
-    if process_sid != shell_sid {
-        return InteractiveUserProof::SidMismatch;
-    }
-
-    InteractiveUserProof::Match {
-        process_session_id,
-        shell_session_id,
-        canonical_sid: process_sid,
-    }
-}
-
-fn interactive_user_proof_matches_context(
-    expected: &InteractiveUserContext,
-    process_session_id: Option<u32>,
-    process_sid: Option<&str>,
-    shell_session_id: Option<u32>,
-    shell_sid: Option<&str>,
-) -> bool {
-    matches!(
-        evaluate_interactive_user_proof(
-            process_session_id,
-            process_sid,
-            shell_session_id,
-            shell_sid,
-        ),
-        InteractiveUserProof::Match {
-            process_session_id,
-            shell_session_id,
-            canonical_sid,
-        } if process_session_id == expected.process_session_id()
-            && shell_session_id == expected.shell_session_id()
-            && canonical_sid == expected.canonical_sid()
-    )
-}
-
-pub(crate) fn user_sid_matches_context(
-    expected: &InteractiveUserContext,
-    candidate_sid: Option<&str>,
-) -> bool {
-    matches!(
-        candidate_sid,
-        Some(candidate_sid)
-            if is_canonical_sid(candidate_sid)
-                && candidate_sid == expected.canonical_sid()
-    )
-}
-
-fn is_canonical_sid(value: &str) -> bool {
-    let Some(components) = value.strip_prefix("S-") else {
-        return false;
-    };
-    let components = components.split('-').collect::<Vec<_>>();
-
-    value.len() <= 184
-        && components.len() >= 3
-        && components.iter().all(|component| {
-            !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_digit())
-        })
-}
-
 impl RuntimePrivilegeStatus {
     #[cfg(not(target_os = "windows"))]
     const fn unsupported() -> Self {
@@ -281,33 +68,31 @@ impl RuntimePrivilegeStatus {
     }
 }
 
-/// Stable codes are intentionally the only pre-logger diagnostics. They are
-/// safe to print before the user-configured log sink exists.
+/// Stable pre-logger failures contain no account, SID, path, token, or native
+/// error details.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowsStartupErrorCode {
-    PrivilegeStatusUnavailable,
-    RequiredElevationMissing,
-    RequiredLocalAdministratorMissing,
-    InteractiveUserMismatch,
     InteractiveUserUnavailable,
-    InstanceGuardUnavailable,
-    ActivationForwardUnavailable,
-    ActivationListenerUnavailable,
-    ActivationHandlerUnavailable,
+    InteractiveUserProfileUnavailable,
+    InteractiveUserLocalAppDataUnavailable,
+    InteractiveUserRoamingAppDataUnavailable,
+    InteractiveUserEnvironmentUnavailable,
 }
 
 impl WindowsStartupErrorCode {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::PrivilegeStatusUnavailable => "WIN_PRIVILEGE_STATUS_UNAVAILABLE",
-            Self::RequiredElevationMissing => "WIN_REQUIRED_ELEVATION_MISSING",
-            Self::RequiredLocalAdministratorMissing => "WIN_REQUIRED_LOCAL_ADMIN_MISSING",
-            Self::InteractiveUserMismatch => "WIN_INTERACTIVE_USER_MISMATCH",
             Self::InteractiveUserUnavailable => "WIN_INTERACTIVE_USER_UNAVAILABLE",
-            Self::InstanceGuardUnavailable => "WIN_INSTANCE_GUARD_UNAVAILABLE",
-            Self::ActivationForwardUnavailable => "WIN_INSTANCE_ACTIVATION_UNAVAILABLE",
-            Self::ActivationListenerUnavailable => "WIN_INSTANCE_LISTENER_UNAVAILABLE",
-            Self::ActivationHandlerUnavailable => "WIN_INSTANCE_HANDLER_UNAVAILABLE",
+            Self::InteractiveUserProfileUnavailable => "WIN_INTERACTIVE_PROFILE_UNAVAILABLE",
+            Self::InteractiveUserLocalAppDataUnavailable => {
+                "WIN_INTERACTIVE_LOCAL_APP_DATA_UNAVAILABLE"
+            }
+            Self::InteractiveUserRoamingAppDataUnavailable => {
+                "WIN_INTERACTIVE_ROAMING_APP_DATA_UNAVAILABLE"
+            }
+            Self::InteractiveUserEnvironmentUnavailable => {
+                "WIN_INTERACTIVE_ENVIRONMENT_UNAVAILABLE"
+            }
         }
     }
 }
@@ -318,637 +103,445 @@ impl std::fmt::Display for WindowsStartupErrorCode {
     }
 }
 
-/// The only outcomes accepted by `main` before Tauri construction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowsStartupDisposition {
-    Continue,
-    ForwardedToExistingInstance,
-    Blocked(WindowsStartupErrorCode),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PrivilegeGateDecision {
-    Allow,
-    Block(WindowsStartupErrorCode),
-}
-
-/// `fyagent_windows_release` is supplied only by the release manifest build
-/// path. Development and test binaries deliberately use `asInvoker`, so a
-/// non-elevated status must remain observable rather than blocking startup.
-#[cfg(target_os = "windows")]
-pub(crate) const fn formal_windows_build() -> bool {
-    cfg!(all(target_os = "windows", fyagent_windows_release))
-}
-
-fn evaluate_privilege_gate(
-    formal_build: bool,
-    status: RuntimePrivilegeStatus,
-) -> PrivilegeGateDecision {
-    if !formal_build {
-        return PrivilegeGateDecision::Allow;
-    }
-
-    if !status.supported {
-        return PrivilegeGateDecision::Block(WindowsStartupErrorCode::PrivilegeStatusUnavailable);
-    }
-    if !status.elevated {
-        return PrivilegeGateDecision::Block(WindowsStartupErrorCode::RequiredElevationMissing);
-    }
-    if !status.local_administrator {
-        return PrivilegeGateDecision::Block(
-            WindowsStartupErrorCode::RequiredLocalAdministratorMissing,
-        );
-    }
-    match status.interactive_user_match {
-        InteractiveUserMatch::Match => {}
-        InteractiveUserMatch::Mismatch => {
-            return PrivilegeGateDecision::Block(WindowsStartupErrorCode::InteractiveUserMismatch)
-        }
-        // A release binary is intentionally stricter than the asInvoker
-        // development/test manifest: absence of an identity proof is not a
-        // proof that the elevated process belongs to the interactive user.
-        InteractiveUserMatch::Unavailable => {
-            return PrivilegeGateDecision::Block(
-                WindowsStartupErrorCode::InteractiveUserUnavailable,
-            )
-        }
-    }
-
-    PrivilegeGateDecision::Allow
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ActivationEnvelope {
-    args: Vec<String>,
-}
-
-impl ActivationEnvelope {
-    #[cfg(target_os = "windows")]
-    pub(crate) fn args(&self) -> &[String] {
-        &self.args
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ActivationFrame(Box<[u8; ACTIVATION_FRAME_BYTES]>);
-
-impl ActivationFrame {
-    pub(crate) fn as_bytes(&self) -> &[u8] {
-        &self.0[..]
-    }
-
-    pub(crate) fn as_mut_bytes(&mut self) -> &mut [u8] {
-        &mut self.0[..]
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ActivationWireMessage {
-    Request(ActivationEnvelope),
-    Stop,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ActivationPayload {
-    version: u8,
-    args: Vec<String>,
-}
-
-fn validate_activation_args(args: &[String]) -> Result<(), ()> {
-    if args.len() > MAX_ACTIVATION_ARGUMENTS {
-        return Err(());
-    }
-
-    if args.iter().any(|argument| {
-        argument.len() > MAX_ACTIVATION_ARGUMENT_BYTES || argument.chars().any(char::is_control)
-    }) {
-        return Err(());
-    }
-
-    Ok(())
-}
-
-pub(crate) fn encode_activation_request(args: Vec<String>) -> Result<ActivationFrame, ()> {
-    validate_activation_args(&args)?;
-
-    let payload = serde_json::to_vec(&serde_json::json!({
-        "version": ACTIVATION_PROTOCOL_VERSION,
-        "args": args,
-    }))
-    .map_err(|_| ())?;
-    let capacity = ACTIVATION_FRAME_BYTES - ACTIVATION_HEADER_BYTES;
-    if payload.len() > capacity || payload.len() > u32::MAX as usize {
-        return Err(());
-    }
-
-    let mut frame = Box::new([0_u8; ACTIVATION_FRAME_BYTES]);
-    frame[..ACTIVATION_MAGIC.len()].copy_from_slice(&ACTIVATION_MAGIC);
-    frame[8] = ACTIVATION_PROTOCOL_VERSION;
-    frame[9] = ACTIVATION_KIND_REQUEST;
-    frame[10..14].copy_from_slice(&(payload.len() as u32).to_le_bytes());
-    frame[ACTIVATION_HEADER_BYTES..ACTIVATION_HEADER_BYTES + payload.len()]
-        .copy_from_slice(&payload);
-    Ok(ActivationFrame(frame))
-}
-
-pub(crate) fn encode_activation_stop() -> ActivationFrame {
-    let mut frame = Box::new([0_u8; ACTIVATION_FRAME_BYTES]);
-    frame[..ACTIVATION_MAGIC.len()].copy_from_slice(&ACTIVATION_MAGIC);
-    frame[8] = ACTIVATION_PROTOCOL_VERSION;
-    frame[9] = ACTIVATION_KIND_STOP;
-    ActivationFrame(frame)
-}
-
-pub(crate) fn decode_activation_frame(frame: &[u8]) -> Result<ActivationWireMessage, ()> {
-    if frame.len() != ACTIVATION_FRAME_BYTES
-        || frame[..ACTIVATION_MAGIC.len()] != ACTIVATION_MAGIC
-        || frame[8] != ACTIVATION_PROTOCOL_VERSION
-        || frame[14..ACTIVATION_HEADER_BYTES]
-            .iter()
-            .any(|byte| *byte != 0)
-    {
-        return Err(());
-    }
-
-    let payload_length = u32::from_le_bytes(
-        frame[10..14]
-            .try_into()
-            .expect("activation frame header has a fixed length"),
-    ) as usize;
-    let payload_end = ACTIVATION_HEADER_BYTES
-        .checked_add(payload_length)
-        .filter(|end| *end <= ACTIVATION_FRAME_BYTES)
-        .ok_or(())?;
-
-    if frame[payload_end..].iter().any(|byte| *byte != 0) {
-        return Err(());
-    }
-
-    match frame[9] {
-        ACTIVATION_KIND_STOP if payload_length == 0 => Ok(ActivationWireMessage::Stop),
-        ACTIVATION_KIND_REQUEST => {
-            let payload: ActivationPayload =
-                serde_json::from_slice(&frame[ACTIVATION_HEADER_BYTES..payload_end])
-                    .map_err(|_| ())?;
-            if payload.version != ACTIVATION_PROTOCOL_VERSION {
-                return Err(());
-            }
-            validate_activation_args(&payload.args)?;
-            Ok(ActivationWireMessage::Request(ActivationEnvelope {
-                args: payload.args,
-            }))
-        }
-        _ => Err(()),
-    }
-}
-
-/// A capability-bearing descriptor for one live elevated business instance.
-/// It is intentionally not serializable or debuggable: its nonce and
-/// capability must never become renderer data, diagnostics, or object names
-/// derived from predictable user information.
+/// Immutable Shell-user authority selected at process startup.
+///
+/// This type is intentionally not serializable.  Paths and the canonical SID
+/// are capabilities for trusted host code, not renderer diagnostics.
 #[derive(Clone, PartialEq, Eq)]
-pub(crate) struct InstanceState {
-    owner_pid: u32,
-    owner_creation_time: u64,
-    pipe_nonce: [u8; PIPE_NONCE_BYTES],
-    capability: [u8; ACTIVATION_CAPABILITY_BYTES],
+pub(crate) struct WindowsInteractiveUserContext {
+    process_session_id: u32,
+    shell_session_id: u32,
+    canonical_sid: String,
+    user_profile: PathBuf,
+    user_local_app_data: PathBuf,
+    user_roaming_app_data: PathBuf,
+    shell_command_paths: Vec<PathBuf>,
 }
 
-impl InstanceState {
-    pub(crate) fn new(
-        owner_pid: u32,
-        owner_creation_time: u64,
-        pipe_nonce: [u8; PIPE_NONCE_BYTES],
-        capability: [u8; ACTIVATION_CAPABILITY_BYTES],
-    ) -> Result<Self, ()> {
-        if owner_pid == 0
-            || owner_creation_time == 0
-            || pipe_nonce.iter().all(|byte| *byte == 0)
-            || capability.iter().all(|byte| *byte == 0)
-        {
-            return Err(());
-        }
+/// Transitional name retained for the current-user Codex adapter.  The alias
+/// can disappear when that adapter is moved to the Shell-user helper.
+pub(crate) type InteractiveUserContext = WindowsInteractiveUserContext;
 
-        Ok(Self {
-            owner_pid,
-            owner_creation_time,
-            pipe_nonce,
-            capability,
+impl std::fmt::Debug for WindowsInteractiveUserContext {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("WindowsInteractiveUserContext")
+            .field("process_session_id", &self.process_session_id)
+            .field("shell_session_id", &self.shell_session_id)
+            .field("canonical_sid", &"<redacted>")
+            .field("user_profile", &"<redacted>")
+            .field("user_local_app_data", &"<redacted>")
+            .field("user_roaming_app_data", &"<redacted>")
+            .field("shell_command_paths", &"<redacted>")
+            .finish()
+    }
+}
+
+impl WindowsInteractiveUserContext {
+    pub(crate) const fn process_session_id(&self) -> u32 {
+        self.process_session_id
+    }
+
+    pub(crate) const fn shell_session_id(&self) -> u32 {
+        self.shell_session_id
+    }
+
+    pub(crate) fn canonical_sid(&self) -> &str {
+        &self.canonical_sid
+    }
+
+    pub(crate) fn user_profile(&self) -> &Path {
+        &self.user_profile
+    }
+
+    pub(crate) fn user_local_app_data(&self) -> &Path {
+        &self.user_local_app_data
+    }
+
+    pub(crate) fn user_roaming_app_data(&self) -> &Path {
+        &self.user_roaming_app_data
+    }
+
+    pub(crate) fn shell_command_paths(&self) -> &[PathBuf] {
+        &self.shell_command_paths
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(canonical_sid: &str, session_id: u32) -> Self {
+        let test_profile = std::env::temp_dir().join("fyagent-test-shell-user");
+        build_interactive_user_context(InteractiveUserObservation {
+            process_session_id: Some(session_id),
+            process_sid: Some(canonical_sid),
+            shell_session_id: Some(session_id),
+            shell_sid: Some(canonical_sid),
+            user_profile: Some(test_profile.clone()),
+            user_local_app_data: Some(test_profile.join("AppData").join("Local")),
+            user_roaming_app_data: Some(test_profile.join("AppData").join("Roaming")),
+            shell_command_paths: vec![PathBuf::from(r"C:\FyAgentTest\bin")],
         })
-    }
-
-    pub(crate) const fn owner_pid(&self) -> u32 {
-        self.owner_pid
-    }
-
-    pub(crate) const fn owner_creation_time(&self) -> u64 {
-        self.owner_creation_time
-    }
-
-    pub(crate) fn pipe_name(&self) -> String {
-        let mut endpoint = String::from(r"\\.\pipe\FyAgent.Activation.v2.");
-        // A 31-byte nonce is rendered as 61 hexadecimal nibbles. This gives
-        // 244 bits of endpoint entropy while keeping the protocol invariant
-        // explicit instead of relying on a variable UUID implementation.
-        for (index, byte) in self.pipe_nonce.iter().enumerate() {
-            if index == PIPE_NONCE_BYTES - 1 {
-                endpoint.push_str(&format!("{:x}", byte >> 4));
-            } else {
-                endpoint.push_str(&format!("{byte:02x}"));
-            }
-        }
-        endpoint
-    }
-
-    pub(crate) fn capability(&self) -> &[u8; ACTIVATION_CAPABILITY_BYTES] {
-        &self.capability
+        .expect("test interactive-user context must be complete")
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) struct InstanceStateFrame(Box<[u8; INSTANCE_STATE_BYTES]>);
+#[derive(Debug)]
+pub(super) struct InteractiveUserObservation<'a> {
+    pub process_session_id: Option<u32>,
+    pub process_sid: Option<&'a str>,
+    pub shell_session_id: Option<u32>,
+    pub shell_sid: Option<&'a str>,
+    pub user_profile: Option<PathBuf>,
+    pub user_local_app_data: Option<PathBuf>,
+    pub user_roaming_app_data: Option<PathBuf>,
+    pub shell_command_paths: Vec<PathBuf>,
+}
 
-impl InstanceStateFrame {
-    pub(crate) fn as_bytes(&self) -> &[u8] {
-        &self.0[..]
+fn build_interactive_user_context(
+    observation: InteractiveUserObservation<'_>,
+) -> Result<WindowsInteractiveUserContext, WindowsStartupErrorCode> {
+    let process_session_id = observation
+        .process_session_id
+        .ok_or(WindowsStartupErrorCode::InteractiveUserUnavailable)?;
+    let shell_session_id = observation
+        .shell_session_id
+        .ok_or(WindowsStartupErrorCode::InteractiveUserUnavailable)?;
+    if process_session_id != shell_session_id {
+        return Err(WindowsStartupErrorCode::InteractiveUserUnavailable);
     }
+    let shell_sid = observation
+        .shell_sid
+        .filter(|sid| is_canonical_sid(sid))
+        .ok_or(WindowsStartupErrorCode::InteractiveUserUnavailable)?;
+
+    // The process SID is telemetry only.  In the supported UAC scenario the
+    // elevated process can be Bob while Explorer, user state, and PackageManager
+    // authority belong to Alice.
+    let _process_matches_shell = observation
+        .process_sid
+        .filter(|sid| is_canonical_sid(sid))
+        .is_some_and(|sid| sid == shell_sid);
+
+    let user_profile = required_absolute_path(
+        observation.user_profile,
+        WindowsStartupErrorCode::InteractiveUserProfileUnavailable,
+    )?;
+    let user_local_app_data = required_absolute_path(
+        observation.user_local_app_data,
+        WindowsStartupErrorCode::InteractiveUserLocalAppDataUnavailable,
+    )?;
+    let user_roaming_app_data = required_absolute_path(
+        observation.user_roaming_app_data,
+        WindowsStartupErrorCode::InteractiveUserRoamingAppDataUnavailable,
+    )?;
+    let shell_command_paths = normalize_windows_command_paths(observation.shell_command_paths);
+    #[cfg(target_os = "windows")]
+    let shell_command_paths = shell_command_paths
+        .into_iter()
+        .filter(|path| native::is_local_fixed_drive_path(path))
+        .collect::<Vec<_>>();
+    if shell_command_paths.is_empty() {
+        return Err(WindowsStartupErrorCode::InteractiveUserEnvironmentUnavailable);
+    }
+
+    Ok(WindowsInteractiveUserContext {
+        process_session_id,
+        shell_session_id,
+        canonical_sid: shell_sid.to_owned(),
+        user_profile,
+        user_local_app_data,
+        user_roaming_app_data,
+        shell_command_paths,
+    })
 }
 
-pub(crate) fn encode_instance_state(state: &InstanceState) -> InstanceStateFrame {
-    let mut frame = Box::new([0_u8; INSTANCE_STATE_BYTES]);
-    frame[..INSTANCE_STATE_MAGIC.len()].copy_from_slice(&INSTANCE_STATE_MAGIC);
-    frame[8] = INSTANCE_STATE_VERSION;
-    frame[12..16].copy_from_slice(&state.owner_pid.to_le_bytes());
-    frame[16..24].copy_from_slice(&state.owner_creation_time.to_le_bytes());
-    frame[24..24 + PIPE_NONCE_BYTES].copy_from_slice(&state.pipe_nonce);
-    frame[24 + PIPE_NONCE_BYTES..24 + PIPE_NONCE_BYTES + ACTIVATION_CAPABILITY_BYTES]
-        .copy_from_slice(&state.capability);
-    InstanceStateFrame(frame)
+fn windows_path_key(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_ascii_lowercase()
 }
 
-pub(crate) fn decode_instance_state(frame: &[u8]) -> Result<InstanceState, ()> {
-    if frame.len() != INSTANCE_STATE_BYTES
-        || frame[..INSTANCE_STATE_MAGIC.len()] != INSTANCE_STATE_MAGIC
-        || frame[8] != INSTANCE_STATE_VERSION
-        || frame[9..12].iter().any(|byte| *byte != 0)
-        || frame[24 + PIPE_NONCE_BYTES + ACTIVATION_CAPABILITY_BYTES..]
-            .iter()
-            .any(|byte| *byte != 0)
+fn push_unique_windows_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths
+        .iter()
+        .any(|existing| windows_path_key(existing) == windows_path_key(&path))
     {
-        return Err(());
-    }
-
-    let owner_pid = u32::from_le_bytes(frame[12..16].try_into().map_err(|_| ())?);
-    let owner_creation_time = u64::from_le_bytes(frame[16..24].try_into().map_err(|_| ())?);
-    let mut pipe_nonce = [0_u8; PIPE_NONCE_BYTES];
-    pipe_nonce.copy_from_slice(&frame[24..24 + PIPE_NONCE_BYTES]);
-    let mut capability = [0_u8; ACTIVATION_CAPABILITY_BYTES];
-    capability.copy_from_slice(
-        &frame[24 + PIPE_NONCE_BYTES..24 + PIPE_NONCE_BYTES + ACTIVATION_CAPABILITY_BYTES],
-    );
-    InstanceState::new(owner_pid, owner_creation_time, pipe_nonce, capability)
-}
-
-/// V2 uses a challenge-response before argv is sent. A client learns whether
-/// it reached the descriptor owner before it transmits a deep link, and the
-/// server later verifies that the client also knows the protected capability.
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) struct HandshakeFrame([u8; HANDSHAKE_FRAME_BYTES]);
-
-impl HandshakeFrame {
-    pub(crate) fn as_bytes(&self) -> &[u8] {
-        &self.0[..]
+        paths.push(path);
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) enum HandshakeMessage {
-    ClientHello([u8; HANDSHAKE_CHALLENGE_BYTES]),
-    ServerProof {
-        challenge: [u8; HANDSHAKE_CHALLENGE_BYTES],
-        tag: [u8; ACTIVATION_AUTH_TAG_BYTES],
-    },
-}
-
-pub(crate) fn encode_client_hello(
-    challenge: [u8; HANDSHAKE_CHALLENGE_BYTES],
-) -> Result<HandshakeFrame, ()> {
-    if challenge.iter().all(|byte| *byte == 0) {
-        return Err(());
+fn is_absolute_windows_path(value: &str) -> bool {
+    if value.starts_with(r"\\?\") || value.starts_with(r"\\.\") || value.starts_with(r"\??\") {
+        return false;
     }
-
-    let mut frame = [0_u8; HANDSHAKE_FRAME_BYTES];
-    frame[..HANDSHAKE_MAGIC.len()].copy_from_slice(&HANDSHAKE_MAGIC);
-    frame[8] = HANDSHAKE_VERSION;
-    frame[9] = HANDSHAKE_CLIENT_HELLO;
-    frame[12..12 + HANDSHAKE_CHALLENGE_BYTES].copy_from_slice(&challenge);
-    Ok(HandshakeFrame(frame))
-}
-
-pub(crate) fn encode_server_proof(
-    capability: &[u8; ACTIVATION_CAPABILITY_BYTES],
-    challenge: [u8; HANDSHAKE_CHALLENGE_BYTES],
-) -> HandshakeFrame {
-    let mut frame = [0_u8; HANDSHAKE_FRAME_BYTES];
-    frame[..HANDSHAKE_MAGIC.len()].copy_from_slice(&HANDSHAKE_MAGIC);
-    frame[8] = HANDSHAKE_VERSION;
-    frame[9] = HANDSHAKE_SERVER_PROOF;
-    frame[12..12 + HANDSHAKE_CHALLENGE_BYTES].copy_from_slice(&challenge);
-    let tag = server_proof_tag(capability, &challenge);
-    frame[12 + HANDSHAKE_CHALLENGE_BYTES
-        ..12 + HANDSHAKE_CHALLENGE_BYTES + ACTIVATION_AUTH_TAG_BYTES]
-        .copy_from_slice(&tag);
-    HandshakeFrame(frame)
-}
-
-pub(crate) fn decode_handshake_frame(frame: &[u8]) -> Result<HandshakeMessage, ()> {
-    if frame.len() != HANDSHAKE_FRAME_BYTES
-        || frame[..HANDSHAKE_MAGIC.len()] != HANDSHAKE_MAGIC
-        || frame[8] != HANDSHAKE_VERSION
-        || frame[10..12].iter().any(|byte| *byte != 0)
-        || frame[12 + HANDSHAKE_CHALLENGE_BYTES + ACTIVATION_AUTH_TAG_BYTES..]
-            .iter()
-            .any(|byte| *byte != 0)
-    {
-        return Err(());
-    }
-
-    let mut challenge = [0_u8; HANDSHAKE_CHALLENGE_BYTES];
-    challenge.copy_from_slice(&frame[12..12 + HANDSHAKE_CHALLENGE_BYTES]);
-    if challenge.iter().all(|byte| *byte == 0) {
-        return Err(());
-    }
-
-    let tag_range =
-        12 + HANDSHAKE_CHALLENGE_BYTES..12 + HANDSHAKE_CHALLENGE_BYTES + ACTIVATION_AUTH_TAG_BYTES;
-    let mut tag = [0_u8; ACTIVATION_AUTH_TAG_BYTES];
-    tag.copy_from_slice(&frame[tag_range]);
-
-    match frame[9] {
-        HANDSHAKE_CLIENT_HELLO if tag.iter().all(|byte| *byte == 0) => {
-            Ok(HandshakeMessage::ClientHello(challenge))
-        }
-        HANDSHAKE_SERVER_PROOF if !tag.iter().all(|byte| *byte == 0) => {
-            Ok(HandshakeMessage::ServerProof { challenge, tag })
-        }
-        _ => Err(()),
-    }
-}
-
-pub(crate) fn verify_server_proof(
-    capability: &[u8; ACTIVATION_CAPABILITY_BYTES],
-    challenge: [u8; HANDSHAKE_CHALLENGE_BYTES],
-    proof: &[u8],
-) -> bool {
-    match decode_handshake_frame(proof) {
-        Ok(HandshakeMessage::ServerProof {
-            challenge: returned_challenge,
-            tag,
-        }) if returned_challenge == challenge => verify_hmac(
-            capability,
-            SERVER_PROOF_DOMAIN,
-            &[&returned_challenge],
-            &tag,
-        ),
-        _ => false,
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) struct ActivationAuthFrame([u8; ACTIVATION_AUTH_FRAME_BYTES]);
-
-impl ActivationAuthFrame {
-    pub(crate) fn as_bytes(&self) -> &[u8] {
-        &self.0[..]
-    }
-}
-
-pub(crate) fn encode_activation_auth(
-    capability: &[u8; ACTIVATION_CAPABILITY_BYTES],
-    challenge: &[u8; HANDSHAKE_CHALLENGE_BYTES],
-    activation: &ActivationFrame,
-) -> ActivationAuthFrame {
-    let mut frame = [0_u8; ACTIVATION_AUTH_FRAME_BYTES];
-    frame[..8].copy_from_slice(b"FYAGAU2\0");
-    frame[8] = HANDSHAKE_VERSION;
-    let tag = request_auth_tag(capability, challenge, activation.as_bytes());
-    frame[12..].copy_from_slice(&tag);
-    ActivationAuthFrame(frame)
-}
-
-pub(crate) fn verify_activation_auth(
-    capability: &[u8; ACTIVATION_CAPABILITY_BYTES],
-    challenge: &[u8; HANDSHAKE_CHALLENGE_BYTES],
-    activation: &ActivationFrame,
-    auth: &[u8],
-) -> bool {
-    if auth.len() != ACTIVATION_AUTH_FRAME_BYTES
-        || auth[..8] != *b"FYAGAU2\0"
-        || auth[8] != HANDSHAKE_VERSION
-        || auth[9..12].iter().any(|byte| *byte != 0)
+    if value
+        .chars()
+        .any(|character| matches!(character, '<' | '>' | '"' | '|' | '?' | '*'))
     {
         return false;
     }
 
-    verify_hmac(
-        capability,
-        REQUEST_AUTH_DOMAIN,
-        &[challenge, activation.as_bytes()],
-        &auth[12..],
-    )
+    let bytes = value.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'\\' | b'/')
+        && !value[2..].contains(':')
 }
 
-fn server_proof_tag(
-    capability: &[u8; ACTIVATION_CAPABILITY_BYTES],
-    challenge: &[u8; HANDSHAKE_CHALLENGE_BYTES],
-) -> [u8; ACTIVATION_AUTH_TAG_BYTES] {
-    hmac_tag(capability, SERVER_PROOF_DOMAIN, &[challenge])
-}
-
-fn request_auth_tag(
-    capability: &[u8; ACTIVATION_CAPABILITY_BYTES],
-    challenge: &[u8; HANDSHAKE_CHALLENGE_BYTES],
-    activation: &[u8],
-) -> [u8; ACTIVATION_AUTH_TAG_BYTES] {
-    hmac_tag(capability, REQUEST_AUTH_DOMAIN, &[challenge, activation])
-}
-
-fn hmac_tag(
-    capability: &[u8; ACTIVATION_CAPABILITY_BYTES],
-    domain: &[u8],
-    chunks: &[&[u8]],
-) -> [u8; ACTIVATION_AUTH_TAG_BYTES] {
-    let mut mac = HmacSha256::new_from_slice(capability)
-        .expect("HMAC-SHA-256 accepts the fixed-length activation capability");
-    mac.update(domain);
-    for chunk in chunks {
-        mac.update(chunk);
+fn normalize_windows_command_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut normalized = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for path in paths {
+        let Some(rendered) = path.to_str() else {
+            continue;
+        };
+        let rendered = rendered.trim();
+        let rendered = match (rendered.strip_prefix('"'), rendered.strip_suffix('"')) {
+            (Some(without_prefix), Some(_)) if rendered.len() >= 2 => {
+                &without_prefix[..without_prefix.len().saturating_sub(1)]
+            }
+            (None, None) => rendered,
+            _ => continue,
+        };
+        if rendered.is_empty()
+            || rendered.contains('"')
+            || rendered.chars().any(char::is_control)
+            || !is_absolute_windows_path(rendered)
+            || rendered
+                .replace('/', "\\")
+                .trim_end_matches('\\')
+                .to_ascii_lowercase()
+                .ends_with("\\microsoft\\windowsapps")
+        {
+            continue;
+        }
+        let path = PathBuf::from(rendered);
+        if seen.insert(windows_path_key(&path)) {
+            normalized.push(path);
+        }
     }
-    let mut tag = [0_u8; ACTIVATION_AUTH_TAG_BYTES];
-    tag.copy_from_slice(&mac.finalize().into_bytes());
-    tag
+    normalized
 }
 
-fn verify_hmac(
-    capability: &[u8; ACTIVATION_CAPABILITY_BYTES],
-    domain: &[u8],
-    chunks: &[&[u8]],
-    tag: &[u8],
+pub(crate) fn parse_windows_command_path(value: &str) -> Vec<PathBuf> {
+    normalize_windows_command_paths(value.split(';').map(PathBuf::from).collect())
+}
+
+fn required_absolute_path(
+    path: Option<PathBuf>,
+    error: WindowsStartupErrorCode,
+) -> Result<PathBuf, WindowsStartupErrorCode> {
+    path.filter(|path| path.is_absolute() && !path.as_os_str().is_empty())
+        .ok_or(error)
+}
+
+pub(crate) fn is_canonical_sid(value: &str) -> bool {
+    let Some(components) = value.strip_prefix("S-") else {
+        return false;
+    };
+    let components = components.split('-').collect::<Vec<_>>();
+
+    value.len() <= 184
+        && components.len() >= 3
+        && components.iter().all(|component| {
+            !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_digit())
+        })
+}
+
+pub(crate) fn user_sid_matches_context(
+    expected: &WindowsInteractiveUserContext,
+    candidate_sid: Option<&str>,
 ) -> bool {
-    let mut mac = HmacSha256::new_from_slice(capability)
-        .expect("HMAC-SHA-256 accepts the fixed-length activation capability");
-    mac.update(domain);
-    for chunk in chunks {
-        mac.update(chunk);
-    }
-    mac.verify_slice(tag).is_ok()
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DescriptorLockState {
-    Held,
-    // Native contended leases route directly to descriptor forwarding; the
-    // platform-neutral decision-table tests still exercise this state.
-    #[cfg(test)]
-    Contended,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DescriptorReadState {
-    Missing,
-    Valid,
-    Malformed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OwnerLiveness {
-    Live,
-    Missing,
-    Reused,
-    Indeterminate,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DescriptorStartupDecision {
-    CreateNew,
-    RemoveStaleThenCreate,
-    #[cfg(test)]
-    ForwardExisting,
-    #[cfg(test)]
-    RetryReadOnly,
-    Block,
-}
-
-/// This state machine deliberately never allows a reader to delete state.
-/// Deletion is possible only while its protected lease is held *and* the
-/// descriptor parses and proves that the recorded owner has exited or its PID
-/// has been reused. Any other uncertainty is a fail-closed startup error.
-pub(crate) fn decide_descriptor_startup(
-    lock: DescriptorLockState,
-    descriptor: DescriptorReadState,
-    owner: Option<OwnerLiveness>,
-) -> DescriptorStartupDecision {
-    match (lock, descriptor, owner) {
-        (DescriptorLockState::Held, DescriptorReadState::Missing, _) => {
-            DescriptorStartupDecision::CreateNew
-        }
-        (
-            DescriptorLockState::Held,
-            DescriptorReadState::Valid,
-            Some(OwnerLiveness::Missing | OwnerLiveness::Reused),
-        ) => DescriptorStartupDecision::RemoveStaleThenCreate,
-        #[cfg(test)]
-        (DescriptorLockState::Contended, DescriptorReadState::Valid, _) => {
-            DescriptorStartupDecision::ForwardExisting
-        }
-        #[cfg(test)]
-        (
-            DescriptorLockState::Contended,
-            DescriptorReadState::Missing | DescriptorReadState::Malformed,
-            _,
-        ) => DescriptorStartupDecision::RetryReadOnly,
-        _ => DescriptorStartupDecision::Block,
-    }
-}
-
-/// Canonical SDDL allow-list for state and lock handles after creation. The
-/// only accepted owners are the built-in Administrators group or LocalSystem;
-/// a current-user owner is deliberately rejected regardless of its DACL.
-pub(crate) fn is_expected_static_object_sddl(sddl: &str) -> bool {
     matches!(
-        sddl,
-        "O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)"
-            | "O:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)"
-            | "O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)"
-            | "O:SYD:P(A;;FA;;;BA)(A;;FA;;;SY)"
+        candidate_sid,
+        Some(candidate_sid)
+            if is_canonical_sid(candidate_sid)
+                && candidate_sid == expected.canonical_sid()
     )
 }
 
-/// Canonical SDDL allow-list for the static NSIS runtime root. It must be a
-/// protected SYSTEM/Administrators-only directory before any descriptor is
-/// read. `AI` is accepted because Windows can preserve the auto-inherited bit
-/// while retaining the same protected ACE set.
-pub(crate) fn is_expected_runtime_root_sddl(sddl: &str) -> bool {
-    matches!(
-        sddl,
-        "O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-            | "O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-            | "O:SYD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)"
-            | "O:SYD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)"
-            | "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-            | "O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-            | "O:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)"
-            | "O:BAD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)"
+static USER_CONTEXT: OnceLock<Result<WindowsInteractiveUserContext, WindowsStartupErrorCode>> =
+    OnceLock::new();
+
+/// Initializes the frozen Shell-user authority.  `main` calls this before the
+/// panic hook, headless compatibility parsing, Tauri construction, or user
+/// path access.
+pub fn initialize_windows_user_context() -> Result<(), WindowsStartupErrorCode> {
+    #[cfg(target_os = "windows")]
+    let result = USER_CONTEXT.get_or_init(native::resolve_interactive_user_context);
+
+    #[cfg(not(target_os = "windows"))]
+    let result =
+        USER_CONTEXT.get_or_init(|| Err(WindowsStartupErrorCode::InteractiveUserUnavailable));
+
+    result.as_ref().map(|_| ()).map_err(|error| *error)
+}
+
+pub(crate) fn interactive_user_context() -> Option<&'static WindowsInteractiveUserContext> {
+    USER_CONTEXT.get()?.as_ref().ok()
+}
+
+pub(crate) fn require_interactive_user_context() -> &'static WindowsInteractiveUserContext {
+    interactive_user_context().expect(
+        "WindowsInteractiveUserContext must be initialized before any Windows user-path access",
     )
 }
 
-/// The dynamic pipe still has a deterministic security descriptor shape: its
-/// owner remains BA/SY, administrators retain object-management access, and
-/// the exact user SID receives only generic read/write data access. A generic
-/// all-access user ACE would reintroduce WRITE_DAC through a leaked endpoint.
-pub(crate) fn is_expected_pipe_sddl(sddl: &str, user_sid: &str) -> bool {
-    let administrators = format!("O:BAD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;{user_sid})");
-    let system = format!("O:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;{user_sid})");
-    sddl == administrators || sddl == system
+pub(crate) fn user_home_dir() -> PathBuf {
+    require_interactive_user_context()
+        .user_profile()
+        .to_path_buf()
 }
 
-/// Builds the opaque per-user/per-session identity used only in protected
-/// ProgramData state and lease filenames. The random v2 pipe name is derived
-/// from descriptor entropy instead, and the raw SID is never exposed.
-pub(crate) fn business_instance_key(user_sid: &str, session_id: u32) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(b"fyagent/windows-business-instance/v1\0");
-    hasher.update(user_sid.as_bytes());
-    hasher.update(b"\0");
-    hasher.update(session_id.to_le_bytes());
-    let digest = hasher.finalize();
-    digest[..16]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+pub(crate) fn user_local_app_data_dir() -> PathBuf {
+    require_interactive_user_context()
+        .user_local_app_data()
+        .to_path_buf()
+}
+
+pub(crate) fn user_roaming_app_data_dir() -> PathBuf {
+    require_interactive_user_context()
+        .user_roaming_app_data()
+        .to_path_buf()
+}
+
+pub(crate) fn shell_command_search_paths() -> Vec<PathBuf> {
+    require_interactive_user_context()
+        .shell_command_paths()
+        .to_vec()
 }
 
 #[cfg(target_os = "windows")]
-mod native;
-
-/// Returns the one startup-frozen identity proof used by ordinary Windows
-/// package operations. This accessor never performs a fallback identity query.
-pub(crate) fn interactive_user_context() -> Option<&'static InteractiveUserContext> {
-    #[cfg(target_os = "windows")]
-    {
-        native::interactive_user_context()
+fn shell_command_path_value_for_context(
+    context: &WindowsInteractiveUserContext,
+    primary: Option<&Path>,
+) -> Option<std::ffi::OsString> {
+    let mut paths = Vec::new();
+    if let Some(primary) = primary {
+        for primary in normalize_windows_command_paths(vec![primary.to_path_buf()])
+            .into_iter()
+            .filter(|path| native::is_local_fixed_drive_path(path))
+        {
+            push_unique_windows_path(&mut paths, primary);
+        }
     }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        None
+    for path in context.shell_command_paths() {
+        push_unique_windows_path(&mut paths, path.clone());
     }
+    std::env::join_paths(paths).ok()
 }
 
-/// Re-proves current process/Shell ownership against the frozen context. The
-/// fresh evidence is never promoted to a replacement lifecycle identity.
-pub(crate) fn revalidate_interactive_user_context(expected: &InteractiveUserContext) -> bool {
+#[cfg(target_os = "windows")]
+pub(crate) fn is_local_command_path(path: &Path) -> bool {
+    normalize_windows_command_paths(vec![path.to_path_buf()])
+        .into_iter()
+        .any(|path| native::is_local_fixed_drive_path(&path))
+}
+
+/// Clears the elevated process environment and installs the narrow environment
+/// shared by every Windows user-CLI child. All user projections and PATH come
+/// from the frozen Explorer context; required system constants come from the
+/// OS-resolved command processor path.
+#[cfg(target_os = "windows")]
+pub(crate) fn configure_shell_user_command(
+    command: &mut std::process::Command,
+    primary: Option<&Path>,
+) -> Result<(), WindowsStartupErrorCode> {
+    let context =
+        interactive_user_context().ok_or(WindowsStartupErrorCode::InteractiveUserUnavailable)?;
+    let path = shell_command_path_value_for_context(context, primary)
+        .ok_or(WindowsStartupErrorCode::InteractiveUserEnvironmentUnavailable)?;
+    let command_processor = system_command_path()
+        .ok_or(WindowsStartupErrorCode::InteractiveUserEnvironmentUnavailable)?;
+    let system_root = command_processor
+        .parent()
+        .and_then(Path::parent)
+        .filter(|path| path.is_absolute())
+        .ok_or(WindowsStartupErrorCode::InteractiveUserEnvironmentUnavailable)?;
+    let user_temp = context.user_local_app_data().join("Temp");
+
+    command.env_clear();
+    command
+        .env("PATH", path)
+        .env("USERPROFILE", context.user_profile())
+        .env("HOME", context.user_profile())
+        .env("LOCALAPPDATA", context.user_local_app_data())
+        .env("APPDATA", context.user_roaming_app_data())
+        .env("TEMP", &user_temp)
+        .env("TMP", &user_temp)
+        .env("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+        .env("OS", "Windows_NT")
+        .env("ComSpec", &command_processor)
+        .env("SystemRoot", system_root)
+        .env("WINDIR", system_root);
+    Ok(())
+}
+
+pub(crate) fn tauri_user_store_path(identifier: &str, filename: &str) -> PathBuf {
+    user_roaming_app_data_dir().join(identifier).join(filename)
+}
+
+pub(crate) fn tauri_window_state_path(identifier: &str) -> PathBuf {
+    tauri_user_store_path(identifier, ".window-state.json")
+}
+
+pub(crate) fn webview_user_data_dir(identifier: &str) -> PathBuf {
+    user_local_app_data_dir().join(identifier)
+}
+
+/// Returns frozen Alice PATH entries plus deterministic locations used only to
+/// discover user-installed tools. Elevated-process PATH and user-scoped
+/// process variables are excluded. Callers must use `shell_command_search_paths`
+/// (or `shell_command_path_value`) when selecting the PATH default or launching
+/// a discovered command.
+#[cfg(target_os = "windows")]
+pub(crate) fn safe_command_search_paths() -> Vec<PathBuf> {
+    let home = user_home_dir();
+    let local = user_local_app_data_dir();
+    let roaming = user_roaming_app_data_dir();
+    let mut paths = shell_command_search_paths();
+    let supplemental = [
+        home.join(".local").join("bin"),
+        home.join(".npm-global").join("bin"),
+        home.join(".npm-packages").join("bin"),
+        home.join(".local").join("share").join("pnpm"),
+        home.join(".volta").join("bin"),
+        home.join("scoop").join("shims"),
+        home.join(".bun").join("bin"),
+        home.join("go").join("bin"),
+        local.join("pnpm"),
+        local.join("Volta").join("bin"),
+        local.join("Yarn").join("bin"),
+        roaming.join("npm"),
+    ];
+    for path in supplemental
+        .into_iter()
+        .filter(|path| is_local_command_path(path))
+    {
+        push_unique_windows_path(&mut paths, path);
+    }
+    for path in native::system_command_directories()
+        .into_iter()
+        .filter(|path| is_local_command_path(path))
+    {
+        push_unique_windows_path(&mut paths, path);
+    }
+    paths
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn system_command_path() -> Option<PathBuf> {
+    native::system_executable_path("cmd.exe")
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn system_executable_path(filename: &str) -> Option<PathBuf> {
+    native::system_executable_path(filename)
+}
+
+pub(crate) fn revalidate_interactive_user_context(
+    expected: &WindowsInteractiveUserContext,
+) -> bool {
     #[cfg(target_os = "windows")]
     {
         native::revalidate_interactive_user_context(expected)
@@ -961,25 +554,10 @@ pub(crate) fn revalidate_interactive_user_context(expected: &InteractiveUserCont
     }
 }
 
-/// Executes the Windows-only, pre-Tauri guard. On every other target this is
-/// deliberately a no-op so cross-platform test binaries never inspect a host
-/// token or create OS resources.
-pub fn early_windows_startup_gate() -> WindowsStartupDisposition {
-    #[cfg(target_os = "windows")]
-    {
-        native::early_windows_startup_gate()
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        WindowsStartupDisposition::Continue
-    }
-}
-
 pub fn runtime_privilege_status() -> RuntimePrivilegeStatus {
     #[cfg(target_os = "windows")]
     {
-        native::runtime_privilege_status()
+        native::runtime_privilege_status(interactive_user_context())
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -988,445 +566,336 @@ pub fn runtime_privilege_status() -> RuntimePrivilegeStatus {
     }
 }
 
+/// Release/test manifest selection remains a compile-time fact used by the
+/// elevated user-CLI boundary.  It no longer selects user identity or a
+/// ProgramData runtime.
 #[cfg(target_os = "windows")]
-pub(crate) fn install_activation_handler<F>(handler: F) -> Result<(), WindowsStartupErrorCode>
-where
-    F: Fn(ActivationEnvelope) + Send + Sync + 'static,
-{
-    native::install_activation_handler(handler)
+pub(crate) const fn formal_windows_build() -> bool {
+    cfg!(all(target_os = "windows", fyagent_windows_release))
 }
 
-#[cfg(target_os = "windows")]
-pub(crate) fn release_instance_guard() {
-    native::release_instance_guard();
+#[cfg(not(target_os = "windows"))]
+pub(crate) const fn formal_windows_build() -> bool {
+    false
+}
+
+/// Validates the complete untrusted argv envelope before any deep-link,
+/// lightweight-window, or focus behavior runs.
+fn serialized_single_instance_envelope_size(args: &[String]) -> Option<usize> {
+    #[derive(Serialize)]
+    struct SingleInstanceEnvelope<'a> {
+        version: u8,
+        args: &'a [String],
+    }
+
+    serde_json::to_vec(&SingleInstanceEnvelope { version: 1, args })
+        .ok()
+        .map(|encoded| encoded.len())
+}
+
+pub(crate) fn normalize_single_instance_args(args: Vec<String>) -> Option<Vec<String>> {
+    if args.len() > MAX_SINGLE_INSTANCE_ARGUMENTS {
+        return None;
+    }
+    if args.iter().any(|argument| {
+        argument.len() > MAX_SINGLE_INSTANCE_ARGUMENT_BYTES
+            || argument.chars().any(char::is_control)
+    }) {
+        return None;
+    }
+    if serialized_single_instance_envelope_size(&args)? > MAX_SINGLE_INSTANCE_JSON_BYTES {
+        return None;
+    }
+    Some(args)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        business_instance_key, decide_descriptor_startup, decode_activation_frame,
-        decode_handshake_frame, decode_instance_state, encode_activation_auth,
-        encode_activation_request, encode_activation_stop, encode_client_hello,
-        encode_instance_state, encode_server_proof, evaluate_interactive_user_proof,
-        evaluate_privilege_gate, interactive_user_proof_matches_context, is_expected_pipe_sddl,
-        is_expected_runtime_root_sddl, is_expected_static_object_sddl, user_sid_matches_context,
-        verify_activation_auth, verify_server_proof, ActivationWireMessage, DescriptorLockState,
-        DescriptorReadState, DescriptorStartupDecision, HandshakeMessage, InstanceState,
-        InteractiveUserMatch, InteractiveUserProof, OwnerLiveness, PrivilegeGateDecision,
-        RuntimePrivilegePlatform, RuntimePrivilegeStatus, WindowsStartupErrorCode,
-        ACTIVATION_FRAME_BYTES,
-    };
+    use super::*;
 
-    fn windows_status(
-        elevated: bool,
-        local_administrator: bool,
-        interactive_user_match: InteractiveUserMatch,
-    ) -> RuntimePrivilegeStatus {
-        RuntimePrivilegeStatus {
-            platform: RuntimePrivilegePlatform::Windows,
-            supported: true,
-            elevated,
-            local_administrator,
-            interactive_user_match,
+    const ALICE: &str = "S-1-5-21-100-200-300-1001";
+    const BOB: &str = "S-1-5-21-100-200-300-1002";
+
+    fn observation(process_sid: &'static str) -> InteractiveUserObservation<'static> {
+        #[cfg(target_os = "windows")]
+        let test_profile = PathBuf::from(r"C:\Users\Alice");
+        #[cfg(not(target_os = "windows"))]
+        let test_profile = PathBuf::from("/users/alice");
+
+        InteractiveUserObservation {
+            process_session_id: Some(7),
+            process_sid: Some(process_sid),
+            shell_session_id: Some(7),
+            shell_sid: Some(ALICE),
+            user_profile: Some(test_profile.clone()),
+            user_local_app_data: Some(test_profile.join("local")),
+            user_roaming_app_data: Some(test_profile.join("roaming")),
+            shell_command_paths: vec![PathBuf::from(r"C:\Users\Alice\bin")],
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum RequiredUserPath {
+        Profile,
+        LocalAppData,
+        RoamingAppData,
+    }
+
+    impl RequiredUserPath {
+        const fn expected_error(self) -> WindowsStartupErrorCode {
+            match self {
+                Self::Profile => WindowsStartupErrorCode::InteractiveUserProfileUnavailable,
+                Self::LocalAppData => {
+                    WindowsStartupErrorCode::InteractiveUserLocalAppDataUnavailable
+                }
+                Self::RoamingAppData => {
+                    WindowsStartupErrorCode::InteractiveUserRoamingAppDataUnavailable
+                }
+            }
+        }
+
+        fn set(self, observation: &mut InteractiveUserObservation<'_>, value: Option<PathBuf>) {
+            match self {
+                Self::Profile => observation.user_profile = value,
+                Self::LocalAppData => observation.user_local_app_data = value,
+                Self::RoamingAppData => observation.user_roaming_app_data = value,
+            }
         }
     }
 
     #[test]
-    fn activation_protocol_round_trips_bounded_raw_arguments() {
-        let frame = encode_activation_request(vec![
-            "FyAgent.exe".to_string(),
-            "fyagent://v1/import?resource=provider&name=Example".to_string(),
-        ])
-        .expect("bounded activation is encoded");
-
-        assert_eq!(frame.as_bytes().len(), ACTIVATION_FRAME_BYTES);
+    fn same_user_context_uses_shell_paths() {
+        let context = build_interactive_user_context(observation(ALICE)).unwrap();
+        assert_eq!(context.canonical_sid(), ALICE);
         assert_eq!(
-            decode_activation_frame(frame.as_bytes()),
-            Ok(ActivationWireMessage::Request(super::ActivationEnvelope {
-                args: vec![
-                    "FyAgent.exe".to_string(),
-                    "fyagent://v1/import?resource=provider&name=Example".to_string(),
-                ],
-            }))
+            context.user_profile(),
+            observation(ALICE).user_profile.as_deref().unwrap()
         );
     }
 
     #[test]
-    fn activation_protocol_rejects_tampering_controls_and_trailing_data() {
-        let mut frame =
-            encode_activation_request(vec!["FyAgent.exe".to_string()]).expect("fixture frame");
-        frame.as_mut_bytes()[0] ^= 1;
-        assert!(decode_activation_frame(frame.as_bytes()).is_err());
-
-        assert!(encode_activation_request(vec!["bad\nargument".to_string()]).is_err());
-
-        let mut frame =
-            encode_activation_request(vec!["FyAgent.exe".to_string()]).expect("fixture frame");
-        let last = frame.as_mut_bytes().len() - 1;
-        frame.as_mut_bytes()[last] = 1;
-        assert!(decode_activation_frame(frame.as_bytes()).is_err());
-    }
-
-    #[test]
-    fn stop_frame_has_no_payload_or_untrusted_arguments() {
-        let frame = encode_activation_stop();
-        assert_eq!(
-            decode_activation_frame(frame.as_bytes()),
-            Ok(ActivationWireMessage::Stop)
-        );
-    }
-
-    #[test]
-    fn release_gate_requires_runtime_proof_but_development_does_not_require_uac() {
-        let no_elevation = windows_status(true, true, InteractiveUserMatch::Match);
-        assert_eq!(
-            evaluate_privilege_gate(
-                true,
-                RuntimePrivilegeStatus {
-                    elevated: false,
-                    ..no_elevation
-                }
-            ),
-            PrivilegeGateDecision::Block(WindowsStartupErrorCode::RequiredElevationMissing)
-        );
-        assert_eq!(
-            evaluate_privilege_gate(
-                true,
-                windows_status(true, true, InteractiveUserMatch::Mismatch)
-            ),
-            PrivilegeGateDecision::Block(WindowsStartupErrorCode::InteractiveUserMismatch)
-        );
-        assert_eq!(
-            evaluate_privilege_gate(
-                true,
-                windows_status(true, true, InteractiveUserMatch::Unavailable)
-            ),
-            PrivilegeGateDecision::Block(WindowsStartupErrorCode::InteractiveUserUnavailable)
-        );
-        assert_eq!(
-            evaluate_privilege_gate(
-                true,
-                windows_status(true, false, InteractiveUserMatch::Match)
-            ),
-            PrivilegeGateDecision::Block(
-                WindowsStartupErrorCode::RequiredLocalAdministratorMissing
-            )
-        );
-        assert_eq!(
-            evaluate_privilege_gate(
-                false,
-                windows_status(false, false, InteractiveUserMatch::Unavailable)
-            ),
-            PrivilegeGateDecision::Allow
-        );
-    }
-
-    #[test]
-    fn interactive_user_matching_shell_proof_freezes_only_redacted_identity_fields() {
-        let sid = "S-1-5-21-1000-1001-1002-1003";
-        let proof = evaluate_interactive_user_proof(Some(7), Some(sid), Some(7), Some(sid));
-        assert_eq!(proof.interactive_user_match(), InteractiveUserMatch::Match);
-        let proof_debug = format!("{proof:?}");
-        assert!(proof_debug.contains("<redacted>"));
-        assert!(!proof_debug.contains(sid));
-
-        let context = proof.context().expect("matching proof creates context");
+    fn elevated_bob_is_allowed_while_shell_alice_remains_authority() {
+        let context = build_interactive_user_context(observation(BOB)).unwrap();
+        assert_eq!(context.canonical_sid(), ALICE);
         assert_eq!(context.process_session_id(), 7);
         assert_eq!(context.shell_session_id(), 7);
-        assert_eq!(context.canonical_sid(), sid);
-
-        let debug = format!("{context:?}");
-        assert!(debug.contains("<redacted>"));
-        assert!(!debug.contains(sid));
-    }
-
-    #[test]
-    fn interactive_user_proof_distinguishes_session_and_sid_mismatch() {
-        let process_sid = "S-1-5-21-1000-1001-1002-1003";
-        let shell_sid = "S-1-5-21-2000-2001-2002-2003";
-
         assert_eq!(
-            evaluate_interactive_user_proof(Some(7), Some(process_sid), Some(8), Some(process_sid),),
-            InteractiveUserProof::SessionMismatch
-        );
-        assert_eq!(
-            evaluate_interactive_user_proof(Some(7), Some(process_sid), Some(7), Some(shell_sid),),
-            InteractiveUserProof::SidMismatch
+            context.user_local_app_data(),
+            observation(ALICE).user_local_app_data.as_deref().unwrap()
         );
     }
 
     #[test]
-    fn interactive_user_proof_rejects_unavailable_or_invalid_sid_evidence() {
-        let sid = "S-1-5-21-1000-1001-1002-1003";
+    fn unavailable_process_sid_does_not_replace_or_invalidate_shell_authority() {
+        let mut unavailable_process = observation(BOB);
+        unavailable_process.process_sid = None;
 
+        let context = build_interactive_user_context(unavailable_process).unwrap();
+
+        assert_eq!(context.canonical_sid(), ALICE);
+        assert_eq!(context.process_session_id(), 7);
+        assert_eq!(context.shell_session_id(), 7);
         assert_eq!(
-            evaluate_interactive_user_proof(Some(7), Some(sid), None, None),
-            InteractiveUserProof::Unavailable
-        );
-        assert_eq!(
-            evaluate_interactive_user_proof(
-                Some(7),
-                Some("not-a-canonical-sid"),
-                Some(7),
-                Some(sid),
-            ),
-            InteractiveUserProof::Unavailable
-        );
-        assert_eq!(
-            evaluate_interactive_user_proof(Some(7), Some(sid), Some(7), Some("S-1-5-invalid"),),
-            InteractiveUserProof::Unavailable
+            context.user_profile(),
+            observation(ALICE).user_profile.as_deref().unwrap()
         );
     }
 
     #[test]
-    fn interactive_user_frozen_context_revalidation_rejects_every_identity_drift_axis() {
-        let sid = "S-1-5-21-1000-1001-1002-1003";
-        let other_sid = "S-1-5-21-2000-2001-2002-2003";
-        let context = super::InteractiveUserContext::for_test(sid, 7);
+    fn missing_shell_session_or_environment_fails_closed() {
+        let mut missing_process_session = observation(BOB);
+        missing_process_session.process_session_id = None;
+        assert_eq!(
+            build_interactive_user_context(missing_process_session),
+            Err(WindowsStartupErrorCode::InteractiveUserUnavailable)
+        );
 
-        assert!(interactive_user_proof_matches_context(
-            &context,
-            Some(7),
-            Some(sid),
-            Some(7),
-            Some(sid),
-        ));
-        assert!(!interactive_user_proof_matches_context(
-            &context,
-            Some(8),
-            Some(sid),
-            Some(8),
-            Some(sid),
-        ));
-        assert!(!interactive_user_proof_matches_context(
-            &context,
-            Some(7),
-            Some(sid),
-            Some(8),
-            Some(sid),
-        ));
-        assert!(!interactive_user_proof_matches_context(
-            &context,
-            Some(7),
-            Some(other_sid),
-            Some(7),
-            Some(other_sid),
-        ));
-        assert!(!interactive_user_proof_matches_context(
-            &context,
-            Some(7),
-            Some(sid),
-            None,
-            None,
-        ));
+        let mut missing_shell_session = observation(BOB);
+        missing_shell_session.shell_session_id = None;
+        assert_eq!(
+            build_interactive_user_context(missing_shell_session),
+            Err(WindowsStartupErrorCode::InteractiveUserUnavailable)
+        );
 
-        #[cfg(not(target_os = "windows"))]
-        {
-            assert!(super::interactive_user_context().is_none());
-            assert!(!super::revalidate_interactive_user_context(&context));
+        let mut missing_shell = observation(BOB);
+        missing_shell.shell_sid = None;
+        assert_eq!(
+            build_interactive_user_context(missing_shell),
+            Err(WindowsStartupErrorCode::InteractiveUserUnavailable)
+        );
+
+        let mut different_session = observation(BOB);
+        different_session.shell_session_id = Some(8);
+        assert_eq!(
+            build_interactive_user_context(different_session),
+            Err(WindowsStartupErrorCode::InteractiveUserUnavailable)
+        );
+
+        let mut missing_environment = observation(BOB);
+        missing_environment.shell_command_paths.clear();
+        assert_eq!(
+            build_interactive_user_context(missing_environment),
+            Err(WindowsStartupErrorCode::InteractiveUserEnvironmentUnavailable)
+        );
+    }
+
+    #[test]
+    fn every_required_shell_user_path_rejects_missing_and_relative_values() {
+        let required_paths = [
+            RequiredUserPath::Profile,
+            RequiredUserPath::LocalAppData,
+            RequiredUserPath::RoamingAppData,
+        ];
+
+        for required_path in required_paths {
+            let mut missing = observation(BOB);
+            required_path.set(&mut missing, None);
+            assert_eq!(
+                build_interactive_user_context(missing),
+                Err(required_path.expected_error())
+            );
+
+            let mut relative = observation(BOB);
+            required_path.set(&mut relative, Some(PathBuf::from("relative/user/path")));
+            assert_eq!(
+                build_interactive_user_context(relative),
+                Err(required_path.expected_error())
+            );
         }
     }
 
     #[test]
-    fn interactive_user_context_accepts_only_the_same_canonical_process_owner() {
-        let sid = "S-1-5-21-1000-1001-1002-1003";
-        let context = super::InteractiveUserContext::for_test(sid, 7);
+    fn noncanonical_shell_sids_fail_closed() {
+        for invalid_sid in [
+            "alice",
+            "s-1-5-21-100-200-300-1001",
+            "S-1--5-21-100-200-300-1001",
+            "S-1-5-21-100-200-300-alice",
+        ] {
+            let mut invalid_shell = observation(BOB);
+            invalid_shell.shell_sid = Some(invalid_sid);
+            assert_eq!(
+                build_interactive_user_context(invalid_shell),
+                Err(WindowsStartupErrorCode::InteractiveUserUnavailable),
+                "invalid SID must be rejected: {invalid_sid}"
+            );
+        }
 
-        assert!(user_sid_matches_context(&context, Some(sid)));
-        assert!(!user_sid_matches_context(
-            &context,
-            Some("S-1-5-21-2000-2001-2002-2003")
-        ));
-        assert!(!user_sid_matches_context(&context, Some("invalid-sid")));
-        assert!(!user_sid_matches_context(&context, None));
+        let overlong_sid = format!("S-1-5-{}", "1".repeat(185));
+        assert!(!is_canonical_sid(&overlong_sid));
     }
 
     #[test]
-    fn instance_key_is_stable_and_does_not_expose_the_sid() {
-        let sid = "S-1-5-21-1000-1001-1002-1003";
-        let first = business_instance_key(sid, 7);
-        assert_eq!(first, business_instance_key(sid, 7));
-        assert_ne!(first, business_instance_key(sid, 8));
-        assert_eq!(first.len(), 32);
-        assert!(!first.contains(sid));
+    fn context_debug_output_redacts_shell_authority_and_paths() {
+        let context = build_interactive_user_context(observation(BOB)).unwrap();
+        let debug = format!("{context:?}");
+        let secrets = [
+            context.canonical_sid().to_owned(),
+            context.user_profile().to_string_lossy().into_owned(),
+            context.user_local_app_data().to_string_lossy().into_owned(),
+            context
+                .user_roaming_app_data()
+                .to_string_lossy()
+                .into_owned(),
+            context.shell_command_paths()[0]
+                .to_string_lossy()
+                .into_owned(),
+        ];
+
+        for secret in secrets {
+            assert!(
+                !debug.contains(&secret),
+                "debug output leaked a Shell-user secret: {debug}"
+            );
+        }
+        assert_eq!(debug.matches("<redacted>").count(), 5);
+        assert!(debug.contains("process_session_id: 7"));
+        assert!(debug.contains("shell_session_id: 7"));
     }
 
     #[test]
-    fn renderer_status_serializes_only_safe_runtime_facts() {
-        let value = serde_json::to_value(windows_status(true, true, InteractiveUserMatch::Match))
-            .expect("safe status serializes");
-        assert_eq!(
-            value,
-            serde_json::json!({
-                "platform": "windows",
-                "supported": true,
-                "elevated": true,
-                "localAdministrator": true,
-                "interactiveUserMatch": "match",
-            })
-        );
-    }
+    fn startup_error_codes_have_an_exhaustive_stable_public_surface() {
+        let cases = [
+            (
+                WindowsStartupErrorCode::InteractiveUserUnavailable,
+                "WIN_INTERACTIVE_USER_UNAVAILABLE",
+            ),
+            (
+                WindowsStartupErrorCode::InteractiveUserProfileUnavailable,
+                "WIN_INTERACTIVE_PROFILE_UNAVAILABLE",
+            ),
+            (
+                WindowsStartupErrorCode::InteractiveUserLocalAppDataUnavailable,
+                "WIN_INTERACTIVE_LOCAL_APP_DATA_UNAVAILABLE",
+            ),
+            (
+                WindowsStartupErrorCode::InteractiveUserRoamingAppDataUnavailable,
+                "WIN_INTERACTIVE_ROAMING_APP_DATA_UNAVAILABLE",
+            ),
+            (
+                WindowsStartupErrorCode::InteractiveUserEnvironmentUnavailable,
+                "WIN_INTERACTIVE_ENVIRONMENT_UNAVAILABLE",
+            ),
+        ];
 
-    fn instance_state() -> InstanceState {
-        InstanceState::new(
-            4242,
-            0x0123_4567_89ab_cdef,
-            [0x5a; super::PIPE_NONCE_BYTES],
-            [0xa5; super::ACTIVATION_CAPABILITY_BYTES],
-        )
-        .expect("non-zero fixed descriptor fixture")
-    }
-
-    #[test]
-    fn protected_descriptor_is_fixed_bounded_and_keeps_endpoint_unpredictable() {
-        let state = instance_state();
-        let frame = encode_instance_state(&state);
-        let decoded = decode_instance_state(frame.as_bytes()).expect("descriptor round trips");
-
-        assert_eq!(decoded.owner_pid(), 4242);
-        assert_eq!(decoded.owner_creation_time(), 0x0123_4567_89ab_cdef);
-        assert_eq!(
-            decoded.pipe_name(),
-            r"\\.\pipe\FyAgent.Activation.v2.5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
-        );
-
-        let mut corrupt = frame.as_bytes().to_vec();
-        corrupt[9] = 1;
-        assert!(decode_instance_state(&corrupt).is_err());
-        corrupt[9] = 0;
-        corrupt[95] = 1;
-        assert!(decode_instance_state(&corrupt).is_err());
+        for (code, expected) in cases {
+            assert_eq!(code.as_str(), expected);
+            assert_eq!(code.to_string(), expected);
+        }
     }
 
     #[test]
-    fn capability_handshake_authenticates_server_before_argv_and_binds_request() {
-        let state = instance_state();
-        let challenge = [0x3c; super::HANDSHAKE_CHALLENGE_BYTES];
-        let hello = encode_client_hello(challenge).expect("non-zero challenge");
-        assert!(matches!(
-            decode_handshake_frame(hello.as_bytes()),
-            Ok(HandshakeMessage::ClientHello(returned_challenge)) if returned_challenge == challenge
-        ));
+    fn frozen_context_revalidation_is_read_only_and_fails_closed_for_a_synthetic_shell() {
+        let context = WindowsInteractiveUserContext::for_test(ALICE, u32::MAX);
+        let frozen = context.clone();
 
-        let proof = encode_server_proof(state.capability(), challenge);
-        assert!(verify_server_proof(
-            state.capability(),
-            challenge,
-            proof.as_bytes()
-        ));
-        assert!(!verify_server_proof(
-            &[0x44; super::ACTIVATION_CAPABILITY_BYTES],
-            challenge,
-            proof.as_bytes()
-        ));
-
-        let activation = encode_activation_request(vec!["fyagent://v1/import?name=one".into()])
-            .expect("activation fixture");
-        let auth = encode_activation_auth(state.capability(), &challenge, &activation);
-        assert!(verify_activation_auth(
-            state.capability(),
-            &challenge,
-            &activation,
-            auth.as_bytes()
-        ));
-
-        let changed = encode_activation_request(vec!["fyagent://v1/import?name=two".into()])
-            .expect("changed activation fixture");
-        assert!(!verify_activation_auth(
-            state.capability(),
-            &challenge,
-            &changed,
-            auth.as_bytes()
-        ));
+        assert!(!revalidate_interactive_user_context(&context));
+        assert_eq!(context, frozen);
     }
 
     #[test]
-    fn descriptor_lifecycle_never_deletes_unparsed_or_live_state() {
+    fn single_instance_args_enforce_count_item_control_and_aggregate_bounds() {
+        assert!(normalize_single_instance_args(vec![
+            "FyAgent.exe".to_owned(),
+            "fyagent://v1/import?resource=provider".to_owned(),
+        ])
+        .is_some());
+        assert!(normalize_single_instance_args(vec!["x".to_owned(); 9]).is_none());
+        assert!(normalize_single_instance_args(vec!["x".repeat(65_537)]).is_none());
+        assert!(normalize_single_instance_args(vec!["bad\nvalue".to_owned()]).is_none());
+        assert!(normalize_single_instance_args(vec!["x".repeat(64 * 1024); 2]).is_none());
+
+        let mut exact = vec![
+            "x".repeat(MAX_SINGLE_INSTANCE_ARGUMENT_BYTES),
+            String::new(),
+        ];
+        let empty_second_size = serialized_single_instance_envelope_size(&exact).unwrap();
+        exact[1] = "y".repeat(MAX_SINGLE_INSTANCE_JSON_BYTES - empty_second_size);
         assert_eq!(
-            decide_descriptor_startup(
-                DescriptorLockState::Held,
-                DescriptorReadState::Missing,
-                None,
-            ),
-            DescriptorStartupDecision::CreateNew
+            serialized_single_instance_envelope_size(&exact).unwrap(),
+            MAX_SINGLE_INSTANCE_JSON_BYTES
         );
-        assert_eq!(
-            decide_descriptor_startup(
-                DescriptorLockState::Held,
-                DescriptorReadState::Valid,
-                Some(OwnerLiveness::Missing),
-            ),
-            DescriptorStartupDecision::RemoveStaleThenCreate
-        );
-        assert_eq!(
-            decide_descriptor_startup(
-                DescriptorLockState::Held,
-                DescriptorReadState::Valid,
-                Some(OwnerLiveness::Reused),
-            ),
-            DescriptorStartupDecision::RemoveStaleThenCreate
-        );
-        assert_eq!(
-            decide_descriptor_startup(
-                DescriptorLockState::Held,
-                DescriptorReadState::Malformed,
-                None,
-            ),
-            DescriptorStartupDecision::Block
-        );
-        assert_eq!(
-            decide_descriptor_startup(
-                DescriptorLockState::Held,
-                DescriptorReadState::Valid,
-                Some(OwnerLiveness::Live),
-            ),
-            DescriptorStartupDecision::Block
-        );
-        assert_eq!(
-            decide_descriptor_startup(
-                DescriptorLockState::Held,
-                DescriptorReadState::Valid,
-                Some(OwnerLiveness::Indeterminate),
-            ),
-            DescriptorStartupDecision::Block
-        );
-        assert_eq!(
-            decide_descriptor_startup(
-                DescriptorLockState::Contended,
-                DescriptorReadState::Malformed,
-                None,
-            ),
-            DescriptorStartupDecision::RetryReadOnly
-        );
+        assert!(normalize_single_instance_args(exact.clone()).is_some());
+        exact[1].push('y');
+        assert!(normalize_single_instance_args(exact).is_none());
     }
 
     #[test]
-    fn protected_descriptor_sddl_rejects_current_user_owners_and_writeable_acl_drift() {
-        assert!(is_expected_static_object_sddl(
-            "O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)"
-        ));
-        assert!(is_expected_static_object_sddl(
-            "O:SYD:P(A;;FA;;;BA)(A;;FA;;;SY)"
-        ));
-        assert!(!is_expected_static_object_sddl(
-            "O:S-1-5-21-1000D:P(A;;FA;;;SY)(A;;FA;;;BA)"
-        ));
-        assert!(!is_expected_static_object_sddl(
-            "O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;BU)"
-        ));
-        assert!(is_expected_runtime_root_sddl(
-            "O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-        ));
-        assert!(!is_expected_runtime_root_sddl(
-            "O:S-1-5-21-1000D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-        ));
-        assert!(is_expected_pipe_sddl(
-            "O:BAD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;S-1-5-21-1000)",
-            "S-1-5-21-1000",
-        ));
-        assert!(!is_expected_pipe_sddl(
-            "O:BAD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;S-1-5-21-1000)",
-            "S-1-5-21-1000",
-        ));
+    fn sid_matching_is_exact_and_canonical() {
+        let context = WindowsInteractiveUserContext::for_test(ALICE, 7);
+        assert!(user_sid_matches_context(&context, Some(ALICE)));
+        assert!(!user_sid_matches_context(&context, Some(BOB)));
+        assert!(!user_sid_matches_context(&context, Some("alice")));
+    }
+
+    #[test]
+    fn windows_command_path_keeps_absolute_order_and_deduplicates_semantically() {
+        let paths = parse_windows_command_path(
+            r#"relative;C:\Tools;"c:/tools/";C:drive-relative;\\server\share\bin;C:\Users\Alice\AppData\Local\Microsoft\WindowsApps;D:\Vendor\bin;\\?\C:\device;"C:\broken"quote"#,
+        );
+        assert_eq!(
+            paths,
+            vec![PathBuf::from(r"C:\Tools"), PathBuf::from(r"D:\Vendor\bin"),]
+        );
     }
 }

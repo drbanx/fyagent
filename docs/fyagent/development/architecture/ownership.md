@@ -34,8 +34,8 @@ Development-branch release source
   -> transactional public Release
 
 Elevated Windows host
-  -> same-session Shell identity proof
-  -> immutable interactive-user context
+  -> freeze Explorer Shell SID and user directories
+  -> immutable Shell-user context, including Bob/Alice UAC
   -> Codex Desktop ordinary-user lifecycle
   -> context-preserving restart or launch
 ```

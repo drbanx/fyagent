@@ -3,11 +3,11 @@
 ; Commit: 662b39adb33d1d26f0de213e5a04fc4116fd0683
 ; Upstream SHA-256: fe22026f68bdb3292fab376756035496ce0a35e3d580e06ebaa6a28295916eb3
 ; The reviewed delta is limited to unified FyAgent installer branding, removal
-; of WiX migration and user-data deletion, and secure machine-runtime ownership.
+; of WiX migration and user-data deletion, and bounded legacy cleanup.
 
 Unicode true
 ; An unknown shell-variable token is ignored after warning 6000, which can
-; redirect protected runtime operations. Treat it as a packaging failure.
+; redirect fixed installer or cleanup paths. Treat it as a packaging failure.
 !pragma warning error 6000
 ManifestDPIAware true
 ; Add in `dpiAwareness` `PerMonitorV2` to manifest for Windows 10 1607+ (note this should not affect lower versions since they should be able to ignore this and pick up `dpiAware` `true` set by `ManifestDPIAware true`)
@@ -71,33 +71,18 @@ ManifestDPIAwareness PerMonitorV2
 !define FYAGENT_FILE_ATTRIBUTE_DIRECTORY 0x10
 !define FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT 0x400
 !define FYAGENT_FILE_READ_ATTRIBUTES 0x80
-!define FYAGENT_DELETE 0x00010000
-!define FYAGENT_READ_CONTROL 0x00020000
 !define FYAGENT_FILE_SHARE_READ 0x1
+!define FYAGENT_FILE_SHARE_WRITE 0x2
 !define FYAGENT_OPEN_EXISTING 3
 !define FYAGENT_INVALID_HANDLE_VALUE -1
 !define FYAGENT_FILE_FLAG_BACKUP_SEMANTICS 0x02000000
 !define FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT 0x00200000
 !define FYAGENT_BY_HANDLE_FILE_INFORMATION_SIZE 52
-!define FYAGENT_SECURITY_ATTRIBUTES_SIZE 12
-!define FYAGENT_SDDL_REVISION_1 1
-!define FYAGENT_ERROR_FILE_NOT_FOUND 2
-!define FYAGENT_ERROR_PATH_NOT_FOUND 3
-!define FYAGENT_SE_FILE_OBJECT 1
-!define FYAGENT_OWNER_SECURITY_INFORMATION 0x1
-!define FYAGENT_DACL_SECURITY_INFORMATION 0x4
-!define FYAGENT_FILE_DISPOSITION_INFO 4
-!define FYAGENT_RUNTIME_ROOT_SDDL "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
 
 Var PassiveMode
 Var UpdateMode
 Var NoShortcutMode
 Var OldMainBinaryName
-Var FyAgentRuntimeProvisionValid
-Var FyAgentRuntimeParentHandle
-Var FyAgentRuntimeLeafHandle
-Var FyAgentRuntimeParentMissing
-Var FyAgentRuntimeLeafMissing
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -395,8 +380,6 @@ FunctionEnd
 {{#each language_files}}
   !include "{{this}}"
 {{/each}}
-LangString fyagentRuntimeProvisionFailed ${LANG_ENGLISH} "FyAgent could not securely provision its machine runtime directory."
-LangString fyagentRuntimeProvisionFailed ${LANG_SIMPCHINESE} "FyAgent 无法安全创建计算机运行时目录。"
 
 Function .onInit
   ; Tauri ships an x86 NSIS launcher even for native x64/ARM64 payloads. Keep
@@ -451,231 +434,74 @@ Function .onInit
   !endif
 FunctionEnd
 
-; Existing machine-runtime directories are never repaired. They are opened
-; without following reparse points, pinned against write/delete sharing, and
-; admitted only when the handle reports the exact Rust owner/DACL allow-list.
-!macro FyAgentOpenExistingTrustedRuntimeDirectory Path Label OutputHandle MissingFlag
+; Legacy runtime cleanup is deliberately not a provisioning or admission
+; boundary. It opens only the two fixed directories without following reparse
+; points and without WRITE or DELETE sharing, then removes only the two retired filename
+; patterns. Missing, inaccessible, malformed, reparse, nonempty, or concurrently
+; changing objects are preserved and never abort install or uninstall.
+!macro FyAgentOpenLegacyRuntimeDirectory Path Label OutputHandle ValidFlag
   StrCpy ${OutputHandle} 0
-  StrCpy ${MissingFlag} 0
-
-  ; System::Call's ?e captures this call's last error before another API can
-  ; overwrite it. Pop must remain the next executable statement.
-  System::Call 'kernel32::CreateFileW(w "${Path}", i ${FYAGENT_FILE_READ_ATTRIBUTES}|${FYAGENT_DELETE}|${FYAGENT_READ_CONTROL}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8 ?e'
-  Pop $9
+  StrCpy ${ValidFlag} 0
+  System::Call 'kernel32::CreateFileW(w "${Path}", i ${FYAGENT_FILE_READ_ATTRIBUTES}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8'
   ${If} $8 == ${FYAGENT_INVALID_HANDLE_VALUE}
-    ${If} $9 == ${FYAGENT_ERROR_FILE_NOT_FOUND}
-    ${OrIf} $9 == ${FYAGENT_ERROR_PATH_NOT_FOUND}
-      StrCpy ${MissingFlag} 1
-      Goto fyagent_${Label}_done
-    ${EndIf}
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
-  ${If} $8 == 0
-    Goto fyagent_runtime_provision_fail
+  ${OrIf} $8 == 0
+    Goto fyagent_${Label}_done
   ${EndIf}
 
   System::Alloc ${FYAGENT_BY_HANDLE_FILE_INFORMATION_SIZE}
   Pop $6
   ${If} $6 == 0
-    Goto fyagent_${Label}_close_fail
+    Goto fyagent_${Label}_close
   ${EndIf}
   System::Call 'kernel32::GetFileInformationByHandle(p r8, p r6) i .r7'
   ${If} $7 == 0
     System::Free $6
-    Goto fyagent_${Label}_close_fail
+    Goto fyagent_${Label}_close
   ${EndIf}
   System::Call '*$6(i .r0)'
   System::Free $6
   IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_DIRECTORY}
   ${If} $4 == 0
-    Goto fyagent_${Label}_close_fail
+    Goto fyagent_${Label}_close
   ${EndIf}
   IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT}
   ${If} $4 <> 0
-    Goto fyagent_${Label}_close_fail
+    Goto fyagent_${Label}_close
   ${EndIf}
 
-  ; GetSecurityInfo returns a LocalAlloc security descriptor. Both that buffer
-  ; and the converted SDDL buffer must be released successfully before trust is
-  ; granted to the still-open directory handle.
-  System::Call 'advapi32::GetSecurityInfo(p r8, i ${FYAGENT_SE_FILE_OBJECT}, i ${FYAGENT_OWNER_SECURITY_INFORMATION}|${FYAGENT_DACL_SECURITY_INFORMATION}, p 0, p 0, p 0, p 0, p .r5) i .r4'
-  ${If} $4 <> 0
-    Goto fyagent_${Label}_close_fail
-  ${EndIf}
-  System::Call 'advapi32::ConvertSecurityDescriptorToStringSecurityDescriptorW(p r5, i ${FYAGENT_SDDL_REVISION_1}, i ${FYAGENT_OWNER_SECURITY_INFORMATION}|${FYAGENT_DACL_SECURITY_INFORMATION}, p .r6, *i .r7) i .r4'
-  ${If} $4 == 0
-    System::Call 'kernel32::LocalFree(p r5) p .r4'
-    Goto fyagent_${Label}_close_fail
-  ${EndIf}
-  ${If} $7 >= ${NSIS_MAX_STRLEN}
-    System::Call 'kernel32::LocalFree(p r6) p .r4'
-    ${If} $4 != 0
-      System::Call 'kernel32::LocalFree(p r5) p .r4'
-      Goto fyagent_${Label}_close_fail
-    ${EndIf}
-    System::Call 'kernel32::LocalFree(p r5) p .r4'
-    Goto fyagent_${Label}_close_fail
-  ${EndIf}
-  StrCpy $2 $6
-  System::Call '*$2(&w${NSIS_MAX_STRLEN} .r6)'
-  System::Call 'kernel32::LocalFree(p r2) p .r4'
-  ${If} $4 != 0
-    System::Call 'kernel32::LocalFree(p r5) p .r4'
-    Goto fyagent_${Label}_close_fail
-  ${EndIf}
-  System::Call 'kernel32::LocalFree(p r5) p .r4'
-  ${If} $4 != 0
-    Goto fyagent_${Label}_close_fail
-  ${EndIf}
+  StrCpy ${OutputHandle} $8
+  StrCpy ${ValidFlag} 1
+  Goto fyagent_${Label}_done
 
-  StrCmp $6 "O:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" fyagent_${Label}_trusted
-  StrCmp $6 "O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" fyagent_${Label}_trusted
-  StrCmp $6 "O:SYD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)" fyagent_${Label}_trusted
-  StrCmp $6 "O:SYD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)" fyagent_${Label}_trusted
-  StrCmp $6 "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" fyagent_${Label}_trusted
-  StrCmp $6 "O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" fyagent_${Label}_trusted
-  StrCmp $6 "O:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)" fyagent_${Label}_trusted
-  StrCmp $6 "O:BAD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)" fyagent_${Label}_trusted
-  Goto fyagent_${Label}_close_fail
-
-  fyagent_${Label}_trusted:
-    StrCpy ${OutputHandle} $8
-    Goto fyagent_${Label}_done
-
-  fyagent_${Label}_close_fail:
+  fyagent_${Label}_close:
     System::Call 'kernel32::CloseHandle(p r8) i .r4'
-    Goto fyagent_runtime_provision_fail
 
   fyagent_${Label}_done:
 !macroend
 
-; A missing directory is created once with the final protected descriptor.
-; ERROR_ALREADY_EXISTS is deliberately not accepted: a competing preimage
-; loses the race by failing the installation and is never normalized in place.
-!macro FyAgentCreateTrustedRuntimeDirectory Path Label OutputHandle MissingFlag
-  StrCpy ${OutputHandle} 0
-  StrCpy ${MissingFlag} 0
-  System::Call 'advapi32::ConvertStringSecurityDescriptorToSecurityDescriptorW(w "${FYAGENT_RUNTIME_ROOT_SDDL}", i ${FYAGENT_SDDL_REVISION_1}, p .r1, p 0) i .r3'
-  ${If} $3 == 0
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
-  System::Call '*(i ${FYAGENT_SECURITY_ATTRIBUTES_SIZE}, p r1, i 0) p .r2'
-  ${If} $2 == 0
-    System::Call 'kernel32::LocalFree(p r1) p .r4'
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
-  System::Call 'kernel32::CreateDirectoryW(w "${Path}", p r2) i .r3'
-  System::Free $2
-  System::Call 'kernel32::LocalFree(p r1) p .r4'
-  ${If} $4 != 0
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
-  ${If} $3 == 0
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
-  !insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "${Path}" ${Label}_open ${OutputHandle} ${MissingFlag}
-  ${If} ${MissingFlag} <> 0
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
-!macroend
-
-!macro FyAgentMarkRuntimeDirectoryForDeletion Handle
-  System::Call '*(i 1) p .r1'
-  ${If} $1 == 0
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
-  System::Call 'kernel32::SetFileInformationByHandle(p ${Handle}, i ${FYAGENT_FILE_DISPOSITION_INFO}, p r1, i 4) i .r2'
-  System::Free $1
-  ${If} $2 == 0
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
-!macroend
-
-Function FyAgentProvisionMachineRuntime
-  StrCpy $FyAgentRuntimeProvisionValid 0
-  StrCpy $FyAgentRuntimeParentHandle 0
-  StrCpy $FyAgentRuntimeLeafHandle 0
-  StrCpy $FyAgentRuntimeParentMissing 0
-  StrCpy $FyAgentRuntimeLeafMissing 0
-
-  ; A trusted legacy object is still rebuilt. Deletion-by-handle makes any
-  ; stale shared handle refer only to the retired object; a stale handle that
-  ; does not share DELETE makes this operation fail closed.
-  !insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent" runtime_parent $FyAgentRuntimeParentHandle $FyAgentRuntimeParentMissing
-  ${If} $FyAgentRuntimeParentMissing == 1
-    Goto fyagent_runtime_create_fresh
+!macro FyAgentCleanupLegacyMachineRuntime Label
+  ClearErrors
+  !insertmacro FyAgentOpenLegacyRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent" ${Label}_parent $5 $9
+  ${If} $9 <> 1
+    Goto fyagent_${Label}_done
   ${EndIf}
 
-  !insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent\runtime" runtime_leaf $FyAgentRuntimeLeafHandle $FyAgentRuntimeLeafMissing
-  ${If} $FyAgentRuntimeLeafMissing <> 1
-    ; Only the runtime-owned lease/descriptor names are eligible for legacy
-    ; cleanup. Unknown content leaves the directory nonempty, so handle-based
-    ; disposition fails without widening the deletion set.
+  !insertmacro FyAgentOpenLegacyRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent\runtime" ${Label}_leaf $3 $2
+  ${If} $2 == 1
     Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.state"
     Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.lock"
-    !insertmacro FyAgentMarkRuntimeDirectoryForDeletion $FyAgentRuntimeLeafHandle
-    System::Call 'kernel32::CloseHandle(p $FyAgentRuntimeLeafHandle) i .r4'
-    StrCpy $FyAgentRuntimeLeafHandle 0
-    ${If} $4 == 0
-      Goto fyagent_runtime_provision_fail
-    ${EndIf}
-    ${If} ${FileExists} "$COMMONPROGRAMDATA\FyAgent\runtime"
-      Goto fyagent_runtime_provision_fail
-    ${EndIf}
+    System::Call 'kernel32::CloseHandle(p r3) i .r4'
+    RMDir "$COMMONPROGRAMDATA\FyAgent\runtime"
   ${EndIf}
 
-  !insertmacro FyAgentMarkRuntimeDirectoryForDeletion $FyAgentRuntimeParentHandle
-  System::Call 'kernel32::CloseHandle(p $FyAgentRuntimeParentHandle) i .r4'
-  StrCpy $FyAgentRuntimeParentHandle 0
-  ${If} $4 == 0
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
-  ${If} ${FileExists} "$COMMONPROGRAMDATA\FyAgent"
-    Goto fyagent_runtime_provision_fail
-  ${EndIf}
+  System::Call 'kernel32::CloseHandle(p r5) i .r4'
+  RMDir "$COMMONPROGRAMDATA\FyAgent"
 
-  fyagent_runtime_create_fresh:
-    !insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent" runtime_create_parent $FyAgentRuntimeParentHandle $FyAgentRuntimeParentMissing
-    ; Keep the no-follow parent handle pinned until leaf creation, validation,
-    ; and every cleanup decision is complete.
-    !insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent\runtime" runtime_create_leaf $FyAgentRuntimeLeafHandle $FyAgentRuntimeLeafMissing
-    StrCpy $0 1
-    Goto fyagent_runtime_provision_close
-
-  fyagent_runtime_provision_fail:
-    StrCpy $0 0
-
-  fyagent_runtime_provision_close:
-    ${If} $FyAgentRuntimeLeafHandle != 0
-      System::Call 'kernel32::CloseHandle(p $FyAgentRuntimeLeafHandle) i .r4'
-      ${If} $4 == 0
-        StrCpy $0 0
-      ${EndIf}
-      StrCpy $FyAgentRuntimeLeafHandle 0
-    ${EndIf}
-    ${If} $FyAgentRuntimeParentHandle != 0
-      System::Call 'kernel32::CloseHandle(p $FyAgentRuntimeParentHandle) i .r4'
-      ${If} $4 == 0
-        StrCpy $0 0
-      ${EndIf}
-      StrCpy $FyAgentRuntimeParentHandle 0
-    ${EndIf}
-    ${If} $0 == 1
-      StrCpy $FyAgentRuntimeProvisionValid 1
-    ${EndIf}
-FunctionEnd
-
-; Provision the machine runtime before any network bootstrap or payload write.
-; The app must be stopped before trusted legacy state can be retired by handle.
-Section -FyAgentMachineRuntimeBootstrap
-  !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
-  Call FyAgentProvisionMachineRuntime
-  ${If} $FyAgentRuntimeProvisionValid <> 1
-    DetailPrint "$(fyagentRuntimeProvisionFailed)"
-    SetErrorLevel 3
-    Abort "$(fyagentRuntimeProvisionFailed)"
-  ${EndIf}
-SectionEnd
+  fyagent_${Label}_done:
+    ; Cleanup is observational only; do not leak a failed Delete/RMDir flag
+    ; into later installer hooks or payload operations.
+    ClearErrors
+!macroend
 
 Section EarlyChecks
   ; Abort silent installer if downgrades is disabled
@@ -781,6 +607,10 @@ Section Install
   !endif
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+
+  ; Retire only known files from the obsolete machine runtime. Cleanup is
+  ; intentionally best-effort and never becomes an install admission gate.
+  !insertmacro FyAgentCleanupLegacyMachineRuntime install_legacy_runtime
 
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
@@ -920,13 +750,9 @@ Section Uninstall
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
 
-  ; The runtime process owns only these bounded descriptor/lease names. Remove
-  ; them after process shutdown, then remove the known directories only when
-  ; empty. Never recursively delete a caller-selected $INSTDIR.
-  Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.state"
-  Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.lock"
-  RMDir "$COMMONPROGRAMDATA\FyAgent\runtime"
-  RMDir "$COMMONPROGRAMDATA\FyAgent"
+  ; The same fixed, no-follow, known-name cleanup is safe to retry during
+  ; uninstall. Unknown content and cleanup failures are preserved.
+  !insertmacro FyAgentCleanupLegacyMachineRuntime uninstall_legacy_runtime
 
   ; Delete the app directory and its content from disk
   ; Copy main executable

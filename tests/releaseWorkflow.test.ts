@@ -1909,8 +1909,8 @@ describe("FyAgent Windows NSIS, elevation, signing, and manual diagnostics", () 
       startMenuFolder: "FyAgent",
     });
     expect(template).toContain("RequestExecutionLevel admin");
-    expect(template).toContain("${LANG_ENGLISH}");
-    expect(template).toContain("${LANG_SIMPCHINESE}");
+    expect(template).toContain("{{#each languages}}");
+    expect(template).toContain('!insertmacro MUI_LANGUAGE "{{this}}"');
     expect(template).toContain('!if "${DISPLAYLANGUAGESELECTOR}" == "true"');
     expect(template).toContain('!define MUI_ICON "${INSTALLERICON}"');
     expect(template).toContain('!define MUI_UNICON "${INSTALLERICON}"');
@@ -1924,11 +1924,11 @@ describe("FyAgent Windows NSIS, elevation, signing, and manual diagnostics", () 
     expect(template).not.toContain("MUI_PAGE_CUSTOMFUNCTION_LEAVE");
     expect(template).not.toContain("Section -FyAgentInstallDirGate");
 
-    const runtime = template.indexOf("Section -FyAgentMachineRuntimeBootstrap");
+    const earlyChecks = template.indexOf("Section EarlyChecks");
     const webview = template.indexOf("Section WebView2");
     const setOutPath = template.indexOf("SetOutPath $INSTDIR");
-    expect(runtime).toBeGreaterThan(-1);
-    expect(webview).toBeGreaterThan(runtime);
+    expect(earlyChecks).toBeGreaterThan(-1);
+    expect(webview).toBeGreaterThan(earlyChecks);
     expect(setOutPath).toBeGreaterThan(webview);
   });
 
@@ -2051,6 +2051,9 @@ describe("FyAgent Windows NSIS, elevation, signing, and manual diagnostics", () 
     );
     expect(autoLaunch).toContain("clear_windows_auto_launch_entry");
     expect(autoLaunch).toContain("enforce_platform_auto_launch_policy");
+    expect(autoLaunch).toContain("open_shell_user_run_update()");
+    expect(autoLaunch).not.toContain("HKEY_USERS");
+    expect(autoLaunch).not.toContain("shell_user_registry_subkey");
     expect(autoLaunch).not.toContain(
       'WINDOWS_AUTO_LAUNCH_VALUE: &str = "CC Switch"',
     );
@@ -2060,7 +2063,14 @@ describe("FyAgent Windows NSIS, elevation, signing, and manual diagnostics", () 
     const builderIndex = libRs.indexOf(
       "let builder = tauri::Builder::default();",
     );
+    const setupIndex = libRs.indexOf(".setup(|app| {");
+    const webviewIndex = libRs.indexOf("create_main_webview(app.handle())?");
     expect(cleanupIndex).toBeGreaterThan(-1);
-    expect(builderIndex).toBeGreaterThan(cleanupIndex);
+    expect(cleanupIndex).toBeGreaterThan(builderIndex);
+    expect(cleanupIndex).toBeGreaterThan(setupIndex);
+    expect(cleanupIndex).toBeGreaterThan(webviewIndex);
+    expect(libRs).toMatch(
+      /if let Err\(error\) = auto_launch::enforce_platform_auto_launch_policy\(\) \{\s+log::warn!\(/,
+    );
   });
 });

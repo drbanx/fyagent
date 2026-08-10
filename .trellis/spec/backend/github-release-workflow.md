@@ -10,8 +10,8 @@ attestation, Release notes, or the final publication request.
 
 Per-asset NSIS mechanics, install-path behavior, Windows signing evidence, and
 manual native install/uninstall diagnostics are owned by
-[Windows Installer](./windows-installer.md). Formal startup and the protected
-machine-runtime descriptor are owned by
+[Windows Installer](./windows-installer.md). Frozen Shell-user startup and
+single-instance input containment are owned by
 [Windows Runtime Security](./windows-runtime-security.md). This workflow owns
 their orchestration, frozen inputs, aggregate evidence, and publication gate.
 

@@ -243,10 +243,17 @@ if ($Mode -eq 'VerifyOnly') {
 $bootstrapperUrl = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703'
 $bootstrapperArguments = @('/silent', '/install')
 $maximumBootstrapperBytes = 64MB
-$programDataParent = Join-Path (
+$programDataRoot = (
   [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)
-) 'FyAgent'
-$stagePath = Join-Path $programDataParent "installer-stage-$([Guid]::NewGuid().ToString('N'))"
+)
+if ([string]::IsNullOrWhiteSpace($programDataRoot) -or -not [IO.Path]::IsPathRooted($programDataRoot)) {
+  throw 'Windows CommonApplicationData is unavailable.'
+}
+# This random, installer-ephemeral directory is deliberately not the retired
+# `%ProgramData%\FyAgent\runtime` and does not depend on any legacy FyAgent
+# parent. DirectoryInfo.Create with the final protected descriptor is atomic
+# for this unguessable path; an unexpected collision or descriptor drift fails.
+$stagePath = Join-Path $programDataRoot "FyAgent-WebView2-$([Guid]::NewGuid().ToString('N'))"
 $bootstrapperPath = Join-Path $stagePath 'MicrosoftEdgeWebView2Setup.exe'
 $writer = $null
 $reader = $null
@@ -259,8 +266,6 @@ $process = $null
 $exitCode = 20
 
 try {
-  Assert-StrictSecurity -Path $programDataParent -AllowedSddl $allowedDirectorySddl
-
   $directorySecurity = [Security.AccessControl.DirectorySecurity]::new()
   $directorySecurity.SetSecurityDescriptorSddlForm($strictDirectorySddl)
   $stage = [IO.DirectoryInfo]::new($stagePath)

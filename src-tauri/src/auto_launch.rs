@@ -48,21 +48,13 @@ fn get_auto_launch() -> Result<AutoLaunch, AppError> {
 }
 
 #[cfg(target_os = "windows")]
-const WINDOWS_RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-#[cfg(target_os = "windows")]
 const WINDOWS_AUTO_LAUNCH_VALUE: &str = "FyAgent";
 
 #[cfg(target_os = "windows")]
 fn clear_windows_auto_launch_entry() -> Result<(), AppError> {
     use std::io::ErrorKind;
 
-    use winreg::{
-        enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE},
-        RegKey,
-    };
-
-    let current_user = RegKey::predef(HKEY_CURRENT_USER);
-    let run_key = match current_user.open_subkey_with_flags(WINDOWS_RUN_KEY, KEY_READ | KEY_WRITE) {
+    let run_key = match crate::windows_runtime::open_shell_user_run_update() {
         Ok(key) => key,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
         Err(error) => {
@@ -81,10 +73,11 @@ fn clear_windows_auto_launch_entry() -> Result<(), AppError> {
     }
 }
 
-/// Enforce the platform startup policy before the application starts serving UI.
+/// Remove the one known legacy value after single-instance primary admission.
 ///
-/// The Windows branch is intentionally idempotent so an upgrade can clean the
-/// prior FyAgent Run value before the settings page has rendered.
+/// Startup treats failure as a warning: a missing or temporarily unavailable
+/// Alice hive must not block the application, and a secondary instance must
+/// never reach this side effect.
 #[cfg(target_os = "windows")]
 pub fn enforce_platform_auto_launch_policy() -> Result<(), AppError> {
     clear_windows_auto_launch_entry()

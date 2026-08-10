@@ -119,6 +119,15 @@ const fn elevated_windows_cli_boundary_active() -> bool {
     false
 }
 
+#[cfg(any(target_os = "windows", test))]
+fn detected_tool_execution_boundary_for(formal_windows_build: bool) -> Result<(), &'static str> {
+    if elevated_windows_cli_boundary_active_for(formal_windows_build) {
+        Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE)
+    } else {
+        Ok(())
+    }
+}
+
 /// 生命周期写权限比只读探测更窄。Codex 保留在 `VALID_TOOLS`，因此版本和安装分布
 /// 诊断仍可用；但不得规划或执行 install/update/repair 命令。
 fn is_lifecycle_writable(tool: &str) -> bool {
@@ -287,7 +296,14 @@ fn run_elevated_cli_lifecycle_whitelist(command_line: &str, label: &str) -> Resu
     let prefix = format!("fyagent_{label}_");
     let bat_file = write_persisted_temp_file(&prefix, ".bat", command_line.as_bytes())?;
 
-    let output = Command::new("cmd")
+    let command = crate::windows_runtime::system_command_path()
+        .ok_or_else(|| "Windows system command processor is unavailable".to_owned())?;
+    let mut child = Command::new(command);
+    if let Err(error) = crate::windows_runtime::configure_shell_user_command(&mut child, None) {
+        let _ = std::fs::remove_file(&bat_file);
+        return Err(error.to_string());
+    }
+    let output = child
         .arg("/C")
         .arg(&bat_file)
         .creation_flags(CREATE_NO_WINDOW)
@@ -1306,6 +1322,10 @@ fn try_get_version_wsl(
 ) -> ShellProbe {
     use std::process::Command;
 
+    if elevated_windows_cli_boundary_active() {
+        return ShellProbe::NotFound(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
+    }
+
     // 防御性断言：tool 只能是预定义的值
     debug_assert!(VALID_TOOLS.contains(&tool), "unexpected tool name: {tool}");
 
@@ -1347,7 +1367,18 @@ fn try_get_version_wsl(
         ("sh".to_string(), "-c", cmd)
     };
 
-    let output = Command::new("wsl.exe")
+    let Some(wsl) = crate::windows_runtime::system_executable_path("wsl.exe") else {
+        return ShellProbe::NotFound(format!(
+            "[WSL:{distro}] Windows system directory is unavailable"
+        ));
+    };
+    let mut command = Command::new(&wsl);
+    if let Err(error) =
+        crate::windows_runtime::configure_shell_user_command(&mut command, wsl.parent())
+    {
+        return ShellProbe::NotFound(format!("[WSL:{distro}] {error}"));
+    }
+    let output = command
         .args(["-d", distro, "--", &shell, flag, &cmd])
         .creation_flags(CREATE_NO_WINDOW)
         .output();
@@ -1504,19 +1535,12 @@ fn extend_existing_child_search_paths(
 
 #[cfg(target_os = "windows")]
 fn extend_windows_cli_manager_search_paths(paths: &mut Vec<std::path::PathBuf>, home: &Path) {
-    push_env_single_dir(paths, std::env::var_os("PNPM_HOME"));
-    push_env_child_dir(paths, std::env::var_os("VOLTA_HOME"), "bin");
-    push_env_single_dir(paths, std::env::var_os("NVM_SYMLINK"));
-    push_env_child_dir(paths, std::env::var_os("SCOOP"), "shims");
-    push_env_child_dir(paths, std::env::var_os("SCOOP_GLOBAL"), "shims");
-
-    if let Some(nvm_home) = std::env::var_os("NVM_HOME") {
-        let nvm_home = std::path::PathBuf::from(nvm_home);
-        push_unique_path(paths, nvm_home.clone());
-        extend_existing_child_search_paths(paths, &nvm_home, None);
+    for path in crate::windows_runtime::safe_command_search_paths() {
+        push_unique_path(paths, path);
     }
 
-    if let Some(appdata) = dirs::data_dir() {
+    let appdata = crate::config::get_user_roaming_app_data_dir();
+    if crate::windows_runtime::is_local_command_path(&appdata) {
         let nvm_home = appdata.join("nvm");
         push_unique_path(paths, nvm_home.clone());
         extend_existing_child_search_paths(paths, &nvm_home, None);
@@ -1526,16 +1550,12 @@ fn extend_windows_cli_manager_search_paths(paths: &mut Vec<std::path::PathBuf>, 
         push_unique_path(paths, home.join("scoop").join("shims"));
     }
 
-    if let Some(local_data) = dirs::data_local_dir() {
+    let local_data = crate::config::get_user_local_app_data_dir();
+    if crate::windows_runtime::is_local_command_path(&local_data) {
         push_unique_path(paths, local_data.join("pnpm"));
         push_unique_path(paths, local_data.join("Volta").join("bin"));
         push_unique_path(paths, local_data.join("Yarn").join("bin"));
     }
-
-    let program_data = std::env::var_os("ProgramData")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("C:\\ProgramData"));
-    push_unique_path(paths, program_data.join("scoop").join("shims"));
 }
 
 /// OpenCode install.sh 路径优先级（见 https://github.com/anomalyco/opencode README）:
@@ -1626,12 +1646,24 @@ fn extend_mise_node_search_paths(paths: &mut Vec<std::path::PathBuf>, home: &Pat
 /// 单探兜底 (`scan_cli_version`) 与全量枚举 (`enumerate_tool_installations`) 共用，
 /// 确保两条路径看到的是同一组安装位置。
 fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
-    let home = dirs::home_dir().unwrap_or_default();
+    let resolved_home = crate::config::get_home_dir();
+    #[cfg(target_os = "windows")]
+    let home = if crate::windows_runtime::is_local_command_path(&resolved_home) {
+        resolved_home
+    } else {
+        PathBuf::new()
+    };
+    #[cfg(not(target_os = "windows"))]
+    let home = resolved_home;
 
     // 常见的安装路径（原生安装优先）
     let mut search_paths: Vec<std::path::PathBuf> = Vec::new();
     if tool == "grok" {
-        let extra_paths = grok_extra_search_paths(&home, std::env::var_os("GROK_BIN_DIR"));
+        #[cfg(target_os = "windows")]
+        let grok_bin_dir = None;
+        #[cfg(not(target_os = "windows"))]
+        let grok_bin_dir = std::env::var_os("GROK_BIN_DIR");
+        let extra_paths = grok_extra_search_paths(&home, grok_bin_dir);
         for path in extra_paths {
             push_unique_path(&mut search_paths, path);
         }
@@ -1680,41 +1712,39 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
 
     #[cfg(target_os = "windows")]
     {
-        if let Some(appdata) = dirs::data_dir() {
+        let appdata = crate::config::get_user_roaming_app_data_dir();
+        if crate::windows_runtime::is_local_command_path(&appdata) {
             push_unique_path(&mut search_paths, appdata.join("npm"));
-            if tool == "hermes" {
-                let python_base = appdata.join("Python");
-                if python_base.exists() {
-                    if let Ok(entries) = std::fs::read_dir(&python_base) {
-                        for entry in entries.flatten() {
-                            let scripts_path = entry.path().join("Scripts");
-                            if scripts_path.exists() {
-                                push_unique_path(&mut search_paths, scripts_path);
-                            }
+        }
+        if tool == "hermes" && crate::windows_runtime::is_local_command_path(&appdata) {
+            let python_base = appdata.join("Python");
+            if python_base.exists() {
+                if let Ok(entries) = std::fs::read_dir(&python_base) {
+                    for entry in entries.flatten() {
+                        let scripts_path = entry.path().join("Scripts");
+                        if scripts_path.exists() {
+                            push_unique_path(&mut search_paths, scripts_path);
                         }
                     }
                 }
             }
         }
         if tool == "hermes" {
-            if let Some(local_data) = dirs::data_local_dir() {
-                let programs_python = local_data.join("Programs").join("Python");
-                if programs_python.exists() {
-                    if let Ok(entries) = std::fs::read_dir(&programs_python) {
-                        for entry in entries.flatten() {
-                            let scripts_path = entry.path().join("Scripts");
-                            if scripts_path.exists() {
-                                push_unique_path(&mut search_paths, scripts_path);
-                            }
+            let local_data = crate::config::get_user_local_app_data_dir();
+            let programs_python = local_data.join("Programs").join("Python");
+            if crate::windows_runtime::is_local_command_path(&programs_python)
+                && programs_python.exists()
+            {
+                if let Ok(entries) = std::fs::read_dir(&programs_python) {
+                    for entry in entries.flatten() {
+                        let scripts_path = entry.path().join("Scripts");
+                        if scripts_path.exists() {
+                            push_unique_path(&mut search_paths, scripts_path);
                         }
                     }
                 }
             }
         }
-        push_unique_path(
-            &mut search_paths,
-            std::path::PathBuf::from("C:\\Program Files\\nodejs"),
-        );
         extend_windows_cli_manager_search_paths(&mut search_paths, &home);
     }
 
@@ -1743,20 +1773,26 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
     }
 
     if tool == "opencode" {
-        let extra_paths = opencode_extra_search_paths(
-            &home,
+        #[cfg(target_os = "windows")]
+        let ambient_paths = (None, None, None);
+        #[cfg(not(target_os = "windows"))]
+        let ambient_paths = (
             std::env::var_os("OPENCODE_INSTALL_DIR"),
             std::env::var_os("XDG_BIN_DIR"),
             std::env::var_os("GOPATH"),
         );
+        let extra_paths =
+            opencode_extra_search_paths(&home, ambient_paths.0, ambient_paths.1, ambient_paths.2);
 
         for path in extra_paths {
             push_unique_path(&mut search_paths, path);
         }
     }
 
-    let path_env = std::env::var_os("PATH");
-    extend_from_cli_path_env(&mut search_paths, path_env);
+    #[cfg(not(target_os = "windows"))]
+    extend_from_cli_path_env(&mut search_paths, std::env::var_os("PATH"));
+    #[cfg(target_os = "windows")]
+    search_paths.retain(|path| crate::windows_runtime::is_local_command_path(path));
     search_paths
 }
 
@@ -1784,9 +1820,15 @@ fn windows_runnable_sibling_for_extensionless_tool(path: &Path) -> Option<std::p
 fn run_windows_tool_command(
     tool_path: &Path,
     args: &[&str],
-    new_path: &str,
 ) -> std::io::Result<std::process::Output> {
     use std::process::Command;
+
+    if elevated_windows_cli_boundary_active() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE,
+        ));
+    }
 
     if is_windows_command_script(tool_path) {
         let path = tool_path.to_string_lossy();
@@ -1795,7 +1837,7 @@ fn run_windows_tool_command(
             .map(|arg| windows_cmd_double_quote_arg(arg))
             .collect::<Vec<_>>()
             .join(" ");
-        let command = format!(
+        let command_line = format!(
             "call {}{}",
             win_quote_path_for_batch(&path),
             if args.is_empty() {
@@ -1804,28 +1846,31 @@ fn run_windows_tool_command(
                 format!(" {args}")
             }
         );
-        let mut cmd = Command::new("cmd");
+        let command_processor = crate::windows_runtime::system_command_path().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Windows system command processor is unavailable",
+            )
+        })?;
+        let mut cmd = Command::new(command_processor);
+        crate::windows_runtime::configure_shell_user_command(&mut cmd, tool_path.parent())
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
         return cmd
             .args(["/D", "/S", "/C"])
-            .raw_arg(&command)
-            .env("PATH", new_path)
+            .raw_arg(&command_line)
             .creation_flags(CREATE_NO_WINDOW)
             .output();
     }
 
-    Command::new(tool_path)
-        .args(args)
-        .env("PATH", new_path)
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
+    let mut command = Command::new(tool_path);
+    crate::windows_runtime::configure_shell_user_command(&mut command, tool_path.parent())
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+    command.args(args).creation_flags(CREATE_NO_WINDOW).output()
 }
 
 #[cfg(target_os = "windows")]
-fn run_windows_tool_version_command(
-    tool_path: &Path,
-    new_path: &str,
-) -> std::io::Result<std::process::Output> {
-    run_windows_tool_command(tool_path, &["--version"], new_path)
+fn run_windows_tool_version_command(tool_path: &Path) -> std::io::Result<std::process::Output> {
+    run_windows_tool_command(tool_path, &["--version"])
 }
 
 /// 扫描常见路径查找 CLI（PATH 主命令未命中时的兜底单探）。
@@ -1833,7 +1878,12 @@ fn scan_cli_version(tool: &str) -> ShellProbe {
     #[cfg(not(target_os = "windows"))]
     use std::process::Command;
 
+    if elevated_windows_cli_boundary_active() {
+        return ShellProbe::NotFound(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
+    }
+
     let search_paths = build_tool_search_paths(tool);
+    #[cfg(not(target_os = "windows"))]
     let current_path = std::env::var_os("PATH")
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_default();
@@ -1844,9 +1894,6 @@ fn scan_cli_version(tool: &str) -> ShellProbe {
     let mut exec_diagnostic: Option<String> = None;
 
     for path in &search_paths {
-        #[cfg(target_os = "windows")]
-        let new_path = format!("{};{}", path.display(), current_path);
-
         #[cfg(not(target_os = "windows"))]
         let new_path = format!("{}:{}", path.display(), current_path);
 
@@ -1856,7 +1903,7 @@ fn scan_cli_version(tool: &str) -> ShellProbe {
             }
 
             #[cfg(target_os = "windows")]
-            let output = run_windows_tool_version_command(&tool_path, &new_path);
+            let output = run_windows_tool_version_command(&tool_path);
 
             #[cfg(not(target_os = "windows"))]
             let output = {
@@ -2068,33 +2115,19 @@ fn resolve_path_default(
 #[cfg(target_os = "windows")]
 fn resolve_path_default(
     tool: &str,
-    deadline: Option<CommandDeadline>,
+    _deadline: Option<CommandDeadline>,
 ) -> Result<Option<std::path::PathBuf>, String> {
-    use std::os::windows::process::CommandExt;
-    use std::process::{Command, Stdio};
-
-    let child = Command::new("cmd")
-        .args(["/C", &format!("where {tool}")])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to locate {tool}: {e}"))?;
-    let out = wait_child_output(child, deadline)?;
-    if !out.status.success() {
-        return Ok(None);
+    for directory in crate::windows_runtime::shell_command_search_paths() {
+        for candidate in tool_executable_candidates(tool, &directory) {
+            if !candidate.is_file() {
+                continue;
+            }
+            let preferred =
+                windows_runnable_sibling_for_extensionless_tool(&candidate).unwrap_or(candidate);
+            return Ok(Some(std::fs::canonicalize(&preferred).unwrap_or(preferred)));
+        }
     }
-    let raw = decode_command_output(&out.stdout);
-    let Some(first) = raw.lines().next().map(str::trim) else {
-        return Ok(None);
-    };
-    if first.is_empty() {
-        return Ok(None);
-    }
-    let path = Path::new(first);
-    let preferred =
-        windows_runnable_sibling_for_extensionless_tool(path).unwrap_or_else(|| path.to_path_buf());
-    Ok(std::fs::canonicalize(preferred).ok())
+    Ok(None)
 }
 
 /// 枚举工具在系统中的所有安装（不短路）。与 `scan_cli_version` 共用
@@ -2104,7 +2137,12 @@ fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
     #[cfg(not(target_os = "windows"))]
     use std::process::Command;
 
+    if elevated_windows_cli_boundary_active() {
+        return Vec::new();
+    }
+
     let search_paths = build_tool_search_paths(tool);
+    #[cfg(not(target_os = "windows"))]
     let current_path = std::env::var_os("PATH")
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_default();
@@ -2114,8 +2152,6 @@ fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
     let mut installs: Vec<ToolInstallation> = Vec::new();
 
     for dir in &search_paths {
-        #[cfg(target_os = "windows")]
-        let new_path = format!("{};{}", dir.display(), current_path);
         #[cfg(not(target_os = "windows"))]
         let new_path = format!("{}:{}", dir.display(), current_path);
 
@@ -2131,7 +2167,7 @@ fn enumerate_tool_installations(tool: &str) -> Vec<ToolInstallation> {
             }
 
             #[cfg(target_os = "windows")]
-            let output = run_windows_tool_version_command(&tool_path, &new_path);
+            let output = run_windows_tool_version_command(&tool_path);
             #[cfg(not(target_os = "windows"))]
             let output = Command::new(&tool_path)
                 .arg("--version")
@@ -2675,6 +2711,10 @@ fn locate_default_tool(
     tool: &str,
     deadline: Option<CommandDeadline>,
 ) -> Result<std::path::PathBuf, String> {
+    if elevated_windows_cli_boundary_active() {
+        return Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
+    }
+
     let path_default = resolve_path_default(tool, deadline)?;
 
     let mut seen = std::collections::HashSet::new();
@@ -2738,13 +2778,17 @@ fn terminate_child_tree(child: &mut std::process::Child) -> bool {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
 
-    let status = Command::new("taskkill")
-        .args(["/PID", &child.id().to_string(), "/T", "/F"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    matches!(status, Ok(status) if status.success()) || child.kill().is_ok()
+    let status =
+        crate::windows_runtime::system_executable_path("taskkill.exe").and_then(|taskkill| {
+            Command::new(taskkill)
+                .args(["/PID", &child.id().to_string(), "/T", "/F"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .ok()
+        });
+    matches!(status, Some(status) if status.success()) || child.kill().is_ok()
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -2861,10 +2905,38 @@ fn wait_child_output(
     })
 }
 
-fn apply_extra_env(cmd: &mut std::process::Command, extra_env: &[(&str, String)]) {
+#[cfg(any(target_os = "windows", test))]
+fn is_frozen_shell_user_environment_key(key: &str) -> bool {
+    [
+        "PATH",
+        "USERPROFILE",
+        "HOME",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "TEMP",
+        "TMP",
+        "PATHEXT",
+        "OS",
+        "COMSPEC",
+        "SYSTEMROOT",
+        "WINDIR",
+    ]
+    .iter()
+    .any(|protected| key.eq_ignore_ascii_case(protected))
+}
+
+fn apply_extra_env(
+    cmd: &mut std::process::Command,
+    extra_env: &[(&str, String)],
+) -> Result<(), String> {
     for (key, value) in extra_env {
+        #[cfg(target_os = "windows")]
+        if is_frozen_shell_user_environment_key(key) {
+            return Err(format!("Windows command environment key is frozen: {key}"));
+        }
         cmd.env(key, value);
     }
+    Ok(())
 }
 
 pub(crate) fn run_detected_tool_command_with_timeout(
@@ -2874,6 +2946,10 @@ pub(crate) fn run_detected_tool_command_with_timeout(
     extra_env: &[(&str, String)],
     working_dir: &Path,
 ) -> Result<std::process::Output, String> {
+    #[cfg(target_os = "windows")]
+    detected_tool_execution_boundary_for(crate::windows_runtime::formal_windows_build())
+        .map_err(str::to_owned)?;
+
     if !VALID_TOOLS.contains(&tool) {
         return Err(format!("Unsupported tool: {tool}"));
     }
@@ -2899,20 +2975,14 @@ pub(crate) fn run_detected_tool_command_with_timeout(
     let dir = tool_path
         .parent()
         .ok_or_else(|| format!("Invalid {tool} executable path"))?;
+    #[cfg(not(target_os = "windows"))]
     let current_path = std::env::var_os("PATH")
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_default();
 
     #[cfg(target_os = "windows")]
     {
-        run_windows_tool_command_capture(
-            &tool_path,
-            args,
-            &format!("{};{current_path}", dir.display()),
-            deadline,
-            extra_env,
-            working_dir,
-        )
+        run_windows_tool_command_capture(&tool_path, args, deadline, extra_env, working_dir)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -2925,7 +2995,7 @@ pub(crate) fn run_detected_tool_command_with_timeout(
             .current_dir(working_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        apply_extra_env(&mut cmd, extra_env);
+        apply_extra_env(&mut cmd, extra_env)?;
         isolate_child_process_group(&mut cmd);
         let child = cmd
             .spawn()
@@ -2938,12 +3008,15 @@ pub(crate) fn run_detected_tool_command_with_timeout(
 fn run_windows_tool_command_capture(
     tool_path: &Path,
     args: &[&str],
-    new_path: &str,
     deadline: Option<CommandDeadline>,
     extra_env: &[(&str, String)],
     working_dir: &Path,
 ) -> Result<std::process::Output, String> {
     use std::process::{Command, Stdio};
+
+    if elevated_windows_cli_boundary_active() {
+        return Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
+    }
 
     let mut cmd = if is_windows_command_script(tool_path) {
         let path = tool_path.to_string_lossy();
@@ -2952,7 +3025,7 @@ fn run_windows_tool_command_capture(
             .map(|arg| windows_cmd_double_quote_arg(arg))
             .collect::<Vec<_>>()
             .join(" ");
-        let command = format!(
+        let command_line = format!(
             "call {}{}",
             win_quote_path_for_batch(&path),
             if args.is_empty() {
@@ -2961,21 +3034,24 @@ fn run_windows_tool_command_capture(
                 format!(" {args}")
             }
         );
-        let mut cmd = Command::new("cmd");
+        let command_processor = crate::windows_runtime::system_command_path()
+            .ok_or_else(|| "Windows system command processor is unavailable".to_owned())?;
+        let mut cmd = Command::new(command_processor);
+        crate::windows_runtime::configure_shell_user_command(&mut cmd, tool_path.parent())
+            .map_err(|error| error.to_string())?;
         cmd.args(["/D", "/S", "/C"])
-            .raw_arg(&command)
-            .env("PATH", new_path)
+            .raw_arg(&command_line)
             .creation_flags(CREATE_NO_WINDOW);
         cmd
     } else {
         let mut cmd = Command::new(tool_path);
-        cmd.args(args)
-            .env("PATH", new_path)
-            .creation_flags(CREATE_NO_WINDOW);
+        crate::windows_runtime::configure_shell_user_command(&mut cmd, tool_path.parent())
+            .map_err(|error| error.to_string())?;
+        cmd.args(args).creation_flags(CREATE_NO_WINDOW);
         cmd
     };
 
-    apply_extra_env(&mut cmd, extra_env);
+    apply_extra_env(&mut cmd, extra_env)?;
     cmd.current_dir(working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -3087,6 +3163,10 @@ fn run_wsl_tool_command(
 ) -> Result<std::process::Output, String> {
     use std::process::{Command, Stdio};
 
+    if elevated_windows_cli_boundary_active() {
+        return Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
+    }
+
     if !is_valid_wsl_distro_name(distro) {
         return Err(format!("[WSL:{distro}] invalid distro name"));
     }
@@ -3096,7 +3176,11 @@ fn run_wsl_tool_command(
         .ok_or_else(|| format!("[WSL:{distro}] invalid working directory"))?;
     let env_argv = build_wsl_env_argv(extra_env).map_err(|e| format!("[WSL:{distro}] {e}"))?;
 
-    let mut cmd = Command::new("wsl.exe");
+    let wsl = crate::windows_runtime::system_executable_path("wsl.exe")
+        .ok_or_else(|| format!("[WSL:{distro}] Windows system directory is unavailable"))?;
+    let mut cmd = Command::new(&wsl);
+    crate::windows_runtime::configure_shell_user_command(&mut cmd, wsl.parent())
+        .map_err(|error| format!("[WSL:{distro}] {error}"))?;
     cmd.arg("-d")
         .arg(distro)
         .arg("--cd")
@@ -3539,10 +3623,13 @@ fn write_persisted_temp_file(
 ) -> Result<PathBuf, String> {
     use std::io::Write;
 
+    let temp_root = crate::config::get_user_temp_dir();
+    std::fs::create_dir_all(&temp_root)
+        .map_err(|error| format!("创建用户临时目录失败: {error}"))?;
     let mut file = tempfile::Builder::new()
         .prefix(prefix)
         .suffix(suffix)
-        .tempfile()
+        .tempfile_in(&temp_root)
         .map_err(|error| format!("创建临时文件失败: {error}"))?;
     file.write_all(content)
         .map_err(|error| format!("写入临时文件失败: {error}"))?;
@@ -4476,6 +4563,14 @@ mod tests {
     fn formal_windows_cli_boundary_is_fail_closed_without_a_native_runtime() {
         assert!(elevated_windows_cli_boundary_active_for(true));
         assert!(!elevated_windows_cli_boundary_active_for(false));
+        assert_eq!(
+            detected_tool_execution_boundary_for(true),
+            Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE)
+        );
+        assert_eq!(detected_tool_execution_boundary_for(false), Ok(()));
+        assert!(is_frozen_shell_user_environment_key("Path"));
+        assert!(is_frozen_shell_user_environment_key("USERPROFILE"));
+        assert!(!is_frozen_shell_user_environment_key("OPENCODE_CONFIG_DIR"));
 
         let unavailable = elevated_windows_tool_version_unavailable("claude");
         assert_eq!(unavailable.name, "claude");

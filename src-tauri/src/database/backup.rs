@@ -165,7 +165,12 @@ impl Database {
         };
 
         // 在临时数据库执行导入，确保失败不会污染主库
-        let temp_file = NamedTempFile::new().map_err(|e| AppError::IoContext {
+        let temp_root = crate::config::get_user_temp_dir();
+        std::fs::create_dir_all(&temp_root).map_err(|e| AppError::IoContext {
+            context: "创建用户临时目录失败".to_string(),
+            source: e,
+        })?;
+        let temp_file = NamedTempFile::new_in(&temp_root).map_err(|e| AppError::IoContext {
             context: "创建临时数据库文件失败".to_string(),
             source: e,
         })?;

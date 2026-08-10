@@ -17,6 +17,7 @@ pub fn enter_lightweight_mode(app: &tauri::AppHandle) -> Result<(), String> {
     }
 
     if let Some(window) = app.get_webview_window("main") {
+        crate::mark_activation_renderer_unready();
         crate::save_window_state_before_exit(app);
         window
             .destroy()
@@ -31,8 +32,6 @@ pub fn enter_lightweight_mode(app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 pub fn exit_lightweight_mode(app: &tauri::AppHandle) -> Result<(), String> {
-    use tauri::WebviewWindowBuilder;
-
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -55,18 +54,9 @@ pub fn exit_lightweight_mode(app: &tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let window_config = app
-        .config()
-        .app
-        .windows
-        .iter()
-        .find(|w| w.label == "main")
-        .ok_or("主窗口配置未找到")?;
-
-    WebviewWindowBuilder::from_config(app, window_config)
-        .map_err(|e| format!("加载主窗口配置失败: {e}"))?
-        .build()
-        .map_err(|e| format!("创建主窗口失败: {e}"))?;
+    crate::mark_activation_renderer_unready();
+    let window = crate::create_main_webview(app).map_err(|e| format!("创建主窗口失败: {e}"))?;
+    crate::prepare_main_webview(&window);
 
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();

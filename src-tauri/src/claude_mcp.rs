@@ -286,21 +286,39 @@ pub fn delete_mcp_server(id: &str) -> Result<bool, AppError> {
     Ok(true)
 }
 
+#[cfg(any(windows, test))]
+fn command_path_validation_allowed(target_is_windows: bool, formal_windows_build: bool) -> bool {
+    !target_is_windows || !formal_windows_build
+}
+
 pub fn validate_command_in_path(cmd: &str) -> Result<bool, AppError> {
+    #[cfg(windows)]
+    if !command_path_validation_allowed(true, crate::windows_runtime::formal_windows_build()) {
+        return Ok(false);
+    }
+
     if cmd.trim().is_empty() {
         return Ok(false);
     }
     // 如果包含路径分隔符，直接判断是否存在可执行文件
     if cmd.contains('/') || cmd.contains('\\') {
+        #[cfg(windows)]
+        if !crate::windows_runtime::is_local_command_path(Path::new(cmd)) {
+            return Ok(false);
+        }
         return Ok(Path::new(cmd).exists());
     }
 
-    let path_var = env::var_os("PATH").unwrap_or_default();
-    let paths = env::split_paths(&path_var);
+    #[cfg(windows)]
+    let paths = crate::windows_runtime::shell_command_search_paths().into_iter();
+    #[cfg(not(windows))]
+    let paths = {
+        let path_var = env::var_os("PATH").unwrap_or_default();
+        env::split_paths(&path_var).collect::<Vec<_>>().into_iter()
+    };
 
     #[cfg(windows)]
-    let exts: Vec<String> = env::var("PATHEXT")
-        .unwrap_or(".COM;.EXE;.BAT;.CMD".into())
+    let exts: Vec<String> = ".COM;.EXE;.BAT;.CMD"
         .split(';')
         .map(|s| s.trim().to_uppercase())
         .collect();
@@ -407,6 +425,13 @@ pub fn set_mcp_servers_map(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn formal_windows_command_validation_fails_before_path_access() {
+        assert!(!command_path_validation_allowed(true, true));
+        assert!(command_path_validation_allowed(true, false));
+        assert!(command_path_validation_allowed(false, true));
+    }
 
     /// 测试 Windows 命令包装功能
     /// 由于使用条件编译，在非 Windows 平台上测试的是空函数

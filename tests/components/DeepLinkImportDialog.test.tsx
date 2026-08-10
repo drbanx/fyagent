@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { StrictMode } from "react";
 import {
   act,
   fireEvent,
@@ -8,9 +9,10 @@ import {
 } from "@testing-library/react";
 import { http, HttpResponse, type DefaultBodyType } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import i18n from "i18next";
 import { DeepLinkImportDialog } from "@/components/DeepLinkImportDialog";
 import { server } from "../msw/server";
-import { emitTauriEvent } from "../msw/tauriMocks";
+import { emitTauriEvent, getEmittedTauriEvents } from "../msw/tauriMocks";
 
 const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
@@ -41,6 +43,75 @@ function renderDialog() {
 describe("DeepLinkImportDialog", () => {
   beforeEach(() => {
     mocks.toastError.mockReset();
+  });
+
+  it("signals native readiness once after both listeners survive StrictMode setup", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <DeepLinkImportDialog />
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+
+    await waitFor(() => {
+      expect(
+        getEmittedTauriEvents().filter(
+          ({ event }) => event === "frontend-deeplink-ready",
+        ),
+      ).toEqual([
+        {
+          event: "frontend-deeplink-ready",
+          payload: undefined,
+        },
+      ]);
+    });
+  });
+
+  it("keeps native listeners installed while translations change", async () => {
+    const previousLanguage = i18n.language;
+    const nextLanguage = previousLanguage === "en" ? "zh" : "en";
+    renderDialog();
+
+    await waitFor(() => {
+      expect(
+        getEmittedTauriEvents().filter(
+          ({ event }) => event === "frontend-deeplink-ready",
+        ),
+      ).toHaveLength(1);
+    });
+
+    await act(async () => {
+      await i18n.changeLanguage(nextLanguage);
+    });
+    expect(
+      getEmittedTauriEvents().filter(
+        ({ event }) => event === "frontend-deeplink-ready",
+      ),
+    ).toHaveLength(1);
+
+    await act(async () => {
+      emitTauriEvent("deeplink-import", {
+        version: "v1",
+        resource: "prompt",
+        app: "claude",
+        name: "Listener remains installed",
+        content: Buffer.from("translation-safe-prompt", "utf8").toString(
+          "base64",
+        ),
+      });
+    });
+    expect(
+      await screen.findByText("translation-safe-prompt"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await i18n.changeLanguage(previousLanguage);
+    });
   });
 
   it("does not expose a rejected deep-link URL or API key in renderer errors", () => {

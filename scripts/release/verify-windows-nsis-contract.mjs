@@ -369,7 +369,6 @@ export function assertInstallPathPolicyContract(
   contract(
     JSON.stringify(sections.map((block) => block.name)) ===
       JSON.stringify([
-        "-FyAgentMachineRuntimeBootstrap",
         "EarlyChecks",
         "WebView2",
         "Install",
@@ -380,14 +379,7 @@ export function assertInstallPathPolicyContract(
 
   const webviewIndex = sections.findIndex((block) => block.name === "WebView2");
   const installIndex = sections.findIndex((block) => block.name === "Install");
-  const bootstrapIndex = sections.findIndex(
-    (block) => block.name === "-FyAgentMachineRuntimeBootstrap",
-  );
-  contract(bootstrapIndex === 0, "machine runtime bootstrap section drifted");
-  contract(
-    webviewIndex > bootstrapIndex,
-    "WebView2 section must follow runtime bootstrap",
-  );
+  contract(webviewIndex > 0, "WebView2 section must follow EarlyChecks");
   contract(installIndex > webviewIndex, "Install section must follow WebView2");
   contract(
     stripNsisComments(namedBlock(blocks, "section", "Install").body).includes(
@@ -671,11 +663,11 @@ function assertWarning6000PackagingContract(source, repoOwnedIncludeSources) {
   );
 }
 
-function assertRuntimeProvisionContract(source, blocks) {
+function assertLegacyRuntimeCleanupContract(source, blocks) {
   const executableSource = stripNsisComments(source);
   contract(
     !/\$COMMONAPPDATA\b/iu.test(executableSource),
-    "runtime paths must use the NSIS $COMMONPROGRAMDATA variable, not the unknown $COMMONAPPDATA token",
+    "legacy runtime cleanup must use the NSIS $COMMONPROGRAMDATA variable, not the unknown $COMMONAPPDATA token",
   );
   const runtimeRootAliases = [
     ...executableSource.matchAll(/\$[A-Z][A-Z0-9_]*\\FyAgent\b/giu),
@@ -685,7 +677,7 @@ function assertRuntimeProvisionContract(source, blocks) {
       runtimeRootAliases.every(
         (alias) => alias === "$COMMONPROGRAMDATA\\FYAGENT",
       ),
-    "runtime paths must resolve through the exact NSIS $COMMONPROGRAMDATA variable",
+    "legacy runtime paths must resolve through the exact NSIS $COMMONPROGRAMDATA variable",
   );
 
   for (const [name, nextToken] of [
@@ -705,29 +697,24 @@ function assertRuntimeProvisionContract(source, blocks) {
   }
 
   const openMatch = executableSource.match(
-    /!macro FyAgentOpenExistingTrustedRuntimeDirectory Path Label OutputHandle MissingFlag([\s\S]*?)!macroend/u,
+    /!macro FyAgentOpenLegacyRuntimeDirectory Path Label OutputHandle ValidFlag([\s\S]*?)!macroend/u,
   );
-  contract(openMatch, "missing handle-validated ProgramData preimage macro");
+  contract(openMatch, "missing no-follow legacy runtime directory macro");
   const openExisting = openMatch[1];
   for (const required of [
     "CreateFileW",
     "FYAGENT_FILE_READ_ATTRIBUTES",
-    "FYAGENT_DELETE",
-    "FYAGENT_READ_CONTROL",
     "FYAGENT_FILE_SHARE_READ",
     "FYAGENT_FILE_FLAG_BACKUP_SEMANTICS",
     "FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT",
     "GetFileInformationByHandle",
     "FYAGENT_FILE_ATTRIBUTE_DIRECTORY",
     "FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT",
-    "GetSecurityInfo",
-    "ConvertSecurityDescriptorToStringSecurityDescriptorW",
-    "LocalFree",
     "CloseHandle",
   ]) {
     contract(
       openExisting.includes(required),
-      `runtime preimage validation is missing ${required}`,
+      `legacy runtime no-follow validation is missing ${required}`,
     );
   }
   const createFileCalls = [
@@ -737,35 +724,17 @@ function assertRuntimeProvisionContract(source, blocks) {
   ];
   contract(
     createFileCalls.length === 1,
-    "runtime preimage validation must issue exactly one pinned CreateFileW call",
+    "legacy runtime validation must issue exactly one no-follow CreateFileW call",
   );
   const pinnedOpen = createFileCalls[0]?.[0] ?? "";
   contract(
-    pinnedOpen.includes("FYAGENT_DELETE") &&
-      pinnedOpen.includes("FYAGENT_READ_CONTROL") &&
-      pinnedOpen.includes("i ${FYAGENT_FILE_SHARE_READ}") &&
-      !pinnedOpen.includes("FYAGENT_FILE_SHARE_ALL") &&
-      !pinnedOpen.includes("FILE_SHARE_WRITE") &&
+    pinnedOpen.includes("FYAGENT_FILE_READ_ATTRIBUTES") &&
+      pinnedOpen.includes("i ${FYAGENT_FILE_SHARE_READ}, p 0") &&
+      !pinnedOpen.includes("FYAGENT_FILE_SHARE_WRITE") &&
+      !pinnedOpen.includes("FYAGENT_DELETE") &&
+      !pinnedOpen.includes("FYAGENT_READ_CONTROL") &&
       !pinnedOpen.includes("FILE_SHARE_DELETE"),
-    "runtime preimage handles must not share write or delete access",
-  );
-  contract(
-    /\)\s+p\s+\.r8\s+\?e'\s*$/iu.test(pinnedOpen) &&
-      /^\s*Pop\s+\$9\s*(?:\r?\n|$)/u.test(
-        openExisting.slice(
-          openExisting.indexOf(pinnedOpen) + pinnedOpen.length,
-        ),
-      ) &&
-      (openExisting.match(/^\s*Pop\s+\$9\s*$/gimu) ?? []).length === 1,
-    "CreateFileW must capture its last error atomically with ?e and immediately Pop $9",
-  );
-  contract(
-    !/\bGetLastError\s*\(/iu.test(openExisting),
-    "CreateFileW last-error handling must not use a separate GetLastError call",
-  );
-  contract(
-    !/\bSetLastError\s*\(/iu.test(openExisting),
-    "CreateFileW last-error handling must not allow SetLastError spoofing",
+    "legacy cleanup must pin directory identity without permitting write/delete races or requesting deletion/DACL authority",
   );
   assertOrdered(
     openExisting,
@@ -774,101 +743,53 @@ function assertRuntimeProvisionContract(source, blocks) {
       "GetFileInformationByHandle",
       "FYAGENT_FILE_ATTRIBUTE_DIRECTORY",
       "FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT",
-      "GetSecurityInfo",
-      "ConvertSecurityDescriptorToStringSecurityDescriptorW",
       "CloseHandle",
     ],
-    "runtime preimage handle validation",
+    "legacy runtime no-follow validation",
   );
   contract(
-    !/(?:icacls|SetSecurityInfo|SetKernelObjectSecurity|SetNamedSecurityInfo)/iu.test(
+    !/(?:icacls|GetSecurityInfo|SetSecurityInfo|SetKernelObjectSecurity|SetNamedSecurityInfo|ConvertStringSecurityDescriptor|CreateDirectoryW)/iu.test(
       openExisting,
     ),
-    "an unsafe ProgramData preimage must never be repaired in place",
+    "legacy runtime validation must not inspect, repair, or recreate a machine-runtime descriptor",
   );
 
-  const createMatch = executableSource.match(
-    /!macro FyAgentCreateTrustedRuntimeDirectory Path Label OutputHandle MissingFlag([\s\S]*?)!macroend/u,
+  const cleanupMatch = executableSource.match(
+    /!macro FyAgentCleanupLegacyMachineRuntime Label([\s\S]*?)!macroend/u,
   );
-  contract(createMatch, "missing atomic ProgramData creation macro");
-  const createFresh = createMatch[1];
+  contract(cleanupMatch, "missing bounded legacy runtime cleanup macro");
+  const cleanup = cleanupMatch[1];
   assertOrdered(
-    createFresh,
+    cleanup,
     [
-      "ConvertStringSecurityDescriptorToSecurityDescriptorW",
-      "FYAGENT_SECURITY_ATTRIBUTES_SIZE",
-      "CreateDirectoryW",
-      "LocalFree",
-      "FyAgentOpenExistingTrustedRuntimeDirectory",
-    ],
-    "atomic runtime creation",
-  );
-  contract(
-    !createFresh.includes("FYAGENT_ERROR_ALREADY_EXISTS"),
-    "atomic runtime creation must reject a competing existing path",
-  );
-
-  const dispositionMatch = executableSource.match(
-    /!macro FyAgentMarkRuntimeDirectoryForDeletion Handle([\s\S]*?)!macroend/u,
-  );
-  contract(dispositionMatch, "missing handle-based runtime disposition macro");
-  assertOrdered(
-    dispositionMatch[1],
-    [
-      "SetFileInformationByHandle",
-      "FYAGENT_FILE_DISPOSITION_INFO",
-      "System::Free",
-    ],
-    "handle-based runtime disposition",
-  );
-  contract(
-    executableSource.includes(
-      '!define FYAGENT_RUNTIME_ROOT_SDDL "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"',
-    ),
-    "runtime creation must use the Rust-admitted Administrators owner SDDL",
-  );
-
-  const provision = stripNsisComments(
-    namedBlock(blocks, "function", "FyAgentProvisionMachineRuntime").body,
-  );
-  assertOrdered(
-    provision,
-    [
-      '!insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent" runtime_parent',
-      '!insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent\\runtime" runtime_leaf',
+      "ClearErrors",
+      '!insertmacro FyAgentOpenLegacyRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent"',
+      '!insertmacro FyAgentOpenLegacyRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
       'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.state"',
       'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.lock"',
-      "!insertmacro FyAgentMarkRuntimeDirectoryForDeletion $FyAgentRuntimeLeafHandle",
-      "CloseHandle(p $FyAgentRuntimeLeafHandle)",
-      '${FileExists} "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
-      "!insertmacro FyAgentMarkRuntimeDirectoryForDeletion $FyAgentRuntimeParentHandle",
-      "CloseHandle(p $FyAgentRuntimeParentHandle)",
-      '${FileExists} "$COMMONPROGRAMDATA\\FyAgent"',
-      '!insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent" runtime_create_parent',
-      '!insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent\\runtime" runtime_create_leaf',
-      "StrCpy $FyAgentRuntimeProvisionValid 1",
+      "CloseHandle(p r3)",
+      'RMDir "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
+      "CloseHandle(p r5)",
+      'RMDir "$COMMONPROGRAMDATA\\FyAgent"',
+      "ClearErrors",
     ],
-    "trusted legacy runtime rebuild",
+    "known-only legacy runtime cleanup",
   );
   contract(
-    !/(?:icacls|SetSecurityInfo|SetKernelObjectSecurity|SetNamedSecurityInfo)/iu.test(
-      provision,
+    (cleanup.match(/^\s*ClearErrors\s*$/gimu) ?? []).length === 2,
+    "legacy cleanup must clear its own error flag before returning",
+  );
+  contract(
+    !/(?:Abort|SetErrorLevel|CreateDirectoryW|ConvertStringSecurityDescriptor|GetSecurityInfo|SetSecurityInfo|SetKernelObjectSecurity|SetNamedSecurityInfo|icacls|RMDir\s+\/r)/iu.test(
+      cleanup,
     ),
-    "runtime bootstrap must not repair path-based ACLs",
+    "legacy cleanup must remain best-effort, non-provisioning, and non-recursive",
   );
-
-  const bootstrap = stripNsisComments(
-    namedBlock(blocks, "section", "-FyAgentMachineRuntimeBootstrap").body,
-  );
-  assertOrdered(
-    bootstrap,
-    [
-      '!insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"',
-      "Call FyAgentProvisionMachineRuntime",
-      "SetErrorLevel 3",
-      "Abort",
-    ],
-    "pre-WebView machine runtime bootstrap",
+  contract(
+    !/(?:FyAgentProvisionMachineRuntime|FyAgentMachineRuntimeBootstrap|FYAGENT_RUNTIME_ROOT_SDDL|FyAgentRuntimeProvision|FyAgentCreateTrustedRuntimeDirectory|FyAgentMarkRuntimeDirectoryForDeletion)/u.test(
+      executableSource,
+    ),
+    "retired machine-runtime provisioning contract remains executable",
   );
 
   const install = stripNsisComments(
@@ -878,13 +799,18 @@ function assertRuntimeProvisionContract(source, blocks) {
     install,
     [
       '!insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"',
+      "!insertmacro FyAgentCleanupLegacyMachineRuntime install_legacy_runtime",
       'File "${MAINBINARYSRCPATH}"',
     ],
-    "post-download app-stop check",
+    "best-effort install-time legacy cleanup",
   );
   contract(
-    !install.includes("Call FyAgentProvisionMachineRuntime"),
-    "machine runtime must be provisioned exactly once before WebView2",
+    (
+      executableSource.match(
+        /^\s*!insertmacro\s+FyAgentCleanupLegacyMachineRuntime\s+/gimu,
+      ) ?? []
+    ).length === 2,
+    "legacy runtime cleanup must run exactly once for install and uninstall",
   );
 }
 
@@ -897,12 +823,10 @@ function assertUninstallOwnershipContract(source, blocks) {
     uninstall,
     [
       '!insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"',
-      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.state"',
-      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.lock"',
-      'RMDir "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
-      'RMDir "$COMMONPROGRAMDATA\\FyAgent"',
+      "!insertmacro FyAgentCleanupLegacyMachineRuntime uninstall_legacy_runtime",
+      'Delete "$INSTDIR\\${MAINBINARYNAME}.exe"',
     ],
-    "runtime uninstall ownership",
+    "best-effort uninstall-time legacy cleanup",
   );
   contract(
     !/RMDir\s+\/r(?:\s+\/REBOOTOK)?\s+"?\$INSTDIR/iu.test(executableSource),
@@ -1094,6 +1018,23 @@ function assertWebView2CommandContract({
       `WebView2 helper is missing ${required}`,
     );
   }
+  assertOrdered(
+    source,
+    [
+      "[Environment+SpecialFolder]::CommonApplicationData",
+      "[IO.Path]::IsPathRooted($programDataRoot)",
+      'Join-Path $programDataRoot "FyAgent-WebView2-$([Guid]::NewGuid().ToString(\'N\'))"',
+      "$directorySecurity.SetSecurityDescriptorSddlForm($strictDirectorySddl)",
+      "$stage.Create($directorySecurity)",
+      "Assert-StrictSecurity -Path $stagePath",
+    ],
+    "ephemeral WebView2 staging",
+  );
+  contract(
+    !source.includes("$programDataParent") &&
+      !/Join-Path\s+\$programDataRoot\s+['"]FyAgent['"]/u.test(source),
+    "WebView2 staging must not depend on or recreate the retired ProgramData FyAgent runtime parent",
+  );
   contract(
     !/Remove-Item[\s\S]{0,160}-Recurse/iu.test(source),
     "WebView2 cleanup must not recurse",
@@ -1595,7 +1536,7 @@ export function verifyWindowsNsisContract(options = {}) {
   );
 
   assertInstallPathPolicyContract(source, [webviewInclude]);
-  assertRuntimeProvisionContract(source, blocks);
+  assertLegacyRuntimeCleanupContract(source, blocks);
   assertUninstallOwnershipContract(source, blocks);
   assertWebView2CommandContract({
     source: webviewSource,
