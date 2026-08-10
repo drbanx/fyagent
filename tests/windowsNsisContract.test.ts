@@ -857,12 +857,238 @@ describe("Windows NSIS installer contract", () => {
     ).toThrow(/exactly one canonical FyAgent icon definition/u);
   });
 
+  it("keeps warning 6000 fatal across the repo-owned NSIS closure", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    for (const mutation of [
+      source.replace("!pragma warning error 6000\n", ""),
+      source.replace(
+        "!pragma warning error 6000",
+        "!pragma warning disable 6000",
+      ),
+      `${source}\n!pragma warning disable 6000\n`,
+      `${source}\n!pragma warning warning 6000\n`,
+      `${source}\n!pragma warning default 6000\n`,
+      `${source}\n!pragma warning enable 6000\n`,
+      `${source}\n!pragma warning disable all\n`,
+      `${source}\n!pragma warning warning all\n`,
+      `${source}\n!pragma warning default all\n`,
+      `${source}\n!pragma warning enable all\n`,
+      `${source}\n!define FYAGENT_WARNING_PRAGMA warning\n!pragma \${FYAGENT_WARNING_PRAGMA} disable 6000\n`,
+      source
+        .replace(
+          "!pragma warning error 6000",
+          "!pragma warning push\n!pragma warning error 6000",
+        )
+        .concat("\n!pragma warning pop\n"),
+      `${source}\n!pragma warning push\n!pragma warning disable all\n!pragma warning pop\n`,
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /warning 6000 (?:protection must be the canonical top-level template directive|must remain an error)/u,
+      );
+    }
+
+    const includeOverride = `${fs.readFileSync(WEBVIEW_INCLUDE, "utf8").trimEnd()}\n!pragma warning disable 6000\n`;
+    expect(() =>
+      verifyWindowsNsisContract({
+        baseConfigPath: BASE_CONFIG,
+        windowsConfigPath: WINDOWS_CONFIG,
+        templatePath: TEMPLATE,
+        webviewIncludePath: temporaryFile(
+          "webview2-command.nsh",
+          includeOverride,
+        ),
+      }),
+    ).toThrow(/NSIS warning 6000 must remain an error/u);
+  });
+
+  it("rejects dynamically expanded preprocessor directive names", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const hookInclude = '!include "{{installer_hooks}}"';
+    const hookBlock = `{{#if installer_hooks}}\n${hookInclude}\n{{/if}}`;
+    for (const mutation of [
+      `${source}\n!define FYAGENT_DIRECTIVE pragma\n!\${FYAGENT_DIRECTIVE} warning disable 6000\n`,
+      source.replace(
+        hookBlock,
+        [
+          "!define FYAGENT_IF if",
+          "!define FYAGENT_ENDIF endif",
+          "{{#if installer_hooks}}",
+          "!\${FYAGENT_IF} 0",
+          hookInclude,
+          "!\${FYAGENT_ENDIF}",
+          "{{/if}}",
+        ].join("\n"),
+      ),
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /dynamic NSIS preprocessor directive names are forbidden/u,
+      );
+    }
+  });
+
+  it("allows only reviewed runtime macros at line start", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const hookInclude = '!include "{{installer_hooks}}"';
+    const hookBlock = `{{#if installer_hooks}}\n${hookInclude}\n{{/if}}`;
+    const nsisQuotes = ['"', "'", "`"];
+    for (const mutation of [
+      `${source}\n!define B !\n\${B}pragma warning disable 6000\n`,
+      source.replace(
+        hookBlock,
+        [
+          "!define B !",
+          "{{#if installer_hooks}}",
+          "\${B}if 0",
+          hookInclude,
+          "\${B}endif",
+          "{{/if}}",
+        ].join("\n"),
+      ),
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /only reviewed runtime macros may appear at line start/u,
+      );
+    }
+
+    for (const mutation of [
+      `${source}\n!define /redef If !pragma warning disable 6000\n`,
+      `${source}\n!macroundef If\n!macro If\n!macroend\n`,
+      `${source}\n!define B If\n!define \${B} !pragma warning disable 6000\n`,
+      ...nsisQuotes.map(
+        (quote) =>
+          `${source}\n!define /redef ${quote}If${quote} !\n\${If}pragma warning disable 6000\n`,
+      ),
+      ...nsisQuotes.map(
+        (quote) =>
+          `${source}\n!define ${quote}/redef${quote} If !\n\${If}pragma warning disable 6000\n`,
+      ),
+      `${source}\n!define B If\n!define /redef "\${B}" !\n\${If}pragma warning disable 6000\n`,
+      `${source}\n!define /redef "If !\n\${If}pragma warning disable 6000\n`,
+      `${source}\n!macroundef If\n!macro "If"\n!macroend\n`,
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /must use literal unquoted names and must not redefine reviewed line-start runtime macro names/u,
+      );
+    }
+  });
+
+  it("pins the warning pragma and installer hook to active top-level positions", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const canonicalDirective = "!pragma warning error 6000";
+    const hookInclude = '!include "{{installer_hooks}}"';
+    const hookBlock = `{{#if installer_hooks}}\n${hookInclude}\n{{/if}}`;
+    for (const mutation of [
+      source.replace(
+        canonicalDirective,
+        `!if 0\n${canonicalDirective}\n!endif`,
+      ),
+      source.replace(
+        hookBlock,
+        `{{#if installer_hooks}}\n!if 0\n${hookInclude}\n!endif\n{{/if}}`,
+      ),
+      source
+        .replace(canonicalDirective, `${hookInclude}\n${canonicalDirective}`)
+        .replace(
+          hookBlock,
+          `{{#if installer_hooks}}\n!if 0\n${hookInclude}\n!endif\n{{/if}}`,
+        ),
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /canonical top-level template directive|installer hook include must appear exactly once at top level/u,
+      );
+    }
+  });
+
+  it("ignores preprocessor directive text in NSIS comments and strings", () => {
+    const source = `${fs.readFileSync(TEMPLATE, "utf8").trimEnd()}
+; !pragma warning disable 6000
+# !pragma warning default all
+/*
+!pragma \${FYAGENT_WARNING_PRAGMA} disable 6000
+!\${FYAGENT_DIRECTIVE} warning disable 6000
+\${B}pragma warning disable 6000
+*/
+!define FYAGENT_WARNING_TEXT "!pragma warning warning 6000"
+!define FYAGENT_DYNAMIC_PRAGMA_TEXT "!pragma \${FYAGENT_WARNING_PRAGMA} disable 6000"
+!define FYAGENT_DYNAMIC_DIRECTIVE_TEXT "!\${FYAGENT_DIRECTIVE} warning disable 6000"
+!define FYAGENT_LINE_START_TEXT "\${B}pragma warning disable 6000"
+`;
+
+    expect(() => verifyTemplate(source)).not.toThrow();
+  });
+
+  it("pins the native Common ProgramData token and per-machine contexts", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    for (const mutation of [
+      source.replace("$COMMONPROGRAMDATA\\FyAgent", "$COMMONAPPDATA\\FyAgent"),
+      source.replace("$COMMONPROGRAMDATA\\FyAgent", "$APPDATA\\FyAgent"),
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /exact NSIS \$COMMONPROGRAMDATA|unknown \$COMMONAPPDATA/u,
+      );
+    }
+
+    for (const mutation of [
+      source.replace(
+        "  !insertmacro SetContext\n\n  ${If} $INSTDIR",
+        "\n  ${If} $INSTDIR",
+      ),
+      source.replace(
+        "Function un.onInit\n  SetRegView 64\n  !insertmacro SetContext\n",
+        "Function un.onInit\n  SetRegView 64\n",
+      ),
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /must initialize the per-machine shell and registry context/u,
+      );
+    }
+  });
+
+  it("captures the CreateFileW last error atomically", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const capture = "p 0) p .r8 ?e'\n  Pop $9";
+    expect(source).toContain(capture);
+    for (const mutation of [
+      source.replace(capture, "p 0) p .r8'\n  Pop $9"),
+      source.replace(capture, "p 0) p .r8 ?e'\n  Pop $8"),
+      source.replace(capture, "p 0) p .r8 ?e'\n  StrCpy $0 0\n  Pop $9"),
+      source.replace(
+        capture,
+        "p 0) p .r8'\n  System::Call 'kernel32::GetLastError() i .r9'",
+      ),
+      source.replace(
+        capture,
+        `${capture}\n  System::Call 'kernel32::GetLastError() i .r9'`,
+      ),
+      source.replace(
+        "  System::Call 'kernel32::CreateFileW",
+        "  System::Call 'kernel32::SetLastError(i 2)'\n  System::Call 'kernel32::CreateFileW",
+      ),
+      source.replace(
+        capture,
+        `${capture}\n  System::Call 'kernel32::SetLastError(i 2)'`,
+      ),
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /last error atomically with \?e|must not (?:use a separate GetLastError|allow SetLastError spoofing)/u,
+      );
+    }
+  });
+
   it("rejects path-based ACL repair of an unsafe ProgramData preimage", () => {
     const source = fs
       .readFileSync(TEMPLATE, "utf8")
       .replace(
         "Function FyAgentProvisionMachineRuntime",
-        "Function FyAgentProvisionMachineRuntime\n  nsExec::ExecToStack 'icacls \"$COMMONAPPDATA\\FyAgent\" /grant:r Administrators:F'",
+        "Function FyAgentProvisionMachineRuntime\n  nsExec::ExecToStack 'icacls \"$COMMONPROGRAMDATA\\FyAgent\" /grant:r Administrators:F'",
       );
     expect(() => verifyTemplate(source)).toThrow(
       /must not repair path-based ACLs/u,

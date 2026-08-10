@@ -107,10 +107,27 @@ Arguments must never be concatenated into a command string.
 Trellis wrappers invoke each uv-managed `.py` script directly with
 `uv run --locked <script>`; they do not insert a system `python`, `python3`, or
 `py` executable token. `format:files` accepts one or more reviewed files and
-forwards them as distinct argv entries to the repository-locked Prettier. It
-rejects empty input, option-like values, parent traversal, repository-external
-paths, directories, symlinks, and realpath escapes. Repository-relative and
-absolute-inside-repository paths may contain whitespace or Unicode.
+first validates every operand. It routes validated `.jsonl` names
+case-insensitively through record formatting: before any write or Prettier
+invocation, it reads every such input, normalizes CRLF to LF, preserves blank
+rows, validates each nonblank record as JSON, and removes only insignificant
+JSON whitespace outside strings. It does not reserialize parsed values, so
+large-number spellings, duplicate members, negative zero, and string escapes
+remain byte-identical. A JSON parse failure identifies its file and line,
+aborts the whole operation, and leaves every JSONL input untouched without
+starting Prettier. Only after all JSONL inputs parse does the task forward the
+remaining reviewed paths as distinct argv entries to the repository-locked
+Prettier. Immediately before committing, it compares every changed JSONL
+target with the bytes read during preflight; drift observed by that precommit
+check fails without overwriting the newer content. It stages the complete
+JSONL output set and uses the shared
+rollback-capable writer for per-file replacement. It rejects empty input,
+option-like values, parent traversal, repository-external paths, directories,
+symlinks, and realpath escapes. Repository-relative and
+absolute-inside-repository paths may contain whitespace or Unicode. JSONL
+formatting is syntactic record normalization only: for Trellis task context
+files, `trellis:validate` remains the authority for the context-record schema
+and repository-containment checks.
 
 On native Windows, local mise tasks resolve only the actually used `pnpm`
 command to `pnpm.exe`. This matches the audited `mise.lock` assets
@@ -131,7 +148,8 @@ values reach the wrapper.
   system packages, change Git, refresh locks, build, or publish.
 - Formatting is an explicit source-modifying leaf and does not prompt. The
   full `format` task retains its frontend-wide behavior; `format:files` is the
-  safe reviewed-subset entrypoint.
+  safe reviewed-subset entrypoint. Its JSONL record normalization does not
+  replace the required Trellis context validation.
 - `trellis:reconcile` is source-modifying and applies only exact declared
   overlays after a complete no-write preflight. `trellis:verify` is read-only
   and belongs to `check:contracts`. Overlay schema, managed-path discovery,
@@ -210,32 +228,36 @@ local command API.
 
 ## 7. Validation / Error Matrix
 
-| Condition                                                             | Required result                        |
-| --------------------------------------------------------------------- | -------------------------------------- |
-| Missing description/effect/usage                                      | `tasks:validate` fails                 |
-| Missing task reference or DAG cycle                                   | mise/task contract fails               |
-| `check` reaches a non-read-only effect                                | Fail closed                            |
-| A parameter is interpolated into a shell command                      | Reject; spawn validated argv instead   |
-| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`  | Task-runner and DEP0040 contracts fail |
-| A Rust filter begins with `-` or contains `--target`                  | Reject before rustc or Cargo starts    |
-| A fixed native operation receives forwarded argv                      | Reject before rustc or Tauri starts    |
-| Caller compiler/wrapper/runner/linker/target env redirects a task     | Reject before rustc/rustdoc starts     |
-| Any Rust/rustdoc flag env contains a target token                     | Reject before rustc/rustdoc starts     |
-| Target-specific flags or process-loader/runtime injection are set     | Reject before rustc/rustdoc starts     |
-| Absolute rustc/rustdoc identity and process host disagree             | Reject before Cargo/Tauri starts       |
-| User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject before the toolchain starts     |
-| A standard task selects a non-host OS/architecture                    | Reject before any toolchain starts     |
-| A local wrapper bridges to a foreign executable/emulator              | Reject; require a native Actions job   |
-| Mutation task has neither preview default nor explicit confirmation   | Reject                                 |
-| Clean path resolves outside the repository                            | Reject without deletion                |
-| Upstream safety/remotes/worktree do not match                         | Reject before fetch/merge              |
-| Generated task reference differs by one byte                          | `tasks:docs:check` fails               |
-| New active doc uses a legacy entrypoint                               | `docs-contract-check.mjs` fails        |
-| Operational Trellis doc bypasses mise or names an unknown task        | `docs-contract-check.mjs` fails        |
-| Project setup safety marker disappears during a Trellis update        | `docs-contract-check.mjs` fails        |
-| Trellis wrapper names a system Python executable                      | Task contract test fails               |
-| `format:files` receives an option, directory, symlink, or escape      | Reject before Prettier starts          |
-| Managed Trellis divergence is undeclared or stale                     | `trellis:verify` fails                 |
+| Condition                                                                          | Required result                                    |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Missing description/effect/usage                                                   | `tasks:validate` fails                             |
+| Missing task reference or DAG cycle                                                | mise/task contract fails                           |
+| `check` reaches a non-read-only effect                                             | Fail closed                                        |
+| A parameter is interpolated into a shell command                                   | Reject; spawn validated argv instead               |
+| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`               | Task-runner and DEP0040 contracts fail             |
+| A Rust filter begins with `-` or contains `--target`                               | Reject before rustc or Cargo starts                |
+| A fixed native operation receives forwarded argv                                   | Reject before rustc or Tauri starts                |
+| Caller compiler/wrapper/runner/linker/target env redirects a task                  | Reject before rustc/rustdoc starts                 |
+| Any Rust/rustdoc flag env contains a target token                                  | Reject before rustc/rustdoc starts                 |
+| Target-specific flags or process-loader/runtime injection are set                  | Reject before rustc/rustdoc starts                 |
+| Absolute rustc/rustdoc identity and process host disagree                          | Reject before Cargo/Tauri starts                   |
+| User Cargo config selects target/compiler/wrapper/flags/runner/linker              | Reject before the toolchain starts                 |
+| A standard task selects a non-host OS/architecture                                 | Reject before any toolchain starts                 |
+| A local wrapper bridges to a foreign executable/emulator                           | Reject; require a native Actions job               |
+| Mutation task has neither preview default nor explicit confirmation                | Reject                                             |
+| Clean path resolves outside the repository                                         | Reject without deletion                            |
+| Upstream safety/remotes/worktree do not match                                      | Reject before fetch/merge                          |
+| Generated task reference differs by one byte                                       | `tasks:docs:check` fails                           |
+| New active doc uses a legacy entrypoint                                            | `docs-contract-check.mjs` fails                    |
+| Operational Trellis doc bypasses mise or names an unknown task                     | `docs-contract-check.mjs` fails                    |
+| Project setup safety marker disappears during a Trellis update                     | `docs-contract-check.mjs` fails                    |
+| Trellis wrapper names a system Python executable                                   | Task contract test fails                           |
+| `format:files` receives an option, directory, symlink, or escape                   | Reject before Prettier or JSONL writes             |
+| A reviewed `.jsonl` target is not valid UTF-8                                      | Identify the file; no Prettier or JSONL write      |
+| A nonblank reviewed `.jsonl` record is invalid JSON                                | Identify file and line; no Prettier or JSONL write |
+| A changed JSONL target no longer matches its preflight bytes                       | Preserve the newer bytes and fail                  |
+| A formatted Trellis context file still violates record/schema or containment rules | `trellis:validate` remains the required authority  |
+| Managed Trellis divergence is undeclared or stale                                  | `trellis:verify` fails                             |
 
 ## 8. Tests Required
 
@@ -248,7 +270,13 @@ local command API.
   system Python executable name.
 - `format:files` tests for empty input, option injection, parent/outside paths,
   directories, symlinks, realpath escape, and successful multi-file whitespace,
-  Unicode, and absolute-inside-repository argv transport.
+  Unicode, and absolute-inside-repository argv transport. Cover mixed JSONL
+  and Prettier inputs, CRLF/blank-row-preserving compact JSONL records, token
+  preservation for large numbers, duplicate members, escapes, and negative
+  zero, a later JSONL parse failure that leaves every JSONL byte-identical and
+  never invokes Prettier, Prettier failure before JSONL commit, and JSONL
+  preimage drift observed by the precommit check that preserves the newer
+  bytes.
 - Pure executable-resolution tests must require `pnpm.exe` only on Win32,
   preserve direct non-Windows commands, bind both native Windows pnpm lock
   assets and checksums, and prove the DEP0040 checker uses the shared resolver

@@ -551,6 +551,55 @@ describe("useCodexDesktopInstaller", () => {
     );
   });
 
+  it("retains adjacent accepted download samples when React batches their renders", async () => {
+    const mebibyte = 1024 * 1024;
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(mocks.listeners.size).toBe(1));
+    await act(async () => {
+      emitJob(makeDownloadJob(1, mebibyte, "2026-07-29T00:00:01.000Z"));
+      emitJob(makeDownloadJob(2, 3 * mebibyte, "2026-07-29T00:00:02.000Z"));
+    });
+
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
+    );
+  });
+
+  it("keeps the accepted download-speed baseline when a stale sequence is rejected", async () => {
+    const mebibyte = 1024 * 1024;
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(mocks.listeners.size).toBe(1));
+    await act(async () => {
+      emitJob(makeDownloadJob(1, mebibyte, "2026-07-29T00:00:01.000Z"));
+    });
+    await act(async () => {
+      emitJob(makeDownloadJob(2, 3 * mebibyte, "2026-07-29T00:00:02.000Z"));
+    });
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
+    );
+
+    await act(async () => {
+      emitJob(makeDownloadJob(1, 9 * mebibyte, "2026-07-29T00:00:03.000Z"));
+    });
+    expect(result.current.progress?.current).toBe(3 * mebibyte);
+
+    await act(async () => {
+      emitJob(makeDownloadJob(3, 7 * mebibyte, "2026-07-29T00:00:04.000Z"));
+    });
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
+    );
+  });
+
   it("resets a zero-byte interval without exposing stale speed and recovers from that sample", async () => {
     const mebibyte = 1024 * 1024;
     const observedProgress: Array<{
@@ -743,6 +792,42 @@ describe("useCodexDesktopInstaller", () => {
 
     await act(async () => {
       emitJob(makeJob("downloading", 2));
+    });
+
+    expect(queryClient.getQueryData(codexDesktopKeys.job())).toEqual(
+      initialJob,
+    );
+  });
+
+  it("ignores focus recovery that resolves after unmount", async () => {
+    const focusRecovery = createDeferred<JobSnapshot | null>();
+    const { queryClient, wrapper } = createWrapper();
+    const initialJob = makeDownloadJob(
+      1,
+      1024 * 1024,
+      "2026-07-29T00:00:01.000Z",
+    );
+    queryClient.setQueryData(codexDesktopKeys.job(), initialJob);
+    const { unmount } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(mocks.listeners.size).toBe(1);
+      expect(mocks.api.getJob).toHaveBeenCalledOnce();
+    });
+    mocks.api.getJob.mockReturnValueOnce(focusRecovery.promise);
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(mocks.api.getJob).toHaveBeenCalledTimes(2));
+    unmount();
+
+    await act(async () => {
+      focusRecovery.resolve(
+        makeDownloadJob(2, 3 * 1024 * 1024, "2026-07-29T00:00:02.000Z"),
+      );
     });
 
     expect(queryClient.getQueryData(codexDesktopKeys.job())).toEqual(

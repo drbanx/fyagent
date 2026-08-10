@@ -49,3 +49,39 @@ reconfirmed by the parent repository-wide check on 2026-08-10:
 
 These local acceptance criteria are complete. The task remains open only for
 the parent-owned formal Release and dependency-ordered archive boundary.
+
+## JSONL formatter follow-up
+
+A final integration run reproduced the prior formatting failure against the
+task's real `implement.jsonl`: `format:files` passed every reviewed path to
+Prettier, which cannot infer a parser for JSON Lines. Excluding the task context
+files would have left the reviewed-subset formatter incomplete, so the task now
+dispatches validated `.jsonl` inputs to a built-in record formatter. It parses
+every nonblank record before any formatting starts, removes only insignificant
+whitespace outside strings, preserves the original JSON tokens and blank rows,
+and stages the complete JSONL change set before using the existing
+rollback-capable writer. A malformed record identifies its file and line,
+starts no Prettier process, and leaves every input unchanged. After Prettier,
+the task compares every changed JSONL target with its preflight bytes
+immediately before commit, so drift already visible to that check fails without
+being overwritten. Validated non-JSONL paths still reach the locked Prettier as
+separate argv entries. Trellis schema
+and repository-containment acceptance remain owned by `trellis:validate`;
+successful syntax normalization does not replace it.
+
+The corrected task was exercised against this child's actual
+`implement.jsonl` and `check.jsonl`; both normalized successfully and the child
+then passed `mise run trellis:validate`. The real mise task contract suite
+passed 33/33, including mixed Prettier/JSONL dispatch, a second JSONL file with
+multiple records and an internal blank row, and fail-closed malformed CLI
+behavior. A separate CI-safe formatter suite covers token preservation for
+large numbers, duplicate members, escapes, and negative zero; all-input parse
+preflight; Prettier failure; precommit drift preservation; invalid UTF-8; and
+rejection of a UTF-8 BOM or non-JSON whitespace-only records; it passed 7/7.
+The CI-safe shared-writer suite passed 3/3 for unique same-directory temporary
+files, mode preservation, partial-write rollback, cleanup, and recovery-error
+aggregation.
+`mise run typecheck` and the repository-wide `mise run check` also exited zero
+on the same local snapshot. This follow-up changes no remote evidence boundary:
+the child remains open until the parent-owned Release and ordered archive
+closeout complete.

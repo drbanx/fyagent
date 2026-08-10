@@ -272,6 +272,8 @@ describe("automatic CI workflow", () => {
       /preserves one raw JSON\s+stdin\/stdout protocol through mise/,
     );
     expect(releaseCheck).toContain("if (!ciMode)");
+    expect(releaseCheck).toContain('"tests/formatFiles.test.ts"');
+    expect(releaseCheck).toContain('"tests/taskAtomicWriter.test.ts"');
     expect(releaseCheck).toContain(
       'run("node", ["scripts/tasks/task-contract-check.mjs"]);',
     );

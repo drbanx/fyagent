@@ -438,6 +438,17 @@ jobs:
           }
           "FYAGENT_WINDOWS_RAW_ASSET=$assetPath" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Verify raw Windows setup embeds the canonical FyAgent icon
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/release/verify-windows-setup-icon.mjs `
+            $env:FYAGENT_WINDOWS_RAW_ASSET `
+            src-tauri/icons/icon.ico
+          if ($LASTEXITCODE -ne 0) {
+            throw "Raw Windows setup icon verification failed with exit code $LASTEXITCODE"
+          }
+
       - name: Prove raw Windows candidate is strictly unsigned
         shell: pwsh
         run: |
@@ -1610,6 +1621,8 @@ jobs:
           node scripts/release/collect-workflow-artifacts.mjs \
             signing downloaded-signing signing-fragments "$APP_VERSION"
           node scripts/release/verify-release-files.mjs installers installers "$APP_VERSION"
+          node scripts/release/verify-windows-setup-icon.mjs "installers/FyAgent-$APP_VERSION-Windows-x64-setup.exe" src-tauri/icons/icon.ico
+          node scripts/release/verify-windows-setup-icon.mjs "installers/FyAgent-$APP_VERSION-Windows-arm64-setup.exe" src-tauri/icons/icon.ico
           mkdir verified-subjects
           cp installers/* verified-subjects/
           node scripts/release/windows-signing.mjs aggregate \
@@ -1642,6 +1655,7 @@ jobs:
 
   attest:
     name: Attest ten installers and three evidence files
+    if: ${{ !cancelled() }}
     needs: [eligibility, verify-assets]
     runs-on: ubuntu-24.04
     permissions:
@@ -1652,6 +1666,18 @@ jobs:
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
     steps:
+      - name: Require successful attestation prerequisites
+        shell: bash
+        env:
+          ELIGIBILITY_RESULT: ${{ needs.eligibility.result }}
+          VERIFY_ASSETS_RESULT: ${{ needs['verify-assets'].result }}
+        run: |
+          set -euo pipefail
+          if [ "$ELIGIBILITY_RESULT" != "success" ] || [ "$VERIFY_ASSETS_RESULT" != "success" ]; then
+            echo "Attestation prerequisites were not successful: eligibility=$ELIGIBILITY_RESULT verify-assets=$VERIFY_ASSETS_RESULT" >&2
+            exit 1
+          fi
+
       - name: Checkout release contract verifier
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1703,7 +1729,7 @@ jobs:
 
   publish:
     name: Publish stable GitHub Release
-    if: github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal'
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.eligibility.result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.attest.result == 'success' }}
     needs: [eligibility, attest]
     runs-on: ubuntu-24.04
     permissions:

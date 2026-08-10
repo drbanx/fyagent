@@ -1,10 +1,12 @@
 {"file":".trellis/spec/backend/development-environment.md","reason":"Check uv ownership and update/trust boundaries."}
 {"file":".trellis/spec/backend/task-runner-contract.md","reason":"Check task metadata, side effects, docs, and tests."}
 {"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Check that managed-template logic has one authoritative implementation."}
-{"file": "tests/trellisOverlay.test.ts", "reason": "Nine hermetic tests pass for exact base and output, python3, idempotence, atomic preflight, missing and undeclared paths, stale metadata and transforms, JSON shape, and read-only verification."}
-{"file": "tests/miseTaskContract.test.ts", "reason": "Thirty-one tests pass, including direct uv argv and real whitespace and Unicode format-files transport."}
-{"file": "tests/taskDocs.test.ts", "reason": "Ninety-seven project-entrypoint and generated-task documentation tests pass."}
-{"file": "tests/developmentHooks.test.ts", "reason": "Eighteen existing hook integrity, containment, strict-input, and protocol tests remain green."}
-{"file": "scripts/trellis/verify.mjs", "reason": "Real repository verification passes with 87 managed paths: 84 pristine and exactly 3 reconciled overlays; repeated reconcile reports changed zero."}
-{"file": ".trellis/.template-hashes.json", "reason": "Trellis 0.6.14 update dry-run reports 84 unchanged files and only the three declared Codex overlays as modified; no files are written."}
-{"file": ".mise/tasks/core.toml", "reason": "check:contracts passes task, docs, lock, overlay, version, hook, and release gates; its release suite reports 333 unit tests plus 4 native-fetch tests green. check:frontend also passes typecheck, formatting, 143 files and 1199 unit tests, i18n, desktop mock, and visual preflight."}
+{"file":"tests/trellisOverlay.test.ts","reason":"Nine hermetic tests pass for exact base and output, python3, idempotence, atomic preflight, missing and undeclared paths, stale metadata and transforms, JSON shape, and read-only verification."}
+{"file":"tests/miseTaskContract.test.ts","reason":"Thirty-three tests pass, including direct uv argv, real mixed Prettier and JSONL formatting, lossless JSON token preservation, fail-closed malformed CLI behavior, and whitespace and Unicode path transport."}
+{"file":"tests/formatFiles.test.ts","reason":"Seven CI-safe tests pass for lossless multi-record formatting, full preflight, Prettier failure, observed precommit drift, invalid UTF-8, BOM rejection, and non-JSON whitespace rejection."}
+{"file":"tests/taskAtomicWriter.test.ts","reason":"Three CI-safe tests pass for mode preservation, unique same-directory temporary files, partial-write rollback, cleanup, and recovery error aggregation."}
+{"file":"tests/taskDocs.test.ts","reason":"Ninety-seven project-entrypoint and generated-task documentation tests pass."}
+{"file":"tests/developmentHooks.test.ts","reason":"Eighteen existing hook integrity, containment, strict-input, and protocol tests remain green."}
+{"file":"scripts/trellis/verify.mjs","reason":"Real repository verification passes with 87 managed paths: 84 pristine and exactly 3 reconciled overlays; repeated reconcile reports changed zero."}
+{"file":".trellis/.template-hashes.json","reason":"Trellis 0.6.14 update dry-run reports 84 unchanged files and only the three declared Codex overlays as modified; no files are written."}
+{"file":".mise/tasks/core.toml","reason":"check:contracts passes task, docs, lock, overlay, version, hook, and release gates; its release suite reports 626 unit tests plus 4 native-fetch tests green. check:frontend also passes typecheck, formatting, unit tests, i18n, desktop mock, and visual preflight."}

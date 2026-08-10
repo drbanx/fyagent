@@ -109,13 +109,28 @@ FyAgent reconciliation neither invokes nor emulates those operations.
   `uv run --locked <script>`; they do not name system `python`, `python3`, or
   `py`. Routine instructions use mise tasks rather than internal
   `.trellis/scripts/**` paths.
-- `format:files` requires at least one path and forwards each validated path as
-  a distinct argv entry to the repository-locked Prettier without a shell. It
-  accepts repository-relative and absolute-inside-repository regular files,
-  including whitespace and Unicode.
+- `format:files` requires at least one path and validates every reviewed
+  repository-relative or absolute-inside-repository regular file before it
+  formats anything, including paths with whitespace and Unicode. Validated
+  `.jsonl` names are selected case-insensitively for a built-in record
+  formatter: it normalizes CRLF to LF, keeps blank rows, validates each nonblank
+  record, and removes only insignificant whitespace outside JSON strings. It
+  does not reserialize values, preserving large numeric literals, duplicate
+  members, negative zero, and string escapes. It parses every JSONL target
+  before starting Prettier or writing a JSONL target; a parse failure reports
+  the file and line, starts no Prettier process, and leaves the complete JSONL
+  change set unchanged. When JSONL preflight succeeds, only non-JSONL targets
+  are passed as distinct argv entries to the repository-locked Prettier without
+  a shell. Immediately before commit, every changed JSONL target must still
+  match its preflight bytes; drift observed by that check fails without being
+  overwritten. The task then stages all JSONL outputs and uses the shared
+  rollback-capable writer for per-file replacement.
 - `format:files` rejects option-like values, parent traversal, external paths,
-  directories, symlinks, realpath escapes, or an empty list before starting
-  Prettier. It does not change the frontend-wide semantics of `mise run format`.
+  directories, symlinks, realpath escapes, or an empty list before formatting.
+  It does not change the frontend-wide semantics of `mise run format`. Its
+  record formatter provides syntax normalization, not Trellis task semantics:
+  `mise run trellis:validate -- .trellis/tasks/<task-dir>` remains the authority
+  for Trellis JSONL context-record schema and repository-containment checks.
 - The project entry skill never automatically trusts or bootstraps a checkout.
   A human explicitly reviews the locked environment and runs the documented
   `mise trust` -> `mise run bootstrap` -> `mise run system:check` sequence.
@@ -131,7 +146,11 @@ FyAgent reconciliation neither invokes nor emulates those operations.
 | An overlay is stale, duplicated, has an invalid owner, or targets a non-divergent/non-managed file | Verification fails; do not silently bless it.                                                                  |
 | A template update changes a hook base                                                              | Review the upstream change and add its exact identity/transform only if the project overlay remains necessary. |
 | A Trellis wrapper names a system Python executable                                                 | Task/spec contract fails before routine use.                                                                   |
-| `format:files` receives no files, an option, directory, symlink, or repository escape              | Reject before Prettier starts.                                                                                 |
+| `format:files` receives no files, an option, directory, symlink, or repository escape              | Reject before Prettier or JSONL writes.                                                                        |
+| A reviewed `.jsonl` target is not valid UTF-8                                                      | Report its path; do not invoke Prettier or commit any JSONL change.                                            |
+| A nonblank reviewed `.jsonl` line is invalid JSON                                                  | Report its file and line; do not invoke Prettier or commit any JSONL change.                                   |
+| A changed JSONL target differs from the bytes read before Prettier                                 | Preserve the newer bytes and fail before JSONL commit.                                                         |
+| Formatted Trellis JSONL needs semantic/schema or containment acceptance                            | Run `trellis:validate`; successful syntax formatting is not acceptance evidence.                               |
 | An operational guide treats archive/history as current authority                                   | Documentation/spec gate fails.                                                                                 |
 
 ## 5. Good / Base / Bad Cases
@@ -144,6 +163,9 @@ FyAgent reconciliation neither invokes nor emulates those operations.
   byte-for-byte unchanged.
 - Good: two reviewed files containing spaces and Unicode are passed as separate
   argv entries to the locked Prettier.
+- Good: a reviewed Trellis context JSONL file is normalized record-by-record,
+  then accepted separately by `trellis:validate`; Prettier receives only its
+  supported non-JSONL inputs.
 - Bad: update a template hash to bless local bytes, patch an unknown preimage,
   keep a stale overlay for an upstream-identical file, call a Trellis script
   through `python3`, or use an archived design package as current authority.
@@ -161,7 +183,13 @@ FyAgent reconciliation neither invokes nor emulates those operations.
   invocation and that no routine project instruction bypasses mise.
 - Formatting tests cover empty input, option injection, traversal, absolute
   external paths, directories, symlinks/realpath escape, multiple files,
-  whitespace, Unicode, and absolute paths inside the repository.
+  whitespace, Unicode, and absolute paths inside the repository. They also
+  cover mixed JSONL/Prettier dispatch, CRLF and blank-row-preserving compact
+  JSONL records, preservation of large numeric literals, duplicate members,
+  escapes, and negative zero, a later malformed JSONL record that leaves
+  earlier JSONL inputs untouched and never invokes Prettier, Prettier failure
+  before JSONL commit, and precommit drift rejection that preserves newer
+  bytes.
 - Documentation/spec checks validate live task names, the single explicit
   checkout gate, current-authority links, and absence of operational references
   to retired versioned design packages or external plan inputs.

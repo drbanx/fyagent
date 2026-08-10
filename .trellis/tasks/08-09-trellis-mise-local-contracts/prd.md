@@ -21,7 +21,10 @@ and testable while preserving stable `mise run` developer entrypoints.
 - Trellis Python scripts run through uv directly without a device Python
   executable name.
 - Add safe cross-shell `format:files`; preserve the existing broad `format`
-  task and direct `trellis update` CLI boundary.
+  task and direct `trellis update` CLI boundary. Reviewed JSONL inputs are
+  syntax-validated and compacted without reserializing their JSON tokens;
+  invalid UTF-8/JSON and preimage drift observed by the precommit check fail
+  before JSONL commit.
 
 ## Acceptance Criteria
 
@@ -31,4 +34,7 @@ and testable while preserving stable `mise run` developer entrypoints.
       without changing the worktree, and is part of contracts/CI.
 - [x] Both missing canonical files are restored and root `AGENTS.md` is tracked.
 - [x] uv-direct wrapper and `format:files` edge/cross-shell tests pass.
+- [x] JSONL formatting preserves record tokens and blank rows, preflights every
+      record before Prettier, rejects drift observed by its precommit check,
+      and remains separate from Trellis schema validation.
 - [x] A temporary update rehearsal proves idempotence and upstream-drift failure.

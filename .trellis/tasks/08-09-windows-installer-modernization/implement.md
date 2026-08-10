@@ -205,3 +205,83 @@ parser, typecheck, reviewed-file format check, and `git diff --check` passed.
 No matching x64/ARM64 package build or manual installer execution was performed
 for this working tree, so those native observations are not inferred from the
 local contracts.
+
+## Exact-SHA package and manual-install follow-up
+
+The preceding statement describes the local freeze point. Push CI run
+`31357521242` subsequently completed 10/10 jobs successfully for exact source
+`d9e951860e2e770992bf040add87eec0d99940a3`, including the native Windows x64
+and ARM64 contract jobs (with explicit-SID Main package-inventory smoke) and
+aggregate `CI / Required`.
+
+Same-source dispatch preflight `31358299654` passed eligibility, all native
+builds, immutable input pinning, x64 and ARM64 unsigned sealing, and
+`verify-assets`. It is not accepted as a complete preflight: attestation job
+`93365897541` was skipped, `release-attachments` is absent, and only 16 of the
+17 required workflow artifacts exist. An overall green run cannot substitute
+for those missing outputs, so this child remains open pending a corrected
+exact-SHA native cycle.
+
+A real installation attempt also found that the setup could not complete its
+protected machine-runtime bootstrap. MakeNSIS emitted twelve warning-6000
+diagnostics because `$COMMONAPPDATA` is not an NSIS variable. In addition, the
+implementation separated the native operation from `GetLastError` capture,
+allowing an intervening operation to pollute the reported code. Follow-up work
+is in progress; this record does not claim that either cause is fixed or that a
+replacement setup has passed installation.
+
+The current x64 setup's PE icon resources were compared frame by frame with the
+canonical FyAgent icon and matched. The default icon observation was traced to
+preflight run `31346575437`, artifact `installers-windows-x64` (`9047816162`),
+setup SHA-256
+`69c1c0cc5f89808d80c6a2e43b73b260469bfe477cb9fd69c5abdc6370c07fa7`;
+that older artifact reused the same filename and is not the current setup
+bytes. The current blocker is therefore the runtime bootstrap and incomplete
+attestation path, not the configured installer/uninstaller icon.
+
+## Local runtime and final-icon correction
+
+The runtime bootstrap correction replaces every unsupported `$COMMONAPPDATA`
+reference with the locked NSIS 3.08 `$COMMONPROGRAMDATA` variable and makes
+warning 6000 fatal. `CreateFileW` now captures its error through the same
+`System::Call` using `?e`, followed immediately by `Pop $9`; the separate
+`GetLastError` call is gone. Contract mutations reject the old variable,
+missing or displaced error capture, inserted error-state mutation, and
+warning-6000 regression while retaining the existing protected runtime
+owner/DACL, reparse, no-repair, and handle-pinning checks.
+
+The existing setup/uninstaller icon wiring is now complemented by a
+dependency-free PE-resource verifier. Release checks it once against each raw
+matrix setup and again against both exact final Windows installers, requiring
+one group icon whose referenced frames and bytes equal canonical
+`icons/icon.ico`, with no extra or unreferenced icon resources. It accepts the
+current x64 setup downloaded from preflight `31358299654`, artifact
+`installers-windows-x64` (`9051853460`), SHA-256
+`a5523fe81f55645cd13f2745a9d1cb35a7194ac98556f7f9fb2bbb39af22c888`.
+It rejects the identified run-`31346575437` setup because its icon-group frame
+count differs from the canonical ICO.
+
+The corrected local snapshot passed 47/47 NSIS contract tests and 24/24 PE-icon
+tests; the combined Release/NSIS/icon focus passed 119/119. `mise run
+release:check` passed 25/25 files and 628/628 contract tests plus 4/4
+native-fetch tests, and the parent-owned full `mise run check` exited zero.
+Typecheck, the source verifier, formatting, and `git diff --check` also passed.
+
+The final review hardened those contracts further: warning 6000 remains fatal
+only when the canonical pragma is the sole pragma across the repo-owned
+executable closure, is active at top level, and precedes the unique top-level
+installer hook. Literal, define-expanded, dynamically constructed,
+conditional-decoy, and stack-based overrides are rejected; only the inventoried
+line-start runtime macros are allowed, and repo-owned sources cannot redefine
+them. The PE parser requires canonical named/ID resource ordering, bounds total
+parse work and cumulative payload, uses zero-copy payload views, rejects reused
+data entries plus aliased or overlapping payload ranges, and validates PNG
+chunk names from raw ASCII bytes before decoding. Workflow mutations prove a
+raw or final icon-verifier failure cannot be ignored.
+
+This is not native installation evidence. A replacement x64/ARM64 build must
+show no warning 6000 and pass the raw/final PE-icon gates. A real install
+observation for protected runtime-directory creation remains unverified and
+non-blocking; it is not a child-acceptance or archive gate. The child remains
+open for the exact-SHA CI/preflight and formal Release evidence; the retired
+Actions lifecycle is not reinstated.

@@ -151,3 +151,130 @@ completed with exit code zero on this same frozen worktree.
 This is local/static evidence only. No new push, native package build,
 workflow-dispatch preflight, tag, attestation, or GitHub Release was triggered
 for this working tree.
+
+## Exact-SHA push and rejected preflight follow-up
+
+The preceding no-remote-run statement records the local freeze point. The
+subsequent push CI run `31357521242` completed 10/10 jobs successfully for exact
+source `d9e951860e2e770992bf040add87eec0d99940a3`, including both native Windows
+contract jobs (with explicit-SID Main package-inventory smoke) and `CI / Required`.
+
+Dispatch preflight run `31358299654` then used that same source. Eligibility,
+all matching native builds, immutable input pinning, both x64 and ARM64 unsigned
+sealing jobs, and `verify-assets` succeeded. However, attestation job
+`93365897541` was skipped, so `release-attachments` was never created and the
+run exposed only 16 of the 17 required workflow artifacts. The run's overall
+green conclusion therefore does not satisfy the preflight contract. It proves
+neither mandatory attestation nor the exact fourteen-file transaction payload;
+step 7 remains pending, and no tag or GitHub Release is authorized from this
+evidence.
+
+A real installation attempt against the current Windows setup also exposed a
+machine-runtime bootstrap failure. Source and MakeNSIS evidence identified two
+active causes: `$COMMONAPPDATA` is not an NSIS variable and produced twelve
+warning-6000 diagnostics, while separated `GetLastError` handling allowed an
+unrelated operation to contaminate the reported error code. This defect is
+being corrected and has not yet passed a new native package/preflight cycle.
+
+The icon is not the observed failure. A frame-by-frame comparison of the
+current x64 setup PE icon resources with the canonical FyAgent icon found them
+identical. The default executable icon was traced to preflight run
+`31346575437`, artifact `installers-windows-x64` (`9047816162`), setup SHA-256
+`69c1c0cc5f89808d80c6a2e43b73b260469bfe477cb9fd69c5abdc6370c07fa7`.
+That older file reused the same release filename, so it must not be used to
+reject the current icon configuration. No installer/runtime fix or replacement
+preflight is claimed by this section.
+
+## Local correction after the rejected preflight
+
+The follow-up repository correction closes the two defects exposed by the
+same-source preflight and manual install without restoring installer execution
+to GitHub Actions:
+
+- the NSIS machine-runtime paths now use the locked NSIS 3.08
+  `$COMMONPROGRAMDATA` variable, warning 6000 is fatal, and the `CreateFileW`
+  result captures `GetLastError` atomically through `?e` and an immediate
+  `Pop`; the owner, DACL, no-follow, handle-pinning, and no-repair protections
+  remain unchanged;
+- preflight attestation now runs across intentional formal-signing skips and
+  fails explicitly unless its direct eligibility and `verify-assets`
+  dependencies both succeeded; formal publication likewise requires a
+  successful eligibility job and attestation instead of inheriting a silent
+  skipped dependency;
+- a dependency-free PE-resource verifier now compares every setup icon frame
+  against the canonical `icons/icon.ico` in both the raw Windows build and the
+  exact x64/ARM64 final-asset aggregation. The current x64 preflight setup
+  from run `31358299654`, artifact `installers-windows-x64` (`9051853460`),
+  SHA-256
+  `a5523fe81f55645cd13f2745a9d1cb35a7194ac98556f7f9fb2bbb39af22c888`,
+  passes that verifier. The identified older setup from run `31346575437`
+  fails because its icon-group frame count differs from the canonical ICO.
+
+On the corrected local snapshot, the three focused Release/NSIS/icon contract
+files passed 119/119 tests. `mise run release:check` passed 25/25 files and
+628/628 contract tests plus the 4/4 native-fetch suite; typecheck, the NSIS
+source verifier, `actionlint` v1.7.12, supported-file formatting, and
+`git diff --check` also passed. The complete `mise run check` then exited zero,
+covering the frontend suite, Rust format/check/clippy/test, all task/docs and
+Trellis checks, version, hooks, Python lock, and release contracts.
+
+Final review also closed the remaining fail-closed evidence gaps before this
+freeze: the warning-6000 rule rejects literal, dynamically constructed,
+conditional, later, or hook-provided directive overrides, permits only the
+inventoried line-start runtime macros, and prevents their redefinition while
+requiring the unique hook include at top level after the canonical directive.
+PE resource directories must use strict canonical named/ID ordering; the parser
+has whole-file/tree/leaf/name/cumulative-payload budgets, zero-copy leaf views,
+and rejects reused data entries plus aliased or overlapping payload ranges. PNG
+chunk types are checked as raw ASCII bytes before decoding, so high-bit bytes
+cannot impersonate `IHDR`, `IDAT`, or `IEND`. Workflow mutations also prove that
+raw and final icon-verifier failures cannot be masked. The older and current
+setup identities above make the icon comparison independently reproducible.
+
+This is repository-local evidence. A new correction commit, exact-SHA push CI,
+same-SHA preflight with successful attestation and all 17 workflow artifacts,
+annotated tag, formal Release, and closeout CI remain pending. No corrected
+Windows setup has yet been manually installed. The simplified Release workflow
+does not execute installers, so native creation of
+`%ProgramData%\FyAgent\runtime` remains an unverified, non-blocking observation
+rather than a child-acceptance or archive gate. Step 7 remains pending for the
+required CI, preflight, and formal Release evidence.
+
+## Final local integration follow-up
+
+The repository-wide check exposed a renderer sampling defect rather than a
+test-runner race. Download speed had been derived only after React rendered the
+latest Query snapshot, so React Query batching could accept two adjacent native
+events while the effect observed only the second one and had no baseline. The
+hook now records each snapshot synchronously only after the existing cache
+acceptance predicate succeeds, and uses `jobId` plus `sequence` identity to
+prevent the render fallback from sampling it twice. Regressions cover two
+accepted events in one React batch, prove that a rejected stale sequence cannot
+contaminate the next accepted speed baseline, and prevent a deferred focus
+recovery from writing shared cache state after unmount. The focused hook suite
+passed 37/37.
+
+The same integration pass replaced the former JSONL formatting workaround with
+real task support. `format:files` now preflights and normalizes JSON Lines
+record-by-record without reserializing JSON values, checks every changed target
+against its preflight bytes before a rollback-capable commit, and continues to
+send only supported files to Prettier. The Trellis/mise child task's real
+`implement.jsonl` and `check.jsonl` formatted successfully and then passed
+`trellis:validate`; the real task contract suite passed 33/33, the CI-safe
+formatter suite passed 7/7, and the shared writer suite passed 3/3. The writer
+preserves target modes, uses unique same-directory temporary files, and
+continues rollback after a recovery error. Schema and containment acceptance
+remain separate from syntax formatting.
+
+Finally, the browser compatibility data used by the locked Browserslist graph
+was refreshed without adding a direct dependency: `baseline-browser-mapping`
+is now `2.11.13` and both active Browserslist paths use
+`caniuse-lite` `1.0.30001809`. `pnpm install --frozen-lockfile` accepted the
+lock, `pnpm why` resolved those exact versions, and `mise run build:renderer`
+completed without either stale browser-data warning. `mise run typecheck` and
+the complete `mise run check` then exited zero on this local worktree.
+
+These results do not upgrade the rejected preflight or authorize publication.
+The correction still requires a new commit, exact-SHA push CI, a same-SHA
+preflight with successful attestation and all 17 artifacts, the formal tag and
+Release, and dependency-ordered Trellis closeout. Step 7 remains pending.

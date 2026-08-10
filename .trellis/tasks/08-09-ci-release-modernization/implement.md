@@ -99,3 +99,68 @@ worktree.
 
 These results are repository-local. No remote Actions run, tag, attestation, or
 Release was created for this working tree.
+
+## Exact-SHA CI and invalid green preflight evidence
+
+The preceding no-remote-run statement records the repository-local freeze
+point. Exact-source push CI run `31357521242` later completed 10/10 jobs
+successfully for `d9e951860e2e770992bf040add87eec0d99940a3`, including both
+native Windows jobs and `CI / Required`.
+
+Dispatch preflight `31358299654` targeted the same SHA. Eligibility, all native
+builds, immutable input pinning, both unsigned Windows sealing jobs, and
+`verify-assets` succeeded. Attestation job `93365897541` was nevertheless
+skipped. Consequently `release-attachments` does not exist and the run contains
+16 rather than the required 17 workflow artifacts. Its overall green
+conclusion is not valid preflight evidence: the mandatory attestation and exact
+fourteen-file transaction payload are absent. No formal tag or Release is
+authorized, and the parent preflight step remains pending.
+
+A separate real-install observation also keeps this SHA from closeout. The
+Windows runtime bootstrap used `$COMMONAPPDATA`, which is not an NSIS variable
+and caused twelve MakeNSIS warning-6000 diagnostics, and its separated
+`GetLastError` capture allowed an unrelated error code to contaminate the
+failure report. Correction and a new exact-SHA CI/preflight cycle are still
+pending. Frame-by-frame inspection found the current x64 setup PE icon identical to
+the canonical FyAgent icon. The default icon was traced to preflight run
+`31346575437`, artifact `installers-windows-x64` (`9047816162`), setup SHA-256
+`69c1c0cc5f89808d80c6a2e43b73b260469bfe477cb9fd69c5abdc6370c07fa7`;
+that identified older file is not evidence of current workflow/configuration
+drift. This section claims neither a runtime fix nor a successful replacement
+preflight.
+
+## Local attestation and packaging correction
+
+The corrected workflow makes intentional producer skips explicit rather than
+letting GitHub's default dependency status silently skip downstream work.
+`attest` uses a status function and starts by requiring direct `eligibility`
+and `verify-assets` results to be `success`; `publish` requires a push event,
+formal mode, successful eligibility, and successful attestation. Preflight and
+formal truth-table tests, dependency mutations, and execution-guard mutations
+lock those transitions fail closed.
+
+The Windows build and aggregation stages also invoke the new PE-resource icon
+verifier against the raw matrix setup and both exact final Windows assets. The
+runtime source contract now makes NSIS warning 6000 fatal and binds the
+supported `$COMMONPROGRAMDATA` variable plus atomic native error capture.
+
+On this repository-local snapshot, Release workflow tests passed 48/48, NSIS
+contract tests passed 47/47, and PE-icon tests passed 24/24 (119/119 combined).
+`mise run release:check` passed 25/25 files and 628/628 contract tests plus the
+4/4 native-fetch suite. Typecheck, `actionlint` v1.7.12, formatting,
+`git diff --check`, and the parent-owned full `mise run check` all passed.
+
+Final review additionally proved that the warning-6000 contract rejects later
+or hook-provided state overrides, dynamically constructed directives, runtime
+macro redefinition, and inactive decoy includes while requiring the canonical
+pragma and hook include at top level. The final-artifact PE verifier enforces
+canonical resource ordering, raw-ASCII PNG chunk types, whole-tree and
+cumulative-payload budgets, data-entry uniqueness, and non-overlapping payload
+ranges. Workflow mutations require each raw and final invocation to propagate a
+nonzero verifier status.
+
+The invalid run `31358299654` is not upgraded retroactively. A new correction
+commit must complete exact-SHA push CI and a same-SHA dispatch preflight in
+which attestation succeeds, `release-attachments` exists, all 17 workflow
+artifacts are present, and publish remains skipped. Tagging and formal
+publication remain pending until that evidence is observed.

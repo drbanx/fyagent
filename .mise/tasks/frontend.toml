@@ -20,7 +20,7 @@ env = { FYAGENT_TASK_EFFECT = "source-modifying" }
 run = "pnpm format"
 
 ["format:files"]
-description = "Format one or more reviewed repository files with locked Prettier"
+description = "Format reviewed files with locked Prettier and lossless JSONL normalization"
 usage = '''
 arg "<files>" var=#true double_dash="optional" help="Repository files to format"
 '''

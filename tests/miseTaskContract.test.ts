@@ -15,6 +15,19 @@ import * as formatFilesModule from "../scripts/tasks/format-files.mjs";
 import * as trellisTaskModule from "../scripts/tasks/trellis.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
+const FORMAT_FIXTURES = new Set<string>();
+
+function createFormatFixture(prefix: string) {
+  const fixture = fs.mkdtempSync(path.join(ROOT, `.${prefix}`));
+  FORMAT_FIXTURES.add(fixture);
+  return fixture;
+}
+
+process.once("exit", () => {
+  for (const fixture of FORMAT_FIXTURES) {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
 
 type TaskDefinition = {
   confirm?: { default?: string; message?: string };
@@ -145,7 +158,7 @@ describe("canonical mise task API", () => {
   });
 
   it("formats only reviewed repository files and preserves argv boundaries", () => {
-    const fixture = fs.mkdtempSync(path.join(ROOT, ".format-files-test-"));
+    const fixture = createFormatFixture("format-files-test-");
     const relativeFixture = path.relative(ROOT, fixture);
     const spaced = path.join(relativeFixture, "with space.json");
     const unicode = path.join(relativeFixture, "配置.json");
@@ -200,12 +213,57 @@ describe("canonical mise task API", () => {
     }
   });
 
+  it("normalizes JSONL records before invoking Prettier and leaves all files unchanged on a parse failure", () => {
+    const fixture = createFormatFixture("format-files-jsonl-");
+    const relativeFixture = path.relative(ROOT, fixture);
+    const first = path.join(relativeFixture, "first.JSONL");
+    const invalid = path.join(relativeFixture, "second.jsonl");
+    const ordinary = path.join(relativeFixture, "ordinary.json");
+    const firstOriginal = ' { "first": true }\r\n';
+    const invalidOriginal = '{"second":true}\nnot-json\n';
+    fs.writeFileSync(path.join(ROOT, first), firstOriginal);
+    fs.writeFileSync(path.join(ROOT, invalid), invalidOriginal);
+    fs.writeFileSync(path.join(ROOT, ordinary), '{"ordinary":true}\n');
+
+    const calls: Array<{ command: string; args: string[] }> = [];
+    try {
+      expect(() =>
+        formatFilesModule.formatFiles(
+          [ordinary, first, invalid],
+          (command: string, args: string[]) => calls.push({ command, args }),
+        ),
+      ).toThrow(`Invalid JSONL record at ${invalid}:2`);
+      expect(calls).toEqual([]);
+      expect(fs.readFileSync(path.join(ROOT, first), "utf8")).toBe(
+        firstOriginal,
+      );
+      expect(fs.readFileSync(path.join(ROOT, invalid), "utf8")).toBe(
+        invalidOriginal,
+      );
+      expect(fs.readFileSync(path.join(ROOT, ordinary), "utf8")).toBe(
+        '{"ordinary":true}\n',
+      );
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
   it("forwards whitespace and Unicode paths through the real format:files task", () => {
-    const fixture = fs.mkdtempSync(path.join(ROOT, ".format-files-mise-"));
+    const fixture = createFormatFixture("format-files-mise-");
     const first = path.join(fixture, "with space.json");
     const second = path.join(fixture, "配置.json");
+    const jsonl = path.join(fixture, "Trellis 配置.jsonl");
+    const secondJsonl = path.join(fixture, "第二个 Trellis.jsonl");
     fs.writeFileSync(first, '{"value":1}\n');
     fs.writeFileSync(second, '{"value":2}\n');
+    fs.writeFileSync(
+      jsonl,
+      ' { "value": 9007199254740993, "duplicate": 1, "duplicate": 2, "escaped": "\\u0061", "negativeZero": -0, "nested": [ 1, 2 ] } \r\n\t\r\n',
+    );
+    fs.writeFileSync(
+      secondJsonl,
+      ' { "record": 1 } \r\n \t\r\n { "record": 2 } \r\n',
+    );
 
     try {
       const result = mise(
@@ -213,10 +271,50 @@ describe("canonical mise task API", () => {
         "--",
         path.relative(ROOT, first),
         path.relative(ROOT, second),
+        path.relative(ROOT, jsonl),
+        path.relative(ROOT, secondJsonl),
       );
       expect(result.status, output(result)).toBe(0);
       expect(fs.readFileSync(first, "utf8")).toBe('{ "value": 1 }\n');
       expect(fs.readFileSync(second, "utf8")).toBe('{ "value": 2 }\n');
+      expect(fs.readFileSync(jsonl, "utf8")).toBe(
+        '{"value":9007199254740993,"duplicate":1,"duplicate":2,"escaped":"\\u0061","negativeZero":-0,"nested":[1,2]}\n\n',
+      );
+      expect(fs.readFileSync(secondJsonl, "utf8")).toBe(
+        '{"record":1}\n\n{"record":2}\n',
+      );
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("fails the real format:files task before changing any file when JSONL is invalid", () => {
+    const fixture = createFormatFixture("format-files-invalid-");
+    const ordinary = path.join(fixture, "ordinary file.json");
+    const valid = path.join(fixture, "valid 配置.jsonl");
+    const invalid = path.join(fixture, "invalid 配置.jsonl");
+    const ordinaryOriginal = '{"ordinary":true}\n';
+    const validOriginal = ' { "valid": true } \r\n';
+    const invalidOriginal = '{"valid":true}\nnot-json\n';
+    fs.writeFileSync(ordinary, ordinaryOriginal);
+    fs.writeFileSync(valid, validOriginal);
+    fs.writeFileSync(invalid, invalidOriginal);
+
+    try {
+      const result = mise(
+        "format:files",
+        "--",
+        path.relative(ROOT, ordinary),
+        path.relative(ROOT, valid),
+        path.relative(ROOT, invalid),
+      );
+      expect(result.status, output(result)).not.toBe(0);
+      expect(output(result)).toContain(
+        `Invalid JSONL record at ${path.relative(ROOT, invalid)}:2`,
+      );
+      expect(fs.readFileSync(ordinary, "utf8")).toBe(ordinaryOriginal);
+      expect(fs.readFileSync(valid, "utf8")).toBe(validOriginal);
+      expect(fs.readFileSync(invalid, "utf8")).toBe(invalidOriginal);
     } finally {
       fs.rmSync(fixture, { recursive: true, force: true });
     }

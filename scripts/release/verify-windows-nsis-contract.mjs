@@ -179,16 +179,26 @@ function assertPowerShell51LoaderContract(loader, loaderPath, chunkCount) {
   nativePowerShellValidatedLoaders.add(loaderDigest);
 }
 
-// NSIS comments may follow executable text, while semicolons inside quoted
-// SDDL/command strings are data. Security contracts operate only on the
-// executable projection so a commented-out API can never satisfy a gate.
+// NSIS supports line comments, trailing semicolons, and C-style block comments,
+// while comment markers inside quoted SDDL/command strings are data. Security
+// contracts use only the executable projection so comments cannot satisfy a gate.
 export function stripNsisComments(source) {
+  let insideBlockComment = false;
   return normalizedLines(source)
     .map((line) => {
       let quote = null;
+      let executable = "";
       for (let index = 0; index < line.length; index += 1) {
         const character = line[index];
+        if (insideBlockComment) {
+          if (character === "*" && line[index + 1] === "/") {
+            insideBlockComment = false;
+            index += 1;
+          }
+          continue;
+        }
         if (quote !== null) {
+          executable += character;
           if (character === quote && line[index - 1] !== "$") {
             quote = null;
           }
@@ -196,13 +206,23 @@ export function stripNsisComments(source) {
         }
         if (character === '"' || character === "'" || character === "`") {
           quote = character;
+          executable += character;
+          continue;
+        }
+        if (character === "/" && line[index + 1] === "*") {
+          insideBlockComment = true;
+          index += 1;
           continue;
         }
         if (character === ";") {
-          return line.slice(0, index);
+          break;
         }
+        if (character === "#" && executable.trim() === "") {
+          break;
+        }
+        executable += character;
       }
-      return line;
+      return executable;
     })
     .join("\n");
 }
@@ -498,8 +518,192 @@ function assertCanonicalIconContract(source, repoOwnedIncludeSources) {
   }
 }
 
+// Reviewed line-start runtime macro inventory for the installer template and
+// its repository-owned hook. A new entry needs source and include-order review
+// because NSIS define expansion can otherwise construct a compiler directive.
+const REPO_OWNED_NSIS_LINE_START_MACROS = new Set([
+  "AndIf",
+  "Else",
+  "ElseIf",
+  "EndIf",
+  "GetOptions",
+  "GetSize",
+  "If",
+  "IfNot",
+  "IfThen",
+  "NSD_CreateLabel",
+  "NSD_CreateRadioButton",
+  "NSD_GetState",
+  "NSD_OnClick",
+  "NSD_SetFocus",
+  "OrIf",
+  "VersionCompare",
+]);
+const REPO_OWNED_NSIS_LINE_START_MACROS_UPPER = new Set(
+  [...REPO_OWNED_NSIS_LINE_START_MACROS].map((name) => name.toUpperCase()),
+);
+
+// This is deliberately narrower than a general NSIS tokenizer. Current
+// repository-owned declarations use only bare /options and literal names, so
+// quoted, escaped, empty, or dynamically constructed declaration tokens fail
+// closed before they can redefine an inventoried line-start runtime macro.
+function parseRepoOwnedNsisDeclaration(line) {
+  const declaration = line.match(/^\s*!(define|macro)\b(.*)$/iu);
+  if (!declaration) return null;
+
+  const kind = declaration[1].toLowerCase();
+  let remainder = declaration[2].trim();
+  while (true) {
+    const token = remainder.match(/^\S+/u)?.[0] ?? "";
+    const unsafeToken = token === "" || /["'`$]/u.test(token);
+    if (unsafeToken) return { name: token, unsafe: true };
+
+    remainder = remainder.slice(token.length).trimStart();
+    if (kind === "define" && token.startsWith("/")) continue;
+    return { name: token, unsafe: false };
+  }
+}
+
+function assertWarning6000PackagingContract(source, repoOwnedIncludeSources) {
+  const canonicalDirective = "!pragma warning error 6000";
+  const executableTemplateLines = stripNsisComments(source)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const canonicalOpening = [
+    "Unicode true",
+    canonicalDirective,
+    "ManifestDPIAware true",
+  ];
+  contract(
+    canonicalOpening.every(
+      (line, index) => executableTemplateLines[index] === line,
+    ),
+    "warning 6000 protection must be the canonical top-level template directive",
+  );
+
+  const sources = [
+    { label: "template", source },
+    ...repoOwnedIncludeSources.map((include, index) => ({
+      label: `repo-owned include ${index + 1}`,
+      source: include,
+    })),
+  ];
+  const directives = [];
+  const dynamicDirectiveNames = [];
+  const unreviewedLineStartMacros = [];
+  const unsafeOrProtectedMacroDeclarations = [];
+
+  for (const candidate of sources) {
+    for (const line of stripNsisComments(candidate.source).split("\n")) {
+      if (/^\s*!\$\{/u.test(line)) {
+        dynamicDirectiveNames.push({
+          label: candidate.label,
+          line: line.trim(),
+        });
+      }
+      const lineStartMacro = line.match(/^\s*\$\{([^}]+)\}/u);
+      if (
+        lineStartMacro &&
+        !REPO_OWNED_NSIS_LINE_START_MACROS.has(lineStartMacro[1])
+      ) {
+        unreviewedLineStartMacros.push({
+          label: candidate.label,
+          line: line.trim(),
+        });
+      }
+      const declaration = parseRepoOwnedNsisDeclaration(line);
+      if (declaration) {
+        if (
+          declaration.unsafe ||
+          REPO_OWNED_NSIS_LINE_START_MACROS_UPPER.has(
+            declaration.name.toUpperCase(),
+          )
+        ) {
+          unsafeOrProtectedMacroDeclarations.push({
+            label: candidate.label,
+            line: line.trim(),
+          });
+        }
+      }
+      if (!/^\s*!pragma(?:\s|$)/iu.test(line)) continue;
+      directives.push({ label: candidate.label, line: line.trim() });
+    }
+  }
+
+  contract(
+    dynamicDirectiveNames.length === 0,
+    "dynamic NSIS preprocessor directive names are forbidden across the repo-owned executable closure",
+  );
+  contract(
+    unreviewedLineStartMacros.length === 0,
+    "only reviewed runtime macros may appear at line start across the repo-owned executable closure",
+  );
+  contract(
+    unsafeOrProtectedMacroDeclarations.length === 0,
+    "repo-owned declarations must use literal unquoted names and must not redefine reviewed line-start runtime macro names",
+  );
+  contract(
+    directives.length === 1 &&
+      directives[0].label === "template" &&
+      directives[0].line === canonicalDirective,
+    "NSIS warning 6000 must remain an error across the repo-owned executable closure",
+  );
+
+  const hookInclude = '!include "{{installer_hooks}}"';
+  const hookIncludeIndices = executableTemplateLines.flatMap((line, index) =>
+    line === hookInclude ? [index] : [],
+  );
+  let preprocessorDepth = 0;
+  let hookIncludeDepth = null;
+  for (const [index, line] of executableTemplateLines.entries()) {
+    if (/^!(?:endif|macroend)\b/iu.test(line)) preprocessorDepth -= 1;
+    if (index === hookIncludeIndices[0]) hookIncludeDepth = preprocessorDepth;
+    if (/^!(?:if|ifdef|ifndef|ifmacrodef|ifmacrondef|macro)\b/iu.test(line)) {
+      preprocessorDepth += 1;
+    }
+  }
+  contract(
+    hookIncludeIndices.length === 1 &&
+      hookIncludeIndices[0] > 1 &&
+      hookIncludeDepth === 0,
+    "repo-owned installer hook include must appear exactly once at top level after warning 6000 protection",
+  );
+}
+
 function assertRuntimeProvisionContract(source, blocks) {
   const executableSource = stripNsisComments(source);
+  contract(
+    !/\$COMMONAPPDATA\b/iu.test(executableSource),
+    "runtime paths must use the NSIS $COMMONPROGRAMDATA variable, not the unknown $COMMONAPPDATA token",
+  );
+  const runtimeRootAliases = [
+    ...executableSource.matchAll(/\$[A-Z][A-Z0-9_]*\\FyAgent\b/giu),
+  ].map((match) => match[0].toUpperCase());
+  contract(
+    runtimeRootAliases.length > 0 &&
+      runtimeRootAliases.every(
+        (alias) => alias === "$COMMONPROGRAMDATA\\FYAGENT",
+      ),
+    "runtime paths must resolve through the exact NSIS $COMMONPROGRAMDATA variable",
+  );
+
+  for (const [name, nextToken] of [
+    [".onInit", "Call RestorePreviousInstallLocation"],
+    ["un.onInit", "!insertmacro MUI_UNGETLANGUAGE"],
+  ]) {
+    const init = stripNsisComments(namedBlock(blocks, "function", name).body);
+    contract(
+      (init.match(/^\s*!insertmacro\s+SetContext\s*$/gimu) ?? []).length === 1,
+      `${name} must initialize the per-machine shell and registry context exactly once`,
+    );
+    assertOrdered(
+      init,
+      ["!insertmacro SetContext", nextToken],
+      `${name} per-machine context initialization`,
+    );
+  }
+
   const openMatch = executableSource.match(
     /!macro FyAgentOpenExistingTrustedRuntimeDirectory Path Label OutputHandle MissingFlag([\s\S]*?)!macroend/u,
   );
@@ -526,7 +730,16 @@ function assertRuntimeProvisionContract(source, blocks) {
       `runtime preimage validation is missing ${required}`,
     );
   }
-  const pinnedOpen = openExisting.match(/CreateFileW\([^\r\n]+/u)?.[0] ?? "";
+  const createFileCalls = [
+    ...openExisting.matchAll(
+      /^\s*System::Call\s+'kernel32::CreateFileW\([^\r\n]*$/gimu,
+    ),
+  ];
+  contract(
+    createFileCalls.length === 1,
+    "runtime preimage validation must issue exactly one pinned CreateFileW call",
+  );
+  const pinnedOpen = createFileCalls[0]?.[0] ?? "";
   contract(
     pinnedOpen.includes("FYAGENT_DELETE") &&
       pinnedOpen.includes("FYAGENT_READ_CONTROL") &&
@@ -535,6 +748,24 @@ function assertRuntimeProvisionContract(source, blocks) {
       !pinnedOpen.includes("FILE_SHARE_WRITE") &&
       !pinnedOpen.includes("FILE_SHARE_DELETE"),
     "runtime preimage handles must not share write or delete access",
+  );
+  contract(
+    /\)\s+p\s+\.r8\s+\?e'\s*$/iu.test(pinnedOpen) &&
+      /^\s*Pop\s+\$9\s*(?:\r?\n|$)/u.test(
+        openExisting.slice(
+          openExisting.indexOf(pinnedOpen) + pinnedOpen.length,
+        ),
+      ) &&
+      (openExisting.match(/^\s*Pop\s+\$9\s*$/gimu) ?? []).length === 1,
+    "CreateFileW must capture its last error atomically with ?e and immediately Pop $9",
+  );
+  contract(
+    !/\bGetLastError\s*\(/iu.test(openExisting),
+    "CreateFileW last-error handling must not use a separate GetLastError call",
+  );
+  contract(
+    !/\bSetLastError\s*\(/iu.test(openExisting),
+    "CreateFileW last-error handling must not allow SetLastError spoofing",
   );
   assertOrdered(
     openExisting,
@@ -603,18 +834,18 @@ function assertRuntimeProvisionContract(source, blocks) {
   assertOrdered(
     provision,
     [
-      '!insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONAPPDATA\\FyAgent" runtime_parent',
-      '!insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONAPPDATA\\FyAgent\\runtime" runtime_leaf',
-      'Delete "$COMMONAPPDATA\\FyAgent\\runtime\\business-*.state"',
-      'Delete "$COMMONAPPDATA\\FyAgent\\runtime\\business-*.lock"',
+      '!insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent" runtime_parent',
+      '!insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent\\runtime" runtime_leaf',
+      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.state"',
+      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.lock"',
       "!insertmacro FyAgentMarkRuntimeDirectoryForDeletion $FyAgentRuntimeLeafHandle",
       "CloseHandle(p $FyAgentRuntimeLeafHandle)",
-      '${FileExists} "$COMMONAPPDATA\\FyAgent\\runtime"',
+      '${FileExists} "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
       "!insertmacro FyAgentMarkRuntimeDirectoryForDeletion $FyAgentRuntimeParentHandle",
       "CloseHandle(p $FyAgentRuntimeParentHandle)",
-      '${FileExists} "$COMMONAPPDATA\\FyAgent"',
-      '!insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONAPPDATA\\FyAgent" runtime_create_parent',
-      '!insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONAPPDATA\\FyAgent\\runtime" runtime_create_leaf',
+      '${FileExists} "$COMMONPROGRAMDATA\\FyAgent"',
+      '!insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent" runtime_create_parent',
+      '!insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONPROGRAMDATA\\FyAgent\\runtime" runtime_create_leaf',
       "StrCpy $FyAgentRuntimeProvisionValid 1",
     ],
     "trusted legacy runtime rebuild",
@@ -666,10 +897,10 @@ function assertUninstallOwnershipContract(source, blocks) {
     uninstall,
     [
       '!insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"',
-      'Delete "$COMMONAPPDATA\\FyAgent\\runtime\\business-*.state"',
-      'Delete "$COMMONAPPDATA\\FyAgent\\runtime\\business-*.lock"',
-      'RMDir "$COMMONAPPDATA\\FyAgent\\runtime"',
-      'RMDir "$COMMONAPPDATA\\FyAgent"',
+      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.state"',
+      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.lock"',
+      'RMDir "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
+      'RMDir "$COMMONPROGRAMDATA\\FyAgent"',
     ],
     "runtime uninstall ownership",
   );
@@ -678,7 +909,7 @@ function assertUninstallOwnershipContract(source, blocks) {
     "uninstaller must never recursively delete a caller-selected $INSTDIR",
   );
   contract(
-    !/RMDir\s+\/r\s+"?\$COMMONAPPDATA\\FyAgent/iu.test(executableSource),
+    !/RMDir\s+\/r\s+"?\$COMMONPROGRAMDATA\\FyAgent/iu.test(executableSource),
     "ProgramData cleanup must delete only known runtime files and empty directories",
   );
   contract(
@@ -1349,6 +1580,7 @@ export function verifyWindowsNsisContract(options = {}) {
     "per-machine template must require administrator execution",
   );
   assertCanonicalIconContract(source, [webviewInclude]);
+  assertWarning6000PackagingContract(source, [webviewInclude]);
   contract(
     executableSource.includes(
       'StrCpy $INSTDIR "$PROGRAMFILES64\\${PRODUCTNAME}"',

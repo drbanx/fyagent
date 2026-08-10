@@ -6,6 +6,9 @@
 ; of WiX migration and user-data deletion, and secure machine-runtime ownership.
 
 Unicode true
+; An unknown shell-variable token is ignored after warning 6000, which can
+; redirect protected runtime operations. Treat it as a packaging failure.
+!pragma warning error 6000
 ManifestDPIAware true
 ; Add in `dpiAwareness` `PerMonitorV2` to manifest for Windows 10 1607+ (note this should not affect lower versions since they should be able to ignore this and pick up `dpiAware` `true` set by `ManifestDPIAware true`)
 ; Currently undocumented on NSIS's website but is in the Docs folder of source tree, see
@@ -455,8 +458,10 @@ FunctionEnd
   StrCpy ${OutputHandle} 0
   StrCpy ${MissingFlag} 0
 
-  System::Call 'kernel32::CreateFileW(w "${Path}", i ${FYAGENT_FILE_READ_ATTRIBUTES}|${FYAGENT_DELETE}|${FYAGENT_READ_CONTROL}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8'
-  System::Call 'kernel32::GetLastError() i .r9'
+  ; System::Call's ?e captures this call's last error before another API can
+  ; overwrite it. Pop must remain the next executable statement.
+  System::Call 'kernel32::CreateFileW(w "${Path}", i ${FYAGENT_FILE_READ_ATTRIBUTES}|${FYAGENT_DELETE}|${FYAGENT_READ_CONTROL}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8 ?e'
+  Pop $9
   ${If} $8 == ${FYAGENT_INVALID_HANDLE_VALUE}
     ${If} $9 == ${FYAGENT_ERROR_FILE_NOT_FOUND}
     ${OrIf} $9 == ${FYAGENT_ERROR_PATH_NOT_FOUND}
@@ -596,25 +601,25 @@ Function FyAgentProvisionMachineRuntime
   ; A trusted legacy object is still rebuilt. Deletion-by-handle makes any
   ; stale shared handle refer only to the retired object; a stale handle that
   ; does not share DELETE makes this operation fail closed.
-  !insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONAPPDATA\FyAgent" runtime_parent $FyAgentRuntimeParentHandle $FyAgentRuntimeParentMissing
+  !insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent" runtime_parent $FyAgentRuntimeParentHandle $FyAgentRuntimeParentMissing
   ${If} $FyAgentRuntimeParentMissing == 1
     Goto fyagent_runtime_create_fresh
   ${EndIf}
 
-  !insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONAPPDATA\FyAgent\runtime" runtime_leaf $FyAgentRuntimeLeafHandle $FyAgentRuntimeLeafMissing
+  !insertmacro FyAgentOpenExistingTrustedRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent\runtime" runtime_leaf $FyAgentRuntimeLeafHandle $FyAgentRuntimeLeafMissing
   ${If} $FyAgentRuntimeLeafMissing <> 1
     ; Only the runtime-owned lease/descriptor names are eligible for legacy
     ; cleanup. Unknown content leaves the directory nonempty, so handle-based
     ; disposition fails without widening the deletion set.
-    Delete "$COMMONAPPDATA\FyAgent\runtime\business-*.state"
-    Delete "$COMMONAPPDATA\FyAgent\runtime\business-*.lock"
+    Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.state"
+    Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.lock"
     !insertmacro FyAgentMarkRuntimeDirectoryForDeletion $FyAgentRuntimeLeafHandle
     System::Call 'kernel32::CloseHandle(p $FyAgentRuntimeLeafHandle) i .r4'
     StrCpy $FyAgentRuntimeLeafHandle 0
     ${If} $4 == 0
       Goto fyagent_runtime_provision_fail
     ${EndIf}
-    ${If} ${FileExists} "$COMMONAPPDATA\FyAgent\runtime"
+    ${If} ${FileExists} "$COMMONPROGRAMDATA\FyAgent\runtime"
       Goto fyagent_runtime_provision_fail
     ${EndIf}
   ${EndIf}
@@ -625,15 +630,15 @@ Function FyAgentProvisionMachineRuntime
   ${If} $4 == 0
     Goto fyagent_runtime_provision_fail
   ${EndIf}
-  ${If} ${FileExists} "$COMMONAPPDATA\FyAgent"
+  ${If} ${FileExists} "$COMMONPROGRAMDATA\FyAgent"
     Goto fyagent_runtime_provision_fail
   ${EndIf}
 
   fyagent_runtime_create_fresh:
-    !insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONAPPDATA\FyAgent" runtime_create_parent $FyAgentRuntimeParentHandle $FyAgentRuntimeParentMissing
+    !insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent" runtime_create_parent $FyAgentRuntimeParentHandle $FyAgentRuntimeParentMissing
     ; Keep the no-follow parent handle pinned until leaf creation, validation,
     ; and every cleanup decision is complete.
-    !insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONAPPDATA\FyAgent\runtime" runtime_create_leaf $FyAgentRuntimeLeafHandle $FyAgentRuntimeLeafMissing
+    !insertmacro FyAgentCreateTrustedRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent\runtime" runtime_create_leaf $FyAgentRuntimeLeafHandle $FyAgentRuntimeLeafMissing
     StrCpy $0 1
     Goto fyagent_runtime_provision_close
 
@@ -918,10 +923,10 @@ Section Uninstall
   ; The runtime process owns only these bounded descriptor/lease names. Remove
   ; them after process shutdown, then remove the known directories only when
   ; empty. Never recursively delete a caller-selected $INSTDIR.
-  Delete "$COMMONAPPDATA\FyAgent\runtime\business-*.state"
-  Delete "$COMMONAPPDATA\FyAgent\runtime\business-*.lock"
-  RMDir "$COMMONAPPDATA\FyAgent\runtime"
-  RMDir "$COMMONAPPDATA\FyAgent"
+  Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.state"
+  Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.lock"
+  RMDir "$COMMONPROGRAMDATA\FyAgent\runtime"
+  RMDir "$COMMONPROGRAMDATA\FyAgent"
 
   ; Delete the app directory and its content from disk
   ; Copy main executable

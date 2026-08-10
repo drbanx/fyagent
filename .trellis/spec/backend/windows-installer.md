@@ -99,6 +99,11 @@ become a second public signing authority.
 - `bundle.windows.nsis.installerIcon` is exactly `icons/icon.ico`. The checked-in
   template applies that canonical FyAgent icon to both `MUI_ICON` and
   `MUI_UNICON`, so setup and uninstall surfaces share the product identity.
+  Configuration text alone is not acceptance: each raw native setup and each
+  final sealed x64/ARM64 setup must contain exactly one `RT_GROUP_ICON`, whose
+  referenced `RT_ICON` frames match `icons/icon.ico` in order, metadata, and
+  raw bytes. Extra/default groups or unreferenced frames fail packaging or
+  final asset verification.
 - The checked-in template is a minimal derivative of the template embedded by
   the locked Tauri CLI. The source verifier pins its upstream tag, commit, and
   SHA-256. A template change must retain the documented Tauri merge boundary,
@@ -124,6 +129,22 @@ become a second public signing authority.
   repair in place, or independently reinterpret that descriptor contract. This
   protected `%ProgramData%\FyAgent\runtime` owner/DACL gate is independent of
   the user-selected `$INSTDIR` and remains mandatory.
+- The NSIS path to that protected root is the context-independent
+  `$COMMONPROGRAMDATA\FyAgent` alias. Unknown-variable warning 6000 is a
+  packaging error. Across the repo-owned executable NSIS closure, the template
+  carries the only pragma, `!pragma warning error 6000`, as a top-level directive
+  before the unique top-level installer-hook include; no literal, dynamically
+  expanded, conditional-decoy, per-code/all override, or warning-state stack
+  operation may weaken it. Repo-owned executable NSIS sources reject dynamic
+  preprocessor directive names beginning with `!${NAME}` and allow a line-start
+  `${NAME}` only for the inventoried NSIS/LogicLib runtime macros; those names
+  cannot be redefined or declared dynamically. This prevents a definition from
+  constructing `!pragma` or a conditional directive while retaining ordinary
+  `${If}`-style calls. A no-follow `CreateFileW` open captures its last
+  error in the same System plug-in call with `?e` and immediately pops it; only
+  `ERROR_FILE_NOT_FOUND` or `ERROR_PATH_NOT_FOUND` may select fresh atomic
+  creation. A separate `GetLastError` call or a spoofed `SetLastError` is not an
+  admissible missing-path proof.
 - Installer and uninstaller registry access uses the same 64-bit machine view
   on supported x64 and ARM64 systems. Shortcuts and protocol/uninstall records
   are machine-scoped.
@@ -282,6 +303,16 @@ not make the optional manual lifecycle diagnostic a Release gate.
   provenance, canonical setup/uninstaller icon, absence of a custom
   installation-path gate, runtime bootstrap ordering, bounded uninstall, and
   absence of retired package surfaces.
+- `tests/windowsSetupIcon.test.ts` and
+  `scripts/release/verify-windows-setup-icon.mjs` parse canonical ICO and PE
+  resources and reject missing, extra, default, unreferenced, metadata-drifted,
+  or byte-different setup icon frames. They also require canonically ordered
+  named/ID resource entries and enforce whole-file, resource-tree, leaf, name,
+  and cumulative-payload budgets without copying every resource payload or
+  accepting reused data entries and aliased/overlapping payload ranges. PNG
+  chunk names are admitted only after their original bytes are proven to be
+  ASCII alphabetic, and cumulative-budget tests use multiple individually
+  admissible payloads.
 - `tests/windowsSigningAdapter.test.ts` covers the complete signer matrix,
   strict unsigned state, provider simulation, publisher/certificate/timestamp/
   EKU policy, Authenticode-only mutation, launcher-architecture independence,

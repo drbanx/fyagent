@@ -187,6 +187,16 @@ The preflight and formal Windows paths are mutually exclusive:
   skipped, or the formal fresh seal only when the preflight proof was skipped.
   It also requires every native build and the immutable input pin to succeed
   before aggregating the exact installer and evidence sets.
+- `attest` declares an explicit non-cancellation status condition so the
+  intentionally skipped half of the mutually exclusive Windows topology does
+  not trigger GitHub Actions' implicit success-only dependency propagation.
+  Its first step then requires both direct needs, `eligibility` and
+  `verify-assets`, to report `success`; any other non-cancelled result fails the
+  job visibly instead of silently skipping attestation.
+- `publish` also declares an explicit non-cancellation status condition and is
+  reachable only for a formal tag push after successful `eligibility` and
+  `attest` direct needs. A successful dispatch therefore attests its candidate
+  bytes but still skips publication.
 
 The Release workflow deliberately has no job that launches a Windows setup
 executable or performs install -> verify -> uninstall. Successful matching
@@ -255,6 +265,13 @@ re-evaluated when the locked Tauri CLI/bundler changes.
 - each matching native Windows runner compiles the release application,
   verifies its PE architecture and elevated manifest, and packages exactly one
   NSIS setup executable before proof/signing and fresh sealing;
+- before raw upload, and again after preflight/formal sealing, the x64 and
+  ARM64 setup PE resources must each contain exactly one canonical FyAgent icon
+  group whose referenced frames match `src-tauri/icons/icon.ico` byte-for-byte;
+  a configured path without matching final resources is not accepted. Each
+  verifier invocation is a mandatory, unmasked command: shell constructs that
+  ignore or overwrite its nonzero status are forbidden by workflow mutation
+  tests;
 - installer execution, registry/shortcut/runtime observation, uninstall, and
   user-data preservation remain available through the manual lifecycle
   diagnostic and are not Release acceptance requirements.
@@ -364,21 +381,22 @@ never called private or successful.
 
 ## 9. Failure matrix
 
-| Condition                                                                                                                  | Required result                                        |
-| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| Candidate/version/tag/event/workflow/dev HEAD differs                                                                      | Fail before native builds.                             |
-| Formal tag is lightweight, points elsewhere, or changes                                                                    | Fail; never repair or move the tag.                    |
-| Exact-source dev CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.      |
-| Preflight reaches a publish path or provider secret                                                                        | Static/remote gate fails.                              |
-| Native runner, architecture, toolchain, Linux digest/OS, or source drifts                                                  | Fail that target; no fallback.                         |
-| Pinned build input ID/digest/manifest/file set drifts                                                                      | Fail before provider or trusted consumption.           |
-| Signer configuration is partial/invalid or fresh signature proof fails                                                     | Fail; do not downgrade to unsigned.                    |
-| Windows proof/sealed binding, macOS identity, or Linux package set fails                                                   | Stop aggregation and publication.                      |
-| Ten/thirteen/fourteen file allowlist or digest differs                                                                     | Stop verification, attestation, or publication.        |
-| Live dev/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.  |
-| A draft/published Release already exists                                                                                   | Refuse update, replacement, or deletion.               |
-| Upload/re-download/pre-PATCH verification fails                                                                            | Leave draft untouched and report it.                   |
-| Final PATCH is failed or ambiguous                                                                                         | Observe once; do not retry/delete or claim completion. |
+| Condition                                                                                                                  | Required result                                             |
+| -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Candidate/version/tag/event/workflow/dev HEAD differs                                                                      | Fail before native builds.                                  |
+| Formal tag is lightweight, points elsewhere, or changes                                                                    | Fail; never repair or move the tag.                         |
+| Exact-source dev CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.           |
+| Preflight reaches a publish path or provider secret                                                                        | Static/remote gate fails.                                   |
+| Native runner, architecture, toolchain, Linux digest/OS, or source drifts                                                  | Fail that target; no fallback.                              |
+| Pinned build input ID/digest/manifest/file set drifts                                                                      | Fail before provider or trusted consumption.                |
+| Signer configuration is partial/invalid or fresh signature proof fails                                                     | Fail; do not downgrade to unsigned.                         |
+| Windows proof/sealed binding, macOS identity, or Linux package set fails                                                   | Stop aggregation and publication.                           |
+| An intentional producer skip propagates past successful asset verification                                                 | Attestation still runs; abnormal direct needs fail visibly. |
+| Ten/thirteen/fourteen file allowlist or digest differs                                                                     | Stop verification, attestation, or publication.             |
+| Live dev/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.       |
+| A draft/published Release already exists                                                                                   | Refuse update, replacement, or deletion.                    |
+| Upload/re-download/pre-PATCH verification fails                                                                            | Leave draft untouched and report it.                        |
+| Final PATCH is failed or ambiguous                                                                                         | Observe once; do not retry/delete or claim completion.      |
 
 ## 10. Validation and evidence boundary
 
@@ -388,7 +406,9 @@ sets, signing adapter policy, Windows NSIS contract, task docs, type checking,
 formatting, and action-pin audits. Hermetic tests must include wrong repository,
 workflow, event, branch, SHA, tag type, version, stale success, newer failed or
 timed-out attempt, moved branch, pagination, HTTP failure, frozen-output drift,
-dispatch publication, asset loss/extra, signer policy, and transaction failure.
+dispatch publication, both preflight/formal tail-job truth tables, mutation of
+explicit status conditions or direct-need assertions, asset loss/extra, signer
+policy, and transaction failure.
 
 Local Linux execution cannot establish Windows PowerShell/NSIS/Authenticode,
 native x64/ARM64 build/package output, macOS bundle, Linux non-host

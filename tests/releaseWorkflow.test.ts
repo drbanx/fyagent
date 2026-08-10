@@ -147,6 +147,142 @@ const EXPECTED_RELEASE_JOB_IDS = [
   "publish",
 ] as const;
 
+const ATTEST_JOB_IF_LINE = "    if: ${{ !cancelled() }}";
+const PUBLISH_JOB_IF_LINE =
+  "    if: ${{ !cancelled() && github.event_name == 'push' && needs.eligibility.result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.attest.result == 'success' }}";
+const ATTEST_PREREQUISITE_STEP = `      - name: Require successful attestation prerequisites
+        shell: bash
+        env:
+          ELIGIBILITY_RESULT: \${{ needs.eligibility.result }}
+          VERIFY_ASSETS_RESULT: \${{ needs['verify-assets'].result }}
+        run: |
+          set -euo pipefail
+          if [ "$ELIGIBILITY_RESULT" != "success" ] || [ "$VERIFY_ASSETS_RESULT" != "success" ]; then
+            echo "Attestation prerequisites were not successful: eligibility=$ELIGIBILITY_RESULT verify-assets=$VERIFY_ASSETS_RESULT" >&2
+            exit 1
+          fi`;
+const RAW_WINDOWS_SETUP_ICON_GATE_STEP = `- name: Verify raw Windows setup embeds the canonical FyAgent icon
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node scripts/release/verify-windows-setup-icon.mjs \`
+            $env:FYAGENT_WINDOWS_RAW_ASSET \`
+            src-tauri/icons/icon.ico
+          if ($LASTEXITCODE -ne 0) {
+            throw "Raw Windows setup icon verification failed with exit code $LASTEXITCODE"
+          }`;
+const SEALED_WINDOWS_SETUP_ICON_GATE_LINES = [
+  '          node scripts/release/verify-windows-setup-icon.mjs "installers/FyAgent-$APP_VERSION-Windows-x64-setup.exe" src-tauri/icons/icon.ico',
+  '          node scripts/release/verify-windows-setup-icon.mjs "installers/FyAgent-$APP_VERSION-Windows-arm64-setup.exe" src-tauri/icons/icon.ico',
+] as const;
+
+type TailJobResult = "failure" | "skipped" | "success";
+
+type ReleaseTailGateInput = {
+  cancelled: boolean;
+  eligibilityResult: TailJobResult;
+  eventName: "push" | "workflow_dispatch";
+  mode: "formal" | "preflight";
+  verifyAssetsResult: TailJobResult;
+};
+
+function releaseTailGateOutcome(input: ReleaseTailGateInput) {
+  const attestRuns = !input.cancelled;
+  const attestResult: TailJobResult = !attestRuns
+    ? "skipped"
+    : input.eligibilityResult === "success" &&
+        input.verifyAssetsResult === "success"
+      ? "success"
+      : "failure";
+  const publishRuns =
+    !input.cancelled &&
+    input.eventName === "push" &&
+    input.eligibilityResult === "success" &&
+    input.mode === "formal" &&
+    attestResult === "success";
+
+  return { attestResult, attestRuns, publishRuns };
+}
+
+function assertReleaseTailStatusGates(workflow: string) {
+  const attest = workflowJobBlock(workflow, "attest", "publish");
+  const publish = workflow.slice(workflow.indexOf("\n  publish:\n"));
+
+  const exactLineCount = (block: string, line: string) =>
+    block.split("\n").filter((candidate) => candidate === line).length;
+  if (exactLineCount(attest, ATTEST_JOB_IF_LINE) !== 1) {
+    throw new Error("attest must have exactly one explicit !cancelled() gate");
+  }
+  if (exactLineCount(publish, PUBLISH_JOB_IF_LINE) !== 1) {
+    throw new Error(
+      "publish must bind !cancelled(), formal push, eligibility success, and attestation success",
+    );
+  }
+
+  const stepsIndex = attest.indexOf("\n    steps:\n");
+  const firstStepIndex = attest.indexOf("\n      - name:", stepsIndex);
+  const prerequisiteIndex = attest.indexOf(
+    "\n      - name: Require successful attestation prerequisites\n",
+    stepsIndex,
+  );
+  if (stepsIndex < 0 || firstStepIndex !== prerequisiteIndex) {
+    throw new Error(
+      "attest must fail closed on direct needs in its first step",
+    );
+  }
+  if (!attest.includes(ATTEST_PREREQUISITE_STEP)) {
+    throw new Error(
+      "attest prerequisite step must require eligibility and verify-assets success",
+    );
+  }
+}
+
+function assertWindowsSetupIconGates(workflow: string) {
+  const windowsBuild = workflowJobBlock(
+    workflow,
+    "build-windows",
+    "prove-windows-preflight",
+  );
+  const rawIconGate = namedStepBlock(
+    windowsBuild,
+    "Verify raw Windows setup embeds the canonical FyAgent icon",
+  );
+  if (rawIconGate.trim() !== RAW_WINDOWS_SETUP_ICON_GATE_STEP) {
+    throw new Error(
+      "each raw Windows setup must pass the exact fail-closed canonical PE icon gate",
+    );
+  }
+
+  const verify = workflowJobBlock(workflow, "verify-assets", "attest");
+  const aggregate = namedStepBlock(
+    verify,
+    "Verify exact ten and generate three machine-readable subjects",
+  );
+  const aggregateLines = aggregate.split("\n");
+  if (
+    (aggregate.match(/verify-windows-setup-icon\.mjs/gu) ?? []).length !== 2 ||
+    aggregateLines.filter((line) => line === "          set -euo pipefail")
+      .length !== 1 ||
+    SEALED_WINDOWS_SETUP_ICON_GATE_LINES.some(
+      (requiredLine) =>
+        aggregateLines.filter((line) => line === requiredLine).length !== 1,
+    ) ||
+    /(?:\|\||;)\s*(?:true|:)\b|\bset\s+\+(?:e|o\s+errexit)\b/iu.test(aggregate)
+  ) {
+    throw new Error(
+      "both sealed Windows setups must pass exact fail-closed canonical PE icon gates before attestation",
+    );
+  }
+  if (
+    (workflow.match(/scripts\/release\/verify-windows-setup-icon\.mjs/gu) ?? [])
+      .length !== 3
+  ) {
+    throw new Error(
+      "Release must invoke the Windows setup PE icon verifier exactly three times",
+    );
+  }
+}
+
 function releaseWorkflowJobIds(workflow: string): string[] {
   const jobsStart = workflow.indexOf("\njobs:\n");
   if (jobsStart < 0) {
@@ -180,8 +316,44 @@ function releaseWorkflowJobIds(workflow: string): string[] {
 function releaseWorkflowRunScripts(workflow: string): string[] {
   const lines = workflow.split("\n");
   const scripts: string[] = [];
+  const jobsIndex = lines.indexOf("jobs:");
+  if (jobsIndex < 0) {
+    throw new Error("release workflow has no jobs mapping");
+  }
+  const allowedInlineScripts = new Set([
+    "pnpm install --frozen-lockfile",
+    "node scripts/release/verify-windows-nsis-contract.mjs",
+    "pnpm tauri build --bundles appimage,deb,rpm --verbose",
+    "pnpm tauri build --target universal-apple-darwin --bundles app",
+    'node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"',
+  ]);
 
   for (let index = 0; index < lines.length; index += 1) {
+    if (
+      index > jobsIndex &&
+      /^ {6}-\s/u.test(lines[index]) &&
+      !/^ {6}- name:\s+\S/u.test(lines[index])
+    ) {
+      throw new Error(
+        `unsupported Release step sequence item syntax: ${lines[index].trim()}`,
+      );
+    }
+
+    const directMapping = /^ {8}\S/u.test(lines[index]);
+    const canonicalDirectMapping =
+      /^ {8}(?:[A-Za-z_][A-Za-z0-9_-]*|'[A-Za-z_][A-Za-z0-9_-]*'|"[A-Za-z_][A-Za-z0-9_-]*")\s*:/u.test(
+        lines[index],
+      );
+    if (
+      directMapping &&
+      lines[index].includes(":") &&
+      !canonicalDirectMapping
+    ) {
+      throw new Error(
+        `unsupported Release direct mapping key syntax: ${lines[index].trim()}`,
+      );
+    }
+
     const run = /^(\s*)(?:run|'run'|"run")\s*:\s*(.*)$/u.exec(lines[index]);
     if (!run) continue;
 
@@ -196,7 +368,13 @@ function releaseWorkflowRunScripts(workflow: string): string[] {
           `unsupported Release run block scalar syntax: ${lines[index].trim()}`,
         );
       }
-      scripts.push(scalar);
+      const inlineScript = scalar.trim();
+      if (!allowedInlineScripts.has(inlineScript)) {
+        throw new Error(
+          `unsupported Release inline run scalar: ${lines[index].trim()}`,
+        );
+      }
+      scripts.push(inlineScript);
       continue;
     }
 
@@ -505,15 +683,202 @@ describe("FyAgent release workflow", () => {
     expect(trigger).toContain("required: true");
     expect(source).toContain("release_mode='preflight'");
     expect(source).toContain("release_mode='formal'");
-    expect(source).toContain(
-      "if: github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal'",
-    );
+    expect(source).toContain(PUBLISH_JOB_IF_LINE);
     expect(source).not.toContain(
       "if: github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'formal'",
     );
     expect(source).not.toContain("gh release create");
     expect(source).toContain("draft:true,prerelease:false");
     expect(source).toContain("draft:false,prerelease:false");
+  });
+
+  it("makes attestation and formal publication status propagation explicit and fail-closed", () => {
+    expect(() => assertReleaseTailStatusGates(source)).not.toThrow();
+
+    const mutations = [
+      {
+        name: "implicit attest success propagation",
+        workflow: source.replace(
+          ATTEST_JOB_IF_LINE,
+          "    if: ${{ success() }}",
+        ),
+      },
+      {
+        name: "missing verify-assets direct-needs result",
+        workflow: source.replace(
+          "          VERIFY_ASSETS_RESULT: ${{ needs['verify-assets'].result }}",
+          '          VERIFY_ASSETS_RESULT: "success"',
+        ),
+      },
+      {
+        name: "publish without an explicit status function",
+        workflow: source.replace(
+          PUBLISH_JOB_IF_LINE,
+          PUBLISH_JOB_IF_LINE.replace("!cancelled() && ", ""),
+        ),
+      },
+      {
+        name: "publish without eligibility success",
+        workflow: source.replace(
+          PUBLISH_JOB_IF_LINE,
+          PUBLISH_JOB_IF_LINE.replace(
+            "needs.eligibility.result == 'success' && ",
+            "",
+          ),
+        ),
+      },
+      {
+        name: "publish without attestation success",
+        workflow: source.replace(
+          PUBLISH_JOB_IF_LINE,
+          PUBLISH_JOB_IF_LINE.replace(
+            " && needs.attest.result == 'success'",
+            "",
+          ),
+        ),
+      },
+    ];
+
+    for (const mutation of mutations) {
+      expect(mutation.workflow, mutation.name).not.toBe(source);
+      expect(
+        () => assertReleaseTailStatusGates(mutation.workflow),
+        mutation.name,
+      ).toThrow();
+    }
+  });
+
+  it("enforces the preflight and formal tail-job truth table", () => {
+    const truthTable: Array<{
+      expected: ReturnType<typeof releaseTailGateOutcome>;
+      input: ReleaseTailGateInput;
+      name: string;
+    }> = [
+      {
+        name: "successful preflight attests without publishing",
+        input: {
+          cancelled: false,
+          eligibilityResult: "success",
+          eventName: "workflow_dispatch",
+          mode: "preflight",
+          verifyAssetsResult: "success",
+        },
+        expected: {
+          attestResult: "success",
+          attestRuns: true,
+          publishRuns: false,
+        },
+      },
+      {
+        name: "successful formal tag push attests and publishes",
+        input: {
+          cancelled: false,
+          eligibilityResult: "success",
+          eventName: "push",
+          mode: "formal",
+          verifyAssetsResult: "success",
+        },
+        expected: {
+          attestResult: "success",
+          attestRuns: true,
+          publishRuns: true,
+        },
+      },
+      {
+        name: "unexpected skipped preflight assets fail attestation",
+        input: {
+          cancelled: false,
+          eligibilityResult: "success",
+          eventName: "workflow_dispatch",
+          mode: "preflight",
+          verifyAssetsResult: "skipped",
+        },
+        expected: {
+          attestResult: "failure",
+          attestRuns: true,
+          publishRuns: false,
+        },
+      },
+      {
+        name: "failed formal eligibility fails attestation",
+        input: {
+          cancelled: false,
+          eligibilityResult: "failure",
+          eventName: "push",
+          mode: "formal",
+          verifyAssetsResult: "skipped",
+        },
+        expected: {
+          attestResult: "failure",
+          attestRuns: true,
+          publishRuns: false,
+        },
+      },
+      {
+        name: "failed formal assets fail attestation",
+        input: {
+          cancelled: false,
+          eligibilityResult: "success",
+          eventName: "push",
+          mode: "formal",
+          verifyAssetsResult: "failure",
+        },
+        expected: {
+          attestResult: "failure",
+          attestRuns: true,
+          publishRuns: false,
+        },
+      },
+      {
+        name: "dispatch cannot publish even with a formal-mode mutation",
+        input: {
+          cancelled: false,
+          eligibilityResult: "success",
+          eventName: "workflow_dispatch",
+          mode: "formal",
+          verifyAssetsResult: "success",
+        },
+        expected: {
+          attestResult: "success",
+          attestRuns: true,
+          publishRuns: false,
+        },
+      },
+      {
+        name: "push cannot publish in preflight mode",
+        input: {
+          cancelled: false,
+          eligibilityResult: "success",
+          eventName: "push",
+          mode: "preflight",
+          verifyAssetsResult: "success",
+        },
+        expected: {
+          attestResult: "success",
+          attestRuns: true,
+          publishRuns: false,
+        },
+      },
+      {
+        name: "cancellation starts neither tail job",
+        input: {
+          cancelled: true,
+          eligibilityResult: "success",
+          eventName: "push",
+          mode: "formal",
+          verifyAssetsResult: "success",
+        },
+        expected: {
+          attestResult: "skipped",
+          attestRuns: false,
+          publishRuns: false,
+        },
+      },
+    ];
+
+    for (const row of truthTable) {
+      expect(releaseTailGateOutcome(row.input), row.name).toEqual(row.expected);
+    }
   });
 
   it("keeps authorized run observation synchronous and completion-scoped", () => {
@@ -830,6 +1195,39 @@ describe("FyAgent release workflow", () => {
     expect(windowsBuild).not.toContain("installer-actions");
   });
 
+  it("proves canonical FyAgent PE icon resources in raw and sealed Windows setups", () => {
+    expect(() => assertWindowsSetupIconGates(source)).not.toThrow();
+
+    const mutations = [
+      source.replace(
+        "node scripts/release/verify-windows-setup-icon.mjs `",
+        "node scripts/release/windows-signing.mjs `",
+      ),
+      source.replace(
+        '"installers/FyAgent-$APP_VERSION-Windows-x64-setup.exe"',
+        '"installers/FyAgent-$APP_VERSION-Windows-x86-setup.exe"',
+      ),
+      source.replace(
+        "            src-tauri/icons/icon.ico\n          if ($LASTEXITCODE -ne 0)",
+        "            src-tauri/icons/32x32.png\n          if ($LASTEXITCODE -ne 0)",
+      ),
+      source.replace(
+        "            src-tauri/icons/icon.ico\n          if ($LASTEXITCODE -ne 0)",
+        "            src-tauri/icons/icon.ico\n          $global:LASTEXITCODE = 0\n          if ($LASTEXITCODE -ne 0)",
+      ),
+      source.replace(
+        SEALED_WINDOWS_SETUP_ICON_GATE_LINES[0],
+        `${SEALED_WINDOWS_SETUP_ICON_GATE_LINES[0]} || true`,
+      ),
+    ];
+    for (const mutation of mutations) {
+      expect(mutation).not.toBe(source);
+      expect(() => assertWindowsSetupIconGates(mutation)).toThrow(
+        /canonical PE icon gate|exactly three times/u,
+      );
+    }
+  });
+
   it("seals unsigned preflight assets in a job whose payload has no signer secrets", () => {
     const preflight = workflowJobBlock(
       source,
@@ -1091,6 +1489,61 @@ jobs:
     );
   });
 
+  it("fails closed on an escaped YAML spelling of the run step key", () => {
+    const step = `
+      - name: Mutated escaped run key
+        shell: pwsh
+        "\\x72un": '.\\release-assets\\FyAgent-smoke-setup.exe /S'
+`;
+    const mutated = source.replace(
+      "\n      - name: Checkout immutable formal verification boundary\n",
+      `${step}\n      - name: Checkout immutable formal verification boundary\n`,
+    );
+    expect(mutated).not.toBe(source);
+    expect(releaseWorkflowJobIds(mutated)).toEqual(EXPECTED_RELEASE_JOB_IDS);
+    expect(() =>
+      assertReleaseWorkflowDoesNotExecuteInstallers(mutated),
+    ).toThrow(/unsupported Release direct mapping key syntax/u);
+  });
+
+  it("fails closed on sequence-first run keys and flow-mapping steps", () => {
+    const sequenceItems = [
+      "      - run: .\\release-assets\\FyAgent-smoke-setup.exe /S",
+      "      - { run: .\\release-assets\\FyAgent-smoke-setup.exe /S }",
+    ];
+    for (const sequenceItem of sequenceItems) {
+      const mutated = source.replace(
+        "\n      - name: Checkout immutable formal verification boundary\n",
+        `\n${sequenceItem}\n\n      - name: Checkout immutable formal verification boundary\n`,
+      );
+      expect(mutated).not.toBe(source);
+      expect(releaseWorkflowJobIds(mutated)).toEqual(EXPECTED_RELEASE_JOB_IDS);
+      expect(() =>
+        assertReleaseWorkflowDoesNotExecuteInstallers(mutated),
+      ).toThrow(/unsupported Release step sequence item syntax/u);
+    }
+  });
+
+  it.each(["'", '"'])(
+    "rejects a %s-quoted inline installer command before shell scanning",
+    (quote) => {
+      const step = `
+      - name: Mutated quoted installer execution
+        shell: pwsh
+        run: ${quote}.\\release-assets\\FyAgent-smoke-setup.exe /S${quote}
+`;
+      const mutated = source.replace(
+        "\n      - name: Checkout immutable formal verification boundary\n",
+        `${step}\n      - name: Checkout immutable formal verification boundary\n`,
+      );
+      expect(mutated).not.toBe(source);
+      expect(releaseWorkflowJobIds(mutated)).toEqual(EXPECTED_RELEASE_JOB_IDS);
+      expect(() =>
+        assertReleaseWorkflowDoesNotExecuteInstallers(mutated),
+      ).toThrow(/unsupported Release inline run scalar/u);
+    },
+  );
+
   it.each([
     {
       launch: "lowercase Start-Process under a commented quoted run key",
@@ -1328,9 +1781,7 @@ jobs:
 
   it("rechecks the exact frozen remote eligibility before publication starts and immediately before the final PATCH", () => {
     const publish = source.slice(source.indexOf("\n  publish:\n"));
-    expect(publish).toContain(
-      "if: github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal'",
-    );
+    expect(publish).toContain(PUBLISH_JOB_IF_LINE);
     expect(publish).toContain(
       "permissions:\n      actions: read\n      checks: read\n      contents: write",
     );
@@ -1517,12 +1968,12 @@ describe("FyAgent Windows NSIS, elevation, signing, and manual diagnostics", () 
 
   it("preserves user state while removing bounded installer-owned runtime state", () => {
     expect(template).toContain(
-      'Delete "$COMMONAPPDATA\\FyAgent\\runtime\\business-*.state"',
+      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.state"',
     );
     expect(template).toContain(
-      'Delete "$COMMONAPPDATA\\FyAgent\\runtime\\business-*.lock"',
+      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.lock"',
     );
-    expect(template).toContain('RMDir "$COMMONAPPDATA\\FyAgent\\runtime"');
+    expect(template).toContain('RMDir "$COMMONPROGRAMDATA\\FyAgent\\runtime"');
     expect(template).toContain("~/.fyagent data");
     expect(template).not.toMatch(
       /RMDir\s+\/r[^\n]*(?:APPDATA|LOCALAPPDATA|\.fyagent)/i,

@@ -149,9 +149,9 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 
 ## Additional Tasks
 
-| Task           | Description                                                       | Usage   | Effect           |
-| -------------- | ----------------------------------------------------------------- | ------- | ---------------- |
-| `format:files` | Format one or more reviewed repository files with locked Prettier | <files> | source-modifying |
+| Task           | Description                                                                 | Usage   | Effect           |
+| -------------- | --------------------------------------------------------------------------- | ------- | ---------------- |
+| `format:files` | Format reviewed files with locked Prettier and lossless JSONL normalization | <files> | source-modifying |
 
 ## Safety Boundaries
 
