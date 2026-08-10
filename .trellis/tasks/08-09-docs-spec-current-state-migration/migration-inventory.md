@@ -300,8 +300,10 @@ Owner keys:
 - C `08-ADR与外部资料.md` §§12 and 14–17, 19–20 → WIN-RUNTIME or the named
   active security owner.
 - S `08-ADR与外部资料.md` §13's MSI-era “safe directory” classification →
-  WIN-INSTALLER; current fixed-local-drive admission deliberately does not
-  restore ACL, owner, or protected-folder hardening.
+  WIN-INSTALLER. The fixed-local-drive admission is also superseded: current
+  NSIS behavior does not add a FyAgent absolute/local/fixed/UNC/reparse gate.
+  The protected `%ProgramData%\FyAgent\runtime` owner/DACL boundary remains a
+  separate current contract.
 - P `08-ADR与外部资料.md` §18's deep-link credential transport compatibility
   → DEEPLINK.
 - H `08-ADR与外部资料.md` §§1, 22–24 → GIT-HISTORY.
@@ -330,7 +332,8 @@ Owner keys:
 - C §§1–5, 7–9, and 16 (per-machine installer UX, silent/custom path input,
   upgrade/uninstall expectations, examples, and accessibility) →
   WIN-INSTALLER, rewritten for NSIS.
-- C §6 only for absolute local fixed-drive admission → WIN-INSTALLER.
+- S §6's absolute local fixed-drive admission → WIN-INSTALLER; current NSIS
+  passes the selected path through without that custom admission policy.
 - S §6's ACL/owner/reparse/protected-folder security classification and
   warnings → WIN-INSTALLER; the current contract explicitly does not perform
   those judgments.
@@ -339,10 +342,10 @@ Owner keys:
 
 ### `04-NATIVE-INSTALL-DIR-VALIDATOR-DESIGN.md`
 
-- S §§1–20 (MSI custom-action crate/DLL/API, DACL/owner checks, MSI logging,
-  and its test interface) → WIN-INSTALLER. Only the product requirement for a
-  shared pre-write fixed-local-drive validator remains, and it is owned by the
-  current NSIS spec rather than this implementation design.
+- S §§1–20 (MSI custom-action crate/DLL/API, fixed-local-drive validator,
+  DACL/owner checks, MSI logging, and its test interface) → WIN-INSTALLER. The
+  current NSIS spec deliberately has no shared pre-write `$INSTDIR` validator;
+  only the independent machine-runtime security boundary remains current.
 
 ### `05-WIX-MSI-INTEGRATION-DESIGN.md`
 

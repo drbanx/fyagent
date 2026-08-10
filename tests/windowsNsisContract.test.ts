@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import * as nsisContractModule from "../scripts/release/verify-windows-nsis-contract.mjs";
 
 type VerificationResult = Readonly<{
-  lifecyclePath: string;
+  lifecyclePath: string | null;
   sectionOrder: string[];
   upstream: Readonly<{ tag: string; commit: string; sha256: string }>;
   workspaceVersion: string;
@@ -42,20 +42,6 @@ const LIFECYCLE = path.join(
   "release",
   "verify-windows-nsis-lifecycle.ps1",
 );
-const ROOT_ONLY_FIXTURE = path.join(
-  ROOT,
-  "tests",
-  "fixtures",
-  "windows-nsis",
-  "root-only-mounted-volume-validator.nsi",
-);
-const LEXICAL_VOLUME_FIXTURE = path.join(
-  ROOT,
-  "tests",
-  "fixtures",
-  "windows-nsis",
-  "lexical-mounted-volume-validator.nsi",
-);
 const temporaryRoots: string[] = [];
 
 const verifyWindowsNsisContract =
@@ -69,10 +55,13 @@ const verifyWindowsNsisContract =
     webviewIncludePath?: string;
     lifecyclePath?: string;
   }) => VerificationResult;
-const assertFinalPathValidatorContract =
-  nsisContractModule.assertFinalPathValidatorContract as (
+const assertInstallPathPolicyContract =
+  nsisContractModule.assertInstallPathPolicyContract as (
     source: string,
   ) => void;
+const assertLifecycleContract = nsisContractModule.assertLifecycleContract as (
+  source: string,
+) => void;
 const canonicalizeGzipHeader = nsisContractModule.canonicalizeGzipHeader as (
   compressed: Uint8Array,
 ) => Buffer;
@@ -615,7 +604,7 @@ afterAll(() => {
 });
 
 describe("Windows NSIS installer contract", () => {
-  it("pins Tauri 2.8.1 and validates the complete checked-in contract", () => {
+  it("pins Tauri 2.8.1 and validates the packaging contract", () => {
     const result = verifyWindowsNsisContract();
     expect(result.upstream).toEqual({
       tag: "tauri-cli-v2.8.1",
@@ -623,8 +612,8 @@ describe("Windows NSIS installer contract", () => {
       sha256:
         "fe22026f68bdb3292fab376756035496ce0a35e3d580e06ebaa6a28295916eb3",
     });
+    expect(result.lifecyclePath).toBeNull();
     expect(result.sectionOrder).toEqual([
-      "-FyAgentInstallDirGate",
       "-FyAgentMachineRuntimeBootstrap",
       "EarlyChecks",
       "WebView2",
@@ -633,56 +622,239 @@ describe("Windows NSIS installer contract", () => {
     ]);
   });
 
-  it("rejects the mounted-volume bypass in a root-only drive fixture", () => {
-    const fixture = fs.readFileSync(ROOT_ONLY_FIXTURE, "utf8");
-    expect(() => assertFinalPathValidatorContract(fixture)).toThrow(
-      /missing GetVolumePathNameW/u,
+  it("keeps manual lifecycle diagnostics outside the packaging verifier", () => {
+    const lifecycle = fs.readFileSync(LIFECYCLE, "utf8");
+    expect(() => assertLifecycleContract(lifecycle)).not.toThrow();
+    const result = verifyWindowsNsisContract({ lifecyclePath: LIFECYCLE });
+    expect(result.lifecyclePath).toBe(path.resolve(LIFECYCLE));
+  });
+
+  it.each([
+    "CASE: relative-path-negative",
+    "CASE: unc-network-negative",
+    "CASE: access-denied-ancestor-negative",
+    "CASE: reparse-network-negative",
+    "CASE: unsupported-drive-network-negative",
+    "CASE: reparse-unsupported-drive-network-negative",
+    "FyAgent.NsisLifecycle.NativeNetworkDrive",
+    "Invoke-RequiredUnsupportedDriveAcceptance",
+    "SmbShare\\New-SmbShare",
+    "Assert-RejectedInstallLeftNoMachineWrites",
+    "before its final path was admitted",
+  ])("rejects retired manual path-policy token %s", (retiredToken) => {
+    const lifecycle = fs.readFileSync(LIFECYCLE, "utf8");
+    const restrictedLifecycle = `${retiredToken}\n${lifecycle}`;
+    expect(() => assertLifecycleContract(restrictedLifecycle)).toThrow(
+      /must not enforce the retired installation-path restriction/u,
     );
   });
 
-  it("rejects lexical volume checks that do not follow reparse targets", () => {
-    const fixture = fs.readFileSync(LEXICAL_VOLUME_FIXTURE, "utf8");
-    expect(() => assertFinalPathValidatorContract(fixture)).toThrow(
-      /missing CreateFileW/u,
-    );
-  });
-
-  it("rejects moving the shared path gate behind WebView2 writes", () => {
+  it("does not impose a custom installation-path admission policy", () => {
     const source = fs.readFileSync(TEMPLATE, "utf8");
-    const gate = source.match(
-      /Section -FyAgentInstallDirGate[\s\S]*?SectionEnd\n/u,
-    )?.[0];
-    expect(gate).toBeTruthy();
-    const lateGate = source
-      .replace(gate ?? "", "")
-      .replace(/(Section WebView2[\s\S]*?SectionEnd\n)/u, `$1\n${gate ?? ""}`);
-    expect(() => verifyTemplate(lateGate)).toThrow(
-      /path gate must be the first executable section/u,
+    expect(() => assertInstallPathPolicyContract(source)).not.toThrow();
+    const unrelatedFinishCallback = source.replace(
+      "!insertmacro MUI_PAGE_FINISH",
+      "!define MUI_PAGE_CUSTOMFUNCTION_LEAVE PageLeaveReinstall\n!insertmacro MUI_PAGE_FINISH",
+    );
+    expect(() =>
+      assertInstallPathPolicyContract(unrelatedFinishCallback),
+    ).not.toThrow();
+    for (const mutation of [
+      source.replace(
+        "!insertmacro MUI_PAGE_DIRECTORY",
+        "!define MUI_PAGE_CUSTOMFUNCTION_LEAVE RestrictInstallPath\n!insertmacro MUI_PAGE_DIRECTORY",
+      ),
+      source.replace(
+        "!define FYAGENT_FILE_ATTRIBUTE_DIRECTORY",
+        "!define FYAGENT_DRIVE_FIXED 3\n!define FYAGENT_FILE_ATTRIBUTE_DIRECTORY",
+      ),
+      source.replace(
+        "Section -FyAgentMachineRuntimeBootstrap",
+        'Section -FyAgentMachineRuntimeBootstrap\n  StrCmp $INSTDIR "C:\\\\Allowed" +2\n  Abort',
+      ),
+      source.replace(
+        "Section -FyAgentMachineRuntimeBootstrap",
+        "Section -RenamedInstallPathCheck\n  Abort\nSectionEnd\n\nSection -FyAgentMachineRuntimeBootstrap",
+      ),
+    ]) {
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /must not (?:add|bind|reintroduce|use)/u,
+      );
+    }
+  });
+
+  it("checks the executed repo-owned NSIS hook closure for install-path gates", () => {
+    const include = fs.readFileSync(WEBVIEW_INCLUDE, "utf8");
+    const gatedHook = [
+      include.trimEnd(),
+      "!macro NSIS_HOOK_PREINSTALL",
+      '  StrCmp $INSTDIR "C:\\Program Files\\FyAgent" +2',
+      "  Abort",
+      "!macroend",
+      "",
+    ].join("\n");
+    const includePath = temporaryFile("webview2-command.nsh", gatedHook);
+
+    expect(() =>
+      verifyWindowsNsisContract({
+        baseConfigPath: BASE_CONFIG,
+        windowsConfigPath: WINDOWS_CONFIG,
+        templatePath: TEMPLATE,
+        webviewIncludePath: includePath,
+      }),
+    ).toThrow(
+      /repo-owned NSIS include\/hook must not inspect or rewrite \$INSTDIR/u,
     );
   });
 
-  it("rejects a required drive-classification call hidden in an NSIS comment", () => {
-    const source = fs
-      .readFileSync(TEMPLATE, "utf8")
-      .replace(
-        /^\s*System::Call 'kernel32::GetDriveTypeW\(w r3\) i \.r2'$/mu,
-        "    ; System::Call 'kernel32::GetDriveTypeW(w r3) i .r2'",
-      );
-    expect(() => verifyTemplate(source)).toThrow(
-      /path validator is missing GetDriveTypeW/u,
+  it("rejects a maintenance path gate through the registry path alias", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const gatedRegistryAlias = source.replace(
+      '    ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""',
+      `    ReadRegStr $4 SHCTX "\${MANUPRODUCTKEY}" ""
+    StrCmp $4 "C:\\Program Files\\FyAgent" +2
+    Abort`,
+    );
+    expect(gatedRegistryAlias).not.toBe(source);
+    expect(() => verifyTemplate(gatedRegistryAlias)).toThrow(
+      /maintenance registry install-path alias \$4/u,
     );
   });
 
-  it("rejects ancestor peeling on any error outside the not-found allow-list", () => {
-    const source = fs
-      .readFileSync(TEMPLATE, "utf8")
-      .replace(
-        "${AndIf} $9 <> ${FYAGENT_ERROR_PATH_NOT_FOUND}",
-        "${AndIf} $9 == ${FYAGENT_ERROR_PATH_NOT_FOUND}",
-      );
-    expect(() => verifyTemplate(source)).toThrow(
-      /ancestor peeling must allow only FILE_NOT_FOUND\/PATH_NOT_FOUND/u,
+  it("pins maintenance install-location restoration to an exact pass-through", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const aliasedRestoreGate = source.replace(
+      '  StrCmp $4 "" +2 0\n    StrCpy $INSTDIR $4',
+      `  StrCmp $4 "" +5 0
+    StrCpy $5 $4
+    StrCmp $5 "C:\\Program Files\\FyAgent" +2 0
+      Abort
+    StrCpy $INSTDIR $4`,
     );
+    expect(aliasedRestoreGate).not.toBe(source);
+    expect(() => verifyTemplate(aliasedRestoreGate)).toThrow(
+      /RestorePreviousInstallLocation may only read the registered path/u,
+    );
+  });
+
+  it("rejects a newly named manual install-path rejection case", () => {
+    const lifecycle = fs.readFileSync(LIFECYCLE, "utf8");
+    const restrictedLifecycle = lifecycle.replace(
+      "  # CASE: default-install",
+      `  # CASE: renamed-path-rejection
+  [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S', "/D=$customInstallDir") -ShouldSucceed $false -CaseName 'renamed-path-rejection' -WorkingDirectory $testRoot)
+
+  # CASE: default-install`,
+    );
+    expect(restrictedLifecycle).not.toBe(lifecycle);
+    expect(() => assertLifecycleContract(restrictedLifecycle)).toThrow(
+      /resolved-installer invocation set drifted/u,
+    );
+  });
+
+  it("rejects a new resolved-installer case with a variable expected outcome", () => {
+    const lifecycle = fs.readFileSync(LIFECYCLE, "utf8");
+    const mutated = lifecycle.replace(
+      "  # CASE: default-install",
+      `  $newInstallerCaseShouldSucceed = $false
+  [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S') -ShouldSucceed $newInstallerCaseShouldSucceed -CaseName 'renamed-runtime-negative' -WorkingDirectory $testRoot)
+
+  # CASE: default-install`,
+    );
+    expect(mutated).not.toBe(lifecycle);
+    expect(() => assertLifecycleContract(mutated)).toThrow(
+      /resolved-installer invocation set drifted/u,
+    );
+  });
+
+  it("rejects an aliased installer invocation regardless of PowerShell command casing", () => {
+    const lifecycle = fs.readFileSync(LIFECYCLE, "utf8");
+    for (const commandName of ["Invoke-NsisProcess", "invoke-nsisprocess"]) {
+      const mutated = lifecycle.replace(
+        "  # CASE: default-install",
+        `  $aliasedInstaller = $resolvedInstaller
+  [void](${commandName} -FilePath $aliasedInstaller -Arguments @('/S') -ShouldSucceed $true -CaseName 'aliased-installer' -WorkingDirectory $testRoot)
+
+  # CASE: default-install`,
+      );
+      expect(mutated).not.toBe(lifecycle);
+      expect(() => assertLifecycleContract(mutated)).toThrow(
+        /Invoke-NsisProcess invocation set drifted/u,
+      );
+    }
+  });
+
+  it("pins every approved resolved-installer case, argument list, and outcome", () => {
+    const lifecycle = fs.readFileSync(LIFECYCLE, "utf8");
+    const defaultCall =
+      "[void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S') -ShouldSucceed $true -CaseName 'default-install' -WorkingDirectory $testRoot)";
+    for (const replacement of [
+      "[void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S', \"/D=$customInstallDir\") -ShouldSucceed $true -CaseName 'default-install' -WorkingDirectory $testRoot)",
+      "[void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S') -ShouldSucceed $false -CaseName 'default-install' -WorkingDirectory $testRoot)",
+      "[void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S') -ShouldSucceed $true -CaseName 'renamed-default-install' -WorkingDirectory $testRoot)",
+    ]) {
+      const mutated = lifecycle.replace(defaultCall, replacement);
+      expect(mutated).not.toBe(lifecycle);
+      expect(() => assertLifecycleContract(mutated)).toThrow(
+        /unexpected (?:or duplicate resolved-installer case|arguments or outcome)/u,
+      );
+    }
+  });
+
+  it("ignores unrelated WebView negative outcomes when admitting installer calls", () => {
+    const lifecycle = fs.readFileSync(LIFECYCLE, "utf8");
+    const extraWebViewNegative = lifecycle.replace(
+      "  # CASE: default-install",
+      `  # CASE: webview2-extra-diagnostic-negative
+  Invoke-WebView2SignatureVerification \`
+    -HelperPath $webView2Helper \`
+    -CandidatePath $tamperedCandidate \`
+    -MaliciousModuleRoot $maliciousModuleRoot \`
+    -MarkerPath $maliciousMarker \`
+    -ShouldSucceed $false \`
+    -CaseName 'webview2-extra-diagnostic-negative'
+
+  # CASE: default-install`,
+    );
+    expect(extraWebViewNegative).not.toBe(lifecycle);
+    expect(() => assertLifecycleContract(extraWebViewNegative)).not.toThrow();
+  });
+
+  it("pins the canonical FyAgent icon for installer and uninstaller", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    for (const mutation of [
+      source.replace('  !define MUI_UNICON "${INSTALLERICON}"\n', ""),
+      source.replace(
+        '  !define MUI_ICON "${INSTALLERICON}"',
+        '  !define MUI_ICON "${INSTALLERICON}"\n  !undef MUI_ICON',
+      ),
+      source.replace(
+        '  !define MUI_UNICON "${INSTALLERICON}"',
+        '  !define MUI_UNICON "${INSTALLERICON}"\n  !define /redef MUI_UNICON "other.ico"',
+      ),
+      source.replace(
+        '  !define MUI_ICON "${INSTALLERICON}"',
+        '  !define MUI_ICON "${INSTALLERICON}"\n  !define MUI_ICON "${INSTALLERICON}"',
+      ),
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /exactly one canonical FyAgent icon definition/u,
+      );
+    }
+
+    const includeOverride = `${fs.readFileSync(WEBVIEW_INCLUDE, "utf8").trimEnd()}\n!define MUI_ICON "other.ico"\n`;
+    expect(() =>
+      verifyWindowsNsisContract({
+        baseConfigPath: BASE_CONFIG,
+        windowsConfigPath: WINDOWS_CONFIG,
+        templatePath: TEMPLATE,
+        webviewIncludePath: temporaryFile(
+          "webview2-command.nsh",
+          includeOverride,
+        ),
+      }),
+    ).toThrow(/exactly one canonical FyAgent icon definition/u);
   });
 
   it("rejects path-based ACL repair of an unsafe ProgramData preimage", () => {
@@ -970,35 +1142,35 @@ describe("Windows NSIS installer contract", () => {
         ),
       },
       {
-        label: "non-Ordinal NSIS /D prefix admission",
+        label: "non-Ordinal NSIS /D argument shape",
         source: lifecycle.replace(
           "$Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)",
           "$Arguments[1].StartsWith('/D=')\n        # $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)",
         ),
       },
       {
-        label: "empty NSIS /D admission",
+        label: "empty NSIS /D argument shape",
         source: lifecycle.replace(
           "$Arguments[1].Length -gt 3 -and\n        $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)",
           "$true -and\n        $Arguments[1].StartsWith('/D=', [StringComparison]::Ordinal)\n        # nonempty /D= check removed",
         ),
       },
       {
-        label: "non-Ordinal NSIS uninstall prefix admission",
+        label: "non-Ordinal NSIS uninstall argument shape",
         source: lifecycle.replace(
           "$Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)",
           "$Arguments[1].StartsWith('_?=')\n    # $Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)",
         ),
       },
       {
-        label: "empty NSIS uninstall prefix admission",
+        label: "empty NSIS uninstall argument shape",
         source: lifecycle.replace(
           "$Arguments[1].Length -gt 3 -and\n    $Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)",
           "$true -and\n    $Arguments[1].StartsWith('_?=', [StringComparison]::Ordinal)\n    # nonempty _?= check removed",
         ),
       },
       {
-        label: "NSIS control-character admission",
+        label: "NSIS control-character argument shape",
         source: lifecycle.replace(
           "if ([char]::IsControl($character)) {",
           "if ($false) { # if ([char]::IsControl($character)) {",
@@ -1214,57 +1386,6 @@ describe("Windows NSIS installer contract", () => {
         mutation.label,
       ).toThrow();
     }
-  });
-
-  it("rejects making the required native unsupported-drive cases unreachable", () => {
-    const lifecycle = fs.readFileSync(LIFECYCLE, "utf8");
-    const blockStart = lifecycle.indexOf(
-      "  $unsupportedDriveCaseCount = Invoke-RequiredUnsupportedDriveAcceptance `",
-    );
-    const blockEnd = lifecycle.indexOf(
-      "\n\n  # CASE: default-install",
-      blockStart,
-    );
-    expect(blockStart).toBeGreaterThanOrEqual(0);
-    expect(blockEnd).toBeGreaterThan(blockStart);
-    const block = lifecycle.slice(blockStart, blockEnd);
-    const unreachable = `  if ($false) {\n${block
-      .split("\n")
-      .map((line) => `  ${line}`)
-      .join("\n")}\n  }`;
-    const lifecyclePath = temporaryFile(
-      "verify-windows-nsis-lifecycle.ps1",
-      `${lifecycle.slice(0, blockStart)}${unreachable}${lifecycle.slice(blockEnd)}`,
-    );
-    expect(() =>
-      verifyWindowsNsisContract({
-        baseConfigPath: BASE_CONFIG,
-        windowsConfigPath: WINDOWS_CONFIG,
-        templatePath: TEMPLATE,
-        lifecyclePath,
-      }),
-    ).toThrow(/must be invoked unconditionally/u);
-  });
-
-  it("rejects accepting zero executed native unsupported-drive cases", () => {
-    const lifecycle = fs
-      .readFileSync(LIFECYCLE, "utf8")
-      .replace(
-        "  if ($unsupportedDriveCaseCount -ne 2) {",
-        "  if ($unsupportedDriveCaseCount -ne 0) {",
-      );
-    const lifecyclePath = temporaryFile(
-      "verify-windows-nsis-lifecycle.ps1",
-      lifecycle,
-    );
-    expect(() =>
-      verifyWindowsNsisContract({
-        baseConfigPath: BASE_CONFIG,
-        windowsConfigPath: WINDOWS_CONFIG,
-        templatePath: TEMPLATE,
-        lifecyclePath,
-      }),
-    ).toThrow(/require exactly two cases/u);
   });
 
   it.each([

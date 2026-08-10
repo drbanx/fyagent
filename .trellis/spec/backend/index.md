@@ -33,24 +33,24 @@ Before changing Rust/Tauri host code:
 
 ## Guidelines
 
-| Guide                                                                     | Use it for                                                                                                                                 |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| [Codex Desktop Installer](./codex-desktop-installer.md)                   | Fixed-source installer service, IPC DTOs/job events, same-session Windows package ownership, and trusted Codex application restart/launch. |
-| [Codex Provider Configuration](./codex-provider-configuration.md)         | Lossless Codex Provider TOML, native capabilities, vendor/session projection, warnings, and live-config change evidence.                   |
-| [WorkBuddy Configuration](./workbuddy-configuration.md)                   | WorkBuddy model discovery, restricted third-party `/v1` access, credential-safe persistence, and renderer-domain isolation.                |
-| [Application Version and Installer Assets](./fyagent-version-contract.md) | Cargo version single source, version commands, frozen release values, exact cross-platform asset names, and evidence sets.                 |
-| [GitHub CI Workflow](./github-ci-workflow.md)                             | Repository-owned change classification, domain-aware PR/merge-group jobs, full dev/main pushes, and the stable `CI / Required` aggregate.  |
-| [GitHub Release Workflow](./github-release-workflow.md)                   | Exact dev-HEAD/tag/successful-push-CI identity, full preflight/formal topology, asset transaction, attestation, and public Release.        |
-| [Windows Installer](./windows-installer.md)                               | NSIS bundle, fixed-volume path admission, bounded uninstall, per-asset signing policy, and x64/ARM64 native lifecycle.                     |
-| [Windows Runtime Security](./windows-runtime-security.md)                 | Formal startup and interactive-user proof, protected machine runtime, authenticated activation, and elevated CLI boundary.                 |
-| [Development Environment](./development-environment.md)                   | Locked mise-first local tool versions, host-native compiler/runner/linker boundary, and WSL PATH isolation.                                |
-| [Repository Task Runner](./task-runner-contract.md)                       | Canonical mise task metadata, argv transport, DAG effects, maintenance safety, and generated task documentation.                           |
-| [Trellis Tooling](./trellis-tooling.md)                                   | Managed-template updates, deterministic project overlays, read-only divergence verification, and current-authority routing.                |
-| [Codex Development Hooks](./development-hooks.md)                         | Codex hook registration/protocol, strict context injection, and ownership of the three declared hook overlays.                             |
-| [Application Brand Assets](./application-brand-assets.md)                 | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                               |
-| [Application Identity](./application-identity.md)                         | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                             |
-| [CC Switch Upstream Synchronization](./upstream-sync.md)                  | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                            |
-| [Deep-Link Import Security](./deeplink-import-security.md)                | Untrusted `fyagent://v1/import` request validation, explicit provider activation approval, and credential-safe confirmation.               |
+| Guide                                                                     | Use it for                                                                                                                                         |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Codex Desktop Installer](./codex-desktop-installer.md)                   | Fixed-source installer service, IPC DTOs/job events, same-session Windows package ownership, and trusted Codex application restart/launch.         |
+| [Codex Provider Configuration](./codex-provider-configuration.md)         | Lossless Codex Provider TOML, native capabilities, vendor/session projection, warnings, and live-config change evidence.                           |
+| [WorkBuddy Configuration](./workbuddy-configuration.md)                   | WorkBuddy model discovery, restricted third-party `/v1` access, credential-safe persistence, and renderer-domain isolation.                        |
+| [Application Version and Installer Assets](./fyagent-version-contract.md) | Cargo version single source, version commands, frozen release values, exact cross-platform asset names, and evidence sets.                         |
+| [GitHub CI Workflow](./github-ci-workflow.md)                             | Repository-owned change classification, domain-aware PR/merge-group jobs, full dev/main pushes, and the stable `CI / Required` aggregate.          |
+| [GitHub Release Workflow](./github-release-workflow.md)                   | Exact dev-HEAD/tag/successful-push-CI identity, full preflight/formal topology, asset transaction, attestation, and public Release.                |
+| [Windows Installer](./windows-installer.md)                               | NSIS bundle, install-path behavior, bounded uninstall, per-asset signing policy, x64/ARM64 native build/package, and manual lifecycle diagnostics. |
+| [Windows Runtime Security](./windows-runtime-security.md)                 | Formal startup and interactive-user proof, protected machine runtime, authenticated activation, and elevated CLI boundary.                         |
+| [Development Environment](./development-environment.md)                   | Locked mise-first local tool versions, host-native compiler/runner/linker boundary, and WSL PATH isolation.                                        |
+| [Repository Task Runner](./task-runner-contract.md)                       | Canonical mise task metadata, argv transport, DAG effects, maintenance safety, and generated task documentation.                                   |
+| [Trellis Tooling](./trellis-tooling.md)                                   | Managed-template updates, deterministic project overlays, read-only divergence verification, and current-authority routing.                        |
+| [Codex Development Hooks](./development-hooks.md)                         | Codex hook registration/protocol, strict context injection, and ownership of the three declared hook overlays.                                     |
+| [Application Brand Assets](./application-brand-assets.md)                 | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                                       |
+| [Application Identity](./application-identity.md)                         | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                                     |
+| [CC Switch Upstream Synchronization](./upstream-sync.md)                  | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                                    |
+| [Deep-Link Import Security](./deeplink-import-security.md)                | Untrusted `fyagent://v1/import` request validation, explicit provider activation approval, and credential-safe confirmation.                       |
 
 ## Quality Check
 

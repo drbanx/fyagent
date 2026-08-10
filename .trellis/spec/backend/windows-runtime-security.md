@@ -136,8 +136,11 @@ path, Shell identity, or capability secret.
   identity, and no argv before server proof.
 - Static boundary tests prove formal elevated tool probes stop before user CLI
   lookup, while development/test behavior remains available.
-- Matching x64 and ARM64 native installer lifecycles prove the runtime root and
-  startup manifest integration. Non-Windows tests do not replace that evidence.
+- Matching x64 and ARM64 native Windows jobs prove application compilation,
+  NSIS packaging, and startup-manifest integration. Runtime-root behavior is
+  covered by its unit/static contracts and may be exercised with the manual
+  installer lifecycle diagnostic; that harness is not a Release workflow gate.
+  Non-Windows tests do not replace matching native build/package evidence.
 
 ## 7. Wrong vs Correct
 

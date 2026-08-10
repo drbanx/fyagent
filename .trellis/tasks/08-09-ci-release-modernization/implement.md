@@ -14,8 +14,8 @@
    - exact successful dev push CI, and keep dispatch non-publishing.
 6. [done] Bind both metadata modes to CI identity, add the two publish
    rechecks, and preserve the existing pinned assets, Windows signing/sealing/
-   lifecycle, 10/13/14 allowlists, draft re-download, attestation, and Latest
-   transaction.
+   proof boundary, direct exact-asset routing, 10/13/14 allowlists, draft
+   re-download, attestation, and Latest transaction.
 7. [done locally; remote pending] Run local workflow/unit/release-contract
    checks and frozen engineering/security/release review. The parent owns the
    completed repository-wide local check and still owns the real dev push,
@@ -39,12 +39,13 @@ contracts without performing remote writes:
   annotated-tag identity, latest successful dev push attempt, complete REST
   pagination, Required job/check binding, reruns appearing during collection,
   frozen-result drift, moved refs, lightweight tags, and token redaction.
-- The CI and Release workflow tests bind dev/main push full-run behavior,
+- At that repository-side pass, the CI and Release workflow tests bound
+  dev/main push full-run behavior,
   PR/merge-group domain routing, independent current-attempt Jobs REST
   evidence, dispatch non-publication, both live publish rechecks, the existing
   immutable build-input bundle, Windows formal producer/fresh sealer/fresh
-  lifecycle trust split, and the exact 10 installer / 13 attestation subject /
-  14 attachment allowlists.
+  lifecycle trust split that existed at that time, and the exact 10 installer /
+  13 attestation subject / 14 attachment allowlists.
 - `mise run typecheck`, repository-managed reviewed-file formatting,
   `git diff --check`, Trellis task validation, and `trellis:verify` are retained
   as this phase's final local gates. Official `actionlint` v1.7.12 was verified
@@ -58,7 +59,7 @@ repository setting. Real `dev/laiyongjie` push CI, dispatch preflight, annotated
 tag, formal Release, and closeout CI remain parent-task acceptance gates; this
 child stays open until those observations exist.
 
-## Preflight lifecycle timeout follow-up
+## Historical preflight lifecycle timeout follow-up
 
 Dispatch preflight run `31336520793` for exact source commit
 `6830fc5b48f37376998835808734952cac19ec3a` reached the secret-free Windows
@@ -71,8 +72,30 @@ post-checkout execution observed. The exact last `CASE` is therefore unknown.
 Downstream asset verification, attestation, and publication did not
 materialize, and no tag or Release exists.
 
-The workflow correction gives each `windows-lifecycle` matrix child an exact
-45-minute hard timeout. Lifecycle-local process deadlines and case diagnostics
-remain owned by the Windows installer contract. This is not native acceptance:
-a new exact-SHA dispatch must complete both architecture jobs before the
-preflight or release gate can close.
+At that time, the workflow correction gave each `windows-lifecycle` matrix
+child an exact 45-minute hard timeout. Lifecycle-local process deadlines and
+case diagnostics remain owned by the Windows installer contract.
+
+A later product decision retired this Actions gate. The current Release
+workflow has no `windows-lifecycle` job and does not invoke the manual harness;
+successful x64/ARM64 native build/package jobs plus the applicable Windows
+proof/seal branch now feed exact-asset verification directly. The run and
+timeout above remain historical evidence and do not prove a newer preflight.
+Real exact-SHA push CI, a preflight under the current topology, the annotated
+tag, formal Release, and closeout CI remain unobserved acceptance gates.
+
+## Current simplified Release topology evidence
+
+The repository workflow now has no lifecycle job or lifecycle-script
+invocation. Its exact job allowlist routes successful native builds and the
+applicable Windows proof/seal branch directly to `verify-assets`, then
+attestation and formal publication. A mutation that adds a differently named
+Windows job and executes a setup executable is rejected. `mise run
+release:check` passed 22/22 files and 578/578 contract tests plus the 4/4
+native-fetch suite; the focused Release/NSIS files passed 81/81 tests.
+Official `actionlint` v1.7.12 accepted the final workflow, and the parent-owned
+full-scope `mise run check` completed with exit code zero on the same frozen
+worktree.
+
+These results are repository-local. No remote Actions run, tag, attestation, or
+Release was created for this working tree.

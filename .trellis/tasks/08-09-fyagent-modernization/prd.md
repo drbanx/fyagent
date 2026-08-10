@@ -19,6 +19,10 @@ release from `dev/laiyongjie`.
   `NotSigned`, the state is disclosed publicly, and digests plus attestation
   remain available. Complete signer configuration requires sign-and-verify;
   partial or invalid configuration fails closed.
+- Release acceptance requires successful matching native build/package jobs on
+  every platform. Windows additionally requires unsigned/signing proof and
+  fresh sealing, but the workflow does not execute an install -> verify ->
+  uninstall lifecycle; the retained harness is a manual diagnostic only.
 - Do not merge or change `main`, repository protection, or merge settings.
   Release eligibility is exact equality between the formal tag SHA, the
   current remote `dev/laiyongjie` HEAD, and that SHA's successful full push CI.
@@ -28,9 +32,12 @@ release from `dev/laiyongjie`.
 
 ## Acceptance Criteria
 
-- [ ] Every child satisfies and records its own local and native/remote evidence.
-- [ ] All work commits are pushed together and the exact remote HEAD passes
-      the complete `CI / Required` gate.
+- [ ] Every child satisfies and records its own local and required native/remote
+      evidence; Windows Release evidence stops at native build/package plus
+      proof/sealing rather than installer execution.
+- [ ] The final reviewed work set is reachable from one exact remote HEAD; the
+      remaining correction batch is pushed once and that HEAD passes the
+      complete `CI / Required` gate.
 - [ ] Release preflight succeeds without publishing.
 - [ ] Annotated tag `v0.3.1` points to that exact HEAD and publishes a normal,
       public, Latest GitHub Release with the verified asset set.

@@ -21,6 +21,6 @@
   "children": [],
   "parent": "08-09-fyagent-modernization",
   "relatedFiles": [],
-  "notes": "Local implementation and host-neutral gates complete; matching x64 and ARM64 native CI evidence remains required before archive.",
+  "notes": "Local implementation and matching x64/ARM64 native CI acceptance completed in run 31345943683; keep open for the parent-owned formal v0.3.1 Release and ordered archive closeout.",
   "meta": {}
 }

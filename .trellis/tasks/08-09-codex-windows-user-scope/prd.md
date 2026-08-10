@@ -32,15 +32,12 @@ affecting discovery, updates, verification, or restart/launch.
 
 ## Acceptance Criteria
 
-- [ ] Multi-SID fixtures prove other-user isolation and same-user ambiguity
-      (implemented; Windows CI execution pending).
-- [ ] Adapter tests assert explicit SID plus Main and same-context post-verify
-      (implemented; Windows CI execution pending).
-- [ ] Ordinary fakes prove all-users capability is never called (implemented;
-      Windows CI execution pending).
+- [x] Multi-SID fixtures prove other-user isolation and same-user ambiguity.
+- [x] Adapter tests assert explicit SID plus Main and same-context post-verify.
+- [x] Ordinary fakes prove all-users capability is never called.
 - [x] WTS token acquisition is absent from ordinary GUI identity proof while
       formal Shell/process mismatch continues to block startup.
-- [ ] Native Windows smoke verifies WinRT plumbing without Store, network,
+- [x] Native Windows smoke verifies WinRT plumbing without Store, network,
       real Codex, or a real multi-account VM.
-- [ ] Matching x64 and ARM64 native CI legs execute that exact smoke once;
+- [x] Matching x64 and ARM64 native CI legs execute that exact smoke once;
       scheduling or native API failure blocks acceptance.

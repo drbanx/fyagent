@@ -182,8 +182,10 @@ mise run release:check
 The standalone `tests/version.test.mjs` suite additionally exercises the
 atomic version utility. Native installer/signing evidence remains owned by
 [Windows Installer](./windows-installer.md). Local static tests do not
-establish an x64 or ARM64 installer, Authenticode state, installation
-lifecycle, attestation, or public Release.
+establish an x64 or ARM64 package, Authenticode state, attestation, or public
+Release. The matching native Release jobs stop at successful build/package and
+Windows proof/sealing; the manual installation lifecycle is diagnostic rather
+than a Release gate.
 
 ## 7. Wrong vs Correct
 

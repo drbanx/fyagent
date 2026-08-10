@@ -5,7 +5,7 @@
   "description": "Replace Windows MSI/WiX delivery with native x64 and ARM64 NSIS setup executables.",
   "status": "in_progress",
   "dev_type": null,
-  "scope": "Windows bundling, installer lifecycle, signing state, and release assets",
+  "scope": "Windows bundling, manual installer diagnostics, signing state, and release assets",
   "package": null,
   "priority": "P2",
   "creator": "pythonrust",

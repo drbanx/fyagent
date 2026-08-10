@@ -18,7 +18,8 @@ draft transaction until remote byte re-download, metadata, signing-state,
 attestation, and the second live identity gate succeed.
 
 The release trust chain deliberately does not depend on `main`, Main
-Provenance, branch protection, or rulesets. Build-input pinning and the
-Windows formal producer/fresh-sealer/fresh-lifecycle split remain unchanged;
-WS02 changes admission and publication identity, not WS01's native byte trust
-boundary.
+Provenance, branch protection, or rulesets. Build-input pinning, successful
+matching native build/package jobs, and the Windows preflight-proof or formal
+producer/fresh-sealer branches feed exact-asset verification directly. No
+Release job executes an installer; the retained lifecycle harness is an
+out-of-band manual diagnostic rather than part of the native byte trust chain.

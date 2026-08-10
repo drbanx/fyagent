@@ -878,24 +878,16 @@ function Remove-TestOwnedRuntimePreimage {
   }
 }
 
-function Assert-RejectedInstallLeftNoMachineWrites {
+function Assert-FailedRuntimeBootstrapLeftNoInstallWrites {
   param(
-    [string]$CandidateInstallDirectory,
-
-    [switch]$AllowTestOwnedProgramData
+    [string]$CandidateInstallDirectory
   )
 
   if (
     -not [string]::IsNullOrWhiteSpace($CandidateInstallDirectory) -and
     (Test-Path -LiteralPath $CandidateInstallDirectory)
   ) {
-    throw "Rejected install created its final install directory: $CandidateInstallDirectory"
-  }
-  if (
-    -not $AllowTestOwnedProgramData -and
-    (Test-Path -LiteralPath (Join-Path $env:ProgramData 'FyAgent'))
-  ) {
-    throw 'Rejected install wrote ProgramData before its final path was admitted.'
+    throw "Failed runtime bootstrap created the install directory: $CandidateInstallDirectory"
   }
   foreach ($subKey in @(
     $uninstallRegistrySubKey,
@@ -903,12 +895,12 @@ function Assert-RejectedInstallLeftNoMachineWrites {
     $installLocationRegistrySubKey
   )) {
     if (Test-Registry64Key -SubKey $subKey) {
-      throw "Rejected install wrote HKLM registry state: $subKey"
+      throw "Failed runtime bootstrap wrote HKLM registry state: $subKey"
     }
   }
   foreach ($shortcut in @(Get-InstallerShortcutPaths)) {
     if (Test-Path -LiteralPath $shortcut) {
-      throw "Rejected install wrote an all-users shortcut: $shortcut"
+      throw "Failed runtime bootstrap wrote an all-users shortcut: $shortcut"
     }
   }
 }
@@ -955,305 +947,6 @@ namespace FyAgent.NsisLifecycle {
   }
 }
 '@
-}
-
-if (-not ('FyAgent.NsisLifecycle.NativeNetworkDrive' -as [type])) {
-  Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-
-namespace FyAgent.NsisLifecycle {
-  public static class NativeNetworkDrive {
-    public const uint DRIVE_NO_ROOT_DIR = 1;
-    public const uint DRIVE_REMOTE = 4;
-    private const uint RESOURCETYPE_DISK = 1;
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private sealed class NetworkResource {
-      public uint Scope;
-      public uint Type;
-      public uint DisplayType;
-      public uint Usage;
-
-      [MarshalAs(UnmanagedType.LPWStr)]
-      public string LocalName;
-
-      [MarshalAs(UnmanagedType.LPWStr)]
-      public string RemoteName;
-
-      [MarshalAs(UnmanagedType.LPWStr)]
-      public string Comment;
-
-      [MarshalAs(UnmanagedType.LPWStr)]
-      public string Provider;
-    }
-
-    [DllImport("mpr.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern int WNetAddConnection2W(
-      [In] NetworkResource networkResource,
-      string password,
-      string username,
-      uint flags
-    );
-
-    [DllImport("mpr.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern int WNetCancelConnection2W(
-      string name,
-      uint flags,
-      [MarshalAs(UnmanagedType.Bool)] bool force
-    );
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    public static extern uint GetDriveTypeW(string rootPathName);
-
-    public static int Connect(string localName, string remoteName) {
-      NetworkResource resource = new NetworkResource {
-        Type = RESOURCETYPE_DISK,
-        LocalName = localName,
-        RemoteName = remoteName
-      };
-      return WNetAddConnection2W(resource, null, null, 0);
-    }
-
-    public static int Disconnect(string localName) {
-      return WNetCancelConnection2W(localName, 0, false);
-    }
-  }
-}
-'@
-}
-
-function Invoke-RequiredUnsupportedDriveAcceptance {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$InstallerPath,
-
-    [Parameter(Mandatory = $true)]
-    [string]$WorkingDirectory,
-
-    [Parameter(Mandatory = $true)]
-    [string]$Identifier
-  )
-
-  $smbModuleManifest = Join-Path $env:SystemRoot `
-    'System32\WindowsPowerShell\v1.0\Modules\SmbShare\SmbShare.psd1'
-  if (-not (Test-Path -LiteralPath $smbModuleManifest -PathType Leaf)) {
-    throw "The system SmbShare module is unavailable: $smbModuleManifest"
-  }
-  Microsoft.PowerShell.Core\Import-Module `
-    -Name $smbModuleManifest `
-    -Force `
-    -ErrorAction Stop
-
-  $shareName = "FyAgentNsis-$Identifier"
-  $shareRoot = Join-Path $WorkingDirectory 'unsupported-network-share'
-  $remoteName = "\\$env:COMPUTERNAME\$shareName"
-  $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-  $driveLetter = $null
-  $driveLocalName = $null
-  $driveRoot = $null
-  $markerPath = $null
-  $markerBackingPath = $null
-  $reparseLink = $null
-  $shareCreated = $false
-  $driveConnected = $false
-  $caseCount = 0
-  $operationFailure = $null
-  $cleanupFailures = [Collections.Generic.List[string]]::new()
-
-  try {
-    New-Item -ItemType Directory -Path $shareRoot | Out-Null
-    $existingShare = SmbShare\Get-SmbShare `
-      -Name $shareName `
-      -ErrorAction SilentlyContinue
-    if ($null -ne $existingShare) {
-      throw "The unique unsupported-drive SMB share already exists: $shareName"
-    }
-    $createdShare = SmbShare\New-SmbShare `
-      -Name $shareName `
-      -Path $shareRoot `
-      -FullAccess $currentIdentity `
-      -Temporary `
-      -ErrorAction Stop
-    $shareCreated = $true
-    if (
-      [string]$createdShare.Name -cne $shareName -or
-      [IO.Path]::GetFullPath([string]$createdShare.Path) -cne
-        [IO.Path]::GetFullPath($shareRoot)
-    ) {
-      throw 'The created unsupported-drive SMB share identity drifted.'
-    }
-
-    foreach ($codePoint in 90..68) {
-      $candidateLetter = [char]$codePoint
-      $candidateRoot = '{0}:\' -f $candidateLetter
-      $candidateType = [FyAgent.NsisLifecycle.NativeNetworkDrive]::GetDriveTypeW(
-        $candidateRoot
-      )
-      if (
-        $candidateType -eq
-          [FyAgent.NsisLifecycle.NativeNetworkDrive]::DRIVE_NO_ROOT_DIR
-      ) {
-        $driveLetter = [string]$candidateLetter
-        break
-      }
-    }
-    if ([string]::IsNullOrWhiteSpace($driveLetter)) {
-      throw 'No unused drive letter is available for the required unsupported-drive fixture.'
-    }
-    $driveLocalName = "${driveLetter}:"
-    $driveRoot = "${driveLocalName}\"
-    $connectResult = [FyAgent.NsisLifecycle.NativeNetworkDrive]::Connect(
-      $driveLocalName,
-      $remoteName
-    )
-    if ($connectResult -ne 0) {
-      throw "Could not map the required SMB fixture to ${driveLocalName}: WNetAddConnection2W=$connectResult"
-    }
-    $driveConnected = $true
-    $actualDriveType = [FyAgent.NsisLifecycle.NativeNetworkDrive]::GetDriveTypeW(
-      $driveRoot
-    )
-    if (
-      $actualDriveType -ne
-        [FyAgent.NsisLifecycle.NativeNetworkDrive]::DRIVE_REMOTE
-    ) {
-      throw "The controlled unsupported drive is type $actualDriveType instead of DRIVE_REMOTE."
-    }
-
-    $markerName = "mapped-drive-$Identifier.marker"
-    $markerPath = Join-Path $driveRoot $markerName
-    $markerBackingPath = Join-Path $shareRoot $markerName
-    $markerValue = "fyagent-unsupported-drive-$Identifier"
-    [IO.File]::WriteAllText($markerPath, $markerValue)
-    if (
-      -not (Test-Path -LiteralPath $markerBackingPath -PathType Leaf) -or
-      [IO.File]::ReadAllText($markerBackingPath) -cne $markerValue
-    ) {
-      throw 'The mapped unsupported drive did not round-trip through its SMB backing path.'
-    }
-
-    # CASE: unsupported-drive-network-negative
-    $unsupportedPath = Join-Path $driveRoot "FyAgent-$Identifier"
-    [void](Invoke-NsisProcess -FilePath $InstallerPath -Arguments @('/S', "/D=$unsupportedPath") -ShouldSucceed $false -CaseName 'unsupported-drive-network-negative' -WorkingDirectory $WorkingDirectory)
-    Assert-RejectedInstallLeftNoMachineWrites `
-      -CandidateInstallDirectory $unsupportedPath
-    $caseCount += 1
-
-    # CASE: reparse-unsupported-drive-network-negative
-    $reparseTarget = Join-Path $driveRoot 'reparse-target'
-    New-Item -ItemType Directory -Path $reparseTarget | Out-Null
-    $reparseLink = Join-Path $WorkingDirectory 'unsupported-network-reparse'
-    [void][IO.Directory]::CreateSymbolicLink($reparseLink, $reparseTarget)
-    $reparseItem = Get-Item -LiteralPath $reparseLink -Force
-    if (
-      ($reparseItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0
-    ) {
-      throw 'The controlled unsupported-drive reparse fixture is not a reparse point.'
-    }
-    $reparseInstallPath = Join-Path $reparseLink "FyAgent-$Identifier"
-    [void](Invoke-NsisProcess -FilePath $InstallerPath -Arguments @('/S', "/D=$reparseInstallPath") -ShouldSucceed $false -CaseName 'reparse-unsupported-drive-network-negative' -WorkingDirectory $WorkingDirectory)
-    Assert-RejectedInstallLeftNoMachineWrites `
-      -CandidateInstallDirectory $reparseInstallPath
-    $caseCount += 1
-  } catch {
-    $operationFailure = $_
-  } finally {
-    if (
-      -not [string]::IsNullOrWhiteSpace($markerPath) -and
-      (Test-Path -LiteralPath $markerPath -PathType Leaf)
-    ) {
-      try {
-        [IO.File]::Delete($markerPath)
-      } catch {
-        $cleanupFailures.Add(
-          "Mapped-drive marker cleanup failed: $($_.Exception.Message)"
-        )
-      }
-    }
-    if (
-      -not [string]::IsNullOrWhiteSpace($markerBackingPath) -and
-      (Test-Path -LiteralPath $markerBackingPath)
-    ) {
-      $cleanupFailures.Add(
-        "Mapped-drive marker survived cleanup: $markerBackingPath"
-      )
-    }
-    if (
-      -not [string]::IsNullOrWhiteSpace($reparseLink) -and
-      (Test-Path -LiteralPath $reparseLink)
-    ) {
-      try {
-        [IO.Directory]::Delete($reparseLink)
-      } catch {
-        $cleanupFailures.Add(
-          "Unsupported-drive reparse cleanup failed: $($_.Exception.Message)"
-        )
-      }
-    }
-    if ($driveConnected) {
-      try {
-        $disconnectResult = [FyAgent.NsisLifecycle.NativeNetworkDrive]::Disconnect(
-          $driveLocalName
-        )
-        if ($disconnectResult -ne 0) {
-          throw "WNetCancelConnection2W=$disconnectResult"
-        }
-        $remainingDriveType = [FyAgent.NsisLifecycle.NativeNetworkDrive]::GetDriveTypeW(
-          $driveRoot
-        )
-        if (
-          $remainingDriveType -eq
-            [FyAgent.NsisLifecycle.NativeNetworkDrive]::DRIVE_REMOTE
-        ) {
-          throw 'The unique mapped drive remains connected.'
-        }
-      } catch {
-        $cleanupFailures.Add(
-          "Unsupported-drive mapping cleanup failed: $($_.Exception.Message)"
-        )
-      }
-    }
-    if ($shareCreated) {
-      try {
-        SmbShare\Remove-SmbShare `
-          -Name $shareName `
-          -Force `
-          -Confirm:$false `
-          -ErrorAction Stop
-        if (
-          $null -ne (
-            SmbShare\Get-SmbShare `
-              -Name $shareName `
-              -ErrorAction SilentlyContinue
-          )
-        ) {
-          throw 'The unique SMB share remains registered.'
-        }
-      } catch {
-        $cleanupFailures.Add(
-          "Unsupported-drive SMB share cleanup failed: $($_.Exception.Message)"
-        )
-      }
-    }
-  }
-
-  if ($cleanupFailures.Count -ne 0) {
-    if ($null -ne $operationFailure) {
-      $cleanupFailures.Insert(
-        0,
-        "Unsupported-drive operation failed before cleanup: $($operationFailure.Exception.Message)"
-      )
-    }
-    throw [string]::Join(' | ', $cleanupFailures.ToArray())
-  }
-  if ($null -ne $operationFailure) {
-    throw $operationFailure
-  }
-  if ($caseCount -ne 2) {
-    throw "Required unsupported-drive case count is $caseCount instead of 2."
-  }
-  return $caseCount
 }
 
 function Invoke-WebView2SignatureVerification {
@@ -1890,53 +1583,6 @@ throw 'malicious module import fixture'
     -ShouldSucceed $false `
     -CaseName 'webview2-tamper-negative'
 
-  # CASE: relative-path-negative
-  [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S', "/D=relative-$runId") -ShouldSucceed $false -CaseName 'relative-path-negative' -WorkingDirectory $testRoot)
-  Assert-RejectedInstallLeftNoMachineWrites `
-    -CandidateInstallDirectory (Join-Path $testRoot "relative-$runId")
-  # CASE: unc-network-negative
-  [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S', "/D=\\127.0.0.1\fyagent-missing-$runId\FyAgent") -ShouldSucceed $false -CaseName 'unc-network-negative' -WorkingDirectory $testRoot)
-  Assert-RejectedInstallLeftNoMachineWrites
-
-  # CASE: access-denied-ancestor-negative
-  # An inaccessible existing ancestor must not be treated as a missing path
-  # and peeled until a local fixed-drive parent is found.
-  $accessDeniedAncestor = Join-Path $testRoot 'access-denied-ancestor'
-  New-Item -ItemType Directory -Path $accessDeniedAncestor | Out-Null
-  $deniedSecurity = [Security.AccessControl.DirectorySecurity]::new()
-  $deniedSecurity.SetSecurityDescriptorSddlForm(
-    'O:BAD:P(D;;0x81;;;BU)(A;;FA;;;SY)(A;;FA;;;BA)'
-  )
-  Set-Acl -LiteralPath $accessDeniedAncestor -AclObject $deniedSecurity
-  $accessDeniedCandidate = Join-Path $accessDeniedAncestor 'FyAgent'
-  [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S', "/D=$accessDeniedCandidate") -ShouldSucceed $false -CaseName 'access-denied-ancestor-negative' -WorkingDirectory $testRoot)
-  Assert-RejectedInstallLeftNoMachineWrites `
-    -CandidateInstallDirectory $accessDeniedCandidate
-  $cleanupSecurity = [Security.AccessControl.DirectorySecurity]::new()
-  $cleanupSecurity.SetSecurityDescriptorSddlForm(
-    'O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)'
-  )
-  Set-Acl -LiteralPath $accessDeniedAncestor -AclObject $cleanupSecurity
-
-  # CASE: reparse-network-negative
-  # This local-looking path proves that the validator follows its directory
-  # reparse point before classifying the final SMB target.
-  $networkReparseLink = Join-Path $testRoot 'network-reparse-link'
-  [void][IO.Directory]::CreateSymbolicLink(
-    $networkReparseLink,
-    "\\127.0.0.1\fyagent-missing-$runId"
-  )
-  [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S', "/D=$networkReparseLink\FyAgent") -ShouldSucceed $false -CaseName 'reparse-network-negative' -WorkingDirectory $testRoot)
-  Assert-RejectedInstallLeftNoMachineWrites
-
-  $unsupportedDriveCaseCount = Invoke-RequiredUnsupportedDriveAcceptance `
-    -InstallerPath $resolvedInstaller `
-    -WorkingDirectory $testRoot `
-    -Identifier $runId
-  if ($unsupportedDriveCaseCount -ne 2) {
-    throw "The native lifecycle executed $unsupportedDriveCaseCount unsupported-drive cases instead of 2."
-  }
-
   # CASE: default-install
   [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S') -ShouldSucceed $true -CaseName 'default-install' -WorkingDirectory $testRoot)
   Assert-InstalledState `
@@ -1954,9 +1600,8 @@ throw 'malicious module import fixture'
   $unsafeEvidence = New-PreexistingRuntimeAclDrift
   [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S', "/D=$customInstallDir") -ShouldSucceed $false -CaseName 'preexisting-runtime-extra-ace-negative' -WorkingDirectory $testRoot)
   Assert-PreexistingRuntimeAclDriftUnchanged -Evidence $unsafeEvidence
-  Assert-RejectedInstallLeftNoMachineWrites `
-    -CandidateInstallDirectory $customInstallDir `
-    -AllowTestOwnedProgramData
+  Assert-FailedRuntimeBootstrapLeftNoInstallWrites `
+    -CandidateInstallDirectory $customInstallDir
   Remove-TestOwnedRuntimePreimage
 
   # CASE: preexisting-runtime-unknown-content-negative
@@ -1970,11 +1615,10 @@ throw 'malicious module import fixture'
     -not (Test-Path -LiteralPath $unknownFile -PathType Leaf) -or
     [Convert]::ToBase64String([IO.File]::ReadAllBytes($unknownFile)) -cne $unknownBytes
   ) {
-    throw 'Unknown trusted-runtime content was changed by a rejected install.'
+    throw 'Unknown trusted-runtime content was changed by a failed install.'
   }
-  Assert-RejectedInstallLeftNoMachineWrites `
-    -CandidateInstallDirectory $customInstallDir `
-    -AllowTestOwnedProgramData
+  Assert-FailedRuntimeBootstrapLeftNoInstallWrites `
+    -CandidateInstallDirectory $customInstallDir
   Remove-TestOwnedRuntimePreimage
 
   # CASE: preexisting-runtime-no-delete-share-negative
@@ -1990,9 +1634,8 @@ throw 'malicious module import fixture'
   try {
     [void](Invoke-NsisProcess -FilePath $resolvedInstaller -Arguments @('/S', "/D=$customInstallDir") -ShouldSucceed $false -CaseName 'preexisting-runtime-no-delete-share-negative' -WorkingDirectory $testRoot)
     Assert-StrictRuntimeRoot -Path $pinnedRuntime
-    Assert-RejectedInstallLeftNoMachineWrites `
-      -CandidateInstallDirectory $customInstallDir `
-      -AllowTestOwnedProgramData
+    Assert-FailedRuntimeBootstrapLeftNoInstallWrites `
+      -CandidateInstallDirectory $customInstallDir
   } finally {
     if (-not [FyAgent.NsisLifecycle.NativeDirectoryHandle]::CloseHandle($pinnedHandle)) {
       throw 'Could not close the native no-delete-share runtime fixture.'

@@ -18,9 +18,10 @@ boundary.
 ### Changed
 
 - Replaced the formal Windows MSI/WiX surface with per-machine x64 and ARM64
-  NSIS setup executables. Graphical and silent installs share one pre-write
-  local-fixed-volume path validator, and uninstall is bounded to
-  installer-owned files while preserving application and user data.
+  NSIS setup executables. Graphical and silent installs use standard NSIS path
+  handling without a FyAgent absolute/fixed/local/UNC/reparse admission gate;
+  setup and uninstaller share the canonical FyAgent icon; and uninstall is
+  bounded to installer-owned files while preserving application and user data.
 - Bound ordinary Windows Codex Desktop discovery, install/update,
   post-verification, restart, and launch to one same-session Shell SID context.
   Inventory uses the explicit SID plus `PackageTypes.Main`; multiple trusted
@@ -48,10 +49,12 @@ boundary.
   `signing-status.json` and appended to the Release body.
 - The Release contract contains ten installers, three attested JSON evidence
   files, and the Sigstore bundle: 13 attestation subjects and 14 attachments.
-  Publication requires the native lifecycle, exact asset, metadata,
-  attestation, transactional draft/re-download, and live eligibility checks in
-  the [v0.3.1 Release Notes](docs/release-notes/v0.3.1-en.md). This changelog
-  does not itself claim those remote gates have completed.
+  Publication requires matching native build/package success, exact asset,
+  metadata, attestation, transactional draft/re-download, and live eligibility
+  checks in the
+  [v0.3.1 Release Notes](docs/release-notes/v0.3.1-en.md). The optional Windows
+  install/uninstall lifecycle script is a manual diagnostic, not an Actions
+  gate. This changelog does not itself claim those remote gates have completed.
 
 ## [0.3.0]
 

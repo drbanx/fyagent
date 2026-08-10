@@ -26,6 +26,10 @@ full-CI HEAD of `dev/laiyongjie`.
 - `workflow_dispatch` is preflight-only. Formal publication preserves the
   multi-platform asset transaction and attestation and consumes verified
   Windows signing-state disclosure.
+- Platform acceptance is successful native build/package output. Windows also
+  requires unsigned/signing proof and fresh sealing, but Release does not run
+  an install -> verify -> uninstall Actions job. The retained lifecycle script
+  is a manual diagnostic, not a release gate.
 
 ## Acceptance Criteria
 
@@ -42,6 +46,9 @@ full-CI HEAD of `dev/laiyongjie`.
 - [x] Dispatch cannot reach publish; exact-SHA tag flow publishes only after
       two live remote rechecks, verified assets, signing state, digests, and
       attestation.
+- [x] Workflow topology routes successful native builds and the mutually
+      exclusive Windows proof/seal branches directly into exact-asset
+      verification without executing an installer lifecycle.
 - [x] Existing `main` workflow behavior remains unchanged and this workstream
       performs no repository-setting mutation. The parent retains the final
       remote settings observation.

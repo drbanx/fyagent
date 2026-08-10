@@ -8,8 +8,8 @@ that may publish a FyAgent GitHub Release. Read it before changing release
 events, eligibility, native runners, signer configuration, artifact ownership,
 attestation, Release notes, or the final publication request.
 
-Per-asset NSIS mechanics, fixed-volume admission, Windows signing evidence, and
-native install/uninstall semantics are owned by
+Per-asset NSIS mechanics, install-path behavior, Windows signing evidence, and
+manual native install/uninstall diagnostics are owned by
 [Windows Installer](./windows-installer.md). Formal startup and the protected
 machine-runtime descriptor are owned by
 [Windows Runtime Security](./windows-runtime-security.md). This workflow owns
@@ -32,9 +32,9 @@ accepts exactly stable `vX.Y.Z` with no prerelease, build metadata, missing
 component, or leading zero.
 
 - `workflow_dispatch` is a full five-target preflight for the current trusted
-  `dev/laiyongjie` HEAD. It may build, execute native lifecycle checks, create
-  workflow artifacts, and attest candidate bytes, but it can never create or
-  update a GitHub Release.
+  `dev/laiyongjie` HEAD. It may build and package native targets, prove and
+  seal Windows bytes, create workflow artifacts, and attest candidate bytes,
+  but it can never create or update a GitHub Release.
 - a tag `push` is the only formal publication path. The remote tag must be an
   annotated tag whose target commit equals the current remote
   `dev/laiyongjie` HEAD and the exact successful full push CI source.
@@ -62,7 +62,7 @@ ci_run_id     = exact successful dev push CI run
 ci_attempt    = exact successful attempt of that run
 ```
 
-Every platform build, metadata writer, signer boundary, lifecycle job,
+Every platform build, metadata writer, signer boundary, asset verifier,
 attestation, and publication step consumes these values unchanged. Downstream
 jobs must not strip a ref, reread a second version source, select a newer CI
 attempt, or substitute a different source/workflow SHA.
@@ -149,13 +149,12 @@ eligibility
   ├─ build-windows (x64, ARM64) ─┐
   ├─ build-linux   (x64, ARM64)  ├─ pin-release-build-inputs
   └─ build-macos   (universal) ──┘              │
-                                                 ├─ preflight proof ───────┐
-                                                 └─ formal transform       │
+                                                 ├─ preflight proof ──────┐
+                                                 └─ formal transform      │
                                                      └─ fresh formal seal ┤
-                                                                          └─ windows-lifecycle
-
-pin-release-build-inputs + windows-lifecycle
-  └─ verify-assets ──> attest ──> publish (formal push only)
+                                                                          └─ verify-assets
+                                                                               └─ attest
+                                                                                    └─ publish (formal push only)
 ```
 
 All build jobs receive only frozen values and check out `source_sha`
@@ -184,17 +183,22 @@ The preflight and formal Windows paths are mutually exclusive:
   re-proves raw `NotSigned`, admits only byte-identical unsigned output or an
   Authenticode-only mutation, independently probes the public signature
   policy, and exclusively creates the formal final pair.
-- `windows-lifecycle` runs on another fresh matching native runner. It has no
-  signer secrets or upload step, rebinds the sealed installer to its fragment,
-  executes the complete elevated lifecycle, and cannot change the artifacts
-  later consumed by aggregation. Each matrix child has a 45-minute hard job
-  timeout; a timeout fails the lifecycle dependency and cannot admit asset
-  aggregation, attestation, or publication.
+- `verify-assets` admits the preflight proof only when both formal jobs were
+  skipped, or the formal fresh seal only when the preflight proof was skipped.
+  It also requires every native build and the immutable input pin to succeed
+  before aggregating the exact installer and evidence sets.
+
+The Release workflow deliberately has no job that launches a Windows setup
+executable or performs install -> verify -> uninstall. Successful matching
+native build/package jobs are the platform acceptance boundary. The manual
+`verify-windows-nsis-lifecycle.ps1` harness may be used for diagnostics, but
+the workflow does not invoke it and its result is not a preflight, attestation,
+or publication gate.
 
 The formal provider therefore has authority to transform its candidate or
 cause a denial of service, but it cannot replace pinned build inputs or create
-trusted release evidence. Elevated candidate execution never shares a runner
-with signer material.
+trusted release evidence. No Release job executes the final setup bytes, and
+signer material remains isolated from the fresh sealing boundary.
 
 ## 5. Runner, architecture, and toolchain contract
 
@@ -230,7 +234,7 @@ tool execution. That variable is limited to the package step; it does not
 grant mount, FUSE, privileged-container, or `SYS_ADMIN` capability and must be
 re-evaluated when the locked Tauri CLI/bundler changes.
 
-## 6. Platform security and lifecycle gates
+## 6. Platform build, package, and security gates
 
 ### Windows
 
@@ -239,8 +243,8 @@ re-evaluated when the locked Tauri CLI/bundler changes.
   execution-level manifest entry;
 - `verify-windows-nsis-contract.mjs` runs before packaging and on the produced
   setup. It binds the reviewed Tauri template, Windows-only NSIS target,
-  shared pre-write final-path validator, fixed local volume, strict
-  ProgramData creation/admission, and bounded uninstall ownership;
+  standard NSIS install-directory handling, independent strict ProgramData
+  runtime creation/admission, and bounded uninstall ownership;
 - raw setup bytes leave build runners only after strict `NotSigned` proof and
   an empty PE security directory;
 - the final x64 and ARM64 bytes must agree on signed/unsigned mode. Complete
@@ -248,10 +252,12 @@ re-evaluated when the locked Tauri CLI/bundler changes.
   Code Signing EKU, and timestamp policy. Missing signer mode may produce
   strict unsigned evidence. Partial, empty-active, malformed, failed,
   mismatched, or post-sign-mutated states fail and never downgrade;
-- final bytes run native default and custom fixed-drive install, program and
-  HKLM/shortcut verification, unsupported local/network/reparse path rejection,
-  uninstall, installer-owned cleanup, and user-data sentinel preservation;
-- architecture is proved from installed `fyagent.exe`, not the NSIS launcher.
+- each matching native Windows runner compiles the release application,
+  verifies its PE architecture and elevated manifest, and packages exactly one
+  NSIS setup executable before proof/signing and fresh sealing;
+- installer execution, registry/shortcut/runtime observation, uninstall, and
+  user-data preservation remain available through the manual lifecycle
+  diagnostic and are not Release acceptance requirements.
 
 ### macOS
 
@@ -327,9 +333,10 @@ Workflow default permission is `contents: read`.
 - attestation receives `contents: read`, `id-token: write`,
   `attestations: write`, and `artifact-metadata: write`;
 - the formal publish job alone receives `contents: write` after every build,
-  lifecycle, exact-asset, metadata, and attestation dependency succeeds;
+  Windows proof/seal, exact-asset, metadata, and attestation dependency
+  succeeds;
 - provider secrets exist only in the formal transform job. They never reach
-  builds, preflight, fresh sealing, lifecycle, aggregation, notes, or specs.
+  builds, preflight, fresh sealing, aggregation, notes, or specs.
 
 The publish job has an explicit formal tag-push condition; dispatch evaluates
 to false. It performs this transaction:
@@ -366,7 +373,7 @@ never called private or successful.
 | Native runner, architecture, toolchain, Linux digest/OS, or source drifts                                                  | Fail that target; no fallback.                         |
 | Pinned build input ID/digest/manifest/file set drifts                                                                      | Fail before provider or trusted consumption.           |
 | Signer configuration is partial/invalid or fresh signature proof fails                                                     | Fail; do not downgrade to unsigned.                    |
-| Windows sealed binding/lifecycle, macOS identity, or Linux package set fails                                               | Stop aggregation and publication.                      |
+| Windows proof/sealed binding, macOS identity, or Linux package set fails                                                   | Stop aggregation and publication.                      |
 | Ten/thirteen/fourteen file allowlist or digest differs                                                                     | Stop verification, attestation, or publication.        |
 | Live dev/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.  |
 | A draft/published Release already exists                                                                                   | Refuse update, replacement, or deletion.               |
@@ -383,9 +390,11 @@ workflow, event, branch, SHA, tag type, version, stale success, newer failed or
 timed-out attempt, moved branch, pagination, HTTP failure, frozen-output drift,
 dispatch publication, asset loss/extra, signer policy, and transaction failure.
 
-Local Linux execution cannot establish Windows PowerShell/NSIS/AuthentiCode,
-native x64/ARM64 install lifecycle, macOS bundle, Linux non-host architecture,
-GitHub attestation, or public Release evidence. Closure requires, in order:
+Local Linux execution cannot establish Windows PowerShell/NSIS/Authenticode,
+native x64/ARM64 build/package output, macOS bundle, Linux non-host
+architecture, GitHub attestation, or public Release evidence. The manual
+Windows install lifecycle is diagnostic evidence outside this Release
+closure. Closure requires, in order:
 
 1. one unified work push whose current dev HEAD completes full
    `CI / Required`;

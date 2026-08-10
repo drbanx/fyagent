@@ -1,7 +1,9 @@
 # Implementation
 
 1. [done] Inventory MSI/WiX ownership and user-data paths; freeze keep/delete lists.
-2. [done] Add NSIS platform config and shared path-validation hook/harness.
+2. [done] Add NSIS platform config, standard path selection, protected machine
+   runtime bootstrap, canonical installer/uninstaller icon, and contract checks
+   that forbid a custom installation-path gate.
 3. [done] Update Windows build, artifact collection, release-contract code, and tests
    to setup EXEs while leaving other platforms unchanged.
 4. [done] Delete MSI/WiX-only crate, configs, scripts, fixtures, and tests.
@@ -10,11 +12,13 @@
    preflight sealing wholly secret-free; formal signing first emits only an
    untrusted transformed candidate, then a fresh secret-free runner compares it
    with raw bytes, independently verifies policy, and owns trusted evidence.
-6. [remote pending] Run x64/ARM64 native lifecycles on a further fresh runner only after the
-   exact preflight or formal producer/sealer result tuple succeeds; revalidate
-   the sealed installer/evidence pair before execution and prohibit uploads.
-7. [done locally] Run config/release/unit/Rust checks locally; retain native lifecycle gates
-   for matching GitHub runners.
+6. [done locally] Remove the Release lifecycle job. Route the exact successful
+   preflight/formal result tuples directly into immutable sealed-asset
+   verification, attestation, and publication; retain the lifecycle script only
+   as an optional manual diagnostic.
+7. [done locally] Run config/release/unit/Rust checks locally; require matching
+   native x64/ARM64 build and package success without an Actions
+   install/verify/uninstall gate.
 
 ## Ownership and user-data inventory
 
@@ -31,9 +35,9 @@ before the NSIS write set began. It is the uninstall boundary for this task.
 | Claude, Codex, Gemini, Grok, OpenCode, OpenClaw, Hermes, WorkBuddy, and other configured external-tool directories                     | External user data           | Never delete                                                                    |
 | Download/cache/temp staging outside `$INSTDIR`                                                                                         | Runtime-owned transient data | Do not recursively treat as installer payload                                   |
 
-The native lifecycle uses a dedicated test home and sentinel data in both the
-default FyAgent root and Tauri user-state locations. Acceptance requires those
-sentinels to remain after uninstall on each native Windows architecture.
+The optional manual lifecycle diagnostic uses a dedicated test home and
+sentinel data in both the default FyAgent root and Tauri user-state locations.
+Those checks remain useful operator diagnostics but are not Release acceptance.
 
 ## Signing-runner isolation evidence
 
@@ -54,8 +58,9 @@ The 2026-08-09 local contract pass used the repository-managed toolchain:
 - Reviewed-file Prettier and `git diff --check` passed for the workflow, owning
   tests, active specs, and task records.
 
-These checks prove the static workflow contract only. Matching native x64 and
-ARM64 signing/install/uninstall runs remain required remote acceptance evidence.
+At that point these checks proved the static workflow contract only; matching
+native x64 and ARM64 signing/install/uninstall runs were still treated as
+required remote acceptance evidence.
 
 ## NSIS installer static and diagnostic evidence
 
@@ -91,10 +96,10 @@ unique test sentinels and temporary root were removed without deleting any
 user-data parent, and the subsequent read-only audit found zero matching
 CurrentUser Root/TrustedPublisher fixture certificates, zero lifecycle
 processes, no `%ProgramData%\FyAgent`, no default Program Files installation,
-and no custom lifecycle root. Complete x64 and ARM64 WebView2 trust,
-install/uninstall, registry, shortcut, ProgramData, and user-data-preservation
-acceptance remains gated on the native GitHub `windows-2025` and
-`windows-11-arm` runners.
+and no custom lifecycle root. Under the then-current contract, complete x64 and
+ARM64 WebView2 trust, install/uninstall, registry, shortcut, ProgramData, and
+user-data-preservation acceptance remained gated on the native GitHub
+`windows-2025` and `windows-11-arm` runners.
 
 ## Release preflight correction evidence
 
@@ -107,8 +112,8 @@ the verifier incorrectly treated the host-specific header as deterministic;
 the relevant PowerShell/NSIS extensions also lacked explicit LF checkout
 rules. The correction pins those text inputs to LF, normalizes only the
 descriptive gzip OS byte to `255` (unknown), and continues to require exact
-compressed bytes plus exact decompressed source. A new full dev push CI and
-same-SHA dispatch preflight remain mandatory before tagging.
+compressed bytes plus exact decompressed source. At that time a new full dev
+push CI and same-SHA dispatch preflight remained mandatory before tagging.
 
 ## Native lifecycle timeout correction evidence
 
@@ -135,9 +140,9 @@ helper was the stalled owner, while the bounded outer NSIS process tree
 contains its execution without changing the reviewed download or Authenticode
 policy.
 
-Local structure and mutation tests cannot replace matching native evidence.
-Both x64 and ARM64 lifecycle acceptance criteria remain open until a new
-exact-SHA preflight completes normally.
+Under the then-current contract, local structure and mutation tests could not
+replace matching native evidence, and both x64 and ARM64 lifecycle acceptance
+criteria remained open pending a new exact-SHA preflight.
 
 ### NSIS uninstall direct-process correction
 
@@ -160,6 +165,43 @@ deletes only the copied executable and its empty directory, without recursion.
 
 Windows PowerShell 5.1 parsing, the NSIS verifier, 25 focused contract tests,
 typecheck, `git diff --check`, and `release:check` (22 files, 554 contract tests
-plus 4 native-fetch tests) pass. Matching x64 and ARM64 native lifecycle
-execution remains the acceptance boundary and is not inferred from these local
-checks.
+plus 4 native-fetch tests) passed. At that point matching x64 and ARM64 native
+lifecycle execution was still the acceptance boundary and was not inferred
+from those local checks.
+
+## Subsequent installer and Release simplification decision
+
+The lifecycle runs, timeout, diagnostics, and corrections above are retained as
+historical evidence of what was attempted and why the earlier workflow behaved
+as it did. They do not describe the current acceptance contract. After those
+runs, the product decision changed in two explicit ways:
+
+- FyAgent no longer pre-validates the user-selected `$INSTDIR`. The standard
+  NSIS directory page and final `/D=` value are passed through without a custom
+  absolute/fixed/local/UNC/reparse/drive-type gate. NSIS/Windows behavior and
+  actual write failures remain; the independent protected
+  `%ProgramData%\FyAgent\runtime` owner/DACL contract is unchanged.
+- Release no longer defines or waits for a native install/verify/uninstall
+  lifecycle job. Matching x64 and ARM64 build/package success plus immutable
+  sealing, exact asset verification, attestation, and publication are the
+  active gates. `verify-windows-nsis-lifecycle.ps1` remains only as a bounded
+  manual diagnostic.
+
+The Windows configuration now pins canonical `icons/icon.ico`, and the custom
+NSIS template applies it to both setup and uninstaller UI. Current contract
+tests must prove these decisions and reject any accidental reintroduction of a
+Release lifecycle job or custom installation-path policy.
+
+### Current post-decision local evidence
+
+The default NSIS source verifier now reads only the packaging/config/template
+boundary; the manual lifecycle source is checked only when explicitly supplied
+for diagnostics. `mise run release:check` passed 22/22 files and 578/578
+contract tests plus the 4/4 native-fetch suite. The focused NSIS and Release
+workflow files passed 81/81 tests, including renamed `$INSTDIR` rejection and
+renamed installer-execution job mutations. The Windows PowerShell 5.1 AST
+parser, typecheck, reviewed-file format check, and `git diff --check` passed.
+
+No matching x64/ARM64 package build or manual installer execution was performed
+for this working tree, so those native observations are not inferred from the
+local contracts.

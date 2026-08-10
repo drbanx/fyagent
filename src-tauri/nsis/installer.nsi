@@ -2,8 +2,8 @@
 ; Upstream: tauri-apps/tauri tauri-cli-v2.8.1
 ; Commit: 662b39adb33d1d26f0de213e5a04fc4116fd0683
 ; Upstream SHA-256: fe22026f68bdb3292fab376756035496ce0a35e3d580e06ebaa6a28295916eb3
-; The reviewed delta is limited to the final install-path gate, removal of
-; WiX migration and user-data deletion, and secure machine-runtime ownership.
+; The reviewed delta is limited to unified FyAgent installer branding, removal
+; of WiX migration and user-data deletion, and secure machine-runtime ownership.
 
 Unicode true
 ManifestDPIAware true
@@ -65,14 +65,12 @@ ManifestDPIAwareness PerMonitorV2
 !define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
 !define ESTIMATEDSIZE "{{estimated_size}}"
 !define STARTMENUFOLDER "{{start_menu_folder}}"
-!define FYAGENT_DRIVE_FIXED 3
 !define FYAGENT_FILE_ATTRIBUTE_DIRECTORY 0x10
 !define FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT 0x400
 !define FYAGENT_FILE_READ_ATTRIBUTES 0x80
 !define FYAGENT_DELETE 0x00010000
 !define FYAGENT_READ_CONTROL 0x00020000
 !define FYAGENT_FILE_SHARE_READ 0x1
-!define FYAGENT_FILE_SHARE_ALL 0x7
 !define FYAGENT_OPEN_EXISTING 3
 !define FYAGENT_INVALID_HANDLE_VALUE -1
 !define FYAGENT_FILE_FLAG_BACKUP_SEMANTICS 0x02000000
@@ -92,8 +90,6 @@ Var PassiveMode
 Var UpdateMode
 Var NoShortcutMode
 Var OldMainBinaryName
-Var FyAgentInstallDirValid
-Var FyAgentInstallDirError
 Var FyAgentRuntimeProvisionValid
 Var FyAgentRuntimeParentHandle
 Var FyAgentRuntimeLeafHandle
@@ -154,6 +150,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; Installer icon
 !if "${INSTALLERICON}" != ""
   !define MUI_ICON "${INSTALLERICON}"
+  !define MUI_UNICON "${INSTALLERICON}"
 !endif
 
 ; Installer sidebar image
@@ -315,13 +312,6 @@ Function PageLeaveReinstall
   ${EndIf}
 
   reinst_uninstall:
-    ; Removing an existing NSIS installation writes before the new sections
-    ; run, so admit its restored path through the same fixed-volume validator.
-    Call FyAgentValidateFinalInstallDir
-    ${If} $FyAgentInstallDirValid <> 1
-      MessageBox MB_ICONSTOP|MB_OK "$FyAgentInstallDirError"
-      Abort
-    ${EndIf}
     HideWindow
     ClearErrors
 
@@ -352,7 +342,6 @@ FunctionEnd
 
 ; 5. Choose install directory page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE FyAgentValidateInstallDirPageLeave
 !insertmacro MUI_PAGE_DIRECTORY
 
 ; 6. Start menu shortcut page
@@ -403,8 +392,6 @@ FunctionEnd
 {{#each language_files}}
   !include "{{this}}"
 {{/each}}
-LangString fyagentInvalidInstallDir ${LANG_ENGLISH} "Choose an absolute path on a local fixed drive (for example, C:\\Program Files\\FyAgent)."
-LangString fyagentInvalidInstallDir ${LANG_SIMPCHINESE} "请选择本地固定磁盘上的绝对路径（例如 C:\\Program Files\\FyAgent）。"
 LangString fyagentRuntimeProvisionFailed ${LANG_ENGLISH} "FyAgent could not securely provision its machine runtime directory."
 LangString fyagentRuntimeProvisionFailed ${LANG_SIMPCHINESE} "FyAgent 无法安全创建计算机运行时目录。"
 
@@ -459,102 +446,6 @@ Function .onInit
   !if "${INSTALLMODE}" == "both"
     !insertmacro MULTIUSER_INIT
   !endif
-FunctionEnd
-
-; Shared by the interactive directory page and the first executable section.
-; This is deliberately only an absolute-local-fixed-drive admission rule; it
-; does not classify ACLs, owners, protected folders, or existing contents.
-Function FyAgentValidateFinalInstallDir
-  StrCpy $FyAgentInstallDirValid 0
-  StrCpy $FyAgentInstallDirError "$(fyagentInvalidInstallDir)"
-
-  StrCmp $INSTDIR "" fyagent_install_dir_invalid
-  StrCpy $0 $INSTDIR 1 1
-  StrCmp $0 ":" 0 fyagent_install_dir_invalid
-  StrCpy $0 $INSTDIR 1 2
-  StrCmp $0 "\" 0 fyagent_install_dir_invalid
-
-  ; Normalize only after the DOS absolute-path shape has been admitted so a
-  ; relative value can never be expanded against the installer's working dir.
-  System::Call 'kernel32::GetFullPathNameW(w "$INSTDIR", i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4'
-  ${If} $4 == 0
-    Goto fyagent_install_dir_invalid
-  ${EndIf}
-  ${If} $4 >= ${NSIS_MAX_STRLEN}
-    Goto fyagent_install_dir_invalid
-  ${EndIf}
-  StrCpy $INSTDIR $3
-
-  ; Peel nonexistent target segments without creating them. Open the closest
-  ; existing ancestor without FILE_FLAG_OPEN_REPARSE_POINT so junctions and
-  ; symlinks are followed, then classify the final target volume. A lexical
-  ; C:\ path can otherwise reach a removable mount or a network reparse target.
-  StrCpy $1 $INSTDIR
-  fyagent_find_existing_install_ancestor:
-    System::Call 'kernel32::GetFileAttributesW(w r1) i .r2'
-    System::Call 'kernel32::GetLastError() i .r9'
-    ${If} $2 != -1
-      Goto fyagent_install_ancestor_found
-    ${EndIf}
-    ${If} $9 <> ${FYAGENT_ERROR_FILE_NOT_FOUND}
-    ${AndIf} $9 <> ${FYAGENT_ERROR_PATH_NOT_FOUND}
-      Goto fyagent_install_dir_invalid
-    ${EndIf}
-    ${GetParent} "$1" $3
-    StrCmp $3 "" fyagent_install_dir_invalid
-    StrCmp $3 $1 fyagent_install_dir_invalid
-    StrCpy $1 $3
-    Goto fyagent_find_existing_install_ancestor
-
-  fyagent_install_ancestor_found:
-    System::Call 'kernel32::CreateFileW(w r1, i ${FYAGENT_FILE_READ_ATTRIBUTES}, i ${FYAGENT_FILE_SHARE_ALL}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}, p 0) p .r5'
-    ${If} $5 == -1
-      Goto fyagent_install_dir_invalid
-    ${EndIf}
-    ${If} $5 == 0
-      Goto fyagent_install_dir_invalid
-    ${EndIf}
-
-    System::Call 'kernel32::GetFinalPathNameByHandleW(p r5, w .r6, i ${NSIS_MAX_STRLEN}, i 0) i .r7'
-    System::Call 'kernel32::CloseHandle(p r5) i .r5'
-    ${If} $5 == 0
-      Goto fyagent_install_dir_invalid
-    ${EndIf}
-    ${If} $7 == 0
-      Goto fyagent_install_dir_invalid
-    ${EndIf}
-    ${If} $7 >= ${NSIS_MAX_STRLEN}
-      Goto fyagent_install_dir_invalid
-    ${EndIf}
-
-    ; Default VOLUME_NAME_DOS results use \\?\UNC\ for SMB targets. Reject
-    ; both that form and a conventional UNC result explicitly; the drive-type
-    ; check below remains the final allow-list for every other volume form.
-    StrCpy $0 $6 8
-    StrCmp $0 "\\?\UNC\" fyagent_install_dir_invalid
-    StrCpy $0 $6 2
-    StrCmp $0 "\\" fyagent_install_dir_invalid
-
-    System::Call 'kernel32::GetVolumePathNameW(w r6, w .r3, i ${NSIS_MAX_STRLEN}) i .r4'
-    ${If} $4 == 0
-      Goto fyagent_install_dir_invalid
-    ${EndIf}
-    System::Call 'kernel32::GetDriveTypeW(w r3) i .r2'
-  IntCmp $2 ${FYAGENT_DRIVE_FIXED} fyagent_install_dir_valid fyagent_install_dir_invalid fyagent_install_dir_invalid
-
-  fyagent_install_dir_valid:
-    StrCpy $FyAgentInstallDirValid 1
-    Return
-
-  fyagent_install_dir_invalid:
-FunctionEnd
-
-Function FyAgentValidateInstallDirPageLeave
-  Call FyAgentValidateFinalInstallDir
-  ${If} $FyAgentInstallDirValid <> 1
-    MessageBox MB_ICONSTOP|MB_OK "$FyAgentInstallDirError"
-    Abort
-  ${EndIf}
 FunctionEnd
 
 ; Existing machine-runtime directories are never repaired. They are opened
@@ -768,18 +659,6 @@ Function FyAgentProvisionMachineRuntime
       StrCpy $FyAgentRuntimeProvisionValid 1
     ${EndIf}
 FunctionEnd
-
-; Section order is the security boundary. The final $INSTDIR selected by the
-; GUI or supplied through final `/D=...` is checked before WebView2, SetOutPath,
-; ProgramData provisioning, payload extraction, registry, or shortcut writes.
-Section -FyAgentInstallDirGate
-  Call FyAgentValidateFinalInstallDir
-  ${If} $FyAgentInstallDirValid <> 1
-    DetailPrint "$FyAgentInstallDirError"
-    SetErrorLevel 2
-    Abort "$FyAgentInstallDirError"
-  ${EndIf}
-SectionEnd
 
 ; Provision the machine runtime before any network bootstrap or payload write.
 ; The app must be stopped before trusted legacy state can be retired by handle.

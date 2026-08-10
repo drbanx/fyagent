@@ -21,16 +21,21 @@ fixture is not evidence for an unrelated layer.
 
 Local structure or policy tests cannot prove:
 
-- a Windows x64 or ARM64 setup executable's native install/uninstall cycle;
+- a Windows x64 or ARM64 setup executable was built and packaged successfully
+  on the matching architecture;
+- an install/uninstall lifecycle result, when an operator elects to run that
+  manual Windows diagnostic;
 - an Authenticode state or certificate/timestamp policy;
 - a macOS bundle's native identity and packaging;
 - another architecture's Linux packages;
 - a GitHub required check, attestation, or published Release.
 
 Those claims require the matching native CI/release job and exact remote
-source identity. A public release claim additionally requires the release
-workflow's re-download/digest checks, metadata, attestation, public state, and
-Latest verification.
+source identity, except that an optional manual lifecycle claim requires the
+recorded result from the matching Windows machine where it was run. The Release
+workflow does not execute that lifecycle diagnostic. A public release claim
+additionally requires the release workflow's re-download/digest checks,
+metadata, attestation, public state, and Latest verification.
 
 ## Semantic scans
 

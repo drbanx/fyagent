@@ -3,9 +3,9 @@
 ## 1. Scope / Trigger
 
 Read this contract before changing the Windows Tauri bundle configuration,
-NSIS template or hooks, install-directory admission, WebView2 bootstrapper,
+NSIS template or hooks, install-directory selection, WebView2 bootstrapper,
 machine-runtime bootstrap, uninstall ownership, Windows signing adapter, or
-native installer lifecycle. It owns installer mechanics and per-asset Windows
+native installer packaging. It owns installer mechanics and per-asset Windows
 evidence. The GitHub job graph, frozen release identity, cross-platform asset
 set, attestation, and publication transaction remain owned by
 [GitHub Release Workflow](./github-release-workflow.md). Runtime startup,
@@ -15,7 +15,9 @@ the installer provisions are owned by
 
 Windows x64 and ARM64 installer claims require matching native hosted runners.
 Local structure tests, cross-compilation, or inspection of the setup launcher
-cannot replace either install/uninstall lifecycle.
+cannot replace matching native build and package evidence. The repository's
+install/verify/uninstall lifecycle script is a manual diagnostic and is not a
+Release workflow gate.
 
 ## 2. Signatures
 
@@ -93,35 +95,35 @@ become a second public signing authority.
   `C:\Program Files\FyAgent`, uses English and Simplified Chinese selected from
   the OS language without a selector, and configures WebView2 as
   `downloadBootstrapper`. Silent `/S` and a final
-  `/D=<absolute-install-directory>` are supported.
+  `/D=<install-directory>` are supported.
+- `bundle.windows.nsis.installerIcon` is exactly `icons/icon.ico`. The checked-in
+  template applies that canonical FyAgent icon to both `MUI_ICON` and
+  `MUI_UNICON`, so setup and uninstall surfaces share the product identity.
 - The checked-in template is a minimal derivative of the template embedded by
   the locked Tauri CLI. The source verifier pins its upstream tag, commit, and
-  SHA-256. A template change must retain the documented Tauri merge boundary
-  and prove why hooks alone cannot place the final-path gate before every write.
+  SHA-256. A template change must retain the documented Tauri merge boundary,
+  standard NSIS directory page, protected machine-runtime bootstrap ordering,
+  and bounded uninstall behavior.
 
-### Final install-directory admission
+### Install-directory selection and protected runtime boundary
 
-- The first executable installer section, the GUI directory-page callback, and
-  maintenance flow call the same `FyAgentValidateFinalInstallDir` function.
-  No payload, registry, shortcut, WebView2, previous-uninstaller, or machine
-  runtime write may occur before the relevant call succeeds.
-- The validator requires a DOS-rooted absolute shape, normalizes it with
-  `GetFullPathNameW`, finds the nearest existing ancestor without creating
-  anything, opens that ancestor while following reparse points, obtains the
-  final path with `GetFinalPathNameByHandleW`, resolves the mounted volume, and
-  accepts only `GetDriveTypeW == DRIVE_FIXED`.
-- Relative, drive-relative, UNC, mapped-network, removable, CD-ROM, RAM-disk,
-  unresolved, inaccessible, and final-target-resolution failures are denied. A
-  fixed volume mounted below another fixed root is classified by its actual
-  volume, not its lexical drive prefix.
-- Admission deliberately does not inspect or modify install-directory ACLs,
-  owners, existing contents, protected-folder classifications, ancestor write
-  rights, or user-facing security warnings. Fixed-local-volume placement is a
-  product path contract, not an access-control or hardening decision.
+- The GUI uses the standard NSIS directory page. Silent installation forwards
+  its final `/D=` value through the normal NSIS path without a repository-owned
+  leave callback or pre-write path gate.
+- FyAgent does not impose a custom absolute-path, drive-type, local/fixed-volume,
+  UNC/network, removable-media, reparse-point, existing-ancestor, ACL, owner,
+  protected-folder, or write-right admission policy on the selected install
+  directory. NSIS and Windows retain their own parsing and filesystem behavior;
+  an actual create/copy/registry/shortcut failure remains an installation
+  failure rather than a FyAgent pre-validation error.
+- Maintenance/reinstall uses the path recorded by the existing NSIS
+  installation without reintroducing the retired custom path policy.
 - Before copying the application payload, the installer calls the machine
   runtime bootstrap defined by
   [Windows Runtime Security](./windows-runtime-security.md). It must not weaken,
-  repair in place, or independently reinterpret that descriptor contract.
+  repair in place, or independently reinterpret that descriptor contract. This
+  protected `%ProgramData%\FyAgent\runtime` owner/DACL gate is independent of
+  the user-selected `$INSTDIR` and remains mandatory.
 - Installer and uninstaller registry access uses the same 64-bit machine view
   on supported x64 and ARM64 systems. Shortcuts and protocol/uninstall records
   are machine-scoped.
@@ -158,9 +160,9 @@ become a second public signing authority.
   settings, configuration, skills, OAuth state, logs, backups and storage;
   Tauri per-user roaming/local stores for `com.fyagent.desktop`; and Codex,
   Claude, Gemini, WorkBuddy, Bun, mise, or other external-tool homes.
-- The installer exposes no user-data deletion checkbox. Native lifecycle tests
-  create unique sentinels in independent test homes and prove preservation for
-  both default and custom-directory uninstall.
+- The installer exposes no user-data deletion checkbox. Manual lifecycle
+  diagnostics create unique sentinels in independent test homes and can prove
+  preservation for both default and custom-directory uninstall.
 
 ### Signing and sealed asset evidence
 
@@ -193,25 +195,32 @@ become a second public signing authority.
   size, SHA-256, source SHA, signature evidence, and attestation subject into
   `signing-status.json`. Release disclosure is generated from this record.
 
-### Native lifecycle
+### Manual lifecycle diagnostic
 
-Each sealed architecture-specific setup runs on its matching clean native
-runner and proves:
+`verify-windows-nsis-lifecycle.ps1` remains available for an operator who wants
+to run an install/verify/uninstall diagnostic against one operator-prevalidated
+architecture-specific setup on a matching native Windows machine. The caller
+must establish the setup's provenance and byte identity before invoking the
+script; the diagnostic does not do that. It is not invoked by
+`.github/workflows/release.yml`, does not gate `verify-assets`, attestation, or
+publication, and does not define Release acceptance.
+
+When invoked manually, the diagnostic proves:
 
 - runner OS/process architecture match the logical target;
-- relative, UNC/network, and every exposed non-fixed volume fail before write;
 - default silent installation succeeds under Program Files;
-- a fixed-volume custom path with spaces and Unicode succeeds through `/S`
-  with final `/D=`;
+- a custom path with spaces and Unicode is passed through `/S` with final
+  `/D=` and succeeds when NSIS/Windows can write it;
 - installed `fyagent.exe` is `0x8664` for x64 or `0xAA64` for ARM64;
 - version, HKLM registration, protocol registration, all-users shortcuts, and
   machine-runtime bootstrap state match their contracts;
 - silent uninstall removes bounded installer-owned state while preserving every
   user-data sentinel.
 
-The release lifecycle job has a 45-minute hard timeout. Within the harness,
-each installer waits on its direct `Process` for at most 10 minutes. An ordinary
-uninstall first copies the installed uninstaller into a GUID-named directory
+The script retains bounded process waits so a manual diagnostic cannot hang
+indefinitely. Each installer waits on its direct `Process` for at most 10
+minutes. An ordinary uninstall first copies the installed uninstaller into a
+GUID-named directory
 under that case's test root, then starts the copy with exact raw
 `/S _?=<install-directory>` arguments. The final, unquoted `_?=` disables the
 NSIS self-copy handoff, so the bounded direct `Process` is the real uninstall
@@ -229,48 +238,50 @@ Every launched case emits UTC start/end markers with its PID, elapsed
 milliseconds, exit code (or an explicit unavailable marker), and outcome so a
 remote failure can be localized without weakening any later state assertion.
 
-Lifecycle cleanup is best effort only for installations created by that test.
+Diagnostic cleanup is best effort only for installations created by that test.
 It does not use Store access, a real Codex installation, or application UI.
-Preview ARM64 runner unavailability blocks acceptance; it does not authorize a
-cross-build or a reduced asset set.
+Preview ARM64 runner unavailability blocks matching native ARM64 build/package
+evidence; it does not authorize a cross-build or a reduced asset set. It does
+not make the optional manual lifecycle diagnostic a Release gate.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                                 | Required result                                                                     |
-| ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Release-profile build has no explicit manifest mode                                                                       | Fail before compiling/bundling; do not guess.                                       |
-| GUI or `/D=` resolves to a relative, remote, non-fixed, inaccessible, or unresolved target                                | Abort before the first installer-owned write.                                       |
-| Install directory is user-writable or has an unusual owner/ACL but is on a fixed local volume                             | Apply only the fixed-volume contract; do not add an ACL/owner warning or rejection. |
-| Machine-runtime root does not satisfy its exact runtime descriptor                                                        | Fail without repairing or weakening the preimage.                                   |
-| Raw candidate contains any signature/security-directory evidence                                                          | Reject before signer or preflight sealing.                                          |
-| Provider configuration is partial, blank-active, malformed, or fails                                                      | Hard fail; never emit unsigned evidence as fallback.                                |
-| Signature is `HashMismatch`, `UnknownError`, wrong publisher/certificate/EKU/timestamp, or mutates non-Authenticode bytes | Reject the architecture and block release.                                          |
-| x64 and ARM64 signing modes or signed identities differ                                                                   | Aggregation fails; emit no public status.                                           |
-| Uninstall encounters unrelated install/user data                                                                          | Preserve it; remove only known children and empty owned ancestors.                  |
-| Matching native ARM64 runner is unavailable                                                                               | Acceptance remains blocked.                                                         |
+| Condition                                                                                                                 | Required result                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Release-profile build has no explicit manifest mode                                                                       | Fail before compiling/bundling; do not guess.                                                                    |
+| GUI or `/D=` selects a relative, UNC/network, removable, reparse, non-existing, or otherwise unusual path                 | Apply no FyAgent path-admission rule; let standard NSIS/Windows handling and actual writes determine the result. |
+| Install directory is user-writable or has an unusual owner/ACL                                                            | Do not add an ACL/owner warning, repair, or rejection.                                                           |
+| Machine-runtime root does not satisfy its exact runtime descriptor                                                        | Fail without repairing or weakening the preimage.                                                                |
+| Raw candidate contains any signature/security-directory evidence                                                          | Reject before signer or preflight sealing.                                                                       |
+| Provider configuration is partial, blank-active, malformed, or fails                                                      | Hard fail; never emit unsigned evidence as fallback.                                                             |
+| Signature is `HashMismatch`, `UnknownError`, wrong publisher/certificate/EKU/timestamp, or mutates non-Authenticode bytes | Reject the architecture and block release.                                                                       |
+| x64 and ARM64 signing modes or signed identities differ                                                                   | Aggregation fails; emit no public status.                                                                        |
+| Uninstall encounters unrelated install/user data                                                                          | Preserve it; remove only known children and empty owned ancestors.                                               |
+| Matching native ARM64 runner is unavailable                                                                               | Acceptance remains blocked.                                                                                      |
 
 ## 5. Good / Base / Bad Cases
 
-- Good: both GUI selection and `/S ... /D=D:\FyAgent 测试` reach the same
-  validator, resolve to a fixed local volume, then write only after the runtime
-  bootstrap succeeds.
+- Good: both GUI selection and `/S ... /D=C:\Program\FilesFyAgent` use standard
+  NSIS path handling without a custom FyAgent rejection; the independently
+  protected machine-runtime bootstrap still succeeds before payload copy.
 - Base: signer configuration is completely absent. Both final setups remain
   byte-identical to raw, strict `NotSigned` evidence is aggregated, and public
   notes explicitly disclose the unsigned state with digests and attestation.
 - Good: complete provider configuration transforms only Authenticode-owned PE
   fields; a fresh no-secret runner independently proves publisher, certificate,
-  EKUs, timestamp, and final bytes before lifecycle execution.
-- Bad: infer safety from `C:` syntax, inspect an install-directory owner, allow a
-  partial signer to downgrade to unsigned, trust the provider's own fragment,
-  or recursively delete `$INSTDIR`/the user's profile.
+  EKUs, timestamp, and final bytes before aggregation.
+- Bad: add a custom absolute/fixed/UNC/reparse path classifier, inspect an
+  install-directory owner, allow a partial signer to downgrade to unsigned,
+  trust the provider's own fragment, or recursively delete `$INSTDIR`/the
+  user's profile.
 
 ## 6. Tests Required
 
 - `tests/windowsNsisContract.test.ts` and
   `scripts/release/verify-windows-nsis-contract.mjs` pin configuration, template
-  provenance, first-section ordering, one shared final-path validator,
-  handle-derived volume classification, runtime bootstrap ordering, bounded
-  uninstall, and absence of retired package surfaces.
+  provenance, canonical setup/uninstaller icon, absence of a custom
+  installation-path gate, runtime bootstrap ordering, bounded uninstall, and
+  absence of retired package surfaces.
 - `tests/windowsSigningAdapter.test.ts` covers the complete signer matrix,
   strict unsigned state, provider simulation, publisher/certificate/timestamp/
   EKU policy, Authenticode-only mutation, launcher-architecture independence,
@@ -278,18 +289,21 @@ cross-build or a reduced asset set.
   size/SHA binding.
 - `tests/releaseWorkflow.test.ts` and `tests/releaseAssets.test.ts` bind native
   runner selection, secret isolation, one-file handoffs, two setup names,
-  lifecycle ordering, disclosure, subject count, and attachment count without
-  becoming the owner of installer internals.
-- Native x64 and ARM64 workflow jobs perform the complete install/verify/
-  uninstall lifecycle and sentinel preservation. Portable tests are necessary
-  but cannot satisfy these gates.
+  build/package admission into exact asset verification, disclosure, subject
+  count, and attachment count without becoming the owner of installer
+  internals. They also assert that Release defines no lifecycle job and does
+  not invoke `verify-windows-nsis-lifecycle.ps1`.
+- Matching native x64 and ARM64 workflow jobs must build and package the setup
+  executables successfully. Static tests keep the manual lifecycle script
+  internally coherent, but neither those tests nor a manual diagnostic are a
+  Release gate.
 
 ## 7. Wrong vs Correct
 
 Wrong:
 
 ```text
-if path starts with "C:\" then accept
+reject install path unless it passes a FyAgent absolute/fixed-volume classifier
 if signer fails then publish as unsigned
 uninstall: recursively delete $INSTDIR and user configuration
 ```
@@ -297,7 +311,8 @@ uninstall: recursively delete $INSTDIR and user configuration
 Correct:
 
 ```text
-normalize -> open existing ancestor -> resolve final volume -> require DRIVE_FIXED
+standard NSIS path selection -> actual Windows write result
+independent protected ProgramData runtime bootstrap -> exact owner/DACL contract
 raw strict unsigned -> optional provider transform -> fresh independent seal
 delete allowlisted installer-owned children -> remove only empty owned ancestors
 ```

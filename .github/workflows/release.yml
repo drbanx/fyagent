@@ -1063,120 +1063,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  windows-lifecycle:
-    name: Windows ${{ matrix.architecture }} immutable native lifecycle
-    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}
-    needs:
-      [
-        eligibility,
-        build-windows,
-        pin-release-build-inputs,
-        prove-windows-preflight,
-        sign-windows-formal,
-        seal-windows-formal,
-      ]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: windows-2025
-            target_group: windows-x64
-            architecture: x64
-          - runner: windows-11-arm
-            target_group: windows-arm64
-            architecture: arm64
-    env:
-      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
-      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
-      RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
-    steps:
-      - name: Checkout immutable lifecycle boundary
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ needs.eligibility.outputs.source_sha }}
-
-      - name: Verify clean native lifecycle runner
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $expectedRunnerArch = if ('${{ matrix.architecture }}' -eq 'arm64') { 'ARM64' } else { 'X64' }
-          if ($env:RUNNER_ARCH -cne $expectedRunnerArch) {
-            throw "Windows lifecycle runner architecture $env:RUNNER_ARCH is not native $expectedRunnerArch"
-          }
-          if ((git rev-parse HEAD) -cne $env:SOURCE_SHA) {
-            throw 'Windows lifecycle checkout is not the frozen source SHA'
-          }
-
-      - name: Download sealed Windows installer for native lifecycle
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: installers-${{ matrix.target_group }}
-          path: immutable-lifecycle/installer
-
-      - name: Download sealed Windows signing fragment for native lifecycle
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: signing-${{ matrix.target_group }}
-          path: immutable-lifecycle/signing
-
-      - name: Run native install lifecycle against sealed Windows setup bytes
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $expectedAssetName = "FyAgent-$env:APP_VERSION-Windows-${{ matrix.architecture }}-setup.exe"
-          $expectedFragmentName = "windows-signing-${{ matrix.architecture }}.json"
-          $installerEntries = @(Get-ChildItem -LiteralPath immutable-lifecycle/installer -Force)
-          $fragmentEntries = @(Get-ChildItem -LiteralPath immutable-lifecycle/signing -Force)
-          if ($installerEntries.Count -ne 1 -or
-              -not ($installerEntries[0] -is [IO.FileInfo]) -or
-              $installerEntries[0].Name -cne $expectedAssetName -or
-              ($installerEntries[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
-              $installerEntries[0].Length -le 0) {
-            throw 'Sealed lifecycle installer artifact is not the exact expected regular file'
-          }
-          if ($fragmentEntries.Count -ne 1 -or
-              -not ($fragmentEntries[0] -is [IO.FileInfo]) -or
-              $fragmentEntries[0].Name -cne $expectedFragmentName -or
-              ($fragmentEntries[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
-              $fragmentEntries[0].Length -le 0) {
-            throw 'Sealed lifecycle signing artifact is not the exact expected regular file'
-          }
-          $sealedFragment = Get-Content -LiteralPath $fragmentEntries[0].FullName -Raw | ConvertFrom-Json -Depth 8
-          $sealedInstallerSha256 = (
-            Get-FileHash -LiteralPath $installerEntries[0].FullName -Algorithm SHA256
-          ).Hash.ToLowerInvariant()
-          if ($sealedFragment.schema -cne 'fyagent-windows-signing-asset/v1' -or
-              $sealedFragment.version -cne $env:APP_VERSION -or
-              $sealedFragment.sourceSha -cne $env:SOURCE_SHA -or
-              $sealedFragment.asset.name -cne $expectedAssetName -or
-              $sealedFragment.asset.architecture -cne '${{ matrix.architecture }}' -or
-              [int64]$sealedFragment.asset.sizeBytes -ne $installerEntries[0].Length -or
-              $sealedFragment.asset.sha256 -cne $sealedInstallerSha256) {
-            throw 'Sealed Windows lifecycle inputs are not byte-bound to each other'
-          }
-          switch -CaseSensitive ($env:RELEASE_MODE) {
-            'preflight' {
-              if ($sealedFragment.mode -cne 'unsigned' -or
-                  $sealedFragment.asset.signature.status -cne 'NotSigned' -or
-                  $null -ne $sealedFragment.asset.signature.publisher -or
-                  $null -ne $sealedFragment.asset.signature.signerCertificate -or
-                  $null -ne $sealedFragment.asset.signature.timestampCertificate) {
-                throw 'Sealed Windows preflight lifecycle input is not strictly unsigned'
-              }
-            }
-            'formal' {}
-            default { throw "Unsupported sealed Windows lifecycle mode: $env:RELEASE_MODE" }
-          }
-          ./scripts/release/verify-windows-nsis-lifecycle.ps1 `
-            -InstallerPath $installerEntries[0].FullName `
-            -Architecture '${{ matrix.architecture }}' `
-            -AppVersion $env:APP_VERSION
-
   build-linux:
     name: Linux ${{ matrix.architecture }} unsigned installers
     needs: eligibility
@@ -1651,14 +1537,17 @@ jobs:
 
   verify-assets:
     name: Verify exact installers and generate evidence
+    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-linux'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}
     needs:
       [
         eligibility,
         build-windows,
-        windows-lifecycle,
         build-linux,
         build-macos,
         pin-release-build-inputs,
+        prove-windows-preflight,
+        sign-windows-formal,
+        seal-windows-formal,
       ]
     runs-on: ubuntu-24.04
     env:

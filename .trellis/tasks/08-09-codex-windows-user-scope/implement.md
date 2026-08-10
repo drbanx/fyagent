@@ -10,7 +10,7 @@
    same-user ambiguity without changing all-users staging/provisioning.
 5. [done] Extend fakes for SID/package-types/context receipts and add
    multi-SID, ambiguity, owner/context drift, and zero-fallback tests.
-6. [in progress] Add the exact native WinRT smoke to matching x64/ARM64 CI,
+6. [done] Add the exact native WinRT smoke to matching x64/ARM64 CI,
    run targeted local gates, then retain both native executions as remote
    acceptance gates.
 
@@ -69,3 +69,23 @@ an obsolete Windows-specific dead-code assumption. The required aggregate
 again failed closed. The next correction makes that platform ownership
 explicit without changing the outcome or public restart state; a new complete
 dev-push run remains mandatory.
+
+## Remote acceptance evidence
+
+The platform-ownership correction landed in work commit
+`2047bc67ebc7ae0b3b30fb79526082c62e79ccb4`. Later source commit
+`dd3603c9297fe21df4cbeadc94bd92c22cb1e356` retained the same Codex Windows
+implementation and native-smoke wiring. GitHub Actions run `31345943683`
+completed 10/10 jobs successfully for that exact source, including Backend
+Windows job `93327824269`, native x64 job `93327824301`, native ARM64 job
+`93327824286`, and `CI / Required` job `93329376586`. Each native matrix child
+therefore compiled and executed the exact current-SID/Main WinRT smoke once;
+the full Windows backend also executed the Windows-only multi-SID,
+same-context, ambiguity, owner-drift, and zero-all-users-fallback tests.
+
+The accepted Codex work commits are `5556b3f4`, `ad34cb10`, and `2047bc67`;
+the closeout journal must retain all three rather than treating the single
+`task.json.commit` field as a complete history. This closes the child-owned
+local and native acceptance criteria. The task intentionally remains open
+until the parent completes the formal `v0.3.1` Release and ordered archive
+closeout.

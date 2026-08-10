@@ -3,22 +3,20 @@
 Windows-specific JSON merge configuration selects only the NSIS target and
 owns per-machine, language, WebView2, and template settings. The Tauri 2.8.1
 default template calls the documented `NSIS_HOOK_PREINSTALL` only after its
-WebView2 bootstrap and first `SetOutPath`, so that hook cannot enforce the
-required before-any-write boundary. FyAgent therefore pins the matching
-upstream template and keeps the smallest reviewed delta: validate the final
-`$INSTDIR` before WebView2 or output selection, remove MSI migration and the
-user-data deletion option, and provision the protected machine runtime root.
-The path decision is intentionally limited to absolute local fixed-drive
-admission; it does not restore the former install-directory ACL, owner,
-protected-folder, warning, or hardening policy.
+WebView2 bootstrap and first `SetOutPath`. FyAgent pins the matching upstream
+template and keeps the reviewed deltas needed to remove MSI migration and the
+user-data deletion option, provision the protected machine runtime root, bound
+uninstall ownership, and apply the configured FyAgent icon to both installer
+and uninstaller. The directory page and final `/D=` value use standard NSIS
+handling; the repository deliberately has no custom absolute/fixed/local/UNC/
+reparse/drive-type or ACL/owner admission policy for `$INSTDIR`.
 
-That product boundary also leaves the explicitly accepted concurrent-mutation
-risk when a caller chooses a path beneath a user-writable ancestor. Preventing
-every path-component or generated-resource switch through installation would
-require ACL admission/temporary hardening or a handle-relative custom payload
-extractor, all of which would change the locked product decision. The validator
-therefore proves the resolved placement at admission time and does not claim to
-be an access-control boundary.
+The selected install directory is therefore not an FyAgent security boundary.
+NSIS and Windows may still reject malformed input or fail an actual write, but
+FyAgent does not pre-classify the user's choice. This decision does not weaken
+the separate `%ProgramData%\FyAgent\runtime` contract: its exact owner/DACL,
+handle validation, and non-repair behavior remain mandatory before payload
+copy.
 
 The release pipeline deterministically renames native Tauri outputs to
 `FyAgent-<version>-Windows-x64-setup.exe` and
@@ -29,7 +27,7 @@ selects the reviewed unsigned branch. The `provider` selector requires every
 provider input; any provider input without that selector, partial input, or
 empty input is an error rather than an unsigned fallback.
 
-Windows build, sealing, and lifecycle are separate native-runner trust phases.
+Windows build and sealing are separate native-runner trust phases.
 The build matrix installs dependencies and runs Cargo/Tauri/NSIS without any
 signer configuration, proves the normalized candidate has no Authenticode
 certificate or PE security directory, emits the build runner's platform
@@ -59,15 +57,14 @@ exclusively uploads the formal sealed pair. These jobs install only the exact
 Node runtime and never run pnpm install, Cargo, Tauri, a project build, or the
 candidate installer.
 
-`windows-lifecycle` starts on a further fresh matching-architecture runner.
-Its `always()` admission accepts only successful eligibility/raw build/pinning plus
-preflight success with both formal jobs skipped, or preflight skipped with both
-formal producer and sealer successful. It contains no secret expression,
-signer environment, or upload step. It downloads the unique sealed installer/
-fragment pair, validates identity, size, SHA-256, and mode-specific evidence,
-and only then executes the elevated native lifecycle. Lifecycle failure blocks
-downstream jobs but cannot modify the immutable artifacts later downloaded by
-aggregation. The build runner continues to own platform metadata.
+Release defines no `windows-lifecycle` job and does not invoke the manual
+`verify-windows-nsis-lifecycle.ps1` diagnostic. `verify-assets` admits only the
+successful eligibility/raw build/pinning tuple plus either successful
+preflight sealing with both formal jobs skipped, or skipped preflight with both
+formal producer and sealer successful. It downloads the immutable sealed pair,
+revalidates exact assets and evidence, and feeds attestation/publication. The
+build runner continues to own platform metadata; matching native setup
+build/package success is the Windows platform acceptance boundary.
 
 The NSIS-owned machine state is the application payload, shortcuts, protocol
 and uninstall registration, install-directory marker, and

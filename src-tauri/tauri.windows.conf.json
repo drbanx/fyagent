@@ -23,6 +23,7 @@
       "nsis": {
         "template": "nsis/installer.nsi",
         "installerHooks": "nsis/webview2-command.nsh",
+        "installerIcon": "icons/icon.ico",
         "installMode": "perMachine",
         "languages": ["English", "SimpChinese"],
         "displayLanguageSelector": false,

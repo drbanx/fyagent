@@ -10,8 +10,8 @@
    stable.
 6. [done] Bump all canonical versions to `0.3.1`, run targeted gates and full
    `mise run check`, and complete code/security/release reviews.
-7. [pending] Push all work commits once, synchronously wait for full CI, and run the
-   non-publishing release preflight for the same SHA.
+7. [pending] Push the final unpushed correction batch once, synchronously wait
+   for full CI, and run the non-publishing release preflight for the same SHA.
 8. [pending] Freeze branch writes, verify the remote SHA again, create/push annotated
    `v0.3.1`, synchronously wait for formal release, and verify the published
    release and attestations.
@@ -37,9 +37,9 @@ without pushing, creating a tag, or publishing a Release:
   `5556b3f4`, `50cca3ac`, and `c3282b3b`, in the required order.
 
 This proves host-runnable implementation and static workflow contracts only.
-It does not replace native Windows x64/ARM64 CI, the exact-SHA push gate,
-release preflight, formal signing-state verification, publication,
-attestation, or closeout-CI evidence. Final frozen-diff engineering and
+It does not replace native Windows x64/ARM64 build/package evidence, the
+exact-SHA push gate, release preflight, formal signing-state verification,
+publication, attestation, or closeout-CI evidence. Final frozen-diff engineering and
 documentation reviews found no remaining P0-P3 issues, and the initial
 security review found no remaining Critical/High/Medium/Low finding. Native
 preflight later invalidated one premise of that local review: run `31333558714`
@@ -70,7 +70,7 @@ amending history. After a tag exists, never move/delete it or mutate a
 published Release automatically; keep the parent open and request a new
 version decision if source changes are required.
 
-## Windows lifecycle timeout correction
+## Historical Windows lifecycle timeout correction
 
 Dispatch preflight run `31336520793` targeted exact source commit
 `6830fc5b48f37376998835808734952cac19ec3a`. Its x64 lifecycle job
@@ -96,9 +96,13 @@ WebView2 helper remains unchanged: the unavailable logs do not prove a defect
 inside that helper, and the outer NSIS case deadline already bounds it without
 changing production trust or download semantics.
 
-This correction is local/static evidence only. A new exact-SHA preflight must
-complete both matching native lifecycle jobs before either architecture, the
-preflight, or release readiness can be accepted.
+This correction was local/static evidence for the then-current topology. A
+later product decision retired the Actions lifecycle gate: the current Release
+workflow does not invoke this harness, and successful matching native
+build/package jobs plus the applicable Windows proof/seal branch now feed
+exact-asset verification directly. The harness and its timeout diagnostics
+remain available for manual investigation. The historical run above does not
+prove a preflight under the current topology.
 
 ### NSIS uninstall wait follow-up
 
@@ -124,6 +128,26 @@ completed without replacing the primary process error.
 
 The Windows PowerShell 5.1 parser, NSIS source verifier, 25 focused installer
 contract tests, typecheck, `git diff --check`, and `release:check` (22 files,
-554 contract tests plus 4 native-fetch tests) pass locally. This follow-up is
-still local/static evidence: a new exact-SHA CI and matching x64/ARM64 preflight
-must complete before tag creation.
+554 contract tests plus 4 native-fetch tests) passed locally for that manual
+harness correction. This remains historical local/static evidence: a new
+exact-SHA CI and preflight with successful matching x64/ARM64 build/package
+jobs must complete before tag creation. Installer execution is no longer part
+of that Release gate.
+
+## Current installer and Release simplification evidence
+
+The post-decision repository check leaves installer execution outside Release
+while retaining native package builds, immutable Windows proof/sealing, exact
+asset verification, attestation, and formal publication. `mise run
+release:check` passed 22/22 files and 578/578 contract tests plus the 4/4
+native-fetch suite. The two focused Windows/Release contract files passed
+81/81 tests, including mutations that rename an installer-execution job or a
+custom `$INSTDIR` rejection instead of reusing retired identifiers. The NSIS
+source verifier, Windows PowerShell 5.1 AST parser, typecheck, reviewed-file
+format check, and `git diff --check` also passed. Official `actionlint` v1.7.12
+accepted the final workflow, and the final full-scope `mise run check`
+completed with exit code zero on this same frozen worktree.
+
+This is local/static evidence only. No new push, native package build,
+workflow-dispatch preflight, tag, attestation, or GitHub Release was triggered
+for this working tree.

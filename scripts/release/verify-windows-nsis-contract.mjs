@@ -263,109 +263,76 @@ function assertOrdered(source, tokens, label) {
   }
 }
 
-export function assertFinalPathValidatorContract(source) {
+export function assertInstallPathPolicyContract(
+  source,
+  repoOwnedIncludeSources = [],
+) {
   const blocks = parseNsisBlocks(source);
   const executableSource = stripNsisComments(source);
-  const validator = stripNsisComments(
-    namedBlock(blocks, "function", "FyAgentValidateFinalInstallDir").body,
+  const executableRepoOwnedIncludes = repoOwnedIncludeSources.map((include) =>
+    stripNsisComments(include),
   );
+  const executableClosure = [
+    executableSource,
+    ...executableRepoOwnedIncludes,
+  ].join("\n");
 
-  for (const required of [
+  for (const forbidden of [
+    "FyAgentValidateFinalInstallDir",
+    "FyAgentValidateInstallDirPageLeave",
+    "-FyAgentInstallDirGate",
+    "fyagentInvalidInstallDir",
+    "FYAGENT_DRIVE_FIXED",
     "GetFullPathNameW",
-    "GetFileAttributesW",
-    "GetLastError",
-    "${FYAGENT_ERROR_FILE_NOT_FOUND}",
-    "${FYAGENT_ERROR_PATH_NOT_FOUND}",
-    "GetVolumePathNameW",
-    "CreateFileW",
-    "${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}",
     "GetFinalPathNameByHandleW",
-    "CloseHandle",
+    "GetVolumePathNameW",
     "GetDriveTypeW",
-    "${FYAGENT_DRIVE_FIXED}",
   ]) {
     contract(
-      validator.includes(required),
-      `path validator is missing ${required}`,
+      !executableClosure.includes(forbidden),
+      `installer must not reintroduce custom installation-path restriction ${forbidden}`,
     );
   }
-  assertOrdered(
-    validator,
-    [
-      "GetFullPathNameW",
-      "GetFileAttributesW",
-      "GetLastError",
-      "CreateFileW",
-      "GetFinalPathNameByHandleW",
-      "CloseHandle",
-      "GetVolumePathNameW",
-      "GetDriveTypeW",
-    ],
-    "path validator",
-  );
+  for (const executableInclude of executableRepoOwnedIncludes) {
+    const installDirUse = executableInclude
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => /\$INSTDIR\b/iu.test(line));
+    contract(
+      installDirUse === undefined,
+      `repo-owned NSIS include/hook must not inspect or rewrite $INSTDIR: ${installDirUse}`,
+    );
+  }
+  const directoryPage = "!insertmacro MUI_PAGE_DIRECTORY";
+  const directoryPageIndex = executableSource.indexOf(directoryPage);
   contract(
-    /GetFileAttributesW\(w r1\) i \.r2'[\s\S]*?GetLastError\(\) i \.r9'[\s\S]*?\$9 <> \$\{FYAGENT_ERROR_FILE_NOT_FOUND\}[\s\S]*?\$9 <> \$\{FYAGENT_ERROR_PATH_NOT_FOUND\}[\s\S]*?fyagent_install_dir_invalid[\s\S]*?\$\{GetParent\}/u.test(
-      validator,
+    directoryPageIndex >= 0 &&
+      executableSource.indexOf(directoryPage, directoryPageIndex + 1) < 0,
+    "installer must retain exactly one standard NSIS directory page",
+  );
+  const precedingPageIndex = Math.max(
+    executableSource.lastIndexOf(
+      "!insertmacro MUI_PAGE_",
+      directoryPageIndex - 1,
     ),
-    "path ancestor peeling must allow only FILE_NOT_FOUND/PATH_NOT_FOUND errors",
-  );
-  contract(
-    !/CreateFileW\([^\r\n]*FILE_FLAG_OPEN_REPARSE_POINT/u.test(validator),
-    "path validator must follow reparse points before volume classification",
-  );
-  contract(
-    /CloseHandle\(p r5\) i \.r5'[\s\S]*?\$5 == 0[\s\S]*?fyagent_install_dir_invalid/u.test(
-      validator,
+    executableSource.lastIndexOf(
+      "!insertmacro MUI_UNPAGE_",
+      directoryPageIndex - 1,
     ),
-    "path validator must fail closed when CloseHandle fails",
+  );
+  const directoryPageDeclaration = executableSource.slice(
+    precedingPageIndex < 0 ? 0 : precedingPageIndex,
+    directoryPageIndex + directoryPage.length,
   );
   contract(
-    /StrCmp\s+\$0\s+"\\\\\?\\UNC\\"\s+fyagent_install_dir_invalid/u.test(
-      validator,
+    !directoryPageDeclaration.includes("MUI_PAGE_CUSTOMFUNCTION_LEAVE"),
+    "directory page must not bind a custom leave-time path gate",
+  );
+  contract(
+    directoryPageDeclaration.includes(
+      "!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive",
     ),
-    "path validator must actively reject a final SMB/UNC target",
-  );
-  contract(
-    /StrCpy\s+\$0\s+\$INSTDIR\s+1\s+1[\s\S]*StrCmp\s+\$0\s+":"/u.test(
-      validator,
-    ),
-    "path validator must require a drive-letter colon",
-  );
-  contract(
-    /StrCpy\s+\$0\s+\$INSTDIR\s+1\s+2[\s\S]*StrCmp\s+\$0\s+"\\"/u.test(
-      validator,
-    ),
-    "path validator must require a rooted backslash",
-  );
-  contract(
-    /!define\s+FYAGENT_DRIVE_FIXED\s+3(?:\s|$)/u.test(executableSource),
-    "DRIVE_FIXED must be the exact Win32 value 3",
-  );
-  contract(
-    /IntCmp\s+\$2\s+\$\{FYAGENT_DRIVE_FIXED\}\s+fyagent_install_dir_valid/u.test(
-      validator,
-    ),
-    "only DRIVE_FIXED may enter the valid branch",
-  );
-  contract(
-    !/(?:GetNamedSecurityInfo|GetFileSecurity|GetSecurityInfo|icacls|owner|DACL|protected folder)/iu.test(
-      validator,
-    ),
-    "path validator must not classify ACL, owner, or protected-folder policy",
-  );
-
-  const directoryLeave = stripNsisComments(
-    namedBlock(blocks, "function", "FyAgentValidateInstallDirPageLeave").body,
-  );
-  contract(
-    directoryLeave.includes("Call FyAgentValidateFinalInstallDir"),
-    "interactive directory page must call the shared validator",
-  );
-  contract(
-    executableSource.includes(
-      "!define MUI_PAGE_CUSTOMFUNCTION_LEAVE FyAgentValidateInstallDirPageLeave",
-    ),
-    "directory page must bind its leave callback",
+    "standard NSIS directory page must retain its passive-mode pre callback",
   );
 
   for (const initName of [".onInit", "un.onInit"]) {
@@ -380,30 +347,15 @@ export function assertFinalPathValidatorContract(source) {
 
   const sections = blocks.filter((block) => block.kind === "section");
   contract(
-    sections[0]?.name === "-FyAgentInstallDirGate",
-    "final path gate must be the first executable section",
-  );
-  contract(
-    sections[1]?.name === "-FyAgentMachineRuntimeBootstrap",
-    "machine runtime bootstrap must immediately follow the path gate",
-  );
-  const gate = stripNsisComments(
-    namedBlock(blocks, "section", "-FyAgentInstallDirGate").body,
-  );
-  contract(
-    gate.includes("Call FyAgentValidateFinalInstallDir"),
-    "first section must call the shared validator",
-  );
-  contract(
-    gate.includes("SetErrorLevel 2") && gate.includes("Abort"),
-    "silent /D rejection must fail with a nonzero installer status",
-  );
-
-  const writeOpcode =
-    /^\s*(?:SetOutPath|File(?:Write|\s)|CreateDirectory|CopyFiles|WriteReg\w*|WriteUninstaller|CreateShortcut|Delete(?:Reg\w*)?|RMDir|NSISdl::download|ExecWait)\b/imu;
-  contract(
-    !writeOpcode.test(gate),
-    "path gate itself must not write files, registry, shortcuts, or ProgramData",
+    JSON.stringify(sections.map((block) => block.name)) ===
+      JSON.stringify([
+        "-FyAgentMachineRuntimeBootstrap",
+        "EarlyChecks",
+        "WebView2",
+        "Install",
+        "Uninstall",
+      ]),
+    "installer sections must not add a custom installation-path gate",
   );
 
   const webviewIndex = sections.findIndex((block) => block.name === "WebView2");
@@ -411,7 +363,7 @@ export function assertFinalPathValidatorContract(source) {
   const bootstrapIndex = sections.findIndex(
     (block) => block.name === "-FyAgentMachineRuntimeBootstrap",
   );
-  contract(bootstrapIndex === 1, "machine runtime bootstrap section drifted");
+  contract(bootstrapIndex === 0, "machine runtime bootstrap section drifted");
   contract(
     webviewIndex > bootstrapIndex,
     "WebView2 section must follow runtime bootstrap",
@@ -421,24 +373,129 @@ export function assertFinalPathValidatorContract(source) {
     stripNsisComments(namedBlock(blocks, "section", "Install").body).includes(
       "SetOutPath $INSTDIR",
     ),
-    "Install section must select the validated output path",
+    "Install section must select the user-chosen output path",
+  );
+
+  const installDirLines = executableSource
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.includes("$INSTDIR"));
+  const allowedInstallDirLinePatterns = [
+    /^\$\{OrIf\} \$\{FileExists\} "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe"$/u,
+    /^nsis_tauri_utils::RunAsUser "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe" (?:""|"\$R0")$/u,
+    /^\$\{If\} \$INSTDIR == "\$\{PLACEHOLDER_INSTALL_DIR\}"$/u,
+    /^StrCpy \$INSTDIR (?:"\$(?:PROGRAMFILES64|PROGRAMFILES|LOCALAPPDATA)\\\$\{PRODUCTNAME\}"|\$4)$/u,
+    /^SetOutPath \$INSTDIR$/u,
+    /^CreateDirectory "\$INSTDIR\\\\\{\{this\}\}"$/u,
+    /^!insertmacro APP_ASSOCIATE .+ "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe,0" .+ "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe \$\\"%1\$\\""$/u,
+    /^WriteRegStr SHCTX .+\$INSTDIR.*$/u,
+    /^WriteUninstaller "\$INSTDIR\\uninstall\.exe"$/u,
+    /^Delete "\$INSTDIR\\.+"$/u,
+    /^\$\{GetSize\} "\$INSTDIR" "\/M=uninstall\.exe \/S=0K \/G=0" \$0 \$1 \$2$/u,
+    /^\$\{If\} \$R7 == "\$\\"\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe\$\\" \$\\"%1\$\\""$/u,
+    /^RMDir(?: \/(?:REBOOTOK|r))? "\$INSTDIR(?:\\\\\{\{this\}\})?"$/u,
+    /^!insertmacro (?:IsShortcutTarget|SetShortcutTarget) .+ "\$INSTDIR\\(?:\$OldMainBinaryName|\$\{MAINBINARYNAME\}\.exe)"$/u,
+    /^CreateShortcut .+ "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe"$/u,
+  ];
+  for (const line of installDirLines) {
+    contract(
+      allowedInstallDirLinePatterns.some((pattern) => pattern.test(line)),
+      `installer must not use $INSTDIR for custom path admission: ${line}`,
+    );
+  }
+  contract(
+    installDirLines.filter((line) => line === "SetOutPath $INSTDIR").length ===
+      1,
+    "installer must select the user-chosen output path exactly once",
+  );
+  contract(
+    installDirLines.filter((line) => line.startsWith("StrCpy $INSTDIR "))
+      .length === 6,
+    "installer must not rewrite the user-chosen path outside default/maintenance restoration",
+  );
+
+  const restorePreviousInstallLocation = stripNsisComments(
+    namedBlock(blocks, "function", "RestorePreviousInstallLocation").body,
+  )
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  contract(
+    JSON.stringify(restorePreviousInstallLocation) ===
+      JSON.stringify([
+        'ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""',
+        'StrCmp $4 "" +2 0',
+        "StrCpy $INSTDIR $4",
+      ]),
+    "RestorePreviousInstallLocation may only read the registered path, skip an empty value, and copy a non-empty value verbatim to $INSTDIR",
   );
 
   const reinstall = stripNsisComments(
     namedBlock(blocks, "function", "PageLeaveReinstall").body,
   );
-  const uninstallIndex = reinstall.indexOf("ExecWait '$R1' $0");
   contract(
-    uninstallIndex >= 0,
+    reinstall.includes("ExecWait '$R1' $0"),
     "maintenance flow must invoke the existing NSIS uninstaller",
   );
   contract(
-    reinstall.lastIndexOf(
-      "Call FyAgentValidateFinalInstallDir",
-      uninstallIndex,
-    ) >= 0,
-    "maintenance writes must also be preceded by the shared path validator",
+    !/(?:GetDriveTypeW|FyAgentValidateFinalInstallDir|-FyAgentInstallDirGate)/u.test(
+      reinstall,
+    ),
+    "maintenance flow must not reintroduce the retired path restriction",
   );
+  const registryInstallPathAliasUses = reinstall
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /\$4\b/u.test(line));
+  contract(
+    JSON.stringify(registryInstallPathAliasUses) ===
+      JSON.stringify([
+        'ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""',
+        'StrCpy $R1 "$R1 _?=$4"',
+      ]),
+    "maintenance registry install-path alias $4 may only be passed to the existing uninstaller",
+  );
+}
+
+function assertCanonicalIconContract(source, repoOwnedIncludeSources) {
+  const sources = [
+    { label: "template", source },
+    ...repoOwnedIncludeSources.map((include, index) => ({
+      label: `repo-owned include ${index + 1}`,
+      source: include,
+    })),
+  ];
+  const directives = [];
+
+  for (const candidate of sources) {
+    for (const line of stripNsisComments(candidate.source).split("\n")) {
+      const match = line.match(/^\s*!(define|undef)\b(.*)$/iu);
+      if (!match) continue;
+      const tokens = match[2].trim().split(/\s+/u);
+      while (tokens[0]?.startsWith("/")) tokens.shift();
+      const symbol = tokens[0]?.toUpperCase();
+      if (symbol !== "MUI_ICON" && symbol !== "MUI_UNICON") continue;
+      directives.push({
+        kind: match[1].toLowerCase(),
+        label: candidate.label,
+        line: line.trim(),
+        symbol,
+      });
+    }
+  }
+
+  for (const symbol of ["MUI_ICON", "MUI_UNICON"]) {
+    const matches = directives.filter(
+      (directive) => directive.symbol === symbol,
+    );
+    contract(
+      matches.length === 1 &&
+        matches[0].kind === "define" &&
+        matches[0].label === "template" &&
+        matches[0].line === `!define ${symbol} "\${INSTALLERICON}"`,
+      `installer and uninstaller must each have exactly one canonical FyAgent icon definition across the repo-owned NSIS closure (${symbol})`,
+    );
+  }
 }
 
 function assertRuntimeProvisionContract(source, blocks) {
@@ -897,7 +954,128 @@ function assertWebView2CommandContract({
   );
 }
 
-function assertLifecycleContract(source) {
+function powerShellExecutableProjection(source) {
+  return normalizedLines(source.replace(/<#[\s\S]*?#>/gu, ""))
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n")
+    .replace(/`\n\s*/gu, " ");
+}
+
+function assertResolvedInstallerLifecycleCalls(source) {
+  const expectedCalls = new Map([
+    ["default-install", { arguments: "@('/S')", shouldSucceed: "$true" }],
+    [
+      "preexisting-runtime-extra-ace-negative",
+      {
+        arguments: "@('/S', \"/D=$customInstallDir\")",
+        shouldSucceed: "$false",
+      },
+    ],
+    [
+      "preexisting-runtime-unknown-content-negative",
+      {
+        arguments: "@('/S', \"/D=$customInstallDir\")",
+        shouldSucceed: "$false",
+      },
+    ],
+    [
+      "preexisting-runtime-no-delete-share-negative",
+      {
+        arguments: "@('/S', \"/D=$customInstallDir\")",
+        shouldSucceed: "$false",
+      },
+    ],
+    [
+      "custom-space-unicode-silent-D",
+      {
+        arguments: "@('/S', \"/D=$customInstallDir\")",
+        shouldSucceed: "$true",
+      },
+    ],
+  ]);
+  const executable = powerShellExecutableProjection(source);
+  const functionDefinitions = [
+    ...executable.matchAll(/^function Invoke-NsisProcess \{$/gimu),
+  ];
+  contract(
+    functionDefinitions.length === 1,
+    "manual lifecycle must define Invoke-NsisProcess exactly once",
+  );
+  const uninstallHelperCalls = [
+    ...executable.matchAll(
+      /\[void\]\(\s*Invoke-NsisProcess\s+-FilePath\s+\$copiedUninstaller\s+-Arguments\s+@\(\s*'\/S'\s*,\s*"_\?=\$InstallDirectory"\s*\)\s+-ShouldSucceed\s+\$true\s+-CaseName\s+\$CaseName\s+-WorkingDirectory\s+\$WorkingDirectory\s+-ArgumentKind\s+Uninstall\s+-TimeoutMilliseconds\s+\$TimeoutMilliseconds\s*\)/giu,
+    ),
+  ];
+  contract(
+    uninstallHelperCalls.length === 1,
+    "manual lifecycle must retain exactly one approved case-local uninstaller Invoke-NsisProcess call",
+  );
+
+  const mainLifecycleStart = executable.indexOf("$cleanupAuthorized = $true");
+  const mainLifecycleEnd = executable.indexOf(
+    'Write-Host "Windows NSIS native lifecycle verified for $Architecture."',
+    mainLifecycleStart,
+  );
+  contract(
+    mainLifecycleStart >= 0 && mainLifecycleEnd > mainLifecycleStart,
+    "manual lifecycle setup invocation boundary is missing",
+  );
+  const mainLifecycle = executable.slice(mainLifecycleStart, mainLifecycleEnd);
+  const resolvedInstallerReferences = [
+    ...mainLifecycle.matchAll(/-FilePath\s+\$resolvedInstaller\b/giu),
+  ];
+  const resolvedInstallerCalls = [
+    ...mainLifecycle.matchAll(
+      /\[void\]\(\s*Invoke-NsisProcess\s+-FilePath\s+\$resolvedInstaller\s+-Arguments\s+(?<arguments>@\([^)]*\))\s+-ShouldSucceed\s+(?<shouldSucceed>\$(?:true|false))\s+-CaseName\s+'(?<caseName>[^']+)'\s+-WorkingDirectory\s+\$testRoot\s*\)/giu,
+    ),
+  ];
+  contract(
+    resolvedInstallerReferences.length === expectedCalls.size,
+    "manual lifecycle resolved-installer invocation set drifted",
+  );
+  contract(
+    resolvedInstallerCalls.length === resolvedInstallerReferences.length,
+    "manual lifecycle resolved-installer invocations must use literal arguments, case name, expected outcome, and the test working directory",
+  );
+
+  const observedCases = new Set();
+  for (const match of resolvedInstallerCalls) {
+    contract(
+      match?.groups,
+      "manual lifecycle resolved-installer invocations must use literal arguments, case name, expected outcome, and the test working directory",
+    );
+    const { arguments: argumentsValue, caseName, shouldSucceed } = match.groups;
+    const expected = expectedCalls.get(caseName);
+    contract(
+      expected !== undefined && !observedCases.has(caseName),
+      `manual lifecycle contains an unexpected or duplicate resolved-installer case ${caseName}`,
+    );
+    contract(
+      argumentsValue.replace(/\s+/gu, "") ===
+        expected.arguments.replace(/\s+/gu, "") &&
+        shouldSucceed === expected.shouldSucceed,
+      `manual lifecycle resolved-installer case ${caseName} has unexpected arguments or outcome`,
+    );
+    observedCases.add(caseName);
+  }
+  contract(
+    observedCases.size === expectedCalls.size,
+    "manual lifecycle is missing an approved resolved-installer case",
+  );
+
+  const allInvokeNsisProcessReferences = [
+    ...executable.matchAll(/\bInvoke-NsisProcess\b/giu),
+  ];
+  contract(
+    allInvokeNsisProcessReferences.length ===
+      functionDefinitions.length +
+        uninstallHelperCalls.length +
+        resolvedInstallerCalls.length,
+    "manual lifecycle Invoke-NsisProcess invocation set drifted",
+  );
+}
+
+export function assertLifecycleContract(source) {
   for (const required of [
     "[string]$InstallerPath",
     "[string]$Architecture",
@@ -907,12 +1085,6 @@ function assertLifecycleContract(source) {
     "0xAA64",
     "DisplayVersion",
     "RegistryView]::Registry64",
-    "CASE: relative-path-negative",
-    "CASE: unc-network-negative",
-    "CASE: access-denied-ancestor-negative",
-    "CASE: reparse-network-negative",
-    "CASE: unsupported-drive-network-negative",
-    "CASE: reparse-unsupported-drive-network-negative",
     "CASE: default-install",
     "CASE: preexisting-runtime-extra-ace-negative",
     "CASE: preexisting-runtime-unknown-content-negative",
@@ -940,6 +1112,25 @@ function assertLifecycleContract(source) {
       `native lifecycle is missing ${required}`,
     );
   }
+  for (const retired of [
+    "CASE: relative-path-negative",
+    "CASE: unc-network-negative",
+    "CASE: access-denied-ancestor-negative",
+    "CASE: reparse-network-negative",
+    "CASE: unsupported-drive-network-negative",
+    "CASE: reparse-unsupported-drive-network-negative",
+    "FyAgent.NsisLifecycle.NativeNetworkDrive",
+    "Invoke-RequiredUnsupportedDriveAcceptance",
+    "SmbShare\\New-SmbShare",
+    "Assert-RejectedInstallLeftNoMachineWrites",
+    "before its final path was admitted",
+  ]) {
+    contract(
+      !source.includes(retired),
+      `manual lifecycle must not enforce the retired installation-path restriction ${retired}`,
+    );
+  }
+  assertResolvedInstallerLifecycleCalls(source);
   const mainLifecycleStart = source.indexOf("$cleanupAuthorized = $true");
   contract(
     mainLifecycleStart >= 0,
@@ -947,91 +1138,6 @@ function assertLifecycleContract(source) {
   );
   const mainLifecycle = source.slice(mainLifecycleStart);
 
-  const unsupportedFixtureStart = source.indexOf(
-    "if (-not ('FyAgent.NsisLifecycle.NativeNetworkDrive' -as [type]))",
-  );
-  const unsupportedFixtureEnd = source.indexOf(
-    "\nfunction Invoke-WebView2SignatureVerification",
-    unsupportedFixtureStart,
-  );
-  contract(
-    unsupportedFixtureStart >= 0 &&
-      unsupportedFixtureEnd > unsupportedFixtureStart,
-    "required unsupported-drive fixture is missing or unterminated",
-  );
-  const unsupportedFixture = source.slice(
-    unsupportedFixtureStart,
-    unsupportedFixtureEnd,
-  );
-  for (const required of [
-    "System32\\WindowsPowerShell\\v1.0\\Modules\\SmbShare\\SmbShare.psd1",
-    "Microsoft.PowerShell.Core\\Import-Module",
-    "SmbShare\\New-SmbShare",
-    "-FullAccess $currentIdentity",
-    "-Temporary",
-    "WNetAddConnection2W",
-    "WNetCancelConnection2W",
-    "GetDriveTypeW",
-    "DRIVE_REMOTE = 4",
-    "The mapped unsupported drive did not round-trip through its SMB backing path.",
-    "CASE: unsupported-drive-network-negative",
-    "CASE: reparse-unsupported-drive-network-negative",
-    "[IO.File]::Delete($markerPath)",
-    "[IO.Directory]::Delete($reparseLink)",
-    "SmbShare\\Remove-SmbShare",
-    "$cleanupFailures.Count -ne 0",
-    "Unsupported-drive operation failed before cleanup",
-  ]) {
-    contract(
-      unsupportedFixture.includes(required),
-      `required unsupported-drive fixture is missing ${required}`,
-    );
-  }
-  contract(
-    /\$actualDriveType -ne\s+\[FyAgent\.NsisLifecycle\.NativeNetworkDrive\]::DRIVE_REMOTE/u.test(
-      unsupportedFixture,
-    ),
-    "controlled unsupported drive must be proven as DRIVE_REMOTE",
-  );
-  contract(
-    !unsupportedFixture.includes("Get-CimInstance Win32_LogicalDisk") &&
-      !unsupportedFixture.includes("$unsupportedDisks"),
-    "required unsupported-drive acceptance must not depend on ambient disk enumeration",
-  );
-  contract(
-    normalizedLines(unsupportedFixture).filter(
-      (line) => line.trim() === "$caseCount += 1",
-    ).length === 2,
-    "required unsupported-drive fixture must count exactly two executed cases",
-  );
-  contract(
-    unsupportedFixture.includes("if ($caseCount -ne 2)"),
-    "required unsupported-drive fixture must reject a non-two case count",
-  );
-  assertOrdered(
-    unsupportedFixture,
-    [
-      "[IO.File]::Delete($markerPath)",
-      "[IO.Directory]::Delete($reparseLink)",
-      "::Disconnect(",
-      "SmbShare\\Remove-SmbShare",
-      "$cleanupFailures.Count -ne 0",
-    ],
-    "required unsupported-drive cleanup",
-  );
-  const unsupportedMainContract = [
-    "  $unsupportedDriveCaseCount = Invoke-RequiredUnsupportedDriveAcceptance `",
-    "    -InstallerPath $resolvedInstaller `",
-    "    -WorkingDirectory $testRoot `",
-    "    -Identifier $runId",
-    "  if ($unsupportedDriveCaseCount -ne 2) {",
-    '    throw "The native lifecycle executed $unsupportedDriveCaseCount unsupported-drive cases instead of 2."',
-    "  }",
-  ].join("\n");
-  contract(
-    mainLifecycle.includes(unsupportedMainContract),
-    "required unsupported-drive acceptance must be invoked unconditionally and require exactly two cases",
-  );
   assertOrdered(
     mainLifecycle,
     [
@@ -1074,10 +1180,10 @@ function assertLifecycleContract(source) {
     "native fake-root cleanup must independently remove both CurrentUser certificates",
   );
   contract(
-    /function Assert-RejectedInstallLeftNoMachineWrites[\s\S]*?Test-Path -LiteralPath \$CandidateInstallDirectory/u.test(
+    /function Assert-FailedRuntimeBootstrapLeftNoInstallWrites[\s\S]*?Test-Path -LiteralPath \$CandidateInstallDirectory/u.test(
       source,
     ),
-    "rejected-path lifecycle cases must prove the final directory was never created",
+    "rejected machine-runtime cases must prove the final directory was never created",
   );
   contract(
     !source.includes("Remove-Item -LiteralPath $userProfileFyagentDirectory"),
@@ -1123,6 +1229,10 @@ function assertConfigContract(baseConfig, windowsConfig) {
   contract(
     nsis?.installerHooks === "nsis/webview2-command.nsh",
     "secure WebView2 encoded-command include path drifted",
+  );
+  contract(
+    nsis?.installerIcon === "icons/icon.ico",
+    "NSIS installer icon must use the canonical FyAgent icon",
   );
   contract(
     nsis?.installMode === "perMachine",
@@ -1178,15 +1288,10 @@ export function verifyWindowsNsisContract(options = {}) {
     options.webviewIncludePath ??
       path.join(DEFAULT_ROOT, "src-tauri", "nsis", "webview2-command.nsh"),
   );
-  const lifecyclePath = path.resolve(
-    options.lifecyclePath ??
-      path.join(
-        DEFAULT_ROOT,
-        "scripts",
-        "release",
-        "verify-windows-nsis-lifecycle.ps1",
-      ),
-  );
+  const lifecyclePath =
+    options.lifecyclePath === undefined
+      ? null
+      : path.resolve(options.lifecyclePath);
   const fakeRootCertificatePath = path.resolve(
     options.fakeRootCertificatePath ??
       path.join(
@@ -1215,7 +1320,8 @@ export function verifyWindowsNsisContract(options = {}) {
   const webviewSource = fs.readFileSync(webviewSourcePath, "utf8");
   const webviewLoader = fs.readFileSync(webviewLoaderPath, "utf8");
   const webviewInclude = fs.readFileSync(webviewIncludePath, "utf8");
-  const lifecycleSource = fs.readFileSync(lifecyclePath, "utf8");
+  const lifecycleSource =
+    lifecyclePath === null ? null : fs.readFileSync(lifecyclePath, "utf8");
   const fakeRootPem = fs.readFileSync(fakeRootCertificatePath, "utf8");
   const fakeLeafPem = fs.readFileSync(fakeLeafCertificatePath, "utf8");
   const blocks = parseNsisBlocks(source);
@@ -1242,6 +1348,7 @@ export function verifyWindowsNsisContract(options = {}) {
     executableSource.includes("RequestExecutionLevel admin"),
     "per-machine template must require administrator execution",
   );
+  assertCanonicalIconContract(source, [webviewInclude]);
   contract(
     executableSource.includes(
       'StrCpy $INSTDIR "$PROGRAMFILES64\\${PRODUCTNAME}"',
@@ -1255,7 +1362,7 @@ export function verifyWindowsNsisContract(options = {}) {
     "retired MSI/WiX migration logic remains executable",
   );
 
-  assertFinalPathValidatorContract(source);
+  assertInstallPathPolicyContract(source, [webviewInclude]);
   assertRuntimeProvisionContract(source, blocks);
   assertUninstallOwnershipContract(source, blocks);
   assertWebView2CommandContract({
@@ -1268,7 +1375,9 @@ export function verifyWindowsNsisContract(options = {}) {
     fakeRootPem,
     fakeLeafPem,
   });
-  assertLifecycleContract(lifecycleSource);
+  if (lifecycleSource !== null) {
+    assertLifecycleContract(lifecycleSource);
+  }
 
   return Object.freeze({
     templatePath,

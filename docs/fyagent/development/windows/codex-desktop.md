@@ -39,4 +39,5 @@ ambiguous trusted packages, capability separation, and context propagation.
 The native Windows smoke exercises the explicit-SID package-manager adapter
 without requiring Store access, network access, or a real Codex installation.
 Neither form of test substitutes for FyAgent's separate setup-executable
-lifecycle gate.
+build/package evidence. FyAgent's optional setup install/uninstall lifecycle
+script is a separate manual diagnostic and is not a Release gate.

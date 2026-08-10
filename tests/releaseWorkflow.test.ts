@@ -133,22 +133,151 @@ function expectExactLine(source: string, line: string) {
   ).toEqual([line]);
 }
 
-function assertWindowsLifecycleJobTimeout(source: string): void {
-  const start = source.indexOf("\n  windows-lifecycle:\n");
-  const end = source.indexOf("\n  build-linux:\n", start + 1);
-  if (start < 0 || end <= start) {
-    throw new Error("Windows lifecycle job block is missing");
+const EXPECTED_RELEASE_JOB_IDS = [
+  "eligibility",
+  "build-windows",
+  "prove-windows-preflight",
+  "sign-windows-formal",
+  "seal-windows-formal",
+  "build-linux",
+  "build-macos",
+  "pin-release-build-inputs",
+  "verify-assets",
+  "attest",
+  "publish",
+] as const;
+
+function releaseWorkflowJobIds(workflow: string): string[] {
+  const jobsStart = workflow.indexOf("\njobs:\n");
+  if (jobsStart < 0) {
+    throw new Error("release workflow has no jobs mapping");
   }
-  const lifecycleJob = source.slice(start, end);
-  const timeoutLines = lifecycleJob
-    .split(/\r?\n/u)
-    .filter((line) => line.includes("timeout-minutes:"));
-  if (
-    timeoutLines.length !== 1 ||
-    timeoutLines[0] !== "    timeout-minutes: 45"
-  ) {
+
+  // GitHub job IDs may start with a letter or underscore and may otherwise
+  // contain alphanumeric characters, hyphens, and underscores. YAML permits
+  // those keys in plain, single-quoted, or double-quoted form. Fail closed on
+  // any other direct jobs key syntax instead of silently omitting an escaped
+  // or inline YAML spelling from the topology comparison.
+  const jobIds: string[] = [];
+  for (const line of workflow.slice(jobsStart).split("\n")) {
+    if (!/^  \S/u.test(line) || /^  #/u.test(line)) continue;
+    const match =
+      /^  (?:(?<plain>[A-Za-z_][A-Za-z0-9_-]*)|'(?<single>[A-Za-z_][A-Za-z0-9_-]*)'|"(?<double>[A-Za-z_][A-Za-z0-9_-]*)"):$/u.exec(
+        line,
+      );
+    if (!match) {
+      throw new Error(`unsupported Release job key syntax: ${line.trim()}`);
+    }
+    jobIds.push(
+      String(
+        match.groups?.plain ?? match.groups?.single ?? match.groups?.double,
+      ),
+    );
+  }
+  return jobIds;
+}
+
+function releaseWorkflowRunScripts(workflow: string): string[] {
+  const lines = workflow.split("\n");
+  const scripts: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const run = /^(\s*)(?:run|'run'|"run")\s*:\s*(.*)$/u.exec(lines[index]);
+    if (!run) continue;
+
+    const scalar = run[2];
+    const blockScalar =
+      /^[|>](?:(?:[+-][1-9]?)|(?:[1-9][+-]?))?(?:[ \t]+#.*)?[ \t]*$/u.test(
+        scalar,
+      );
+    if (!blockScalar) {
+      if (/^[|>]/u.test(scalar)) {
+        throw new Error(
+          `unsupported Release run block scalar syntax: ${lines[index].trim()}`,
+        );
+      }
+      scripts.push(scalar);
+      continue;
+    }
+
+    const indentation = run[1].length;
+    const scriptLines: string[] = [];
+    for (index += 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (
+        line.trim() !== "" &&
+        line.length - line.trimStart().length <= indentation
+      ) {
+        index -= 1;
+        break;
+      }
+      scriptLines.push(line);
+    }
+    scripts.push(scriptLines.join("\n"));
+  }
+
+  return scripts;
+}
+
+function assertReleaseWorkflowDoesNotExecuteInstallers(workflow: string) {
+  const jobIds = releaseWorkflowJobIds(workflow);
+  if (JSON.stringify(jobIds) !== JSON.stringify(EXPECTED_RELEASE_JOB_IDS)) {
+    throw new Error(`unexpected Release job topology: ${jobIds.join(", ")}`);
+  }
+
+  const allowedPowerShellCallOperators = [
+    /^\s*\$evidenceJson\s*=\s*&\s+\.\/scripts\/release\/windows-signing-evidence\.ps1\s+`\s*$/u,
+    /^\s*&\s+node\s+@commonArguments\s+--mode\s+unsigned\s*$/u,
+    /^\s*&\s+node\s+@commonArguments\s+`\s*$/u,
+  ];
+  const forbiddenRunScriptLaunches = [
+    {
+      name: "Windows lifecycle diagnostic",
+      pattern: /verify-windows-nsis-lifecycle\.ps1/iu,
+    },
+    {
+      name: "Start-Process",
+      pattern: /(^\s*|[;|]\s*)Start-Process\b/iu,
+    },
+    {
+      name: "cmd command shell",
+      pattern: /^\s*(?:&\s*)?cmd(?:\.exe)?\s+\/c\b/iu,
+    },
+    {
+      name: "dynamic variable command",
+      pattern:
+        /^\s*\$(?:env:)?[A-Za-z_][A-Za-z0-9_]*\s+(?:["']?\/S\b|["']?\/D=|["']?_\?=)/iu,
+    },
+    {
+      name: "direct executable command",
+      pattern: /^\s*(?:["'][^"'\r\n]+\.exe["']|[^\s#"']+\.exe)(?:\s|$)/iu,
+    },
+  ];
+
+  for (const script of releaseWorkflowRunScripts(workflow)) {
+    for (const line of script.split("\n")) {
+      for (const { name, pattern } of forbiddenRunScriptLaunches) {
+        if (pattern.test(line)) {
+          throw new Error(
+            `Release workflow must not execute installers via ${name}: ${line.trim()}`,
+          );
+        }
+      }
+
+      if (
+        /(^|[=\s])&\s+/u.test(line) &&
+        !allowedPowerShellCallOperators.some((pattern) => pattern.test(line))
+      ) {
+        throw new Error(
+          `Release workflow contains a non-allowlisted PowerShell call operator: ${line.trim()}`,
+        );
+      }
+    }
+  }
+
+  if (/verify-windows-nsis-lifecycle\.ps1/iu.test(workflow)) {
     throw new Error(
-      "Windows lifecycle job must have the exact 45-minute hard timeout",
+      "Release workflow must not reference the Windows lifecycle diagnostic",
     );
   }
 }
@@ -837,7 +966,7 @@ describe("FyAgent release workflow", () => {
     const sealer = workflowJobBlock(
       source,
       "seal-windows-formal",
-      "windows-lifecycle",
+      "build-linux",
     );
     expectExactLine(
       sealer,
@@ -887,73 +1016,129 @@ describe("FyAgent release workflow", () => {
     expect(verification).toContain("--expected-certificate-sha256");
   });
 
-  it("runs sealed assets on a fresh secret-free lifecycle runner with a fail-closed result truth table", () => {
-    const lifecycleJob = workflowJobBlock(
-      source,
-      "windows-lifecycle",
-      "build-linux",
-    );
-    expectExactLine(
-      lifecycleJob,
-      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}",
-    );
-    expect(lifecycleJob).toContain(
-      "    needs:\n      [\n        eligibility,\n        build-windows,\n        pin-release-build-inputs,\n        prove-windows-preflight,\n        sign-windows-formal,\n        seal-windows-formal,\n      ]",
-    );
-    expect(lifecycleJob).toContain("runner: windows-2025");
-    expect(lifecycleJob).toContain("runner: windows-11-arm");
-    expectExactLine(lifecycleJob, "    timeout-minutes: 45");
-    expect(lifecycleJob).toContain("permissions:\n      contents: read");
-    expect(lifecycleJob).not.toContain("${{ secrets.");
-    expect(lifecycleJob).not.toContain("SIGNER_ADAPTER");
-    expect(lifecycleJob).not.toContain("SIGNER_CREDENTIAL");
-    expect(lifecycleJob).not.toContain("windows-signing.mjs asset");
-    expect(lifecycleJob).not.toContain("actions/upload-artifact@");
-    expect(lifecycleJob).not.toContain("pnpm install");
-    expect(lifecycleJob).not.toMatch(/\bcargo\b/iu);
-    expect(lifecycleJob).not.toContain("pnpm tauri");
-    expect(lifecycleJob).toContain(
-      "name: installers-${{ matrix.target_group }}",
-    );
-    expect(lifecycleJob).toContain("name: signing-${{ matrix.target_group }}");
-
-    const lifecycle = namedStepBlock(
-      lifecycleJob,
-      "Run native install lifecycle against sealed Windows setup bytes",
-    );
-    expect(lifecycle).toContain("verify-windows-nsis-lifecycle.ps1");
-    expect(lifecycle).toContain("-InstallerPath $installerEntries[0].FullName");
-    expect(lifecycle).toContain("$sealedFragment.asset.sha256");
-    expect(lifecycle).toContain("$sealedFragment.mode -cne 'unsigned'");
-    expect(lifecycle).toContain(
-      "$sealedFragment.asset.signature.status -cne 'NotSigned'",
-    );
-    expect(lifecycle).toContain(
-      "$null -ne $sealedFragment.asset.signature.publisher",
-    );
-    expect(lifecycle).toContain(
-      "$null -ne $sealedFragment.asset.signature.signerCertificate",
-    );
-    expect(lifecycle).toContain(
-      "$null -ne $sealedFragment.asset.signature.timestampCertificate",
-    );
-
+  it("routes successful builds and Windows sealing directly into asset verification without installer execution", () => {
+    expect(() =>
+      assertReleaseWorkflowDoesNotExecuteInstallers(source),
+    ).not.toThrow();
     const verify = workflowJobBlock(source, "verify-assets", "attest");
-    expectExactLine(verify, "        pin-release-build-inputs,");
+    expectExactLine(
+      verify,
+      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-linux'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}",
+    );
+    expect(verify).toContain(
+      "    needs:\n      [\n        eligibility,\n        build-windows,\n        build-linux,\n        build-macos,\n        pin-release-build-inputs,\n        prove-windows-preflight,\n        sign-windows-formal,\n        seal-windows-formal,\n      ]",
+    );
+    expect(verify).toContain(
+      "artifact-ids: ${{ needs['pin-release-build-inputs'].outputs.artifact_id }}",
+    );
+    expect(verify).toContain("pattern: installers-windows-*");
+    expect(verify).toContain("pattern: signing-*");
+    expect(verify).toContain("windows-signing.mjs aggregate");
+    expect(verify).not.toContain("runs-on: windows");
   });
 
-  it("rejects a missing or drifted Windows lifecycle job timeout", () => {
-    expect(() => assertWindowsLifecycleJobTimeout(source)).not.toThrow();
-    for (const mutation of [
-      source.replace("    timeout-minutes: 45\n", ""),
-      source.replace("    timeout-minutes: 45", "    timeout-minutes: 60"),
-      source.replace("    timeout-minutes: 45", "      timeout-minutes: 45"),
-    ]) {
-      expect(() => assertWindowsLifecycleJobTimeout(mutation)).toThrow(
-        /exact 45-minute hard timeout/u,
-      );
-    }
+  it("parses every legal GitHub Actions job ID shape used by the topology guard", () => {
+    expect(
+      releaseWorkflowJobIds(`
+jobs:
+  _Leading_ID:
+    runs-on: ubuntu-24.04
+  'UpperCase':
+    runs-on: ubuntu-24.04
+  "lower-hyphen_2":
+    runs-on: ubuntu-24.04
+`),
+    ).toEqual(["_Leading_ID", "UpperCase", "lower-hyphen_2"]);
   });
+
+  it.each(["_Windows_SMOKE", "'_Windows_SMOKE'", '"_Windows_SMOKE"'])(
+    "rejects an extra legal Actions job key %s independently of its behavior",
+    (jobKey) => {
+      const mutated = source.replace(
+        "\n  verify-assets:\n",
+        `
+  ${jobKey}:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Harmless topology mutation
+        run: echo unexpected extra job
+
+  verify-assets:
+`,
+      );
+      expect(mutated).not.toBe(source);
+      expect(() =>
+        assertReleaseWorkflowDoesNotExecuteInstallers(mutated),
+      ).toThrow(/unexpected Release job topology:.*_Windows_SMOKE/u);
+    },
+  );
+
+  it("fails closed on an escaped YAML spelling of a legal Actions job ID", () => {
+    const mutated = source.replace(
+      "\n  verify-assets:\n",
+      `
+  "\\x5fWindows_SMOKE":
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo unexpected escaped job key
+
+  verify-assets:
+`,
+    );
+    expect(mutated).not.toBe(source);
+    expect(() => releaseWorkflowJobIds(mutated)).toThrow(
+      /unsupported Release job key syntax/u,
+    );
+  });
+
+  it.each([
+    {
+      launch: "lowercase Start-Process under a commented quoted run key",
+      runHeader: '"run" : |2- # execution-guard mutation',
+      script: "start-process $env:FYAGENT_WINDOWS_FINAL_ASSET /S",
+      expectedError: /via Start-Process/u,
+    },
+    {
+      launch: "a variable command",
+      script:
+        "$candidate = $env:FYAGENT_WINDOWS_FINAL_ASSET\n          & $candidate /S",
+      expectedError: /non-allowlisted PowerShell call operator/u,
+    },
+    {
+      launch: "cmd.exe",
+      script: 'cmd.exe /c "$env:FYAGENT_WINDOWS_FINAL_ASSET /S"',
+      expectedError: /via cmd command shell/u,
+    },
+    {
+      launch: "the PowerShell call operator with an environment variable",
+      script: "& $env:FYAGENT_WINDOWS_FINAL_ASSET /S",
+      expectedError: /non-allowlisted PowerShell call operator/u,
+    },
+    {
+      launch: "a direct executable path",
+      script: ".\\release-assets\\FyAgent-smoke-setup.exe /S",
+      expectedError: /via direct executable command/u,
+    },
+  ])(
+    "rejects installer execution in an existing job via $launch",
+    ({ runHeader = "run: |", script, expectedError }) => {
+      const step = `
+      - name: Mutated installer execution
+        shell: pwsh
+        ${runHeader}
+          ${script}
+`;
+      const mutated = source.replace(
+        "\n      - name: Checkout immutable formal verification boundary\n",
+        `${step}\n      - name: Checkout immutable formal verification boundary\n`,
+      );
+      expect(mutated).not.toBe(source);
+      expect(releaseWorkflowJobIds(mutated)).toEqual(EXPECTED_RELEASE_JOB_IDS);
+      expect(() =>
+        assertReleaseWorkflowDoesNotExecuteInstallers(mutated),
+      ).toThrow(expectedError);
+    },
+  );
 
   it("pins all build outputs before the provider receives an artifact token", () => {
     const pin = workflowJobBlock(
@@ -1014,6 +1199,7 @@ describe("FyAgent release workflow", () => {
     expect(verify).toContain("Upload the exact thirteen attestation subjects");
 
     const attest = workflowJobBlock(source, "attest", "publish");
+    expectExactLine(attest, "    needs: [eligibility, verify-assets]");
     expect(attest).toContain(
       "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
     );
@@ -1023,6 +1209,7 @@ describe("FyAgent release workflow", () => {
     expect(attest).toContain("artifact-attestation.sigstore.json");
 
     const publish = source.slice(source.indexOf("\n  publish:\n"));
+    expectExactLine(publish, "    needs: [eligibility, attest]");
     expect(publish).toContain("fyagent-windows-signing-status/v1");
     expect(publish).toContain("## Windows installer signing status");
     expect(publish).toContain(".signature.status");
@@ -1203,7 +1390,7 @@ describe("FyAgent release workflow", () => {
   });
 });
 
-describe("FyAgent Windows NSIS, elevation, signing, and lifecycle boundary", () => {
+describe("FyAgent Windows NSIS, elevation, signing, and manual diagnostics", () => {
   const windowsConfig = JSON.parse(read(TAURI_WINDOWS_CONFIG)) as {
     bundle: {
       targets: string[];
@@ -1211,6 +1398,8 @@ describe("FyAgent Windows NSIS, elevation, signing, and lifecycle boundary", () 
         webviewInstallMode: { type: string };
         nsis: {
           template: string;
+          installerHooks: string;
+          installerIcon: string;
           installMode: string;
           languages: string[];
           displayLanguageSelector: boolean;
@@ -1262,6 +1451,7 @@ describe("FyAgent Windows NSIS, elevation, signing, and lifecycle boundary", () 
     expect(windowsConfig.bundle.windows.nsis).toEqual({
       template: "nsis/installer.nsi",
       installerHooks: "nsis/webview2-command.nsh",
+      installerIcon: "icons/icon.ico",
       installMode: "perMachine",
       languages: ["English", "SimpChinese"],
       displayLanguageSelector: false,
@@ -1271,26 +1461,24 @@ describe("FyAgent Windows NSIS, elevation, signing, and lifecycle boundary", () 
     expect(template).toContain("${LANG_ENGLISH}");
     expect(template).toContain("${LANG_SIMPCHINESE}");
     expect(template).toContain('!if "${DISPLAYLANGUAGESELECTOR}" == "true"');
+    expect(template).toContain('!define MUI_ICON "${INSTALLERICON}"');
+    expect(template).toContain('!define MUI_UNICON "${INSTALLERICON}"');
   });
 
-  it("applies one final absolute fixed-drive gate before every installer write", () => {
-    expect(template).toContain("Function FyAgentValidateFinalInstallDir");
-    expect(template).toContain('StrCmp $0 ":"');
-    expect(template).toContain('StrCmp $0 "\\"');
-    expect(template).toContain("GetDriveTypeW");
-    expect(template).toContain("FYAGENT_DRIVE_FIXED 3");
-    expect(template).toContain("Function FyAgentValidateInstallDirPageLeave");
+  it("leaves installation-path selection to the standard NSIS directory flow", () => {
+    expect(template).toContain("!insertmacro MUI_PAGE_DIRECTORY");
+    expect(template).not.toContain("Function FyAgentValidateFinalInstallDir");
+    expect(template).not.toContain("GetDriveTypeW");
+    expect(template).not.toContain("FYAGENT_DRIVE_FIXED");
+    expect(template).not.toContain("MUI_PAGE_CUSTOMFUNCTION_LEAVE");
+    expect(template).not.toContain("Section -FyAgentInstallDirGate");
 
-    const gate = template.indexOf("Section -FyAgentInstallDirGate");
+    const runtime = template.indexOf("Section -FyAgentMachineRuntimeBootstrap");
     const webview = template.indexOf("Section WebView2");
     const setOutPath = template.indexOf("SetOutPath $INSTDIR");
-    const runtime = template.indexOf("Call FyAgentProvisionMachineRuntime");
-    expect(gate).toBeGreaterThan(-1);
-    expect(webview).toBeGreaterThan(gate);
-    expect(setOutPath).toBeGreaterThan(gate);
-    expect(runtime).toBeGreaterThan(gate);
-    expect(template).toContain("final `/D=...`");
-    expect(template).toContain("SetErrorLevel 2");
+    expect(runtime).toBeGreaterThan(-1);
+    expect(webview).toBeGreaterThan(runtime);
+    expect(setOutPath).toBeGreaterThan(webview);
   });
 
   it("pins a hermetic NSIS source verifier to the config and template boundary", () => {
@@ -1298,13 +1486,15 @@ describe("FyAgent Windows NSIS, elevation, signing, and lifecycle boundary", () 
     expect(contract).toContain("nsis/installer.nsi");
     expect(contract).toContain("downloadBootstrapper");
     expect(contract).toContain("perMachine");
-    expect(contract).toContain("FyAgentValidateFinalInstallDir");
-    expect(contract).toContain("-FyAgentInstallDirGate");
+    expect(contract).toContain("assertInstallPathPolicyContract");
+    expect(contract).toContain(
+      "must not reintroduce custom installation-path restriction",
+    );
     expect(contract).toContain("WebView2");
     expect(contract).toContain("SetOutPath");
   });
 
-  it("runs complete native lifecycle cases and derives product architecture from installed fyagent.exe", () => {
+  it("retains the manual native lifecycle diagnostic and derives product architecture from installed fyagent.exe", () => {
     expect(lifecycle).toContain("fyagent.exe");
     expect(lifecycle).toContain("0x8664");
     expect(lifecycle).toContain("0xAA64");
@@ -1313,10 +1503,10 @@ describe("FyAgent Windows NSIS, elevation, signing, and lifecycle boundary", () 
     expect(lifecycle).toContain("$AppVersion");
     expect(lifecycle).toContain("DisplayVersion");
     expect(lifecycle).toMatch(/\/D=/);
-    expect(lifecycle).toContain("relative-path-negative");
-    expect(lifecycle).toContain("unc-network-negative");
-    expect(lifecycle).toContain("unsupported-drive-network-negative");
-    expect(lifecycle).toContain("reparse-unsupported-drive-network-negative");
+    expect(lifecycle).not.toContain("relative-path-negative");
+    expect(lifecycle).not.toContain("unc-network-negative");
+    expect(lifecycle).not.toContain("unsupported-drive-network-negative");
+    expect(lifecycle).not.toContain("NativeNetworkDrive");
     expect(lifecycle).toContain("default-install");
     expect(lifecycle).toContain("custom-space-unicode-silent-D");
     expect(lifecycle).toContain(".fyagent");
