@@ -357,3 +357,52 @@ Record PR #8 native closeout evidence, freeze the final design-package manifest,
 ### Next Steps
 
 - Require final PR CI, merge PR #8, require exact-main CI, then delete every writable non-main local and origin branch.
+
+
+## Session 12: Archive FyAgent modernization workstreams
+
+**Date**: 2026-08-10
+**Task**: Archive FyAgent modernization workstreams
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Archived the five FyAgent modernization children and parent after the user deferred new CI acceptance, preflight, formal v0.3.1 Release, public asset verification, and closeout-CI acceptance. No deferred production gate is claimed as passed.
+
+### Main Changes
+
+- Updated current repository authority from NongHua123/fyagent to fy-agent/fyagent while preserving numeric repository ID 1313497021 and historical records.
+- Recorded the revised closeout boundary and archived all five children, then the modernization parent, in dependency order.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `effdaf09` | (see git log) |
+| `f020147b` | (see git log) |
+| `089e35ae` | (see git log) |
+| `5556b3f4` | (see git log) |
+| `50cca3ac` | (see git log) |
+| `c3282b3b` | (see git log) |
+| `4fb00890` | (see git log) |
+| `ad34cb10` | (see git log) |
+| `2047bc67` | (see git log) |
+| `265a9a8b` | (see git log) |
+| `6830fc5b` | (see git log) |
+| `91a9799a` | (see git log) |
+| `dd3603c9` | (see git log) |
+| `d9e95186` | (see git log) |
+| `99738a00` | (see git log) |
+| `6f66181d` | (see git log) |
+
+### Testing
+
+- [OK] Passed 306 focused tests, typecheck, 83-task validation, task documentation checks, Trellis verification, and diff validation; no new preflight or Release was started.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- If formal publication resumes, create a new Trellis task and re-establish live exact-SHA CI, preflight, tag/version, Release, asset, signing, and attestation acceptance.
