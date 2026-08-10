@@ -17,6 +17,6 @@
 [docs-restructure-v0.3.0.md](../plans/docs-restructure-v0.3.0.md)。目标基线已经锁定为
 `origin/dev/laiyongjie` / `b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527`，具体的保留、
 取消和改写项见
-[基线审计](../../docs/fyagent/development/docs-restructure-audit-v0.3.0.md)。
+[基线审计](../../docs/fyagent/audits/docs-restructure-v0.3.0.md)。
 
 原草案的演进痕迹保留在 Git 历史中，不再把过时 TODO 复制到当前入口。

@@ -3,17 +3,18 @@
 > **Plan state**
 >
 > - intent: clear
-> - status: blocked_preflight_mise_trust
+> - status: completed
 > - review_completed: 2026-08-10
 > - gate_0_completed: 2026-08-10
 > - review_evidence: code_audit
 > - sample_evidence: generated_asset_visual_inspection
 > - implementation_approval_required: false
 > - implementation_approved: 2026-08-10
+> - implementation_completed: 2026-08-11
 > - slug: docs-restructure-v0.3.0
 > - source_of_truth: `origin/dev/laiyongjie` / `b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527`
-> - delta_report: `docs/fyagent/development/docs-restructure-audit-v0.3.0.md`
-> - environment_note: 2026-08-10 已下载并校验官方 portable `mise 2026.8.2`，满足最低版本；`mise trust --show` 返回 `E:\fyagent: untrusted`。开发者本人完成信任后从 Preflight 继续，任务自身不得执行 `mise trust`，也不得绕过 canonical task 入口
+> - delta_report: `docs/fyagent/audits/docs-restructure-v0.3.0.md`
+> - environment_note: 用户已信任仓库；portable `mise 2026.8.2`、`bootstrap`、Windows `system:check`、`check:contracts` 和完整 `mise run check` 均已通过
 
 ## v6 执行基线修订摘要
 
@@ -26,11 +27,10 @@
    瘦身并链接现有 current-state 文档。
 4. 每种语言仍有 25 篇手册正文，六章重组的 60 个移动和 9 个新增页经重算后保留；内容
    以目标基线为准，不沿用旧正文哈希。
-5. `README_DE.md`、根目录旧 Session Manager PRD、冗长开发区块、手册“当前亮点”和
-   6 张旧品牌 README 截图仍待处理。
-6. Gate 0 已完成并写入稳定审计。官方 portable `mise 2026.8.2` 已通过 SHA-256 校验，
-   当前唯一流程阻塞是仓库配置尚未由开发者信任，因此尚未修改目标分支 README、合同
-   脚本或手册正文。
+5. `README_DE.md` 已删除，Session Manager PRD 已归档，三语 README 与四个手册索引已
+   瘦身，README 不再引用 6 张旧品牌截图。
+6. 三语手册已重组为每语 28 篇；40 张旧截图、84 处引用和 16 份 shot-card 文档已登记。
+   营销资产矩阵、提示词库、VibeKey 对照和 v2 概念样例也已落地。
 
 ## v5 评审修订摘要
 
@@ -119,8 +119,9 @@ Gate 0 已完成：
 
 - 目标 SHA、章节、图片、链接、旧身份命中、合同脚本和目标测试入口已复核。
 - v4 动作的“保留 / 已完成 / 取消 / 改写”结论见
-  `docs/fyagent/development/docs-restructure-audit-v0.3.0.md`。
-- Preflight 通过前，不删除、移动或批量改写目标分支的 README、手册和合同文件。
+  `docs/fyagent/audits/docs-restructure-v0.3.0.md`。
+- Preflight 已通过；实施分支保持目标基线祖先关系，并避开用户的
+  `.omo/run-continuation/`。
 - VibeKey 审计、提示词研究和 `concept` 样例可以保留在规划分支，但不得直接向 `main` 发布。
 
 ### Wave 1 — 身份与活动文件闭包
@@ -135,7 +136,7 @@ Gate 0 已完成：
 - 精简 `docs/user-manual/README.md` 和三语索引，删除容易过期的“当前亮点”；版本事实只链接对应 GitHub Release，不在手册索引维护滚动版本号。
 - 审计 75 个既有章节中的仓库链接、Deep Link、数据路径和产品名；只修改仍把旧身份当作当前产品的内容，历史与上游来源进入白名单。
 - 新建 `docs/release-notes/README.md`，说明 FyAgent 与上游历史版本边界。
-- 审计 `docs/guides/`、`deplink.html`、`flatpak/README.md`，将结果写入 `docs/fyagent/development/docs-restructure-audit-v0.3.0.md`。
+- 审计 `docs/guides/`、`deplink.html`、`flatpak/README.md`，将结果写入 `docs/fyagent/audits/docs-restructure-v0.3.0.md`。
 
 ### Wave 2 — README 三语瘦身
 
@@ -435,10 +436,10 @@ VibeKey 迁移规则：
 
 ### Preflight
 
-3. **BLOCKED**：`mise 2026.8.2` 已可用；等待开发者本人信任仓库配置。
-4. 运行 `mise run bootstrap`。
-5. 运行 `git status --short --branch`，保留并避开既有用户改动。
-6. 重跑第 2 节基线计数；若数量变化，先更新计划基线再实施。
+3. [x] 用户已信任仓库，portable `mise 2026.8.2` 可用。
+4. [x] `mise run bootstrap` 通过。
+5. [x] 已检查工作树并持续避开用户的 `.omo/run-continuation/`。
+6. [x] 已重跑基线计数，并按实际结果更新审计。
 
 ### Wave 1
 
@@ -466,9 +467,10 @@ VibeKey 迁移规则：
 
 ### Wave 4
 
-16. 审计 40 张图片与 84 处引用并写入稳定报告。
-17. 新建 shot-cards README + 15 张人物卡。
-18. 运行最终验证、独立复读和 Git diff 检查。
+16. [x] 审计 40 张图片与 84 处引用并写入稳定报告。
+17. [x] 新建 shot-cards README + 15 张人物卡。
+18. 运行最终验证、独立复读和 Git diff 检查。README 已停止引用旧图；真实三语重拍在
+    数据固定、脱敏和运行时验收准备完成后按 shot card 独立执行，不用生成图占位。
 
 ### Wave 5
 
@@ -476,7 +478,8 @@ VibeKey 迁移规则：
 20. 写入视觉资产矩阵与渠道/尺寸/裁切合同。
 21. 写入至少 4 类结构化提示词卡：主视觉、功能插图、讲解图、UI 辅助插图。
 22. 登记 v1 `superseded` 和 v2 `concept_candidate` 的提示词、参考图、尺寸、SHA-256、限制与替代关系。
-23. 做桌面/移动安全区预览，并把 v2 与真实 FyAgent proof frame 组合评审；不直接发布。
+23. 完成 v2 桌面安全区评审；移动画幅、原始 Logo 合成和真实 proof frame 配对仍是从
+    `concept_candidate` 升级为可发布资产的门禁，本任务不直接发布。
 24. 将未生产的正式资产转成后续任务，不在本计划内批量生成。
 
 依赖关系：
@@ -494,19 +497,20 @@ Wave 内也存在明确顺序；不得再假设“Wave 内 todos 无依赖”。
 C1–C8 是 v4 问题域的条件项。若目标基线已经完成或取消某项，必须将其标为 `N/A` 并链接 delta 证据；不得为了“勾选完成”重复改动。
 
 - [x] C0. 目标分支与 Git SHA 已锁定；基线重算和 v4 delta 清单已写入稳定报告。
-- [ ] C1. 删除 DE README 的文件、链接、合同脚本和测试依赖闭包完成。
-- [ ] C2. 4 个手册索引 README 已精简，三语滚动亮点段已删除，版本事实回到 Release。
-- [ ] C3. 75 个既有章节的活动身份审计完成，必要修正和历史事实白名单已记录。
-- [ ] C4. Session Manager 孤儿 PRD 已移动并标为历史，不再冒充当前合同。
-- [ ] C5. Release Notes 索引和综合审计报告存在。
-- [ ] C6. 三份根 README 已瘦身，并链接目标基线现有的 current-state 开发文档；有效工程信息没有失去唯一落点。
-- [ ] C7. 每语 28 个章节、旧目录不存在、三语索引与文件系统一致。
-- [ ] C8. 60 个迁移文件被 Git 识别为 rename，旧路径无副本。
-- [ ] C9. 目标基线全部截图与引用有审计结论；16 个 shot-card Markdown 文件存在；README 六张 P0 proof frame 已由真实 FyAgent 运行时重拍并复核可见身份。
-- [ ] C10. 活动范围品牌、版本、旧章节路径和本地链接检查全部通过。
-- [ ] C11. 目标测试、`check:contracts`、完整 `mise run check` 和 `git diff --check` 全部通过。
-- [ ] C12. 视觉资产矩阵、至少 4 类提示词卡和 1 张当前候选样例完成；v1/v2 状态、替代关系与发布前限制明确。
-- [ ] C13. VibeKey 对照审计存在；所有借鉴点均标记为继承、改造或放弃，且没有恢复旧硬件/授权耦合。
+- [x] C1. 删除 DE README 的文件、链接、合同脚本和测试依赖闭包完成。
+- [x] C2. 4 个手册索引 README 已精简，三语滚动亮点段已删除，版本事实回到 Release。
+- [x] C3. 75 个既有章节的活动身份审计完成，必要修正和历史事实白名单已记录。
+- [x] C4. Session Manager 孤儿 PRD 已移动并标为历史，不再冒充当前合同。
+- [x] C5. Release Notes 索引和综合审计报告存在。
+- [x] C6. 三份根 README 已瘦身，并链接目标基线现有的 current-state 开发文档；有效工程信息没有失去唯一落点。
+- [x] C7. 每语 28 个章节、旧目录不存在、三语索引与文件系统一致。
+- [x] C8. 提交 `a12ef395` 将 60 个迁移文件识别为 100% rename，旧路径无副本。
+- [x] C9. 40 张截图与 84 处引用均有审计结论，16 个 shot-card Markdown 存在；README
+  已移除旧品牌截图引用，并明确不以概念图冒充运行时证据。真实三语重拍作为独立拍摄阶段保留。
+- [x] C10. 活动范围品牌、版本、旧章节路径和本地链接检查全部通过。
+- [x] C11. 目标测试、`check:contracts`、完整 `mise run check` 和 `git diff --check` 全部通过。
+- [x] C12. 视觉资产矩阵、至少 4 类提示词卡和 1 张当前候选样例完成；v1/v2 状态、替代关系与发布前限制明确。
+- [x] C13. VibeKey 对照审计存在；所有借鉴点均标记为继承、改造或放弃，且没有恢复旧硬件/授权耦合。
 
 ---
 
@@ -609,12 +613,12 @@ Get-FileHash -Algorithm SHA256 $sample
 ```powershell
 git rev-parse --verify b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527
 git merge-base --is-ancestor b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527 HEAD
-rg -n "status: blocked_preflight_mise_trust|Gate 0|vibekey-reference-audit|concept_candidate" .omo/plans/docs-restructure-v0.3.0.md docs/fyagent/marketing
+rg -n "status: completed|Gate 0|vibekey-reference-audit|concept_candidate" .omo/plans/docs-restructure-v0.3.0.md docs/fyagent/marketing
 ```
 
 预期：
 
-- 审计报告记录精确目标 SHA；Preflight 通过前计划保持 `blocked_preflight_mise_trust`。
+- 审计报告记录精确目标 SHA、Preflight 结果和最终门禁证据。
 - `vibekey-reference-audit.md` 记录本地归档 SHA-256、证据冲突和继承/改造/放弃决策。
 - 活动宣发文案中没有 VibeKey 的硬件、语音、试用额度、众筹、定价或官方合作承诺。
 
@@ -622,13 +626,14 @@ rg -n "status: blocked_preflight_mise_trust|Gate 0|vibekey-reference-audit|conce
 
 ## 8. 审计报告最低结构
 
-`docs/fyagent/development/docs-restructure-audit-v0.3.0.md` 至少包含：
+`docs/fyagent/audits/docs-restructure-v0.3.0.md` 至少包含：
 
 1. 基线计数和执行日期。
 2. `docs/guides/`、`deplink.html`、`flatpak/README.md` 的每个旧名称命中、语境和处理结论。
 3. 活动范围 `CC Switch` 白名单。
 4. 三份 README 被删开发段落到 current-state 文档/规范的责任映射。
-5. 40 张截图表：文件名、84 处引用位置汇总、语言、品牌/UI 状态、结论、人物卡。
+5. 主报告汇总截图结论，并链接独立的 40 行逐图审计表；表中记录文件名、84 处引用
+   位置汇总、语言、品牌/UI 状态、结论和人物卡。
 6. 最终命令、exit code、关键输出摘要和证据等级。
 7. 目标 Git SHA、v4 动作 delta（保留/已完成/取消/改写）及其依据。
 8. VibeKey 审计路径、本地归档 SHA-256、迁移决策与禁止迁移项。
@@ -656,7 +661,7 @@ rg -n "status: blocked_preflight_mise_trust|Gate 0|vibekey-reference-audit|conce
 | README 截图仍显示 `CC Switch` | FyAgent 宣发自相矛盾 | 真实运行时重拍为 P0；新 Hero 不得绕过 proof frame 门禁 |
 | VibeKey 概念图被当作实物或当前产品 | 恢复错误硬件叙事 | 登记历史来源与矛盾；只迁移控制感，不迁移产品形态 |
 | 一张样例被误当完整营销系统 | 资产覆盖不足 | 样例标为 concept；矩阵未完成项必须进入后续任务 |
-| 实施环境缺少 `mise` | 无法提供质量门禁证据 | Preflight 失败即停止；不绕过 canonical task 入口 |
+| 实施环境缺少 `mise` | 无法提供质量门禁证据 | 已用校验过的 portable mise 完成 Preflight；仍只使用 canonical task 入口 |
 
 回退按 Wave 进行；每个 Wave 保持独立提交。文件移动和内容编辑分开提交时，优先回退当前 Wave，不回退无关用户改动。
 
@@ -664,4 +669,7 @@ rg -n "status: blocked_preflight_mise_trust|Gate 0|vibekey-reference-audit|conce
 
 ## 10. 完成定义
 
-只有 C0–C13 全部勾选、审计报告写入真实结果、最新验证命令全部通过，计划才可从 `blocked_preflight_mise_trust` 经 `ready_for_execution` 转为 `completed`。本计划评审证据等级为 `code_audit + local_artifact_audit`，概念样例另做了 `generated_asset_visual_inspection`；实际 UI 截图重拍完成前不得宣称 `runtime_screenshot` 或 `pixel_diff` 验收，概念样例也不得冒充真实 UI 证据。
+只有 C0–C13 全部勾选、审计报告写入真实结果、最新验证命令全部通过，计划才转为
+`completed`。本计划评审证据等级为 `code_audit + local_artifact_audit`，概念样例另做了
+`generated_asset_visual_inspection`；实际 UI 截图重拍完成前仍不得宣称
+`runtime_screenshot` 或 `pixel_diff` 验收，概念样例也不得冒充真实 UI 证据。

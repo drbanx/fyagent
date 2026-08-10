@@ -1,4 +1,11 @@
-# 会话管理（Session Manager）需求文档（PRD / Markdown）
+# 历史材料：Session Manager v1 PRD
+
+> **这不是当前产品合同。** 本文记录早期仅面向 macOS 的会话管理设想，保留用于追溯
+> 需求演进。FyAgent 当前行为以源码、测试、活动 Trellis 规范和用户手册为准。
+
+## 原始标题
+
+会话管理（Session Manager）需求文档（PRD / Markdown）
 
 > 目标：对 **Codex / Claude Code** 的本地会话记录进行可视化管理，并提供“一键复制 / 一键终端恢复”能力。
 > 范围：**v1 仅 macOS**，但必须预留多平台扩展入口。
