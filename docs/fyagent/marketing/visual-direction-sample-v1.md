@@ -1,15 +1,16 @@
 ---
 type: asset
-status: concept
+status: superseded
 updated: 2026-08-10
 review_on: 2026-09-10
 authority: working_sample
 source: ChatGPT built-in image generation with project-owned FyAgent icon reference
+superseded_by: visual-direction-sample-v2.md
 ---
 
 # FyAgent 对外主视觉样例 v1
 
-这是一张用于验证视觉方向与提示词结构的概念样例，不是已经批准发布的品牌母版或真实 UI 证据。
+这是一张用于验证视觉方向与提示词结构的历史概念样例，已由 [v2 触觉化软件编排样例](visual-direction-sample-v2.md) 替代。它不是已经批准发布的品牌母版或真实 UI 证据。
 
 ![FyAgent 统一管理主视觉概念样例](assets/samples/fyagent-unified-control-hero-v1.png)
 
