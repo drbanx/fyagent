@@ -20,7 +20,6 @@ use super::{
 
 const TEMP_ROOT_DIRECTORY_NAME: &str = "fyagent-codex-installer";
 const STALE_JOB_DIRECTORY_AGE: Duration = Duration::from_secs(24 * 60 * 60);
-const ALL_USERS_JOB_FILE_NAME: &str = "all-users-job.json";
 
 pub(crate) struct JobTempDir {
     root: PathBuf,
@@ -153,10 +152,9 @@ impl JobTempDir {
         })
     }
 
-    /// Re-opens one existing canonical job directory for the Windows-only
-    /// elevated provisioning child. It deliberately accepts only the same
-    /// UUID direct-child layout created by [`Self::create`], never an
-    /// arbitrary directory supplied on the command line.
+    /// Re-opens one existing canonical job directory for a resumable
+    /// download. It accepts only the same UUID direct-child layout created by
+    /// [`Self::create`], never an arbitrary caller-provided directory.
     pub(crate) fn open_existing(root: &Path, job_id: &str) -> Result<Self, InstallerError> {
         let canonical_job_id = canonical_job_id(job_id)?;
         let canonical_root = canonicalize_directory(root)?;
@@ -184,12 +182,6 @@ impl JobTempDir {
 
     pub(crate) fn final_path(&self, kind: ArtifactKind) -> PathBuf {
         self.path.join(kind.fixed_local_file_name())
-    }
-
-    /// Fixed child-process control file holding a nonce-bound all-users job.
-    /// This is intentionally not a caller-provided filename.
-    pub(crate) fn all_users_job_path(&self) -> PathBuf {
-        self.path.join(ALL_USERS_JOB_FILE_NAME)
     }
 
     /// Check a fixed artifact path before a filesystem operation. This catches
@@ -246,57 +238,6 @@ impl JobTempDir {
         Ok(())
     }
 
-    /// Validates a fixed all-users control path before a filesystem operation.
-    /// The elevated child uses this instead of trusting its `job-file`
-    /// argument directly.
-    pub(crate) fn validate_all_users_control_path(
-        &self,
-        path: &Path,
-    ) -> Result<(), InstallerError> {
-        let parent = path
-            .parent()
-            .ok_or_else(|| temp_error("all-users control path has no parent"))?;
-        if parent != self.path {
-            return Err(temp_error(
-                "all-users control path is outside its job temporary directory",
-            ));
-        }
-
-        let file_name = path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .ok_or_else(|| temp_error("all-users control path has no safe file name"))?;
-        if file_name != ALL_USERS_JOB_FILE_NAME {
-            return Err(temp_error(
-                "all-users control path is not a fixed file name",
-            ));
-        }
-
-        self.validate_job_directory()
-    }
-
-    /// Checks that the all-users job file is an ordinary file inside the
-    /// canonical job directory before the unelevated parent starts `runas`.
-    /// The elevated child independently binds its JSON read to a native
-    /// no-follow handle and never relies on this pre-elevation path check.
-    pub(crate) fn validate_existing_all_users_control(
-        &self,
-        path: &Path,
-    ) -> Result<(), InstallerError> {
-        self.validate_all_users_control_path(path)?;
-        if is_link_or_reparse_point(path)? {
-            return Err(temp_error(
-                "all-users control file must not be a link or reparse point",
-            ));
-        }
-        let metadata = fs::symlink_metadata(path)
-            .map_err(|_| temp_error("all-users control file could not be inspected"))?;
-        if !metadata.is_file() {
-            return Err(temp_error("all-users control file must be a regular file"));
-        }
-        Ok(())
-    }
-
     /// Safely removes only the files this capability can have created and then
     /// removes the now-empty job directory. It never walks a directory tree:
     /// unknown entries, links, reparse points, and directories make cleanup
@@ -309,9 +250,6 @@ impl JobTempDir {
                 self.remove_known_artifact(&path)?;
             }
         }
-
-        let all_users_job = self.all_users_job_path();
-        self.remove_known_all_users_control(&all_users_job)?;
 
         fs::remove_dir(&self.path)
             .map_err(|_| temp_error("installer job temporary directory could not be removed"))
@@ -352,29 +290,6 @@ impl JobTempDir {
 
         fs::remove_file(path)
             .map_err(|_| temp_error("installer artifact could not be removed during cleanup"))
-    }
-
-    fn remove_known_all_users_control(&self, path: &Path) -> Result<(), InstallerError> {
-        self.validate_all_users_control_path(path)?;
-
-        let metadata = match fs::symlink_metadata(path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
-            Err(_) => {
-                return Err(temp_error(
-                    "all-users control file could not be inspected for cleanup",
-                ))
-            }
-        };
-
-        if is_link_or_reparse_point(path)? || !metadata.is_file() {
-            return Err(temp_error(
-                "all-users cleanup refused a non-regular control entry",
-            ));
-        }
-
-        fs::remove_file(path)
-            .map_err(|_| temp_error("all-users control file could not be removed during cleanup"))
     }
 }
 

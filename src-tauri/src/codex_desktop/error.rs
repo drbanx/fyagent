@@ -35,12 +35,9 @@ pub enum InstallerErrorCode {
     PackageIdentityMismatch,
     PackageArchitectureMismatch,
     PackageSignatureInvalid,
-    WindowsUacCancelled,
-    WindowsElevationFailed,
     WindowsPackageInUse,
     WindowsDeploymentBlocked,
     WindowsDependencyMissing,
-    WindowsAllUsersUnsupported,
     WindowsDeploymentFailed,
     MultipleInstallations,
     MacDmgMountFailed,
@@ -81,12 +78,9 @@ impl InstallerErrorCode {
             Self::PackageIdentityMismatch => "codexDesktop.error.packageIdentityMismatch",
             Self::PackageArchitectureMismatch => "codexDesktop.error.packageArchitectureMismatch",
             Self::PackageSignatureInvalid => "codexDesktop.error.packageSignatureInvalid",
-            Self::WindowsUacCancelled => "codexDesktop.error.windowsUacCancelled",
-            Self::WindowsElevationFailed => "codexDesktop.error.windowsElevationFailed",
             Self::WindowsPackageInUse => "codexDesktop.error.windowsPackageInUse",
             Self::WindowsDeploymentBlocked => "codexDesktop.error.windowsDeploymentBlocked",
             Self::WindowsDependencyMissing => "codexDesktop.error.windowsDependencyMissing",
-            Self::WindowsAllUsersUnsupported => "codexDesktop.error.windowsAllUsersUnsupported",
             Self::WindowsDeploymentFailed => "codexDesktop.error.windowsDeploymentFailed",
             Self::MultipleInstallations => "codexDesktop.error.multipleInstallations",
             Self::MacDmgMountFailed => "codexDesktop.error.macDmgMountFailed",
@@ -117,8 +111,6 @@ impl InstallerErrorCode {
                 | Self::DownloadTimeout
                 | Self::DownloadCancelled
                 | Self::InsufficientDiskSpace
-                | Self::WindowsUacCancelled
-                | Self::WindowsElevationFailed
                 | Self::WindowsPackageInUse
                 | Self::WindowsDeploymentFailed
                 | Self::MacDmgMountFailed
@@ -136,8 +128,6 @@ impl InstallerErrorCode {
             | Self::DownloadFailed
             | Self::DownloadTimeout
             | Self::DownloadCancelled
-            | Self::WindowsUacCancelled
-            | Self::WindowsElevationFailed
             | Self::WindowsDeploymentFailed
             | Self::MacDmgMountFailed
             | Self::MacCopyFailed
@@ -157,7 +147,6 @@ impl InstallerErrorCode {
             Self::PlatformUnsupported
             | Self::OsVersionUnsupported
             | Self::ArchitectureUnsupported
-            | Self::WindowsAllUsersUnsupported
             | Self::JobAlreadyRunning
             | Self::JobNotFound => SuggestedAction::None,
             _ => SuggestedAction::OpenLogs,

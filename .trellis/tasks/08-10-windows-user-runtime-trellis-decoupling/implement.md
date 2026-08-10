@@ -134,14 +134,47 @@ partial commit.
 
 Commit: `feat(codex): install through the shell user helper`
 
-- [ ] Delete all-users CLI/control/job/DTO/error/deployment branches and
+- [x] Delete all-users CLI/control/job/DTO/error/deployment branches and
       Stage/Provision APIs.
-- [ ] Add the minimal Windows helper binary and independent `asInvoker`
+- [x] Add the minimal Windows helper binary and independent `asInvoker`
       manifest to Cargo/Tauri/NSIS packaging.
-- [ ] Implement fixed CLI/path derivation and Explorer COM launch.
-- [ ] Implement one-shot authenticated pipe and bounded protocol.
-- [ ] Call current-user `AddPackageByUriAsync` only in the helper.
-- [ ] Preserve existing renderer current-user command/DTO behavior.
+- [x] Implement fixed CLI/path derivation and Explorer COM launch.
+- [x] Implement one-shot authenticated pipe and bounded protocol.
+- [x] Call current-user `AddPackageByUriAsync` only in the helper.
+- [x] Preserve existing renderer current-user command/DTO behavior.
+
+The helper is a second Cargo workspace member that inherits version `0.3.1`,
+but the desktop links only its protocol/layout library with default features
+disabled. Packaging alone enables the private Windows deployment runtime. The
+parent pins the installed helper image before Explorer launch, creates one
+session-local first-instance message pipe, reads one bounded raw frame before
+decoding it, then binds PID, session, process token, impersonated pipe token,
+and executable file identity before admitting protocol semantics. Alice is the
+only principal with `FILE_WRITE_DATA | SYNCHRONIZE`; SYSTEM and Administrators
+retain `READ_CONTROL` only, so a helper accidentally launched in Bob or SYSTEM
+context cannot connect before attempting PackageManager. Terminal acceptance
+also requires a clean close within five seconds; extra data, duplicate
+terminal messages, zero-length frames, timeout, and early disconnect fail
+closed.
+
+This commit intentionally leaves the production Windows installation branch
+disabled and the helper runner uncalled. Activating it against the old system
+temporary directory would break verified-byte continuity. Commit 7 must first
+move staging under the install root, establish the share-restricting MSIX file
+pin, and keep that pin alive for the complete helper/PackageManager operation;
+only then may it replace the fail-closed branch.
+
+Validation passed for workspace Rust format/check/Clippy, the complete
+workspace test suite, the helper's 24 protocol/CLI/layout tests with and without
+its runtime feature, x64 Windows target protocol/runtime check and strict
+Clippy, and an isolated parent Windows API scratch check. Version tests passed
+20 cases; focused helper/classifier/Windows-user-scope/DTO tests passed 46
+cases; the release-contract gate passed 474 cases; documentation, TypeScript,
+Prettier, Cargo metadata, and diff checks passed. Independent security review
+reported no remaining P0, P1, or P2 finding for this dormant boundary. Actual
+x64/ARM64 PE link, manifest inspection, Explorer/UAC identity, pipe access
+checks, and PackageManager behavior remain native-CI evidence and are not
+claimed by the Linux checks.
 
 Targeted validation: helper CLI rejection matrix, pipe SID/PID/nonce/duplicate/
 length/timeout/early-exit tests, AddPackage adapter tests, bundle/static command
@@ -160,6 +193,9 @@ Commit: `fix(codex): stage installers under the install root`
       and known-only cleanup.
 - [ ] Add the share-restricting read pin, handle identity capture/recheck, and
       lifetime binding through helper/PackageManager completion.
+- [ ] Make every post-`AddPackageByUriAsync` failure path cancel and observe the
+      WinRT operation, or retain the MSIX pin under an independent owner until
+      helper/PackageManager completion; a pipe timeout must never drop it.
 - [ ] Update upgrade/uninstall cleanup for main/helper/known staging while
       preserving unknown data and tolerating legacy-cleanup failure.
 

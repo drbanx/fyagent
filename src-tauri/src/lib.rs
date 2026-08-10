@@ -96,32 +96,6 @@ use tauri::{Emitter, Listener, Manager};
 #[cfg(not(target_os = "windows"))]
 use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
-/// Handles the two reserved experimental all-users installer flags before the
-/// Tauri runtime exists.  This public binary-facing shim deliberately exposes
-/// no renderer/IPC operation; ordinary startup remains unchanged.
-pub fn maybe_run_codex_desktop_headless() -> Option<i32> {
-    #[cfg(target_os = "windows")]
-    {
-        codex_desktop::platform::windows::elevation::maybe_run_from_process()
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        use codex_desktop::all_users::{
-            parse_headless_invocation, HeadlessInvocation, HEADLESS_EXIT_INVALID_ARGUMENTS,
-            HEADLESS_EXIT_UNSUPPORTED,
-        };
-
-        match parse_headless_invocation(std::env::args_os()) {
-            HeadlessInvocation::NormalApplication => None,
-            HeadlessInvocation::InvalidReservedArguments => Some(HEADLESS_EXIT_INVALID_ARGUMENTS),
-            HeadlessInvocation::PrepareAllUsers | HeadlessInvocation::ElevatedProvision { .. } => {
-                Some(HEADLESS_EXIT_UNSUPPORTED)
-            }
-        }
-    }
-}
-
 #[cfg(target_os = "windows")]
 fn set_windows_app_user_model_id(app: &tauri::AppHandle) {
     let app_id = app.config().identifier.clone();

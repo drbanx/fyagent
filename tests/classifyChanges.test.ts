@@ -104,6 +104,16 @@ describe("repository change classifier", () => {
       domains("contracts", "backend", "windowsNative"),
     ],
     [
+      "Codex Windows user helper",
+      ["src-tauri/user-helper/src/protocol.rs"],
+      domains("contracts", "backend", "windowsNative"),
+    ],
+    [
+      "Codex Windows user helper contract",
+      ["tests/codexUserHelperContract.test.ts"],
+      domains("contracts", "windowsNative"),
+    ],
+    [
       "Cargo dependency root",
       ["src-tauri/Cargo.lock"],
       domains("contracts", "backend", "windowsNative"),
@@ -134,6 +144,7 @@ describe("repository change classifier", () => {
     ".github/workflows/ci.yml",
     "scripts/ci/classify-changes.mjs",
     "scripts/release/release-contract.mjs",
+    "scripts/prepare-windows-user-helper.mjs",
     ".codex/hooks.json",
     "rust-toolchain.toml",
   ])("forces every domain for control-plane path %s", (changedPath) => {

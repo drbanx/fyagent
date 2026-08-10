@@ -5,7 +5,15 @@
 //! invokes that route and returns an unavailable error when the Explorer COM
 //! objects cannot be acquired. It has no elevated fallback.
 
-use std::path::Path;
+use std::{
+    os::windows::ffi::OsStrExt,
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    time::Duration,
+};
 
 use windows::{
     core::{Interface, BSTR},
@@ -24,6 +32,10 @@ use windows::{
 };
 
 use crate::platform::process_launch::{InteractiveUserLauncher, ProcessLaunchError};
+use fyagent_user_helper::{CanonicalJobId, PipeNonce, INSTALL_ACTION};
+
+const USER_HELPER_LAUNCH_TIMEOUT: Duration = Duration::from_secs(30);
+static USER_HELPER_LAUNCH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 pub(crate) struct ExplorerInteractiveUserLauncher;
 
@@ -46,21 +58,93 @@ impl InteractiveUserLauncher for ExplorerInteractiveUserLauncher {
         // grammar; this adapter adds no executable, argument, or fallback.
         launch_from_explorer(format!(r"shell:AppsFolder\{aumid}"))
     }
+
+    fn launch_fyagent_user_helper(
+        &self,
+        job_id: &CanonicalJobId,
+        pipe_nonce: &PipeNonce,
+    ) -> Result<(), ProcessLaunchError> {
+        let helper = crate::platform::process_launch::fixed_user_helper_path()?;
+        let arguments = format!(
+            "{INSTALL_ACTION} --job-id {job_id} --pipe {}",
+            pipe_nonce.as_str()
+        );
+        launch_path_from_explorer_with_arguments(helper, arguments)
+    }
 }
 
 /// Runs the COM automation call on a fresh STA thread. A fresh apartment keeps
 /// the proxy independent from the Tauri runtime worker's COM mode and lets us
 /// balance successful initialization with `CoUninitialize` on the same thread.
 fn launch_from_explorer(target: String) -> Result<(), ProcessLaunchError> {
+    launch_from_explorer_optional_arguments(target, None)
+}
+
+fn launch_path_from_explorer_with_arguments(
+    target: PathBuf,
+    arguments: String,
+) -> Result<(), ProcessLaunchError> {
+    let launch_slot = UserHelperLaunchSlot::acquire()?;
+    let (sender, receiver) = mpsc::sync_channel(1);
+    std::thread::Builder::new()
+        .name("fyagent-user-helper-launch".to_owned())
+        .spawn(move || {
+            let _launch_slot = launch_slot;
+            let result = launch_path_from_explorer_sta(&target, &arguments);
+            let _ = sender.send(result);
+        })
+        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+
+    receiver
+        .recv_timeout(USER_HELPER_LAUNCH_TIMEOUT)
+        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?
+}
+
+struct UserHelperLaunchSlot;
+
+impl UserHelperLaunchSlot {
+    fn acquire() -> Result<Self, ProcessLaunchError> {
+        USER_HELPER_LAUNCH_IN_FLIGHT
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+        Ok(Self)
+    }
+}
+
+impl Drop for UserHelperLaunchSlot {
+    fn drop(&mut self) {
+        USER_HELPER_LAUNCH_IN_FLIGHT.store(false, Ordering::Release);
+    }
+}
+
+fn launch_from_explorer_optional_arguments(
+    target: String,
+    arguments: Option<String>,
+) -> Result<(), ProcessLaunchError> {
     std::thread::Builder::new()
         .name("fyagent-explorer-launch".to_owned())
-        .spawn(move || launch_from_explorer_sta(&target))
+        .spawn(move || launch_from_explorer_sta(&target, arguments.as_deref()))
         .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?
         .join()
         .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?
 }
 
-fn launch_from_explorer_sta(target: &str) -> Result<(), ProcessLaunchError> {
+fn launch_from_explorer_sta(
+    target: &str,
+    arguments: Option<&str>,
+) -> Result<(), ProcessLaunchError> {
+    launch_from_explorer_sta_bstr(BSTR::from(target), arguments)
+}
+
+fn launch_path_from_explorer_sta(target: &Path, arguments: &str) -> Result<(), ProcessLaunchError> {
+    let target = target.as_os_str().encode_wide().collect::<Vec<_>>();
+    launch_from_explorer_sta_bstr(BSTR::from_wide(&target), Some(arguments))
+}
+
+fn launch_from_explorer_sta_bstr(
+    target: BSTR,
+    arguments: Option<&str>,
+) -> Result<(), ProcessLaunchError> {
     let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
     if initialized.is_err() {
         return Err(ProcessLaunchError::InteractiveUserUnavailable);
@@ -87,8 +171,8 @@ fn launch_from_explorer_sta(target: &str) -> Result<(), ProcessLaunchError> {
             .cast()
             .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
 
-        let target = BSTR::from(target);
-        unsafe { shell_dispatch.ShellExecute(&target, &empty, &empty, &empty, &empty) }
+        let arguments = arguments.map(VARIANT::from).unwrap_or_default();
+        unsafe { shell_dispatch.ShellExecute(&target, &arguments, &empty, &empty, &empty) }
             .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)
     })();
 

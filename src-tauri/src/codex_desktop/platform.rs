@@ -329,6 +329,11 @@ impl VerifiedPackage {
         &self.artifact_path
     }
 
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    fn job_id(&self) -> Option<&str> {
+        self.artifact.as_ref().map(DownloadedArtifact::job_id)
+    }
+
     fn platform(&self) -> DesktopPlatform {
         self.locked_release.platform
     }

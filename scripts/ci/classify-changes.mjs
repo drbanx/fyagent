@@ -47,6 +47,7 @@ const CONTROL_PLANE_FILES = new Set([
   "pyproject.toml",
   "rust-toolchain.toml",
   "scripts/generate-download-manifest.mjs",
+  "scripts/prepare-windows-user-helper.mjs",
   "scripts/version.mjs",
   "uv.lock",
 ]);
@@ -55,7 +56,7 @@ const RELEASE_AND_CI_CONTRACT_TEST =
   /^tests\/(?:ci|classifyChanges|githubWorkflow|localBuildBoundary|miseTaskContract|requiredCiGate|release|systemCheck|taskDocs|version|windowsSigningAdapter|writePlatformMetadata|downloadManifest)/u;
 
 const WINDOWS_NATIVE_TEST =
-  /^tests\/(?:codexDesktopDtoContract|codexWindowsUserScopeContract|desktopSecurityBoundary|windowsNsisContract|fixtures\/windows-nsis)/u;
+  /^tests\/(?:codexDesktopDtoContract|codexUserHelperContract|codexWindowsUserScopeContract|desktopSecurityBoundary|windowsNsisContract|fixtures\/windows-nsis)/u;
 
 const FRONTEND_TEST_PREFIXES = Object.freeze([
   "tests/components/",
@@ -101,6 +102,7 @@ const CODEX_WINDOWS_PREFIXES = Object.freeze([
   "src-tauri/src/services/codex_desktop/",
   "src-tauri/src/windows_runtime/",
   "src-tauri/tests/fixtures/codex_desktop/",
+  "src-tauri/user-helper/",
 ]);
 
 const CODEX_WINDOWS_FILES = new Set([

@@ -7,11 +7,19 @@ ordinary installer command surface, trusted application restart commands,
 TypeScript query/hook/card consumers, and platform-specific verification. This
 specification is the current owner of that executable cross-layer boundary: it
 prevents user-controlled installer inputs, wire-format drift, cross-platform
-version-label substitution, cross-user Windows package access, and untrusted
-process restart or launch. The interactive identity proof it consumes is owned
-by [Windows Runtime Security](./windows-runtime-security.md); the Codex Provider
+version-label substitution, cross-user Windows package access, unsafe helper
+activation, and untrusted process restart or launch. The interactive identity
+proof it consumes is owned by
+[Windows Runtime Security](./windows-runtime-security.md); the Codex Provider
 mutation that may offer a restart is owned by
 [Codex Provider Configuration](./codex-provider-configuration.md).
+
+The separate current-user helper does not compensate for the task-wide
+accepted regression in the optional upstream Trellis `0.6.14` Codex hooks.
+Those hooks still lack FyAgent's former realpath containment, exact-source
+import binding, strict session/input checks, and breadcrumb escaping; keep that
+residual visible rather than describing this migration as equivalent hook
+hardening.
 
 ## 2. Signatures
 
@@ -30,8 +38,20 @@ StartInstallRequest serializes as:
     { "expectedReleaseId": "v1:<64 lowercase hex characters>" }
 
 No ordinary command accepts a URL, path, hash, identity, installer scope, or
-validation-bypass flag. The hidden Windows all-users experiment is a
-pre-runtime headless boundary, never one of these commands.
+validation-bypass flag. Windows has no pre-runtime headless/runas installer
+mode and no all-users control/job schema.
+
+The bundled Windows-only helper accepts exactly:
+
+    fyagent-user-helper.exe codex-msix-install \
+      --job-id <canonical-lowercase-uuid> \
+      --pipe <64-lowercase-hex-characters>
+
+It derives its install root from `current_exe()` and its only package path as
+`cache/codex-installer/<job-id>/installer.msix` below that root. The helper
+accepts no executable, command, URI, package path, scope, or validation bypass.
+Its binary is independently manifested `asInvoker`, does not link Tauri, and
+enables native deployment only through its private build feature.
 
 The separate trusted Codex application runtime surface is:
 
@@ -105,32 +125,89 @@ comparison value.
 ### Windows interactive-user scope
 
 - Ordinary Windows construction requires the immutable interactive-user
-  context created by the pre-Tauri runtime proof. It contains the canonical
-  user SID and matching process/Shell session IDs, is internal-only and
-  redacted, and is never reconstructed from package metadata or renderer input.
-- The only ordinary identity path is process token/session -> `GetShellWindow`
-  -> Shell PID/session -> Shell token SID -> exact process/Shell SID comparison.
-  Missing Shell, token/session failure, session mismatch, or SID mismatch is
-  unavailable/fail-closed. `WTSQueryUserToken` is not an ordinary GUI proof.
+  context created before panic logging and Tauri. It contains the canonical
+  Explorer Shell SID/session and Shell-owned Profile/LocalAppData/
+  RoamingAppData paths, is internal-only and redacted, and is never
+  reconstructed from package metadata or renderer input.
+- The authority chain is `GetShellWindow` -> Shell PID/session -> Shell token
+  SID and known folders. The elevated process may belong to Bob while the
+  Shell belongs to Alice; SID equality is telemetry, not admission. Missing
+  Shell, token/session failure, a noncanonical SID, missing Shell path, or a
+  later frozen-context drift is unavailable/fail-closed. `WTSQueryUserToken`,
+  ambient process environment, Bob, SYSTEM, cwd, and a default drive are not
+  ordinary GUI fallbacks.
 - Every ordinary inventory call passes the frozen SID and `PackageTypes.Main`
   to `FindPackagesByUserSecurityIdWithPackageTypes`, the locked Rust binding
   for the explicit-user PackageManager overload. Zero/one/multiple trusted
   Stable Main records for that SID mean not installed, one selected install,
   and ambiguous failure. Packages for another SID and non-Main package types
   never enter the candidate set.
-- Inventory, current-user deployment, post-install verification, runtime
-  inspection/termination, and launch all accept the same frozen context and
-  return or consume context-bound evidence. Each native side-effect boundary
-  re-proves the current process/Shell identity; missing or changed context and
-  package/process owner mismatch stop the remaining lifecycle.
+- Inventory, helper launch, post-install verification, runtime inspection/
+  termination, and launch all accept the same frozen context and return or
+  consume context-bound evidence. Each native side-effect boundary re-proves
+  the current Shell identity; missing or changed context and package/process
+  owner mismatch stop the remaining lifecycle.
 - Launch re-enumerates the same-user trusted Stable Main and requires it to be
   exactly the selected application before invoking Explorer. Restart treats
   multiple same-user Stable packages as ambiguous instead of using version or
   scope ordering to guess one. Runtime process evidence also requires the
   process token SID to match the frozen context.
-- The all-users stage/provision helper remains outside the ordinary package
-  facade and retains its all-user staged-package query. Ordinary code has no
-  fallback or capability that can call it.
+- There is no all-users package facade, staged-package query, Stage, Provision,
+  generic elevation command, parent control file, or fallback to another SID.
+
+### Current-user helper and one-shot protocol
+
+- The elevated parent creates the server before launching the fixed sibling
+  helper through Explorer COM as the frozen Shell user. Explorer receives only
+  the fixed action, canonical job ID, and random 256-bit nonce; neither side
+  accepts an arbitrary program, command, package path, or URI. The helper
+  launch wait is bounded and only one launch may remain in flight; a late COM
+  completion sees a destroyed pipe and therefore cannot reach PackageManager.
+- The named pipe uses the session-local `LOCAL\` namespace plus a fixed
+  versioned prefix and the nonce,
+  first-instance and reject-remote semantics, one message-mode connection, and
+  bounded connect/operation timeouts. Its descriptor grants Alice only
+  `FILE_WRITE_DATA | SYNCHRONIZE`; SYSTEM and Administrators retain only
+  `READ_CONTROL`, never pipe data, synchronize, DACL-write, or owner-write
+  access.
+  This makes a wrong-token administrator or SYSTEM helper fail its fixed
+  client open before it can call PackageManager. No generic-write alias may
+  grant `FILE_CREATE_PIPE_INSTANCE`.
+- The parent first reads one bounded raw frame because Windows pipe-client
+  impersonation binds to the last frame read, but it neither decodes nor
+  accepts that frame yet. It then validates the pipe client PID, process and
+  impersonated-token SID/session, and exact pinned sibling-helper identity;
+  explicitly reverts impersonation; and only then decodes the raw frame. A
+  second connection, timeout, early exit, identity drift, or malformed peer is
+  terminal and destroys the server.
+- The versioned length-prefixed protocol has a small absolute frame cap and
+  permits only `started`, strictly increasing `progress` in `0..100`, one
+  `success`, or one structured bounded `error`. Unknown versions/variants,
+  invalid UTF-8, trailing bytes, oversized lengths, progress regression, a
+  missing start, or duplicate terminal frames fail the operation.
+- The helper's private native runtime calls only current-user
+  `PackageManager.AddPackageByUriAsync` with default signature enforcement. It
+  cannot Stage, Provision, invoke another process, construct Tauri, or reuse a
+  renderer command.
+
+### Activation sequencing
+
+The helper binary, protocol, Explorer launch, and authenticated parent pipe may
+land before the final staging migration, but that scaffolding must remain
+outside the production install call chain. During that intermediate batch,
+Windows `install_current_user` fails closed after verification; it must not
+copy a validated system-temp artifact into the helper's fixed path or run the
+helper without an open byte-identity pin.
+
+Production activation is atomic with install-root staging and the share-
+restricting verified-file handle in the following staging/pin batch. This
+ordering prevents a commit boundary from introducing a re-open/copy TOCTOU
+window and keeps rollback from leaving the helper consuming weaker bytes. A
+pipe timeout, progress-write failure, handler-registration failure, or early
+disconnect must not release that handle while `AddPackageByUriAsync` may still
+be running: the helper must cancel and observe the operation's terminal state,
+or ownership of the pin must remain alive until helper/PackageManager
+completion is independently established.
 
 ### Trusted Provider-triggered application restart
 
@@ -220,12 +297,15 @@ comparison value.
   force-refreshes metadata exactly once for classification: a changed releaseId
   becomes METADATA_CHANGED; an unchanged releaseId remains CHECKSUM_MISMATCH.
 - `VerifiedPackage` retains the locked descriptor, not only a previously
-  verified path. Immediately before each platform consumption, it must reopen
-  the fixed artifact under its canonical UUID job directory, reject a non-
-  regular/link/reparse/path-drift artifact, and recheck exact size and SHA-256
-  against that descriptor. Windows deploy and macOS DMG attach must not run
-  after this check fails; macOS validates the mounted Stable bundle against the
-  same descriptor's exact platform version.
+  verified path. macOS reopens the canonical UUID artifact immediately before
+  DMG attach, rejects a non-regular/link/path-drift artifact, and rechecks exact
+  size and SHA-256. Windows, after every metadata/package check succeeds,
+  reopens the install-root artifact with `GENERIC_READ + FILE_SHARE_READ`,
+  captures and rechecks volume serial/file index/size, and retains that handle
+  until the helper and PackageManager are terminal. Neither platform may
+  consume an artifact after its continuity check fails; macOS also validates
+  the mounted Stable bundle against the same descriptor's exact platform
+  version.
 - macOS standard-directory scanning uses a tolerant identifier probe before
   Stable-only validation. A malformed, non-file, missing-identity, or
   parse-rejected unrelated bundle is skipped. A top-level `.app` symlink whose
@@ -237,22 +317,6 @@ comparison value.
   package discovery keeps the strict wrapper and rejects every escaped `.app`
   candidate. Directory-enumeration failure, a non-symlink local canonical-path
   escape, or a known Stable candidate's strict failure remains fail closed.
-
-### Experimental all-users boundary
-
-- All-users provisioning is a Windows-only pre-runtime headless mode; it is
-  never added to the ordinary renderer IPC surface.
-- The elevated child rebuilds the fixed UUID/job-file capability path and asks
-  an injected `AllUsersJobControlReader` for at most 16 KiB of JSON. Generic
-  code must not `metadata`, `canonicalize`, or reopen that parent-owned path.
-- The native reader opens the control file once with
-  `FILE_FLAG_OPEN_REPARSE_POINT`, rejects a reparse leaf, verifies the final
-  handle path is the expected fixed local drive and a regular file, then reads
-  through that same handle. It never uses `fs::read(expected_job_path)`.
-- The child independently force-refreshes its release anchor and binds it to
-  the job before deployment. It writes no parent-temp result file; only a
-  protected ProgramData copy that is rehashed/revalidated may reach Stage and
-  Provision.
 
 ## 4. Validation & Error Matrix
 
@@ -273,14 +337,19 @@ comparison value.
 | ZIP/ZIP64 disk fields disagree, ZIP64 records are missing/misplaced/extensible, or directory bounds drift                      | PACKAGE_PARSE_FAILED before manifest parsing or PackageManager deployment.                                                                                              |
 | Declared ZIP uncompressed total exceeds 4 GiB or its checked sum overflows                                                     | PACKAGE_PARSE_FAILED; do not weaken the separately bounded 512 KiB root-manifest read.                                                                                  |
 | Platform verification, signature, identity, architecture, or post-check fails                                                  | Stable platform/package error; do not launch or downgrade.                                                                                                              |
-| Interactive context is missing/drifts, an inventory receipt names another context, or a package/process belongs to another SID | Fail the ordinary operation before the next deploy, close, or launch side effect; never fall back to all-users inventory.                                               |
+| Process is Bob and the frozen Explorer Shell user is Alice                                                                     | Discover, install, verify, restart, and launch for Alice; never select Bob or require process/Shell SID equality.                                                       |
+| Interactive context is missing/drifts, an inventory receipt names another context, or a package/process belongs to another SID | Fail the ordinary operation before the next helper, close, or launch side effect; never fall back to another user or all-users inventory.                               |
 | The same interactive SID has more than one trusted Stable Main package                                                         | Discovery returns non-retryable `MULTIPLE_INSTALLATIONS` plus `resolve_path_conflict`; restart reports `ambiguous/installations`; neither selects, closes, or launches. |
+| Helper peer PID/image/session/SID is wrong, a second client arrives, or connect/operation timeout expires                      | Destroy the one-shot server and fail the job before accepting a deployment result.                                                                                      |
+| Helper frame has an unknown version/kind, exceeds the cap, regresses progress, arrives before `started`, or repeats terminal   | Reject the protocol and fail the job; never reinterpret arbitrary bytes or continue with PackageManager.                                                                |
+| Helper scaffolding exists before install-root staging and the verified-file pin are available                                  | Windows install fails closed; do not copy from system temp, activate the helper, or weaken byte continuity.                                                             |
+| Pinned Windows artifact identity drifts or cannot be opened with the required share mode                                       | Fail before Explorer launches the helper and keep PackageManager unreachable.                                                                                           |
 | Provider save leaves live Codex bytes unchanged, or runtime status is not exactly one trusted running instance                 | Do not offer or start the Provider-triggered restart flow.                                                                                                              |
 | Graceful close exceeds 8 seconds                                                                                               | Return an opaque force-confirmation capability; do not terminate automatically.                                                                                         |
 | Force continuation is malformed, expired, reused, or bound to a drifted installation/process/context                           | Reject without closing, terminating, or launching another process.                                                                                                      |
 | The replacement process is absent after 15 seconds                                                                             | Return restart failure, preserve saved configuration, and direct the user to manual recovery.                                                                           |
 | Ordinary renderer tries to provide scope/URL/path/extra request field                                                          | DTO deserialization or validation rejects it.                                                                                                                           |
-| Elevated all-users job control is empty, oversized, reparse-backed, remote, or changes capability path                         | WINDOWS_ELEVATION_FAILED before the fresh anchor, validator, Stage, or Provision adapter runs.                                                                          |
+| Helper CLI adds/reorders/duplicates an option or names a command, package path, URI, scope, noncanonical job ID, or nonce      | Reject before pipe connection or PackageManager creation.                                                                                                               |
 
 Diagnostics may contain only the structured, redacted fields of
 InstallerErrorDto; never pass raw credential-bearing URLs, paths, cookies, or
@@ -343,18 +412,32 @@ such controls.
   sample recovers from the new baseline. `job_installing` with non-null
   current/total/speed values renders the percentage without any byte or `/s`
   label.
-- Integration: static audit that ordinary IPC has no all-users or custom-input
-  surface, and each command remains registered exactly once.
-- All-users: inject a bounded control reader; assert oversized JSON rejects
-  before metadata/native adapters, generic code has no path reopen, and the
-  Windows reader has a no-follow same-handle/final-path/fixed-drive audit.
-- Platform acceptance: real Windows x64, Windows ARM64, Apple Silicon macOS,
-  and mainland-network checks remain human-owned and are not replaced by these
-  tests.
+- Integration: static audit that ordinary IPC has no all-users, headless,
+  runas, URL/path/scope, or custom-command surface, and each ordinary command
+  remains registered exactly once.
+- Helper: portable Rust tests reject every CLI shape except the fixed action,
+  canonical UUID, and 64-character lowercase nonce; derive only the fixed
+  install-root layout; cover every bounded protocol enum, version, length,
+  UTF-8, order, monotonic-progress, timeout, early-exit, duplicate-terminal,
+  and error mapping path. Static tests prove the crate's default feature is
+  protocol/layout-only, the binary opts into its private runtime, the manifest
+  is `asInvoker`, client access is minimal, each message is one `WriteFile`,
+  and the helper contains AddPackage only—never Stage, Provision, Tauri, or
+  generic process execution.
+- Parent helper boundary: portable fakes cover nonce creation, first-instance/
+  local-only/message-mode pipe creation, Alice/SYSTEM/Administrators DACL,
+  PID/token SID/session and exact-image admission, one connection, timeouts,
+  malformed/ordered frames, and guaranteed handle destruction. The helper-
+  scaffolding batch also proves production Windows installation is fail-closed
+  until install-root staging and the verified-file pin activate together.
+- Platform acceptance: real Windows x64/ARM64 jobs own Explorer launch, pipe
+  identity, PackageManager, setup, UAC, and uninstall evidence. Apple Silicon
+  macOS and mainland-network evidence remain separately owned; portable tests
+  do not replace any native claim.
 - Windows user scope: hermetic multi-SID fakes prove explicit SID/Main calls,
   other-user exclusion, same-user 0/1/multiple behavior, context receipt drift,
   owner drift, post-verify continuity, launch/restart revalidation, and zero
-  ordinary calls into all-users capability. If a unique record becomes
+  fallback into another-user or all-users capability. If a unique record becomes
   multiple during post-install or pre-launch revalidation, tests retain
   non-retryable `MULTIPLE_INSTALLATIONS` and prove launch is not called. A
   native smoke on both matching
@@ -367,7 +450,7 @@ such controls.
   drift, no launch before exit, 15-second launch verification, and
   not-running/unsupported/ambiguous/manual outcomes. Multi-SID fixtures prove
   another user's same-PFN process cannot be inspected, closed, or launched and
-  that the ordinary restart path never reaches all-users inventory.
+  that the ordinary restart path never broadens inventory scope.
 
 ## 7. Wrong vs Correct
 
@@ -408,17 +491,19 @@ display string.
 ### Wrong
 
 ```rust
-// Checking a parent-owned path and later reopening it leaves a TOCTOU window.
-let metadata = std::fs::metadata(expected_job_path)?;
-let bytes = std::fs::read(expected_job_path)?;
+// Copying already-verified temporary bytes to the helper layout breaks the
+// identity chain before the Shell user reopens the destination.
+std::fs::copy(system_temp_artifact, helper_fixed_path)?;
+launch_user_helper(helper_fixed_path)?;
 ```
 
 ### Correct
 
 ```rust
-// Native code verifies and consumes one no-follow handle; generic protocol
-// code receives only the already-bounded byte vector.
-let bytes = job_control_reader.read_job_control(expected_job_path, 16 * 1024)?;
+// Stage at the helper's fixed install-root path, then pin that exact identity
+// against write/delete/rename until PackageManager and the helper are done.
+let pinned = VerifiedFilePin::open(final_install_root_artifact)?;
+run_pinned_user_helper(&context, job_id, &pinned).await?;
 ```
 
 Likewise, do not merely inspect the installer job before a delayed restart:

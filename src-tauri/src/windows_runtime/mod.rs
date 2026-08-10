@@ -363,9 +363,8 @@ pub(crate) fn user_sid_matches_context(
 static USER_CONTEXT: OnceLock<Result<WindowsInteractiveUserContext, WindowsStartupErrorCode>> =
     OnceLock::new();
 
-/// Initializes the frozen Shell-user authority.  `main` calls this before the
-/// panic hook, headless compatibility parsing, Tauri construction, or user
-/// path access.
+/// Initializes the frozen Shell-user authority. `main` calls this before the
+/// panic hook, Tauri construction, or user path access.
 pub fn initialize_windows_user_context() -> Result<(), WindowsStartupErrorCode> {
     #[cfg(target_os = "windows")]
     let result = USER_CONTEXT.get_or_init(native::resolve_interactive_user_context);

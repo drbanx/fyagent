@@ -67,22 +67,21 @@ describe("Codex Windows interactive-user contract", () => {
     expect(startup).not.toContain("FOLDERID_ProgramData");
   });
 
-  it("keeps the explicit-SID Main query separate from all-users staging", () => {
+  it("keeps the explicit-SID Main query and removes main-process staging", () => {
     expect(
       deployment.match(/FindPackagesByUserSecurityIdWithPackageTypes/g),
     ).toHaveLength(1);
     expect(deployment.match(/PackageTypes::Main/g)).toHaveLength(1);
-    expect(deployment.match(/\.FindPackages\(\)/g)).toHaveLength(1);
+    expect(deployment).not.toContain(".FindPackages()");
     expect(deployment).not.toContain("FindPackagesWithPackageTypes");
-    expect(deployment).toMatch(
-      /fn staged_package_family_name\([\s\S]*?\.FindPackages\(\)/,
-    );
+    expect(deployment).not.toContain("StagePackageByUriAsync");
+    expect(deployment).not.toContain("ProvisionPackageForAllUsersAsync");
 
     const ordinaryFacade = deployment.match(
       /trait WindowsPackageManager[\s\S]*?\n}/,
     )?.[0];
     expect(ordinaryFacade).toBeDefined();
-    expect(ordinaryFacade).not.toContain("FindPackages()");
+    expect(ordinaryFacade).not.toMatch(/all[_-]?users|FindPackages/);
   });
 
   it("threads the frozen context through inventory, deployment, runtime, and launch", () => {
@@ -123,9 +122,7 @@ describe("Codex Windows interactive-user contract", () => {
     expect(main.indexOf("initialize_windows_user_context()")).toBeGreaterThan(
       -1,
     );
-    expect(main.indexOf("initialize_windows_user_context()")).toBeLessThan(
-      main.indexOf("maybe_run_codex_desktop_headless()"),
-    );
+    expect(main).not.toContain("maybe_run_codex_desktop_headless");
     expect(host).toContain("normalize_single_instance_args(args)");
     expect(startupDomain).toContain("MAX_SINGLE_INSTANCE_ARGUMENTS: usize = 8");
     expect(startupDomain).toContain(
@@ -161,6 +158,9 @@ describe("Codex Windows interactive-user contract", () => {
   });
 
   it("does not consume elevated-process user path environment on Windows", () => {
+    expect(hostConfig).toContain(
+      '#[cfg(any(not(target_os = "windows"), test, feature = "test-hooks"))]',
+    );
     expect(hostConfig).toMatch(
       /#\[cfg\(target_os = "windows"\)\]\s+\{\s+return crate::windows_runtime::user_home_dir\(\)/,
     );

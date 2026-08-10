@@ -1791,6 +1791,7 @@ dependencies = [
  "dirs 5.0.1",
  "flate2",
  "futures",
+ "fyagent-user-helper",
  "hmac",
  "http",
  "http-body",
@@ -1850,6 +1851,16 @@ dependencies = [
  "winreg 0.55.0",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "fyagent-user-helper"
+version = "0.3.1"
+dependencies = [
+ "embed-resource",
+ "url",
+ "windows",
+ "windows-future",
 ]
 
 [[package]]

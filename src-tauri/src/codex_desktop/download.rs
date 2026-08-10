@@ -320,6 +320,11 @@ impl DownloadedArtifact {
         &self.path
     }
 
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    pub(crate) fn job_id(&self) -> &str {
+        &self.job_id
+    }
+
     /// Reopens the downloader-owned UUID directory and repeats the fixed-file
     /// and descriptor integrity gates. `JobTempDir::open_existing` restores
     /// canonical root/direct-child containment, while

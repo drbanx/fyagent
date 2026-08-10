@@ -2,32 +2,35 @@
 //!
 //! The normal adapter has no install scope, no arbitrary URL/path input, and
 //! no elevation capability. It accepts only core-owned `VerifiedPackage`
-//! evidence, deploys it by local `file://` URI through PackageManager, then
-//! relies on the common service to re-query the registered package.
+//! evidence, delegates current-user deployment to the installed unelevated
+//! helper, then relies on the common service to re-query the registered package.
 
 mod deployment;
 #[cfg(target_os = "windows")]
-pub(crate) mod elevation;
+mod helper;
 mod manifest;
 
 use std::{
     fmt,
     path::{Path, PathBuf},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
+
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::future::BoxFuture;
 
 use self::{
     deployment::{
-        deployment_error, launch_error, local_file_uri, verify_context_evidence,
-        WindowsDeploymentProgressSink, WindowsPackageManager, WindowsPackageRecord,
+        deployment_error, launch_error, verify_context_evidence, WindowsPackageManager,
+        WindowsPackageRecord,
     },
     manifest::{parse_msix_manifest, WindowsPackageManifest},
 };
+
+#[cfg(test)]
+use self::deployment::{local_file_uri, WindowsDeploymentProgressSink};
 
 #[cfg(test)]
 use self::deployment::{
@@ -43,13 +46,14 @@ use super::{
     RestartInstallationScope, RuntimeInspection, TrustedInstallationCandidate,
     TrustedRuntimeInstance, VerifiedPackage, WINDOWS_CODEX_STABLE_IDENTITY,
 };
+#[cfg(test)]
+use crate::codex_desktop::types::{JobProgress, ProgressPhase};
 use crate::codex_desktop::{
     download::DownloadedArtifact,
     error::{InstallerError, InstallerErrorCode},
     types::{
         CpuArchitecture, DesktopPlatform, InstalledApplication, InstalledApplicationSummary,
-        JobProgress, LaunchTarget, LocalInstallStatus, PlatformVersion, ProgressPhase,
-        ReleaseDescriptor, UnsupportedReason,
+        LaunchTarget, LocalInstallStatus, PlatformVersion, ReleaseDescriptor, UnsupportedReason,
     },
 };
 use crate::windows_runtime::InteractiveUserContext;
@@ -347,26 +351,42 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         package: &'a VerifiedPackage,
         progress: PlatformProgressSink,
     ) -> BoxFuture<'a, Result<(), InstallerError>> {
-        let package_manager = self.package_manager.clone();
-        let user_context = self.user_context.clone();
-        let host = self.host.clone();
-        let package = package.clone();
-        let host_error = self.host_support_error();
-        Box::pin(async move {
-            if let Some(error) = host_error {
-                return Err(error);
-            }
-            run_blocking(move || {
-                install_current_user(
-                    package_manager.as_ref(),
-                    &user_context,
-                    &host,
-                    &package,
-                    progress,
-                )
+        #[cfg(test)]
+        {
+            let package_manager = self.package_manager.clone();
+            let user_context = self.user_context.clone();
+            let host = self.host.clone();
+            let package = package.clone();
+            let host_error = self.host_support_error();
+            Box::pin(async move {
+                if let Some(error) = host_error {
+                    return Err(error);
+                }
+                run_blocking(move || {
+                    install_current_user(
+                        package_manager.as_ref(),
+                        &user_context,
+                        &host,
+                        &package,
+                        progress,
+                    )
+                })
+                .await
             })
-            .await
-        })
+        }
+
+        #[cfg(not(test))]
+        {
+            let _ = (package, progress);
+            Box::pin(async {
+                Err(InstallerError::new(
+                    InstallerErrorCode::WindowsDeploymentFailed,
+                )
+                .with_diagnostic_message(
+                    "the current-user helper remains disabled until verified package pinning is active",
+                ))
+            })
+        }
     }
 
     fn launch<'a>(
@@ -611,26 +631,12 @@ fn validate_package(
     let manifest = parse_msix_manifest(artifact_path)?;
     validate_manifest_for_release(&manifest, host, publisher_evidence, release)?;
     // Structural ZIP/manifest checks and the exact Publisher evidence gate are
-    // complete here. PackageManager performs Windows' actual MSIX signature
-    // and chain validation during `AddPackageByUriAsync`; a deployment failure
-    // can therefore never become a successful installation result.
+    // complete here. The unelevated helper performs Windows' signature and
+    // chain validation; a deployment failure cannot become a success result.
     Ok(())
 }
 
-/// Repeats the Windows host and MSIX manifest trust gates for the experimental
-/// elevated child.  It deliberately returns no `VerifiedPackage`: all-users
-/// provisioning is not part of the normal current-user platform trait and
-/// cannot be reached through ordinary IPC.
-#[cfg(target_os = "windows")]
-pub(crate) fn revalidate_all_users_package(
-    release: &ReleaseDescriptor,
-    artifact_path: &Path,
-) -> Result<(), InstallerError> {
-    let host = WindowsHost::for_current_host()?;
-    let publisher_evidence = current_official_publisher_evidence()?;
-    validate_package(&host, &publisher_evidence, release, artifact_path)
-}
-
+#[cfg(test)]
 fn install_current_user(
     package_manager: &dyn WindowsPackageManager,
     user_context: &InteractiveUserContext,
@@ -979,14 +985,13 @@ mod tests {
         io::Write,
         path::PathBuf,
         sync::{
-            atomic::{AtomicBool, AtomicUsize, Ordering},
+            atomic::{AtomicBool, Ordering},
             Arc, Mutex,
         },
     };
 
     use super::*;
     use crate::codex_desktop::{
-        all_users::{AllUsersProvisioner, ValidatedAllUsersJob},
         download::DownloadedArtifact,
         error::{InstallerErrorCode, SuggestedAction},
         temp::JobTempDir,
@@ -1048,7 +1053,6 @@ mod tests {
         launched_aumids: Mutex<Vec<String>>,
         launch_result: Mutex<Result<(), WindowsNativeError>>,
         operations: Mutex<Vec<FakePackageOperation>>,
-        all_users_calls: AtomicUsize,
     }
 
     impl FakePackageManager {
@@ -1076,7 +1080,6 @@ mod tests {
                 launched_aumids: Mutex::new(Vec::new()),
                 launch_result: Mutex::new(Ok(())),
                 operations: Mutex::new(Vec::new()),
-                all_users_calls: AtomicUsize::new(0),
             }
         }
 
@@ -1131,10 +1134,6 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .clone()
-        }
-
-        fn all_users_call_count(&self) -> usize {
-            self.all_users_calls.load(Ordering::Acquire)
         }
     }
 
@@ -1243,20 +1242,6 @@ mod tests {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .for_context(context);
             Ok(WindowsUserOperationReceipt::for_test(evidence))
-        }
-    }
-
-    // The same fake deliberately owns the separate elevated capability. The
-    // ordinary adapter receives it only through WindowsPackageManager, so any
-    // capability-boundary regression makes these zero-call assertions fail.
-    impl AllUsersProvisioner for FakePackageManager {
-        fn stage_and_provision(
-            &self,
-            _job: &ValidatedAllUsersJob,
-            _release: &ReleaseDescriptor,
-        ) -> Result<(), InstallerError> {
-            self.all_users_calls.fetch_add(1, Ordering::AcqRel);
-            Ok(())
         }
     }
 
@@ -1414,11 +1399,10 @@ mod tests {
                 canonical_sid: USER_SID.to_owned(),
             }]
         );
-        assert_eq!(manager.all_users_call_count(), 0);
     }
 
     #[tokio::test]
-    async fn explicit_sid_main_inventory_ignores_other_users_and_never_queries_all_users() {
+    async fn explicit_sid_main_inventory_ignores_other_users() {
         let manager = Arc::new(FakePackageManager::with_user_records([
             (
                 USER_SID,
@@ -1462,7 +1446,6 @@ mod tests {
                 canonical_sid: USER_SID.to_owned(),
             }]
         );
-        assert_eq!(manager.all_users_call_count(), 0);
     }
 
     #[tokio::test]
@@ -1494,7 +1477,6 @@ mod tests {
             FakePackageOperation::InventoryMain { canonical_sid }
                 if canonical_sid == USER_SID
         )));
-        assert_eq!(manager.all_users_call_count(), 0);
     }
 
     #[tokio::test]
@@ -1530,7 +1512,6 @@ mod tests {
             FakePackageOperation::InventoryMain { canonical_sid }
                 if canonical_sid == USER_SID
         )));
-        assert_eq!(manager.all_users_call_count(), 0);
     }
 
     #[tokio::test]
@@ -1556,7 +1537,6 @@ mod tests {
             wrong_owner.code(),
             InstallerErrorCode::PackageIdentityMismatch
         );
-        assert_eq!(manager.all_users_call_count(), 0);
     }
 
     #[tokio::test]
@@ -1872,7 +1852,6 @@ mod tests {
             Some(FakePackageOperation::InventoryMain { canonical_sid })
                 if canonical_sid == USER_SID
         ));
-        assert_eq!(manager.all_users_call_count(), 0);
     }
 
     #[tokio::test]
@@ -2018,7 +1997,6 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .is_empty());
-        assert_eq!(manager.all_users_call_count(), 0);
     }
 
     #[tokio::test]

@@ -16,9 +16,11 @@ Release, changing a toolchain, or rewriting historical release records.
 
 ## 2. Canonical Metadata
 
+`src-tauri/Cargo.toml`:
+
 ```toml
 [workspace]
-members = ["."]
+members = [".", "user-helper"]
 resolver = "2"
 
 [workspace.package]
@@ -29,15 +31,26 @@ name = "fyagent"
 version.workspace = true
 ```
 
+`src-tauri/user-helper/Cargo.toml`:
+
+```toml
+[package]
+name = "fyagent-user-helper"
+version.workspace = true
+```
+
 - `src-tauri/Cargo.toml [workspace.package].version` is the only manually
   maintained application-version literal.
-- The workspace contains exactly the root package. Removed installer helper
-  crates must not remain as workspace members or local lockfile packages.
+- The workspace contains exactly the root package and `user-helper`, in that
+  order. Both package manifests inherit `workspace.package.version` through
+  exactly one `version.workspace = true` assignment and contain no literal
+  package version.
 - `package.json` is private and does not declare an application version.
 - `src-tauri/tauri.conf.json` omits `version`, so Tauri inherits Cargo
   metadata.
-- `src-tauri/Cargo.lock` contains exactly one source-less local package block
-  named `fyagent`, and its version equals the workspace version.
+- `src-tauri/Cargo.lock` contains exactly two source-less local package blocks,
+  named `fyagent` and `fyagent-user-helper`. Each appears once and each version
+  equals the workspace version; no other source-less local package is accepted.
 
 The accepted version grammar is stable SemVer `X.Y.Z`: no `v` prefix,
 prerelease, build metadata, leading zero, or omitted component. Components use
@@ -66,9 +79,12 @@ mise run version:bump -- patch|minor|major [--apply]
   accepts exactly `v` plus the canonical version.
 - `set` and `bump` preview by default. `--apply` is the only project-level
   write authorization.
-- A write changes only `src-tauri/Cargo.toml` and the `fyagent` block in
-  `src-tauri/Cargo.lock`. It must not rewrite dependencies, package.json,
-  Tauri configuration, release workflow, docs, tags, or assets.
+- A write changes only `src-tauri/Cargo.toml` and the version field in both
+  local `fyagent` and `fyagent-user-helper` blocks of
+  `src-tauri/Cargo.lock`. The helper manifest already inherits the workspace
+  value and must not be rewritten. Dependencies, package.json, Tauri
+  configuration, release workflow, docs, tags, and assets are also outside the
+  write set.
 - Each target uses a unique same-directory temporary file, complete write,
   `fsync`, close, and rename. If a later write or post-write contract check
   fails, every already replaced target is restored through the same atomic
@@ -140,23 +156,27 @@ attachment and does not attest itself.
 
 ## 5. Change and Failure Rules
 
-| Condition                                                                                              | Required result                                                                                |
-| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| Workspace member, resolver, inherited version, private package flag, or duplicate version field drifts | `version:check` fails before release or version writes.                                        |
-| Version is not stable `X.Y.Z`                                                                          | `get`, `set`, `bump`, or `check` fails without writes.                                         |
-| A component exceeds `65535` while entering a Windows bundle or formal Release                          | The NSIS/release contract fails before packaging; the canonical Cargo value is not rewritten.  |
-| Local `fyagent` lock block is missing, duplicated, sourced, or mismatched                              | `version:check` fails; `set` may repair only version drift after every other preflight passes. |
-| Tag differs from `v` plus the canonical version                                                        | Eligibility/version checking fails before platform builds.                                     |
-| An asset contains a v-prefixed, wrong, or missing version                                              | Platform or aggregate validation rejects it.                                                   |
-| Installer, metadata, signing status, or attestation subject set is missing or has extras               | Evidence generation/publication stops.                                                         |
-| A write fails after one canonical file was replaced                                                    | Restore all touched files, remove temporary files, and fail with rollback evidence.            |
+| Condition                                                                                                | Required result                                                                                                     |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Workspace member, resolver, inherited version, private package flag, or duplicate version field drifts   | `version:check` fails before release or version writes.                                                             |
+| Version is not stable `X.Y.Z`                                                                            | `get`, `set`, `bump`, or `check` fails without writes.                                                              |
+| A component exceeds `65535` while entering a Windows bundle or formal Release                            | The NSIS/release contract fails before packaging; the canonical Cargo value is not rewritten.                       |
+| Either local `fyagent` / `fyagent-user-helper` lock block is missing, duplicated, sourced, or mismatched | `version:check` fails; `set` may repair only version drift in both local blocks after every other preflight passes. |
+| Tag differs from `v` plus the canonical version                                                          | Eligibility/version checking fails before platform builds.                                                          |
+| An asset contains a v-prefixed, wrong, or missing version                                                | Platform or aggregate validation rejects it.                                                                        |
+| Installer, metadata, signing status, or attestation subject set is missing or has extras                 | Evidence generation/publication stops.                                                                              |
+| A write fails after one canonical file was replaced                                                      | Restore all touched files, remove temporary files, and fail with rollback evidence.                                 |
 
 ## 6. Tests Required
 
 - Node version tests cover get/check/set/bump, stable SemVer rejection,
   preview/apply, structural preflight, exact tag equality, local lock drift,
   duplicate/missing metadata, CRLF preservation, unique temporary files, and
-  rollback after write or post-write failure.
+  rollback after write or post-write failure. Workspace fixtures require
+  exactly `members = [".", "user-helper"]`, version inheritance in both
+  manifests, exactly two source-less local lock packages, and synchronized
+  root-manifest plus two-lock-block updates while the helper manifest remains
+  byte-identical.
 - `tests/versionConsistency.test.ts` delegates to the canonical script rather
   than implementing another version parser.
 - Download/release asset tests assert all ten exact names, the two Windows NSIS

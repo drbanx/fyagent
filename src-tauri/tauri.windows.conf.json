@@ -1,5 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeDevCommand": "node scripts/prepare-windows-user-helper.mjs && pnpm run dev:renderer",
+    "beforeBuildCommand": "pnpm run build:renderer && node scripts/prepare-windows-user-helper.mjs"
+  },
   "app": {
     "windows": [
       {
@@ -16,6 +20,7 @@
   },
   "bundle": {
     "targets": ["nsis"],
+    "externalBin": ["binaries/fyagent-user-helper"],
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"

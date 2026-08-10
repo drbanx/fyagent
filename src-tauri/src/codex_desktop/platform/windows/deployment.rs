@@ -1,10 +1,13 @@
-//! Narrow Windows PackageManager, AUMID, and disk-space boundaries.
+//! Narrow Windows PackageManager inventory, AUMID, and disk-space boundaries.
 //!
-//! The adapter above this module owns all allowlist decisions.  This layer
-//! accepts only a local `file://` URI, reports normalized progress, and never
-//! exposes WinRT, HRESULT text, or a raw filesystem path to the common domain.
+//! Package deployment belongs exclusively to the unelevated user helper. The
+//! main runtime keeps only exact-user inventory and launch operations and must
+//! not call PackageManager add, stage, or provisioning APIs.
 
-use std::{fmt, path::Path, sync::Arc};
+use std::{fmt, path::Path};
+
+#[cfg(test)]
+use std::sync::Arc;
 
 use url::Url;
 
@@ -16,6 +19,7 @@ use crate::windows_runtime::InteractiveUserContext;
 
 /// Callback used by the PackageManager facade. Values are normalized into the
 /// inclusive `[0, 100]` range before leaving this module.
+#[cfg(test)]
 pub(crate) type WindowsDeploymentProgressSink = Arc<dyn Fn(u32) + Send + Sync>;
 
 /// Immutable, redacted proof that a package-manager result belongs to the
@@ -185,12 +189,16 @@ pub(crate) trait WindowsPackageManager: Send + Sync {
         context: &InteractiveUserContext,
     ) -> Result<WindowsPackageInventory, WindowsNativeError>;
 
+    #[cfg(test)]
     fn deploy_current_user(
         &self,
         context: &InteractiveUserContext,
         package_file_uri: &str,
         progress: WindowsDeploymentProgressSink,
-    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError>;
+    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
+        let _ = (context, package_file_uri, progress);
+        Err(WindowsNativeError::unavailable())
+    }
 
     /// Launches an already verified app identity. The system implementation
     /// delegates this to the interactive user's Explorer shell rather than
@@ -273,36 +281,6 @@ pub(crate) fn deployment_error(error: WindowsNativeError) -> InstallerError {
         installer_error = installer_error.with_platform_error_code(format_hresult(hresult));
     }
     installer_error
-}
-
-/// `StagePackageByUriAsync` / `ProvisionPackageForAllUsersAsync` are optional
-/// on older or restricted Windows deployments.  Keep that unsupported state
-/// distinct from package policy/signature/dependency failures, which retain
-/// the existing deployment HRESULT mapping.
-#[cfg(target_os = "windows")]
-fn all_users_api_error(error: WindowsNativeError) -> InstallerError {
-    match error.hresult().map(|value| value as u32) {
-        // E_NOINTERFACE, ERROR_CALL_NOT_IMPLEMENTED, and ERROR_PROC_NOT_FOUND.
-        Some(0x8000_4002 | 0x8007_0078 | 0x8007_007F) => {
-            let mut installer_error =
-                InstallerError::new(InstallerErrorCode::WindowsAllUsersUnsupported)
-                    .with_diagnostic_message(
-                        "Windows does not expose the required all-users PackageManager API",
-                    );
-            if let Some(hresult) = error.hresult() {
-                installer_error = installer_error.with_platform_error_code(format_hresult(hresult));
-            }
-            installer_error
-        }
-        _ => deployment_error(error),
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn all_users_stage_record_error() -> InstallerError {
-    InstallerError::new(InstallerErrorCode::WindowsAllUsersUnsupported).with_diagnostic_message(
-        "Windows did not expose one exact staged Stable package family for provisioning",
-    )
 }
 
 /// Verified application launch failures are not package deployment results.
@@ -393,28 +371,6 @@ pub(crate) fn local_file_uri(package_path: &Path) -> Result<String, InstallerErr
     Ok(uri.into())
 }
 
-/// Experimental all-users provisioning stays outside [`WindowsPackageManager`]
-/// because the normal platform trait must remain current-user only.  The
-/// elevated caller reaches this narrow helper only after its job protocol has
-/// repeated hash, manifest, identity, architecture, OS, and disk checks.
-#[cfg(target_os = "windows")]
-pub(crate) fn stage_and_provision_all_users(
-    package_path: &Path,
-    expected_identity: &str,
-    expected_publisher: &str,
-    expected_version: &PlatformVersion,
-    expected_architecture: CpuArchitecture,
-) -> Result<(), InstallerError> {
-    let package_file_uri = local_file_uri(package_path)?;
-    native::stage_and_provision_all_users(
-        &package_file_uri,
-        expected_identity,
-        expected_publisher,
-        expected_version,
-        expected_architecture,
-    )
-}
-
 #[cfg(target_os = "windows")]
 #[derive(Debug, Default)]
 pub struct SystemWindowsPackageManager;
@@ -426,15 +382,6 @@ impl WindowsPackageManager for SystemWindowsPackageManager {
         context: &InteractiveUserContext,
     ) -> Result<WindowsPackageInventory, WindowsNativeError> {
         native::packages_for_user_main(context)
-    }
-
-    fn deploy_current_user(
-        &self,
-        context: &InteractiveUserContext,
-        package_file_uri: &str,
-        progress: WindowsDeploymentProgressSink,
-    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
-        native::deploy_current_user(context, package_file_uri, progress)
     }
 
     fn launch_aumid(
@@ -512,21 +459,6 @@ mod native {
         path::{Path, PathBuf},
     };
 
-    use windows::{
-        core::{HSTRING, PCWSTR},
-        Foundation::Uri,
-        Management::Deployment::{
-            AddPackageOptions, DeploymentProgress, DeploymentResult, PackageManager, PackageTypes,
-            StagePackageOptions,
-        },
-        System::ProcessorArchitecture,
-        Win32::{
-            Storage::FileSystem::{GetDiskFreeSpaceExW, GetVolumePathNameW},
-            System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED},
-        },
-    };
-    use windows_future::AsyncOperationProgressHandler;
-
     #[cfg(test)]
     use windows::{
         core::PWSTR,
@@ -539,14 +471,21 @@ mod native {
             System::Threading::{GetCurrentProcess, OpenProcessToken},
         },
     };
+    use windows::{
+        core::{HSTRING, PCWSTR},
+        Management::Deployment::{PackageManager, PackageTypes},
+        System::ProcessorArchitecture,
+        Win32::{
+            Storage::FileSystem::{GetDiskFreeSpaceExW, GetVolumePathNameW},
+            System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED},
+        },
+    };
 
     use super::{
-        all_users_api_error, all_users_stage_record_error, deployment_error,
-        WindowsDeploymentProgressSink, WindowsNativeError, WindowsPackageInventory,
-        WindowsPackageRecord, WindowsUserOperationReceipt,
+        WindowsNativeError, WindowsPackageInventory, WindowsPackageRecord,
+        WindowsUserOperationReceipt,
     };
     use crate::codex_desktop::{
-        error::InstallerError,
         platform::WINDOWS_CODEX_STABLE_IDENTITY,
         types::{CpuArchitecture, PlatformVersion},
     };
@@ -659,185 +598,6 @@ mod native {
                 .map_err(WindowsNativeError::from_windows)?;
         }
         Ok(records)
-    }
-
-    pub(super) fn deploy_current_user(
-        context: &InteractiveUserContext,
-        package_file_uri: &str,
-        progress: WindowsDeploymentProgressSink,
-    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
-        require_current_context(context)?;
-        let _apartment = WinRtApartment::initialize()?;
-        let package_manager = PackageManager::new().map_err(WindowsNativeError::from_windows)?;
-        let uri = Uri::CreateUri(&HSTRING::from(package_file_uri))
-            .map_err(WindowsNativeError::from_windows)?;
-        // `AddPackageOptions::new()` leaves ForceAppShutdown and all developer
-        // / unsigned options disabled. V1 asks the user to close the target
-        // rather than terminating it or weakening deployment trust.
-        let options = AddPackageOptions::new().map_err(WindowsNativeError::from_windows)?;
-        progress(0);
-        let operation = package_manager
-            .AddPackageByUriAsync(&uri, &options)
-            .map_err(WindowsNativeError::from_windows)?;
-        let progress_callback = progress.clone();
-        operation
-            .SetProgress(&AsyncOperationProgressHandler::<
-                DeploymentResult,
-                DeploymentProgress,
-            >::new(move |_, deployment_progress| {
-                progress_callback(deployment_progress.percentage.min(100));
-                Ok(())
-            }))
-            .map_err(WindowsNativeError::from_windows)?;
-        let result = operation.get().map_err(WindowsNativeError::from_windows)?;
-        let extended_error = result
-            .ExtendedErrorCode()
-            .map_err(WindowsNativeError::from_windows)?;
-        if extended_error.0 != 0 {
-            return Err(WindowsNativeError::from_hresult(extended_error.0));
-        }
-        if !result
-            .IsRegistered()
-            .map_err(WindowsNativeError::from_windows)?
-        {
-            return Err(WindowsNativeError::unavailable());
-        }
-        progress(100);
-        require_current_context(context)?;
-        Ok(WindowsUserOperationReceipt::bound_to(context))
-    }
-
-    pub(super) fn stage_and_provision_all_users(
-        package_file_uri: &str,
-        expected_identity: &str,
-        expected_publisher: &str,
-        expected_version: &PlatformVersion,
-        expected_architecture: CpuArchitecture,
-    ) -> Result<(), InstallerError> {
-        let _apartment = WinRtApartment::initialize().map_err(all_users_api_error)?;
-        let package_manager = PackageManager::new()
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?;
-        let uri = Uri::CreateUri(&HSTRING::from(package_file_uri))
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?;
-        // Defaults keep unsigned/developer options disabled.  Staging is used
-        // specifically to let PackageManager validate the signed local MSIX on
-        // its normal system volume before all-users provisioning is attempted.
-        let options = StagePackageOptions::new()
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?;
-        let stage_result = package_manager
-            .StagePackageByUriAsync(&uri, &options)
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?
-            .get()
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?;
-        ensure_deployment_success(&stage_result)?;
-
-        let family_name = staged_package_family_name(
-            &package_manager,
-            expected_identity,
-            expected_publisher,
-            expected_version,
-            expected_architecture,
-        )?;
-        let provision_result = package_manager
-            .ProvisionPackageForAllUsersAsync(&family_name)
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?
-            .get()
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?;
-        ensure_deployment_success(&provision_result)
-    }
-
-    fn ensure_deployment_success(result: &DeploymentResult) -> Result<(), InstallerError> {
-        let extended_error = result
-            .ExtendedErrorCode()
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?;
-        if extended_error.0 != 0 {
-            return Err(deployment_error(WindowsNativeError::from_hresult(
-                extended_error.0,
-            )));
-        }
-        Ok(())
-    }
-
-    fn staged_package_family_name(
-        package_manager: &PackageManager,
-        expected_identity: &str,
-        expected_publisher: &str,
-        expected_version: &PlatformVersion,
-        expected_architecture: CpuArchitecture,
-    ) -> Result<HSTRING, InstallerError> {
-        let packages = package_manager
-            .FindPackages()
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?;
-        let iterator = packages
-            .First()
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?;
-        let mut family_name = None;
-        while iterator
-            .HasCurrent()
-            .map_err(WindowsNativeError::from_windows)
-            .map_err(all_users_api_error)?
-        {
-            let package = iterator
-                .Current()
-                .map_err(WindowsNativeError::from_windows)
-                .map_err(all_users_api_error)?;
-            let package_id = package
-                .Id()
-                .map_err(WindowsNativeError::from_windows)
-                .map_err(all_users_api_error)?;
-            let version = package_id
-                .Version()
-                .map_err(WindowsNativeError::from_windows)
-                .map_err(all_users_api_error)?;
-            let identity_name = package_id
-                .Name()
-                .map_err(WindowsNativeError::from_windows)
-                .map_err(all_users_api_error)?
-                .to_string();
-            let publisher = package_id
-                .Publisher()
-                .map_err(WindowsNativeError::from_windows)
-                .map_err(all_users_api_error)?
-                .to_string();
-            let matches_expected = identity_name == expected_identity
-                && publisher == expected_publisher
-                && PlatformVersion::WindowsMsix {
-                    major: version.Major,
-                    minor: version.Minor,
-                    build: version.Build,
-                    revision: version.Revision,
-                } == *expected_version
-                && map_architecture(
-                    package_id
-                        .Architecture()
-                        .map_err(WindowsNativeError::from_windows)
-                        .map_err(all_users_api_error)?,
-                ) == expected_architecture;
-            if matches_expected {
-                let candidate = package_id
-                    .FamilyName()
-                    .map_err(WindowsNativeError::from_windows)
-                    .map_err(all_users_api_error)?;
-                if candidate.is_empty() || family_name.replace(candidate).is_some() {
-                    return Err(all_users_stage_record_error());
-                }
-            }
-            iterator
-                .MoveNext()
-                .map_err(WindowsNativeError::from_windows)
-                .map_err(all_users_api_error)?;
-        }
-        family_name.ok_or_else(all_users_stage_record_error)
     }
 
     pub(super) fn launch_aumid(
@@ -1014,19 +774,6 @@ mod tests {
         for (hresult, expected) in cases {
             let error = deployment_error(WindowsNativeError::from_hresult(hresult));
             assert_eq!(error.code(), expected);
-            assert_eq!(
-                error.to_dto().details.platform_error_code,
-                Some(format!("0x{:08X}", hresult as u32))
-            );
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn all_users_missing_package_manager_apis_remain_explicitly_unsupported() {
-        for hresult in [0x8000_4002_u32 as i32, 0x8007_0078_u32 as i32] {
-            let error = all_users_api_error(WindowsNativeError::from_hresult(hresult));
-            assert_eq!(error.code(), InstallerErrorCode::WindowsAllUsersUnsupported);
             assert_eq!(
                 error.to_dto().details.platform_error_code,
                 Some(format!("0x{:08X}", hresult as u32))

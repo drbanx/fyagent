@@ -1,0 +1,43 @@
+[package]
+name = "fyagent-user-helper"
+version.workspace = true
+description = "Current-user Windows package deployment helper for FyAgent"
+license-file = "../../LICENSE"
+edition = "2021"
+rust-version = "1.85"
+build = "build.rs"
+
+[lib]
+name = "fyagent_user_helper"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fyagent-user-helper"
+path = "src/main.rs"
+required-features = ["helper-runtime"]
+
+[features]
+# A normal path dependency gets only the portable protocol/layout library.
+# Packaging the executable opts into its private native runtime explicitly.
+default = []
+helper-runtime = ["dep:url", "dep:windows", "dep:windows-future"]
+
+[target.'cfg(target_os = "windows")'.dependencies]
+url = { version = "=2.5.8", optional = true }
+windows = { version = "=0.61.3", features = [
+  "Foundation",
+  "Management_Deployment",
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_IO",
+  "Win32_System_WinRT",
+], optional = true }
+windows-future = { version = "=0.2.1", optional = true }
+
+[build-dependencies]
+embed-resource = "=3.0.6"
+
+# The desktop package links only this crate's protocol library. Packaging
+# builds the helper binary explicitly with `helper-runtime` and stages it as a
+# Tauri sidecar; the UI host never enables that feature.

@@ -3,18 +3,12 @@
 
 fn main() {
     // Resolve Explorer's immutable Shell-user authority before the panic hook,
-    // compatibility CLI parsing, Tauri, or any user-path lookup. The elevated
+    // Tauri, or any user-path lookup. The elevated
     // process account is never a fallback for this boundary.
     #[cfg(target_os = "windows")]
     if let Err(code) = fyagent_lib::initialize_windows_user_context() {
         eprintln!("{code}");
         std::process::exit(1);
-    }
-
-    // The experimental all-users path is parsed before Tauri creates a runtime.
-    // It is never registered as an IPC command or UI action.
-    if let Some(exit_code) = fyagent_lib::maybe_run_codex_desktop_headless() {
-        std::process::exit(exit_code);
     }
 
     // 在 Linux 上设置 WebKit 环境变量以解决 DMA-BUF 渲染问题
