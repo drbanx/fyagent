@@ -26,9 +26,7 @@ includes = [
   ".mise/tasks/frontend.toml",
   ".mise/tasks/rust.toml",
   ".mise/tasks/python.toml",
-  ".mise/tasks/trellis.toml",
   ".mise/tasks/upstream.toml",
   ".mise/tasks/contracts.toml",
   ".mise/tasks/release.toml",
-  ".mise/tasks/hooks.toml",
 ]

@@ -26,20 +26,12 @@ type Generator = {
 };
 type TaskDefinitions = Record<string, Record<string, unknown>>;
 type DocsChecker = {
-  NEW_CHECKOUT_GATE_MARKERS: Readonly<{ start: string; end: string }>;
-  OPERATIONAL_TRELLIS_DOCUMENTS: readonly string[];
-  extractMarkdownCommandCandidates(source: string): string[];
-  isOperationalTrellisDocument(file: string): boolean;
   validateMiseTaskReferences(
     file: string,
     source: string,
     tasks: TaskDefinitions,
   ): void;
-  validateOperationalTrellisDocument(
-    file: string,
-    source: string,
-    tasks: TaskDefinitions,
-  ): void;
+  validateStandaloneSetup(file: string, source: string): void;
 };
 
 let generator: Generator;
@@ -61,6 +53,8 @@ describe("generated mise task documentation", () => {
     expect(document).toContain(
       "> Generated from `.mise/tasks/*.toml` by `mise run tasks:docs:generate --apply`.",
     );
+    expect(document).not.toContain("## Trellis and Codex Hooks");
+    expect(document).not.toMatch(/\| `(?:trellis:|codex:hook)/);
 
     const result = execFileSync(process.execPath, [GENERATOR, "check"], {
       cwd: ROOT,
@@ -78,7 +72,7 @@ describe("generated mise task documentation", () => {
     ) as Array<{ name: string }>;
     const document = fs.readFileSync(DOCUMENT, "utf8");
 
-    expect(tasks.length).toBeGreaterThanOrEqual(80);
+    expect(tasks.length).toBeGreaterThanOrEqual(60);
     for (const task of tasks) {
       const escapedName = task.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       expect(document, task.name).toMatch(
@@ -94,7 +88,7 @@ describe("generated mise task documentation", () => {
   });
 });
 
-describe("operational Trellis documentation contract", () => {
+describe("maintained mise reference contract", () => {
   const tasks: TaskDefinitions = {
     ["__proto__"]: {},
     a: {},
@@ -102,321 +96,12 @@ describe("operational Trellis documentation contract", () => {
     constructor: {},
     "odd.task-1": {},
     "system:check": {},
-    "trellis:context": {},
   };
-  const gateStart = "<!-- fyagent:new-checkout-environment-gate:start -->";
-  const gateEnd = "<!-- fyagent:new-checkout-environment-gate:end -->";
-  const setupCommands = [
-    "mise trust",
-    "mise run bootstrap",
-    "mise run system:check",
-  ].join("\n");
-  const manualSetupBody = [
-    "For every new checkout, a human developer must explicitly review `mise.toml`.",
-    "After that review, the developer manually runs this sequence in order:",
-    "```bash",
-    setupCommands,
-    "```",
-    "This gate is not automatic. Skills, hooks, and repository tasks must not automatically invoke `mise trust` or trigger `mise run bootstrap`.",
-  ].join("\n");
-  const manualSetup = [gateStart, manualSetupBody, gateEnd].join("\n");
-  it("scans only the project-owned entrypoint, not upstream Trellis templates", () => {
-    expect(docsChecker.OPERATIONAL_TRELLIS_DOCUMENTS).toEqual([
-      ".agents/skills/fyagent-trellis/SKILL.md",
-    ]);
-    expect(docsChecker.NEW_CHECKOUT_GATE_MARKERS).toEqual({
-      start: gateStart,
-      end: gateEnd,
-    });
-  });
-
-  it.each([
-    ".agents/skills/trellis-meta/references/customize-local/overview.md",
-    ".agents/skills/trellis-channel/references/progress-debugging.md",
-    ".agents/skills/trellis-start/SKILL.md",
-    ".trellis/workflow.md",
-    ".trellis/scripts/task.py",
-    ".trellis/spec/backend/development-hooks.md",
-    ".trellis/spec/backend/github-ci-workflow.md",
-    "docs/fyagent/development/mise-tasks.md",
-    ".trellis/tasks/archive/2026-08/example/task.json",
-  ])(
-    "excludes generic, internal, historical, Wrong, and CI material: %s",
-    (file) => {
-      expect(docsChecker.isOperationalTrellisDocument(file)).toBe(false);
-    },
-  );
-
-  it.each([
-    [
-      "fenced Python with an option value",
-      ["```bash", "python -X utf8 ./.trellis/scripts/task.py list", "```"].join(
-        "\n",
-      ),
-      /direct Python\/py/,
-    ],
-    [
-      "inline py launcher",
-      "Use `py -3 .trellis/scripts/get_context.py --mode packages`.",
-      /direct Python\/py/,
-    ],
-    [
-      "double-backtick inline command",
-      "Use ``python .trellis/scripts/task.py list``.",
-      /direct Python\/py/,
-    ],
-    [
-      "Run imperative",
-      "Run python3 .trellis/scripts/task.py current",
-      /direct Python\/py/,
-    ],
-    [
-      "Execute imperative",
-      "Execute: python .trellis/scripts/task.py list",
-      /direct Python\/py/,
-    ],
-    [
-      "list item",
-      "- py -3 .trellis/scripts/get_context.py --mode packages",
-      /direct Python\/py/,
-    ],
-    [
-      "blockquote",
-      "> python .trellis/scripts/task.py list",
-      /direct Python\/py/,
-    ],
-    [
-      "shell prompt",
-      "$ python .trellis/scripts/task.py list",
-      /direct Python\/py/,
-    ],
-    [
-      "PowerShell prompt",
-      "PS> py -3 .trellis/scripts/task.py list",
-      /direct Python\/py/,
-    ],
-    [
-      "backslash continuation",
-      [
-        "```bash",
-        "python -X utf8 \\",
-        "  .trellis/scripts/task.py list",
-        "```",
-      ].join("\n"),
-      /direct Python\/py/,
-    ],
-    [
-      "PowerShell backtick continuation",
-      ["- py -3 `", "  .trellis/scripts/get_context.py --mode packages"].join(
-        "\n",
-      ),
-      /direct Python\/py/,
-    ],
-    [
-      "cmd caret continuation",
-      ["C:\\repo> python -X utf8 ^", "  .trellis/scripts/task.py list"].join(
-        "\n",
-      ),
-      /direct Python\/py/,
-    ],
-    [
-      "uv run through Python",
-      "Run uv --quiet run --locked python ./.trellis/scripts/task.py list",
-      /direct uv/,
-    ],
-    [
-      "uv direct script",
-      "`uv run --script .trellis/scripts/task.py list`",
-      /direct uv/,
-    ],
-    [
-      "uv run with a valued option",
-      "- uv run --python 3.12 .trellis/scripts/task.py list",
-      /direct uv/,
-    ],
-  ])(
-    "rejects a direct Trellis script command in a %s",
-    (_label, source, expected) => {
-      expect(() =>
-        docsChecker.validateOperationalTrellisDocument(
-          ".agents/skills/trellis-before-dev/SKILL.md",
-          source,
-          tasks,
-        ),
-      ).toThrow(expected);
-    },
-  );
-
-  it.each([
-    [
-      "and after an ordinary command",
-      "`. .; echo ok && python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "semicolon after a directory change",
-      "`cd .; uv run .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct uv/,
-    ],
-    [
-      "a leading environment assignment",
-      "`FOO=1 python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "the env wrapper and its assignment",
-      "`env FOO=1 python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "sudo and its user option",
-      "`sudo --user root python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "sudo directly",
-      "`sudo python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "a pipeline consumer",
-      "`printf input | python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "a command substitution",
-      "`echo $(python .trellis/scripts/task.py list)`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "a command substitution inside double quotes",
-      '`echo "$(python .trellis/scripts/task.py list)"`',
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "recursive grep after another command",
-      "`cd . && grep -R pattern .agents/skills`",
-      ".agents/skills/trellis-check/SKILL.md",
-      /recursive grep/,
-    ],
-    [
-      "a single background operator",
-      "`echo ok & python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "a leading background operator",
-      "`& python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "a stderr pipeline",
-      "`echo ok |& python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "env short chdir option",
-      "`env -C . python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "env long chdir option",
-      "`env --chdir . python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "sudo short chdir option",
-      "`sudo -D . python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "sudo long chdir option",
-      "`sudo --chdir . python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "an environment assignment after sudo",
-      "`sudo FOO=1 python .trellis/scripts/task.py list`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /direct Python\/py/,
-    ],
-    [
-      "command substitution nesting over the limit",
-      "`$(echo $(echo $(echo $(echo python))))`",
-      ".agents/skills/trellis-before-dev/SKILL.md",
-      /nesting exceeds the parser limit/,
-    ],
-  ])(
-    "rejects a prohibited command hidden by %s",
-    (_label, source, file, expected) => {
-      expect(() =>
-        docsChecker.validateOperationalTrellisDocument(file, source, tasks),
-      ).toThrow(expected);
-    },
-  );
-
-  it.each([
-    [
-      "ordinary prose",
-      "Python and uv are implementation details. The .trellis/scripts/task.py file remains internal.",
-    ],
-    [
-      "plain line beginning with Python",
-      "Python uses the uv-managed environment; `.trellis/scripts/task.py` is an internal file.",
-    ],
-    [
-      "imperative prose rather than a command",
-      "Run Python tooling only after reading about .trellis/scripts/task.py.",
-    ],
-    ["unrelated inline Python", '`python -c "print(1)"`'],
-    [
-      "a different first Python script operand",
-      "`python helper.py .trellis/scripts/task.py`",
-    ],
-    ["uv command outside run", "- uv lock --check --offline"],
-    ["uv run of another executable", "`uv run echo .trellis/scripts/task.py`"],
-    [
-      "a quoted Python command after an operator",
-      '`echo "python .trellis/scripts/task.py list"`',
-    ],
-    [
-      "a quoted uv command passed to printf",
-      "`printf '%s' 'uv run .trellis/scripts/task.py list'`",
-    ],
-    ["quoted shell operators", "`echo '&& ; |'"],
-  ])("allows %s without a command false positive", (_label, source) => {
-    expect(() =>
-      docsChecker.validateOperationalTrellisDocument(
-        ".agents/skills/trellis-before-dev/SKILL.md",
-        source,
-        tasks,
-      ),
-    ).not.toThrow();
-  });
 
   it.each([
     ["lowercase short option", "mise run -s 'bash -lc' a"],
-    [
-      "boolean long options",
-      "mise run --quiet --skip-tools --deny-net trellis:context",
-    ],
-    ["boolean short cluster", "mise run -qf trellis:context"],
+    ["boolean long options", "mise run --quiet --skip-tools --deny-net a"],
+    ["boolean short cluster", "mise run -qf a"],
     [
       "equals and separate valued options",
       "mise run --jobs=2 --cd . -- odd.task-1",
@@ -441,20 +126,16 @@ describe("operational Trellis documentation contract", () => {
   });
 
   it.each([
-    ["unknown task", "mise run trellis:not-real", /unknown mise task/],
+    ["unknown task", "mise run missing", /unknown mise task/],
     [
       "inherited object key",
       "mise run toString",
       /unknown mise task: toString/,
     ],
-    [
-      "unknown option",
-      "mise run --mystery trellis:context",
-      /unknown mise run option/,
-    ],
+    ["unknown option", "mise run --mystery a", /unknown mise run option/],
     [
       "value on boolean option",
-      "mise run --quiet=true trellis:context",
+      "mise run --quiet=true a",
       /invalid mise run option/,
     ],
     ["missing jobs value", "mise run --jobs", /missing mise run option value/],
@@ -482,161 +163,57 @@ describe("operational Trellis documentation contract", () => {
     ).toThrow(/unknown mise task: missing/);
   });
 
-  it.each([
-    ["-r", "grep -r 'mise run' .agents/skills"],
-    ["-R", "Run grep -R pattern .agents/skills"],
-    ["short option cluster", "> grep -nri pattern .agents/skills"],
-    ["mixed short option cluster", "$ grep -ER pattern .agents/skills"],
-    ["--recursive", "`grep --recursive pattern .agents/skills`"],
-  ])("rejects recursive grep spelled as %s", (_label, source) => {
+  it("does not impose a Trellis wrapper or legacy mise-exec policy", () => {
     expect(() =>
-      docsChecker.validateOperationalTrellisDocument(
-        ".agents/skills/trellis-check/SKILL.md",
-        source,
-        tasks,
-      ),
-    ).toThrow(/recursive grep/);
-  });
-
-  it.each([
-    ["grep operand after --", "`grep -- -r fixture.txt`"],
-    ["rg", "```bash\nrg -r pattern .agents/skills\n```"],
-    [
-      "grep prose",
-      "Recursive grep options such as -r and --recursive are discussed here.",
-    ],
-  ])("allows non-recursive command case: %s", (_label, source) => {
-    expect(() =>
-      docsChecker.validateOperationalTrellisDocument(
-        ".agents/skills/trellis-check/SKILL.md",
-        source,
+      docsChecker.validateMiseTaskReferences(
+        "fixture.md",
+        "Use `python -X utf8 .trellis/scripts/task.py list` for optional assistance. Legacy notes may mention `mise exec --`.",
         tasks,
       ),
     ).not.toThrow();
   });
+});
 
-  it.each([
-    [
-      "legacy mise exec in prose",
-      "Do not restore the retired `mise exec --` entrypoint.",
-      /legacy mise exec/,
-    ],
-    ["bare finish command", "/finish-work", /noncanonical \/finish-work/],
-  ])("keeps the whole-document ban for %s", (_label, source, expected) => {
-    expect(() =>
-      docsChecker.validateOperationalTrellisDocument(
-        ".agents/skills/trellis-before-dev/SKILL.md",
-        source,
-        tasks,
-      ),
-    ).toThrow(expected);
-  });
+describe("standalone setup contract", () => {
+  const valid = [
+    "After reviewing the configuration:",
+    "```bash",
+    "mise trust",
+    "mise run bootstrap",
+    "mise run system:check",
+    "mise run dev",
+    "```",
+    "`mise trust` is a developer security decision and is never run automatically by a project task.",
+    "Run `mise run check` before committing.",
+  ].join("\n");
 
-  it("accepts explicit human-controlled setup in the project entrypoint", () => {
+  it("keeps trust manual and the standalone setup sequence ordered", () => {
     expect(() =>
-      docsChecker.validateOperationalTrellisDocument(
-        ".agents/skills/fyagent-trellis/SKILL.md",
-        manualSetup,
-        tasks,
-      ),
+      docsChecker.validateStandaloneSetup("fixture.md", valid),
     ).not.toThrow();
   });
 
-  it.each([
-    [
-      "reversed setup commands",
-      manualSetup.replace(
-        setupCommands,
-        ["mise run bootstrap", "mise trust", "mise run system:check"].join(
-          "\n",
+  it("rejects reordered setup commands", () => {
+    expect(() =>
+      docsChecker.validateStandaloneSetup(
+        "fixture.md",
+        valid.replace(
+          "mise trust\nmise run bootstrap",
+          "mise run bootstrap\nmise trust",
         ),
       ),
-      /one exact ordered setup command fence/,
-    ],
-    [
-      "negated human review",
-      manualSetup.replace("must explicitly review", "must not review"),
-      /explicit review to a human developer/,
-    ],
-    [
-      "missing checkout scope",
-      manualSetup.replace("new checkout", "repository setup"),
-      /new or fresh checkout/,
-    ],
-    [
-      "commands scattered outside a fence",
-      manualSetup.replace(
-        ["```bash", setupCommands, "```"].join("\n"),
-        [
-          "`mise trust`",
-          "`mise run bootstrap`",
-          "`mise run system:check`",
-        ].join("\n"),
-      ),
-      /one exact ordered setup command fence/,
-    ],
-    [
-      "extra setup command",
-      manualSetup.replace(
-        "mise run system:check",
-        "mise run system:check\nmise run trellis:context",
-      ),
-      /one exact ordered setup command fence/,
-    ],
-    [
-      "manual ownership removed",
-      manualSetup.replace("the developer manually runs", "automation runs"),
-      /manual setup execution/,
-    ],
-    [
-      "manual execution reassigned after review",
-      manualSetup.replace(
-        "After that review, the developer manually runs",
-        "The human developer reviews the result. Automation manually runs",
-      ),
-      /manual setup execution/,
-    ],
-    [
-      "no-automatic ownership scattered",
-      manualSetup.replace(
-        "Skills, hooks, and repository tasks must not automatically",
-        "Automation must not automatically",
-      ),
-      /tie the no-automatic rule/,
-    ],
-    [
-      "duplicate bounded block",
-      `${manualSetup}\n${manualSetup}`,
-      /exactly one bounded new-checkout gate/,
-    ],
-    [
-      "missing end marker",
-      manualSetup.replace(gateEnd, ""),
-      /exactly one bounded new-checkout gate/,
-    ],
-  ])("rejects setup quality drift: %s", (_label, source, expected) => {
-    expect(() =>
-      docsChecker.validateOperationalTrellisDocument(
-        ".agents/skills/fyagent-trellis/SKILL.md",
-        source,
-        tasks,
-      ),
-    ).toThrow(expected);
+    ).toThrow(/exact order/);
   });
 
-  it("keeps FyAgent update and native-evidence rules in the project entrypoint", () => {
-    const source = fs.readFileSync(
-      path.join(ROOT, ".agents/skills/fyagent-trellis/SKILL.md"),
-      "utf8",
-    );
-    for (const contract of [
-      "trellis update --dry-run",
-      "mise run trellis:reconcile",
-      "mise run trellis:verify",
-      "matching native GitHub Actions runners own",
-      "Local structure checks and cross-compilation do not replace native",
-    ]) {
-      expect(source).toContain(contract);
-    }
+  it("rejects automatic trust ownership", () => {
+    expect(() =>
+      docsChecker.validateStandaloneSetup(
+        "fixture.md",
+        valid.replace(
+          "is never run automatically by a project task",
+          "is run automatically by a project task",
+        ),
+      ),
+    ).toThrow(/manual developer decision/);
   });
 });

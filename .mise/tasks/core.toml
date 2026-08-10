@@ -17,7 +17,7 @@ run = [
 ]
 
 ["env:check"]
-description = "Verify exact tools, ownership, lockfiles, Python environment, tasks, and hook contracts"
+description = "Verify exact tools, ownership, lockfiles, Python environment, and task metadata"
 usage = '''
 flag "--json" help="Emit one machine-readable JSON document"
 '''
@@ -86,15 +86,13 @@ run = [
 ]
 
 ["check:contracts"]
-description = "Run task, docs, Trellis overlay, Python lock, version, hook, and release contract checks"
+description = "Run task, docs, Python lock, version, and release contract checks"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = [
   { task = "tasks:validate" },
   { task = "tasks:docs:check" },
-  { task = "trellis:verify" },
   { task = "python:lock:check" },
   { task = "version:check" },
-  { task = "codex:hooks:check" },
   { task = "release:check" },
 ]
 

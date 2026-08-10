@@ -46,10 +46,6 @@ const SECTIONS = Object.freeze([
   ["Rust", (name) => name.startsWith("rust:")],
   ["Python and uv", (name) => name.startsWith("python:")],
   [
-    "Trellis and Codex Hooks",
-    (name) => name.startsWith("trellis:") || name.startsWith("codex:"),
-  ],
-  [
     "Version, Assets, and Cleanup",
     (name) =>
       name.startsWith("version:") ||

@@ -22,9 +22,6 @@ export const REQUIRED_TASKS = Object.freeze([
   "clean:frontend",
   "clean:python",
   "clean:rust",
-  "codex:hook:subagent-context",
-  "codex:hook:workflow-state",
-  "codex:hooks:check",
   "deps:install",
   "deps:outdated",
   "deps:outdated:frontend",
@@ -71,14 +68,6 @@ export const REQUIRED_TASKS = Object.freeze([
   "toolchain:update:pnpm",
   "toolchain:update:rust",
   "toolchain:update:uv",
-  "trellis:context",
-  "trellis:get-developer",
-  "trellis:init-developer",
-  "trellis:reconcile",
-  "trellis:session:add",
-  "trellis:task",
-  "trellis:validate",
-  "trellis:verify",
   "typecheck",
   "upstream:audit",
   "upstream:check",
@@ -120,11 +109,6 @@ export const PARAMETERIZED_TASKS = Object.freeze([
   "toolchain:update:pnpm",
   "toolchain:update:rust",
   "toolchain:update:uv",
-  "trellis:context",
-  "trellis:init-developer",
-  "trellis:session:add",
-  "trellis:task",
-  "trellis:validate",
   "upstream:audit",
   "upstream:fetch",
   "upstream:merge:prepare",
@@ -133,11 +117,7 @@ export const PARAMETERIZED_TASKS = Object.freeze([
   "version:set",
 ]);
 
-export const RAW_TASKS = Object.freeze([
-  "codex:hook:subagent-context",
-  "codex:hook:workflow-state",
-  "codex:hooks:check",
-]);
+export const RAW_TASKS = Object.freeze([]);
 
 const RETIRED_TASKS = Object.freeze([
   "macos:preflight",
@@ -145,6 +125,26 @@ const RETIRED_TASKS = Object.freeze([
   "build:cross-windows:arm64",
   "build:cross-windows",
   "build:cross-macos:universal",
+  "codex:hook:subagent-context",
+  "codex:hook:workflow-state",
+  "codex:hooks:check",
+  "trellis:context",
+  "trellis:get-developer",
+  "trellis:init-developer",
+  "trellis:reconcile",
+  "trellis:session:add",
+  "trellis:task",
+  "trellis:validate",
+  "trellis:verify",
+]);
+
+const RETIRED_PROJECT_TOOLING = Object.freeze([
+  ".agents/skills/fyagent-trellis",
+  ".mise/tasks/hooks.toml",
+  ".mise/tasks/trellis.toml",
+  "scripts/tasks/codex-hook-runner.mjs",
+  "scripts/tasks/trellis.mjs",
+  "scripts/trellis",
 ]);
 
 const EFFECTS = new Set([
@@ -157,7 +157,6 @@ const EFFECTS = new Set([
   "preview-by-default",
   "read-only",
   "source-modifying",
-  "trellis-state",
   "user-command",
 ]);
 
@@ -229,11 +228,23 @@ function executableFiles() {
 export function validateTaskContract() {
   const tasks = loadTaskDefinitions();
   const names = Object.keys(tasks);
+  for (const relative of RETIRED_PROJECT_TOOLING) {
+    if (fs.existsSync(path.join(ROOT, relative))) {
+      throw new Error(`Retired project tooling was reintroduced: ${relative}`);
+    }
+  }
   for (const name of REQUIRED_TASKS) {
     if (!tasks[name]) throw new Error(`Missing canonical task: ${name}`);
   }
   for (const name of RETIRED_TASKS) {
     if (tasks[name]) throw new Error(`Retired task was reintroduced: ${name}`);
+  }
+  for (const name of names) {
+    if (name.startsWith("trellis:") || name.startsWith("codex:hook")) {
+      throw new Error(
+        `Project Trellis or Codex hook task was reintroduced: ${name}`,
+      );
+    }
   }
 
   for (const [name, task] of Object.entries(tasks)) {
@@ -252,6 +263,10 @@ export function validateTaskContract() {
     for (const reference of taskReferences(task)) {
       if (!tasks[reference])
         throw new Error(`Task ${name} references missing task ${reference}`);
+    }
+    const source = JSON.stringify(task);
+    if (/\.trellis\/scripts\/[^"\s]+\.py|scripts\/trellis\//u.test(source)) {
+      throw new Error(`Task ${name} reintroduces a project Trellis wrapper`);
     }
   }
 
@@ -296,7 +311,7 @@ export function validateTaskContract() {
   }
   const rawTasks = names.filter((name) => tasks[name].raw === true).sort();
   if (JSON.stringify(rawTasks) !== JSON.stringify([...RAW_TASKS].sort())) {
-    throw new Error("Only the canonical Codex hook tasks may use raw mode");
+    throw new Error("Task raw-mode set differs from the canonical contract");
   }
   const mergeAbort = tasks["upstream:merge:abort"];
   if (
@@ -343,14 +358,7 @@ export function validateTaskContract() {
   ) {
     throw new Error("check:backend must preserve fmt/check/clippy/test order");
   }
-  if (!sequence(tasks["check:contracts"]).includes("trellis:verify")) {
-    throw new Error("check:contracts must include read-only trellis:verify");
-  }
-  for (const [name, effect] of [
-    ["format:files", "source-modifying"],
-    ["trellis:reconcile", "source-modifying"],
-    ["trellis:verify", "read-only"],
-  ]) {
+  for (const [name, effect] of [["format:files", "source-modifying"]]) {
     if (tasks[name].env.FYAGENT_TASK_EFFECT !== effect) {
       throw new Error(`${name} must declare ${effect} effects`);
     }

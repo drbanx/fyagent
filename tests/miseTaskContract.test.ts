@@ -11,8 +11,6 @@ import * as taskLibModule from "../scripts/tasks/lib.mjs";
 import * as hostNativeModule from "../scripts/tasks/host-native.mjs";
 // @ts-expect-error The task runner executes this JavaScript helper directly.
 import * as formatFilesModule from "../scripts/tasks/format-files.mjs";
-// @ts-expect-error The task runner executes this JavaScript helper directly.
-import * as trellisTaskModule from "../scripts/tasks/trellis.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
 const FORMAT_FIXTURES = new Set<string>();
@@ -138,23 +136,6 @@ describe("canonical mise task API", () => {
     for (const command of ["npm", "npx", "pnpx", "node", "cargo"]) {
       expect(resolveTaskExecutable(command, "win32"), command).toBe(command);
     }
-  });
-
-  it("invokes Trellis scripts directly through uv without a system Python executable name", () => {
-    const args = trellisTaskModule.trellisUvArguments(
-      ".trellis/scripts/task.py",
-      ["list", "--json"],
-    ) as string[];
-    expect(args).toEqual([
-      "run",
-      "--locked",
-      ".trellis/scripts/task.py",
-      "list",
-      "--json",
-    ]);
-    expect(args).not.toEqual(
-      expect.arrayContaining(["python", "python3", "py"]),
-    );
   });
 
   it("formats only reviewed repository files and preserves argv boundaries", () => {
@@ -362,7 +343,7 @@ describe("canonical mise task API", () => {
       checkClosure: string[];
     };
     expect(report.ok).toBe(true);
-    expect(report.tasks).toBeGreaterThanOrEqual(80);
+    expect(report.tasks).toBeGreaterThanOrEqual(60);
     expect(report.checkClosure).toContain("check:contracts");
   });
 
@@ -462,22 +443,6 @@ describe("canonical mise task API", () => {
         }),
       ]),
     );
-  });
-
-  it("validates every active Trellis task when no task is specified", () => {
-    const result = mise("trellis:validate");
-    expect(result.status, output(result)).toBe(0);
-    expect(output(result)).toMatch(/Validated \d+ active Trellis task\(s\)/);
-    expect(output(result)).not.toContain(
-      "the following arguments are required",
-    );
-  }, 60_000);
-
-  it("forwards the task CLI help flag through the canonical wrapper", () => {
-    const result = mise("trellis:task", "--", "--help");
-    expect(result.status, output(result)).toBe(0);
-    expect(output(result)).toContain("usage: task.py");
-    expect(output(result)).toContain("{create,add-context,validate");
   });
 
   it.each([

@@ -21,7 +21,6 @@ const DEPENDENCY_JOBS = ["changes", ...REQUIRED_JOBS] as const;
 
 const LOCAL_MISE_TESTS = [
   "tests/developmentEnvironment.test.ts",
-  "tests/developmentHooks.test.ts",
   "tests/miseTaskContract.test.ts",
   "tests/systemCheck.test.ts",
   "tests/taskDocs.test.ts",
@@ -256,7 +255,7 @@ describe("automatic CI workflow", () => {
       "utf8",
     );
 
-    expect(contracts).toContain("node scripts/trellis/verify.mjs");
+    expect(contracts).not.toContain("scripts/trellis/");
     expect(contracts).toContain("node scripts/tasks/release-check.mjs --ci");
     expect(frontend).toContain("pnpm test:unit");
     expect(frontend).not.toContain("run: pnpm test:unit");
@@ -264,13 +263,7 @@ describe("automatic CI workflow", () => {
       expect(frontend, test).toContain(`--exclude ${test}`);
       expect(releaseCheck, test).toContain(`\"${test}\"`);
     }
-    expect(frontend).toContain("pnpm test:unit tests/developmentHooks.test.ts");
-    expect(frontend).toMatch(
-      /declares all hook tasks as raw, read-only task\s+metadata/,
-    );
-    expect(frontend).toMatch(
-      /preserves one raw JSON\s+stdin\/stdout protocol through mise/,
-    );
+    expect(frontend).not.toContain("tests/developmentHooks.test.ts");
     expect(releaseCheck).toContain("if (!ciMode)");
     expect(releaseCheck).toContain('"tests/formatFiles.test.ts"');
     expect(releaseCheck).toContain('"tests/taskAtomicWriter.test.ts"');
@@ -303,7 +296,7 @@ describe("automatic CI workflow", () => {
     );
   });
 
-  it("runs managed Python, Trellis, and the explicit-SID package smoke on native Windows x64 and ARM64", () => {
+  it("runs managed Python and the explicit-SID package smoke on native Windows x64 and ARM64", () => {
     const block = jobBlock("windows-native-contracts");
     expect(block).toContain(
       "name: Windows Native Contracts (${{ matrix.architecture }})",
@@ -340,22 +333,14 @@ describe("automatic CI workflow", () => {
     expect(block).toContain(
       "run: node scripts/ci/verify-toolchain.mjs --tools node,uv,python,rust",
     );
-    expect(block).toContain(
-      "uv run --locked --no-sync python .trellis/scripts/task.py list --json",
-    );
+    expect(block).not.toContain(".trellis/scripts/task.py");
     expect(block).toContain(
       'python -c "import sysconfig; print(sysconfig.get_platform())"',
     );
     expect(block).toContain(
       "$pythonPlatform -ne '${{ matrix.python_platform }}'",
     );
-    expect(block).toContain(
-      "-not ($parsed.PSObject.Properties.Name -contains 'tasks')",
-    );
-    expect(block).toContain("-not ($parsed.tasks -is [System.Array])");
-    expect(block).toContain(
-      'throw "Trellis task listing did not return a tasks array"',
-    );
+    expect(block).not.toContain("Trellis task listing");
     expect(block).toContain("actions-rust-lang/setup-rust-toolchain@");
     expect(block).toContain(
       "$env:RUNNER_ARCH -cne '${{ matrix.architecture }}'",

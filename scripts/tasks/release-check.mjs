@@ -27,7 +27,6 @@ const CI_SAFE_TESTS = Object.freeze([
 
 const LOCAL_MISE_TESTS = Object.freeze([
   "tests/developmentEnvironment.test.ts",
-  "tests/developmentHooks.test.ts",
   "tests/miseTaskContract.test.ts",
   "tests/taskDocs.test.ts",
   "tests/systemCheck.test.ts",

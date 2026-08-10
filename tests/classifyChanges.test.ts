@@ -134,7 +134,7 @@ describe("repository change classifier", () => {
     ".github/workflows/ci.yml",
     "scripts/ci/classify-changes.mjs",
     "scripts/release/release-contract.mjs",
-    "scripts/trellis/verify.mjs",
+    ".codex/hooks.json",
     "rust-toolchain.toml",
   ])("forces every domain for control-plane path %s", (changedPath) => {
     expect(classifyChangedPaths([changedPath])).toEqual({
@@ -179,7 +179,10 @@ describe("repository change classifier", () => {
   });
 
   it("keeps every currently tracked repository path owned", () => {
-    const tracked = git(ROOT, "ls-files", "-z").split("\0").filter(Boolean);
+    const tracked = git(ROOT, "ls-files", "-z")
+      .split("\0")
+      .filter(Boolean)
+      .filter((file) => fs.existsSync(path.join(ROOT, file)));
     expect(classifyChangedPaths(tracked).unknownPaths).toEqual([]);
   });
 

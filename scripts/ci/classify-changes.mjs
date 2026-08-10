@@ -31,7 +31,6 @@ const CONTROL_PLANE_PREFIXES = Object.freeze([
   "scripts/ci/",
   "scripts/release/",
   "scripts/tasks/",
-  "scripts/trellis/",
 ]);
 
 const CONTROL_PLANE_FILES = new Set([
@@ -53,7 +52,7 @@ const CONTROL_PLANE_FILES = new Set([
 ]);
 
 const RELEASE_AND_CI_CONTRACT_TEST =
-  /^tests\/(?:ci|classifyChanges|githubWorkflow|localBuildBoundary|miseTaskContract|requiredCiGate|release|systemCheck|taskDocs|trellisOverlay|version|windowsSigningAdapter|writePlatformMetadata|downloadManifest)/u;
+  /^tests\/(?:ci|classifyChanges|githubWorkflow|localBuildBoundary|miseTaskContract|requiredCiGate|release|systemCheck|taskDocs|version|windowsSigningAdapter|writePlatformMetadata|downloadManifest)/u;
 
 const WINDOWS_NATIVE_TEST =
   /^tests\/(?:codexDesktopDtoContract|codexWindowsUserScopeContract|desktopSecurityBoundary|windowsNsisContract|fixtures\/windows-nsis)/u;
