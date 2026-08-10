@@ -1,10 +1,10 @@
 # Release flow
 
-The [GitHub Release workflow spec](../../../../.trellis/spec/backend/github-release-workflow.md)
-owns source eligibility, native build topology, asset/evidence aggregation,
-attestation, and the publication transaction. The
-[application version spec](../../../../.trellis/spec/backend/fyagent-version-contract.md)
-owns canonical SemVer and versioned asset names.
+The current `.github/workflows/release.yml`, release scripts, Cargo workspace
+version, and executable contract tests define source eligibility, native build
+topology, asset/evidence aggregation, attestation, publication, canonical
+SemVer, and asset names. Retained release-workflow and application-version
+notes under `.trellis/spec/` are optional AI-assistance review material.
 
 ## Exact-source progression
 
@@ -37,6 +37,6 @@ platform builds, aggregate build metadata, and Windows signing status. The
 Windows signing table in public notes is generated from verified metadata;
 credentials and provider commands never become documentation or attachments.
 
-The task archive/journal closeout happens only after the public Release is
-verified. That bookkeeping push advances the branch without moving the release
-tag and must complete one final full CI run.
+Optional task archive or journal bookkeeping is outside the Release trust
+chain. It does not create release eligibility, move a release tag, or replace
+the required exact-source CI and workflow evidence.

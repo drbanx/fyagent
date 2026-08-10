@@ -8,8 +8,8 @@ FyAgent. They are evidence-based reference material for changes under
 
 Before changing renderer code:
 
-1. Read the guideline that owns the change and inspect the nearest existing
-   feature or primitive.
+1. Read the nearest relevant guideline and inspect the existing feature,
+   primitive, and executable tests.
 2. Locate the existing Tauri API facade, query hook, type, schema, and test
    family before creating another one.
 3. Classify state as local UI state, Context state, or backend/resource state.
@@ -25,9 +25,9 @@ Before changing renderer code:
    [Application Identity Contract](../backend/application-identity.md).
 8. Run local tooling through the shared
    [Development Environment Contract](../backend/development-environment.md).
-9. For Codex Provider capability/restart UI or WorkBuddy navigation, read the
-   dedicated cross-layer owner below; do not infer current behavior from an
-   archived feature label.
+9. For Codex Provider capability/restart UI or WorkBuddy navigation, consult
+   the dedicated cross-layer note below and confirm it against current code and
+   tests; do not infer behavior from an archived feature label.
 
 ## Guidelines
 
@@ -73,5 +73,5 @@ from duplicate declarations in `mise.toml`.
 - [CONTRIBUTING.md](../../../CONTRIBUTING.md) records the maintained
   contribution expectations, including strict TypeScript and translated UI
   text.
-- [Development Environment](../backend/development-environment.md) defines the
-  required local mise command boundary.
+- [Development Environment](../backend/development-environment.md) summarizes
+  the local mise command boundary enforced by repository tasks and tests.

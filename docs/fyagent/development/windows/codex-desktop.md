@@ -2,13 +2,14 @@
 
 Two distinct responsibilities meet in the Windows Codex Desktop path:
 
-- the [Windows runtime security spec](../../../../.trellis/spec/backend/windows-runtime-security.md)
-  owns elevated-host startup, Shell/process identity proof, single-instance
-  activation, and privilege boundaries;
-- the [Codex Desktop installer spec](../../../../.trellis/spec/backend/codex-desktop-installer.md)
-  owns official-package discovery, installation/update, post-verification,
-  restart, launch, and the separation between ordinary and all-users
-  capabilities.
+- Windows runtime code and tests define elevated-host startup, Shell/process
+  identity proof, single-instance activation, and privilege boundaries;
+- Codex Desktop services, platform adapters, and tests define official-package
+  discovery, installation/update, post-verification, restart, launch, and the
+  separation between ordinary and all-users capabilities.
+
+Retained runtime-security and Codex Desktop installer notes under
+`.trellis/spec/` are optional AI-assistance review material.
 
 ## Ordinary-user data flow
 

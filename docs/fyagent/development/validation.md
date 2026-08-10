@@ -1,18 +1,20 @@
 # Validation and evidence guide
 
-Validation must match the claim. Start with the affected owner spec's
-`Tests Required` section, then add the smallest higher-level gate that crosses
-the changed boundary.
+Validation must match the claim. Start with the tests nearest the changed code,
+configuration, script, or workflow, then add the smallest higher-level gate
+that crosses the changed boundary.
 
 ## Local evidence
 
 - `mise run tasks:docs:check` checks the generated task reference.
 - `mise run tasks:validate` checks task metadata and task-runner contracts.
-- `mise run trellis:verify` checks managed Trellis files and declared overlays
-  without modifying them.
-- `mise run check:contracts` covers repository contracts, hooks, versioning,
-  Trellis, and release policy.
+- `mise run check:contracts` covers repository tasks, maintained docs, Python
+  locks, versioning, and release policy.
 - `mise run check` is the complete current-host local gate.
+
+Retained `.trellis/` tasks and specs are optional AI assistance. The local
+gate neither requires nor validates a project-specific Trellis wrapper,
+overlay, task, PRD, or spec before it can pass.
 
 Targeted unit and Rust tests are useful while iterating, but a passing narrow
 fixture is not evidence for an unrelated layer.

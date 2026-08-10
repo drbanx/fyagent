@@ -186,7 +186,9 @@
       ],
       "validation": "candidate-only",
       "evidence": [
-        ".trellis/spec/backend/windows-installer.md",
+        "tests/windowsNsisContract.test.ts",
+        "scripts/release/verify-windows-nsis-lifecycle.ps1",
+        ".github/workflows/release.yml",
         "tests/desktop-acceptance/requirements-matrix.json"
       ]
     }

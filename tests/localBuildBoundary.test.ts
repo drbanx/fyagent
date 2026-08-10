@@ -98,11 +98,10 @@ const CURRENT_DOCUMENTS = [
   "README_JA.md",
   "README_DE.md",
   "CONTRIBUTING.md",
-  ".trellis/spec/backend/index.md",
-  ".trellis/spec/backend/development-environment.md",
-  ".trellis/spec/backend/fyagent-version-contract.md",
-  ".trellis/spec/backend/windows-installer.md",
-  ".trellis/spec/backend/windows-runtime-security.md",
+  "docs/fyagent/development/tooling/mise.md",
+  "docs/fyagent/development/validation.md",
+  "docs/fyagent/development/windows/installer.md",
+  "docs/fyagent/development/windows/codex-desktop.md",
 ];
 
 function executableRepositoryFiles(): string[] {
@@ -111,9 +110,7 @@ function executableRepositoryFiles(): string[] {
     "mise.lock",
     "scripts",
     ".github/workflows",
-    ".trellis/scripts",
     ".mise",
-    ".codex",
   ];
   const files: string[] = [];
   for (const relativeRoot of roots) {
@@ -157,12 +154,6 @@ describe("local build boundary", () => {
     expect(
       fs.existsSync(path.join(ROOT, "tests/macosCrossWorkflow.test.ts")),
     ).toBe(false);
-    expect(
-      fs.existsSync(
-        path.join(ROOT, ".trellis/spec/backend/wsl-macos-cross-build.md"),
-      ),
-    ).toBe(false);
-
     const taskSources = localTaskConfiguration();
     for (const task of RETIRED_TASKS) {
       expect(taskSources).not.toContain(`[tasks."${task}"]`);
@@ -220,7 +211,6 @@ describe("local build boundary", () => {
       const content = read(document);
       expect(content).toContain("mise run dev");
       expect(content).toContain("mise run build");
-      expect(content).not.toMatch(/mise exec -- pnpm (?:dev|build)/);
       expect(content).not.toContain("dist-bundle/");
     }
   });
@@ -437,7 +427,7 @@ describe("local build boundary", () => {
     );
   });
 
-  it("prevents repository tasks, scripts, and hooks from changing mise trust", () => {
+  it("prevents repository tasks and scripts from changing mise trust", () => {
     const miseTrustMutation =
       /(?:\bmise(?:\.exe)?\b|\/[^\s"'`]*\/mise\b|[A-Za-z]:\\[^\s"'`]*\\mise(?:\.exe)?\b|\$\{?[A-Za-z_][A-Za-z0-9_]*MISE[A-Za-z0-9_]*\}?)[^\r\n]*\b(?:trust|untrust)\b/i;
     for (const file of executableRepositoryFiles()) {

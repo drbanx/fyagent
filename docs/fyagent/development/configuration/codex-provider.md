@@ -1,10 +1,11 @@
 # Codex provider configuration flow
 
-The [Codex provider configuration spec](../../../../.trellis/spec/backend/codex-provider-configuration.md)
-owns configuration capabilities, persisted provider fields, mutation results,
-and the renderer/backend boundary. The
-[Codex Desktop installer spec](../../../../.trellis/spec/backend/codex-desktop-installer.md)
-separately owns trusted desktop-process discovery and restart execution.
+Current provider services, commands, typed renderer facades, and tests define
+configuration capabilities, persisted fields, mutation results, and the
+renderer/backend boundary. Codex Desktop services and tests separately define
+trusted desktop-process discovery and restart execution. Retained provider and
+desktop-installer notes under `.trellis/spec/` are optional AI-assistance
+review material.
 
 ## Responsibility split
 

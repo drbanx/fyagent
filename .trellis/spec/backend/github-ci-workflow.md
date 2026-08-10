@@ -8,10 +8,10 @@ fixture suites. It applies to pull requests, merge queue candidates, pushes to
 `main` and `dev/laiyongjie`, and manual diagnostics.
 
 This workflow owns scheduling and aggregation, not the underlying product
-contracts. Windows installer/runtime gates are defined by
+behavior. Windows installer/runtime review guidance is recorded in
 [Windows Installer](./windows-installer.md) and
-[Windows Runtime Security](./windows-runtime-security.md); managed-template
-divergence is defined by [Trellis Tooling](./trellis-tooling.md).
+[Windows Runtime Security](./windows-runtime-security.md); executable authority
+remains in the workflow, implementation, scripts, and tests.
 
 The only stable aggregate result is:
 
@@ -79,8 +79,8 @@ domain booleans to jobs, but it must not duplicate repository path globs.
 
 Classification invariants:
 
-- workflow, classifier, release, Trellis verification, task-wrapper, mise, and
-  toolchain control-plane paths set `forceFull=true` and every domain true;
+- workflow, classifier, release, repository task, mise, optional agent/hook,
+  and toolchain control-plane paths set `forceFull=true` and every domain true;
 - `package.json` and pnpm dependency roots widen contracts/frontend/desktop;
 - every `src-tauri/**` change reaches contracts plus its backend/native owner,
   so version, release, manifest, NSIS, and desktop-security static suites cannot
@@ -88,8 +88,8 @@ Classification invariants:
 - Cargo workspace and lock roots widen contracts/backend/windowsNative;
 - Windows runtime, NSIS, Windows packaging, and Codex Windows ownership reach
   contracts plus `windowsNative`;
-- docs and active Trellis specs reach docsSpec plus the lightweight contracts
-  owner;
+- docs and optional Trellis specs/tasks/journals reach docsSpec plus the
+  lightweight contracts owner;
 - a new path without an owner is returned in sorted `unknownPaths`, printed as
   JSON, and makes the CLI fail;
 - unknown paths are never silently treated as no-op or full CI;
@@ -156,7 +156,8 @@ The requested job mapping is exact:
 Every domain job needs `changes` and may run only after classifier success.
 Docs/spec-only changes therefore execute the repository contracts gate but do
 not start frontend, Rust, macOS, or Windows-heavy jobs. The contracts job runs
-the read-only Trellis overlay verifier before the release/task contract suite.
+the task, docs, Python lock, version, and release contract suite; it does not
+require Trellis task state, overlay reconciliation, or hook execution.
 
 ## 5. Required aggregation and timeout evidence
 
@@ -252,10 +253,10 @@ explicit-SID `PackageTypes.Main` adapter and malformed-SID HRESULT propagation
 without Store, network, a real Codex package, or a multi-account VM.
 
 The same matrix installs the exact managed Python implementation/platform and
-executes Trellis task listing through the locked uv environment. Zero tests,
-wrong architecture, missing managed Python, malformed Trellis JSON, timeout,
-or preview runner unavailability fails the matrix. Cross-compilation and
-structural inspection are not substitutes for either native runner.
+proves the native Python platform through the locked uv environment. Zero
+tests, wrong architecture, missing managed Python, timeout, or preview runner
+unavailability fails the matrix. Cross-compilation and structural inspection
+are not substitutes for either native runner.
 
 ## 9. Desktop acceptance and Labeler boundaries
 

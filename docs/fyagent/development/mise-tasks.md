@@ -12,16 +12,16 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 
 ## Setup and Checks
 
-| Task              | Description                                                                              | Usage  | Effect                 |
-| ----------------- | ---------------------------------------------------------------------------------------- | ------ | ---------------------- |
-| `bootstrap`       | Install locked repository tools and dependencies, then run strict environment checks     | —      | dependency-environment |
-| `check`           | Run the complete current-host environment, frontend, backend, and contract gate          | —      | read-only              |
-| `check:backend`   | Run Rust formatting, check, Clippy, and tests in fail-fast order                         | —      | read-only              |
-| `check:contracts` | Run task, docs, Trellis overlay, Python lock, version, hook, and release contract checks | —      | read-only              |
-| `check:frontend`  | Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks     | —      | read-only              |
-| `deps:install`    | Install frozen pnpm dependencies and synchronize the locked uv environment               | —      | dependency-environment |
-| `env:check`       | Verify exact tools, ownership, lockfiles, Python environment, tasks, and hook contracts  | --json | read-only              |
-| `system:check`    | Check current-host Tauri prerequisites without installing or elevating anything          | --json | read-only              |
+| Task              | Description                                                                          | Usage  | Effect                 |
+| ----------------- | ------------------------------------------------------------------------------------ | ------ | ---------------------- |
+| `bootstrap`       | Install locked repository tools and dependencies, then run strict environment checks | —      | dependency-environment |
+| `check`           | Run the complete current-host environment, frontend, backend, and contract gate      | —      | read-only              |
+| `check:backend`   | Run Rust formatting, check, Clippy, and tests in fail-fast order                     | —      | read-only              |
+| `check:contracts` | Run task, docs, Python lock, version, and release contract checks                    | —      | read-only              |
+| `check:frontend`  | Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks | —      | read-only              |
+| `deps:install`    | Install frozen pnpm dependencies and synchronize the locked uv environment           | —      | dependency-environment |
+| `env:check`       | Verify exact tools, ownership, lockfiles, Python environment, and task metadata      | --json | read-only              |
+| `system:check`    | Check current-host Tauri prerequisites without installing or elevating anything      | --json | read-only              |
 
 ## Development and Native Build
 
@@ -73,22 +73,6 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 | `python:tool`       | Run an isolated Python CLI through uv tool run                                   | <command>               | user-command           |
 | `python:update`     | Preview or apply a targeted uv dependency lock upgrade                           | <packages> --apply      | preview-by-default     |
 | `python:with`       | Run a command with one isolated temporary Python requirement                     | <requirement> <command> | user-command           |
-
-## Trellis and Codex Hooks
-
-| Task                          | Description                                                                          | Usage  | Effect           |
-| ----------------------------- | ------------------------------------------------------------------------------------ | ------ | ---------------- |
-| `codex:hook:subagent-context` | Inject curated Trellis context into a native Codex subagent without syncing Python   | —      | read-only        |
-| `codex:hook:workflow-state`   | Inject Trellis workflow state into a Codex prompt without syncing Python             | —      | read-only        |
-| `codex:hooks:check`           | Verify Codex hook protocol, integrity, offline execution, and side-effect boundaries | —      | read-only        |
-| `trellis:context`             | Read Trellis workflow, package, phase, or record context                             | [args] | read-only        |
-| `trellis:get-developer`       | Read the current Trellis developer identity                                          | —      | read-only        |
-| `trellis:init-developer`      | Initialize the Trellis developer identity through the uv-managed Python environment  | <name> | trellis-state    |
-| `trellis:reconcile`           | Reapply declared FyAgent overlays to exact known Trellis templates                   | —      | source-modifying |
-| `trellis:session:add`         | Record a Trellis session journal entry through the uv-managed Python environment     | <args> | trellis-state    |
-| `trellis:task`                | Run a Trellis task.py subcommand through the uv-managed Python environment           | <args> | trellis-state    |
-| `trellis:validate`            | Validate one Trellis task or every active Trellis task manifest                      | [task] | read-only        |
-| `trellis:verify`              | Verify managed Trellis files and declared FyAgent overlays without writes            | —      | read-only        |
 
 ## Version, Assets, and Cleanup
 

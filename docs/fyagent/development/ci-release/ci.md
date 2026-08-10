@@ -1,8 +1,10 @@
 # Continuous integration flow
 
-The [GitHub CI workflow spec](../../../../.trellis/spec/backend/github-ci-workflow.md)
-is the normative owner for triggers, change classification, job selection,
-native runner evidence, cancellation, and the stable `CI / Required` result.
+The current `.github/workflows/ci.yml`, repository classifier/aggregate
+scripts, and their contract tests define triggers, change classification, job
+selection, native runner evidence, cancellation, and the stable
+`CI / Required` result. Retained CI workflow notes under `.trellis/spec/` are
+optional AI-assistance review material.
 
 ## Pull request and merge-group flow
 

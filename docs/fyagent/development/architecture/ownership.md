@@ -1,15 +1,17 @@
 # Current-state ownership
 
-FyAgent keeps long-lived knowledge in two layers:
+FyAgent keeps current engineering knowledge in three layers:
 
-1. Active Trellis specs state the invariant, forbidden behavior, and required
-   evidence for one responsibility.
+1. Code, configuration, tests, and workflows define executable behavior.
 2. Development documents explain how responsibilities connect and where to
-   operate or debug them.
+   operate, validate, or debug them.
+3. Retained `.trellis/spec/` notes provide optional AI-assistance checklists
+   and design context.
 
-Code and tests remain the executable evidence. A rule that changes with code
-has one normative spec owner; a development document links to that owner
-instead of repeating its complete field, status, error, or asset table.
+If these layers drift, executable behavior and its tests decide what the
+repository actually does. Update the maintained explanation in the same change
+when that behavior is intentionally changed. Optional AI notes never become a
+contributor, build, CI, or release prerequisite.
 
 ## Cross-layer map
 
@@ -17,7 +19,7 @@ instead of repeating its complete field, status, error, or asset table.
 Developer operation
   -> guarded mise task
   -> implementation or validation leaf
-  -> owner-spec test evidence
+  -> targeted test evidence
 
 Pull request / merge group
   -> repository change classifier
@@ -38,21 +40,20 @@ Elevated Windows host
   -> context-preserving restart or launch
 ```
 
-The [backend spec index](../../../../.trellis/spec/backend/index.md) owns the
-responsibility catalog. The
-[frontend spec index](../../../../.trellis/spec/frontend/index.md) owns
-renderer layering and points back to backend wire contracts when a flow crosses
-Tauri IPC.
+Retained backend and frontend indexes under `.trellis/spec/` remain optional
+prompts for reviewing these boundaries. The responsibility map in the
+[development index](../README.md), current implementation, and executable
+tests are the normal contributor route.
 
 ## Context routing
 
 Normal implementation work reads, in order:
 
-1. the active task artifacts;
-2. the applicable active spec owner;
-3. the nearest current development explanation;
-4. current code and tests.
+1. the user request, issue, or agreed planning artifact;
+2. the nearest maintained development explanation;
+3. current code, configuration, workflows, and tests;
+4. optional AI-assistance notes when they help expose edge cases.
 
-Archived Trellis tasks and Git history are consulted only when the task is
-explicitly historical, forensic, or provenance-oriented. A prior rollout
-decision never overrides current implementation plus its active owner spec.
+Archived tasks and Git history are consulted only when the work is explicitly
+historical, forensic, or provenance-oriented. A prior decision never
+overrides current implementation and executable evidence.

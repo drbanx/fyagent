@@ -72,8 +72,9 @@ workflows install their exact tools without trusting or executing repository
 mise configuration.
 
 Use the [current development documentation](docs/fyagent/development/README.md)
-to route each change to its responsibility owner and active spec. Versioned
-design packages are available through Git history, not as current authority.
+to find the relevant flow, then inspect the current code, configuration,
+tests, and workflows before changing it. Historical design material is useful
+for an explicit investigation, but it does not override executable behavior.
 
 ### Local Build Boundary
 
@@ -120,7 +121,7 @@ and reviewed; they do not belong in ordinary read-only checks.
 - [ ] `mise run check` passes on the current host
 - [ ] Updated i18n files if user-facing text changed
 - [ ] Exact tests, platform limitations, risk, and rollback are recorded
-- [ ] Durable contract changes update the owning `.trellis/spec/**` and test
+- [ ] Durable behavior changes update executable tests and maintained docs
 - [ ] Upstream tag/SHA/conflict or Release asset/permission impact is recorded
       when applicable
 
@@ -150,21 +151,21 @@ By submitting a PR, you agree to the following:
 
 **In short**: AI is a tool, not a substitute for understanding. Use it to help you contribute better, not to shift work onto maintainers.
 
-## Trellis and durable contracts
+## Planning and durable behavior
 
-Complex cross-layer, security, persistence, or release work should have an
-approved Trellis PRD, design, and implementation plan. Repository operations
-use the canonical task API:
+For complex cross-layer, security, persistence, or release work, record the
+goal, non-goals, affected boundaries, risks, validation, and rollback in the
+issue, pull request, or another planning artifact agreed with the maintainers.
+The repository does not require a particular task framework for contribution,
+build, CI, or release work.
 
-```bash
-mise run trellis:context
-mise run trellis:task -- <subcommand> [args]
-mise run trellis:session:add -- [args]
-```
-
-When implementation establishes a durable engineering rule, update the owning
-`.trellis/spec/**` file and its enforcing test. Keep historical design packages
-as historical evidence instead of rewriting old decisions to look current.
+When implementation establishes a durable engineering rule, update the code
+or configuration that enforces it, its executable tests, and the maintained
+developer documentation that explains the flow. Optional AI-assistance notes
+under `.trellis/spec/` may be refreshed when useful, but they are neither a
+contributor prerequisite nor a substitute for executable evidence. Never
+rewrite archived tasks or prior workspace-journal entries. Record a correction
+in new current material or an appended entry.
 
 ## Upstream CC Switch changes
 
@@ -286,8 +287,9 @@ mise run release:check
 `mise run <task>`，不使用直接项目 pnpm/Cargo/系统 Python 命令。GitHub Actions 是
 明确例外：workflow 安装精确工具，但不会信任或执行仓库 mise 配置。
 
-每项变更先通过[当前开发文档](docs/fyagent/development/README.md)定位职责 owner 和
-active spec。版本化设计包只通过 Git history 查阅，不再作为当前权威。
+每项变更先通过[当前开发文档](docs/fyagent/development/README.md)定位相关流程，再检查
+当前代码、配置、测试和 workflow。历史设计材料可用于明确的溯源调查，但不能覆盖可执行
+行为。
 
 ### 本地构建边界
 
@@ -333,7 +335,7 @@ mise run check
 - [ ] 当前宿主的 `mise run check` 通过
 - [ ] 如修改了用户可见文本，已更新国际化文件
 - [ ] 已记录精确测试、平台限制、风险和回退
-- [ ] 长期契约变更已更新对应 `.trellis/spec/**` 与测试
+- [ ] 长期行为变更已更新可执行测试与维护中的文档
 - [ ] 适用时已记录上游 tag/SHA/冲突，或 Release 资产/权限影响
 
 ### 提交信息规范
@@ -362,19 +364,16 @@ chore(deps): update dependencies
 
 **一句话总结**：AI 是工具，不是理解力的替代品。用它来帮助你更好地贡献，而不是把工作转移给维护者。
 
-## Trellis 与长期契约
+## 规划与长期行为
 
-跨层、安全、持久化或发布等复杂工作应先形成获批的 Trellis PRD、设计和实施计划。
-仓库操作使用 canonical task API：
+跨层、安全、持久化或发布等复杂工作，应在 Issue、Pull Request 或维护者同意的其他规划
+载体中记录目标、非目标、影响边界、风险、验证和回退。贡献、构建、CI 与发布不强制使用
+某一种任务框架。
 
-```bash
-mise run trellis:context
-mise run trellis:task -- <subcommand> [args]
-mise run trellis:session:add -- [args]
-```
-
-实现形成长期工程规则时，要更新对应 `.trellis/spec/**` 和执行测试。历史设计包保持为
-历史证据，不得把旧决策改写成当前事实。
+实现形成长期工程规则时，要同步更新执行规则的代码或配置、可执行测试以及解释该流程的
+维护中文档。`.trellis/spec/` 下维护中的可选 AI 辅助材料可在确有帮助时更新，但它不是
+贡献前提，也不能替代可执行证据。不得改写已归档任务或既有 workspace journal 记录；
+需要纠正时，应写入新的当前材料或追加记录。
 
 ## 上游 CC Switch 变更
 

@@ -5,12 +5,10 @@
 
 ## Related work / 关联工作
 
-<!-- Link the Issue and Trellis task. Use "Fixes #123" only when appropriate. -->
-<!-- 关联 Issue 与 Trellis task；仅在适用时使用 "Fixes #123"。 -->
+<!-- Link an applicable Issue or planning artifact. Use "Fixes #123" only when appropriate. -->
+<!-- 关联适用的 Issue 或规划材料；仅在适用时使用 "Fixes #123"。 -->
 
-Fixes #
-
-Trellis task:
+Issue / planning context (if applicable):
 
 ## Evidence / 验证证据
 
@@ -29,8 +27,8 @@ Trellis task:
 
 ## Contract and provenance impact / 契约与来源影响
 
-- [ ] Durable rules update the owning `.trellis/spec/**` and enforcing test, or
-      this PR explains why none changed / 长期规则已更新对应 spec 与测试，或已说明无需修改
+- [ ] Durable behavior changes update executable tests and maintained docs, or
+      this PR explains why none changed / 长期行为已更新可执行测试与维护中文档，或已说明无需修改
 - [ ] Upstream changes record tag, tag object/peeled commit, merge/conflict
       decisions, and preserved FyAgent contracts, or are not applicable /
       上游变更已记录 tag、SHA、merge/冲突与 FyAgent 契约，或不适用

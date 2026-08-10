@@ -1,9 +1,11 @@
 # FyAgent Windows installer flow
 
 FyAgent's Windows distribution is built as architecture-specific NSIS setup
-executables on matching native Windows runners. The normative path, privilege,
-signing, uninstall, and packaging rules live in the
-[Windows installer spec](../../../../.trellis/spec/backend/windows-installer.md).
+executables on matching native Windows runners. Current Tauri/NSIS
+configuration, release scripts, workflow jobs, and executable tests define the
+path, privilege, signing, uninstall, and packaging behavior. Retained Windows
+installer notes under `.trellis/spec/` are optional AI-assistance review
+material.
 
 ## Build and evidence flow
 

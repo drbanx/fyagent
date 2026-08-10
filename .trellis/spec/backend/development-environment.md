@@ -2,8 +2,8 @@
 
 ## 1. Scope / Trigger
 
-Read this contract before changing repository tool versions, `mise.toml`, any
-lockfile, Python/Trellis execution, local onboarding commands, WSL behavior, or
+Read this reference before changing repository tool versions, `mise.toml`, any
+lockfile, Python execution, local onboarding commands, WSL behavior, or
 the canonical task API, or any local compile, package, test, or verification
 path. It applies to native development on Linux, macOS, Windows, and WSL.
 GitHub Actions deliberately installs tools with native setup actions instead
@@ -71,11 +71,10 @@ and `uv.lock`. There is no system-Python fallback and mise does not inject
 `pyproject.toml`/`uv.lock`; one-off dependencies use `python:with` or
 `python:tool`.
 
-Ordinary Python and Trellis tasks use `uv run --locked` and may prepare the
-locked environment. Codex hooks use
-`uv run --locked --no-sync --offline`: an unprepared environment returns an
-explicit, non-blocking fallback, while malformed hook code or protocol output
-fails closed.
+Repository Python tasks use locked uv commands and may prepare the locked
+environment. Optional upstream Codex/Trellis prompt hooks are independent of
+the project task API and are not an environment, build, check, CI, or release
+prerequisite.
 
 ## 4. Setup and Execution Boundaries
 
@@ -98,8 +97,8 @@ remotes, refresh locks, build, tag, sign, upload, or publish.
 `env:check` is strict and read-only. It verifies the standard sources, actual
 versions, executable ownership, WSL path isolation, generated lock structure,
 uv-managed Python, `.venv`, offline locked Python execution, Rust components
-and sysroot, mise task metadata, and Codex hook task presence. `--json` emits
-one machine-readable report and any failed check exits nonzero.
+and sysroot, and mise task metadata. `--json` emits one machine-readable report
+and any failed check exits nonzero.
 
 `system:check` is strict and read-only. It probes current-host Tauri
 prerequisites and prints official package/tool hints; it never calls `sudo`, a
@@ -113,8 +112,8 @@ development/build entrypoint and its direct output is not acceptance evidence.
 Current developer instructions under `docs/fyagent/development/` and active
 specs use this command boundary; new direct-execution entrypoints fail the
 documentation contract. CI and Release remain the explicit non-mise execution
-boundary. Managed-template and project-overlay behavior is owned separately by
-[Trellis Tooling](./trellis-tooling.md).
+boundary. Optional Trellis files and prompt hooks remain outside the project
+task contract.
 
 ## 5. Host-Native Local Execution
 
@@ -264,12 +263,12 @@ the standard version file and `mise.lock` captured before the attempt.
   out-of-bound/symlink/wrong-signature cases without building a foreign target.
 - Run `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
   `taskDocs.test.ts`, `systemCheck.test.ts`, and `localBuildBoundary.test.ts`.
-- In Required CI, run the locked uv/Python preparation and Trellis task-list
-  protocol on both `windows-2025` x64 and `windows-11-arm` ARM64. Require
-  an explicit uv full managed-Python request for each matrix architecture and
-  Python `sysconfig.get_platform()` to match `win-amd64`/`win-arm64`; a
-  version-only request can select Windows-on-ARM x64 emulation and therefore
-  does not prove a native interpreter.
+- In Required CI, run the locked uv/Python preparation on both `windows-2025`
+  x64 and `windows-11-arm` ARM64. Require an explicit uv full managed-Python
+  request for each matrix architecture and Python `sysconfig.get_platform()`
+  to match `win-amd64`/`win-arm64`; a version-only request can select
+  Windows-on-ARM x64 emulation and therefore does not prove a native
+  interpreter.
 - Scan active local task/package entrypoints for cross-target flags, retired
   cross-build scripts, foreign build tools, subsystem bridges, and emulators;
   exclude GitHub workflow definitions from that negative scan because they own

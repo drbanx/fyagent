@@ -161,8 +161,8 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 如需了解各项功能的详细使用方法，请查阅 **[用户手册](docs/user-manual/zh/README.md)** — 涵盖供应商管理、MCP/Prompts/Skills、代理与故障转移等全部功能。
 
 贡献者请从按职责组织的
-**[当前开发文档](docs/fyagent/development/README.md)** 开始，并按其中链接进入唯一的
-active spec owner。
+**[当前开发文档](docs/fyagent/development/README.md)** 开始，再到当前代码、配置、测试和
+workflow 中确认相关行为。
 
 ## 快速开始
 

@@ -156,8 +156,9 @@ If you launch from a desktop icon, add it to the `.desktop` `Exec=` line (e.g. `
 For detailed guides on every feature, check out the **[User Manual](docs/user-manual/en/README.md)** — covering provider management, MCP/Prompts/Skills, proxy & failover, and more.
 
 Contributors should start with the responsibility-based
-**[current development documentation](docs/fyagent/development/README.md)** and
-follow its links to the owning active specs.
+**[current development documentation](docs/fyagent/development/README.md)**,
+then verify the relevant behavior in the current code, configuration, tests,
+and workflows.
 
 ## Quick Start
 

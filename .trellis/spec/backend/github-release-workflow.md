@@ -436,8 +436,8 @@ closure. Closure requires, in order:
 3. an annotated stable tag at that SHA and successful formal workflow;
 4. a public, non-prerelease, Latest Release with exact assets, disclosure,
    digests, metadata, and attestation;
-5. a closeout-only Trellis archive/journal push whose new dev HEAD again
-   completes full `CI / Required`.
+5. any later optional bookkeeping push is a new dev HEAD and must satisfy its
+   own CI requirements; it is not part of the release transaction.
 
 `windows-11-arm` remains public preview and may block the run. Unsigned Windows
 installers may trigger trust prompts; disclosure, SHA-256, and attestation make

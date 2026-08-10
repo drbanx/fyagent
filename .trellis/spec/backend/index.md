@@ -1,27 +1,29 @@
 # Backend Development Guidelines
 
-This layer records executable backend contracts for the Rust/Tauri host.
-Current authority is the unique active spec owner below, the current task's
-approved artifacts and evidence, and current developer-facing material under
-`docs/fyagent/development/`. Archived tasks and Git history are historical
-evidence only. They must not override an active version, installer, security,
-release, configuration, or tooling contract. When behavior changes, update its
-unique owner and enforcing test; update a product document only when that
-document is owned by the change.
+This layer records evidence-based backend review guidance for the Rust/Tauri
+host. It is optional AI-assistance material: code, configuration, tests, and
+workflows remain executable authority, while maintained explanations live
+under `docs/fyagent/development/`. These notes, Trellis tasks, and Trellis CLI
+state are not prerequisites for contribution, build, check, CI, or release.
+
+Archived tasks and Git history are historical evidence only. When behavior
+changes, update its implementation, executable tests, and maintained
+developer-facing explanation. Refresh the relevant note when it remains useful
+to future automated review, but never use a note to override observed behavior.
 
 ## Pre-Development Checklist
 
-Before changing Rust/Tauri host code:
+When using these notes before changing Rust/Tauri host code:
 
-1. Locate the owning contract below; do not add a second rule where an existing
-   installer, version, security, release, or platform contract already owns it.
+1. Locate the nearest topic below; do not duplicate a rule already enforced by
+   an existing installer, version, security, release, or platform test.
 2. For a Tauri command, serialized DTO, event, or persisted-data change, also
    read the [Frontend Development Guidelines](../frontend/index.md) and its
    [Type Safety](../frontend/type-safety.md) boundary before changing either
    side.
 3. For user files, credentials, deep links, process control, installers, or
-   release artifacts, identify the validation/error case and the test that will
-   prove it before editing implementation code.
+   release artifacts, identify the validation/error case and the executable
+   test or matching native evidence that will prove it before editing code.
 4. Run local commands through the shared
    [Development Environment Contract](./development-environment.md); do not
    substitute a machine-global Node, Rust, or pnpm toolchain, and never select
@@ -45,8 +47,7 @@ Before changing Rust/Tauri host code:
 | [Windows Runtime Security](./windows-runtime-security.md)                 | Formal startup and interactive-user proof, protected machine runtime, authenticated activation, and elevated CLI boundary.                         |
 | [Development Environment](./development-environment.md)                   | Locked mise-first local tool versions, host-native compiler/runner/linker boundary, and WSL PATH isolation.                                        |
 | [Repository Task Runner](./task-runner-contract.md)                       | Canonical mise task metadata, argv transport, DAG effects, maintenance safety, and generated task documentation.                                   |
-| [Trellis Tooling](./trellis-tooling.md)                                   | Managed-template updates, deterministic project overlays, read-only divergence verification, and current-authority routing.                        |
-| [Codex Development Hooks](./development-hooks.md)                         | Codex hook registration/protocol, strict context injection, and ownership of the three declared hook overlays.                                     |
+| [Optional Codex Development Hooks](./development-hooks.md)                | Upstream prompt-assistance registration, behavior limits, and explicitly accepted hardening regressions.                                           |
 | [Application Brand Assets](./application-brand-assets.md)                 | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                                       |
 | [Application Identity](./application-identity.md)                         | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                                     |
 | [CC Switch Upstream Synchronization](./upstream-sync.md)                  | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                                    |
@@ -54,8 +55,9 @@ Before changing Rust/Tauri host code:
 
 ## Quality Check
 
-Run the **Tests Required** section of every contract affected by the change.
-For ordinary Rust/Tauri changes, the baseline local checks are:
+Use each affected note's **Tests Required** section as a checklist, then verify
+the current task metadata and implementation because the note is not itself a
+gate. For ordinary Rust/Tauri changes, the baseline local checks are:
 
 ```bash
 mise run rust:fmt:check
@@ -67,6 +69,6 @@ Add the applicable renderer, version, Windows, macOS, or release contract
 checks rather than reporting an unrelated local command as platform or release
 evidence. Canonical local native commands verify and pin the current host
 OS/architecture; matching native Actions jobs own all non-host evidence. A
-code-spec update that changes a contract must name its enforcing test;
-successful local static checks never prove a native package, artifact
-attestation, or remotely published Release.
+changed durable behavior must have executable evidence; successful local
+static checks never prove a native package, artifact attestation, or remotely
+published Release.

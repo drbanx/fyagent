@@ -2,11 +2,12 @@
 
 ## 1. Scope / Trigger
 
-Read this contract before adding, renaming, removing, documenting, or composing
-a `mise run` task or changing `scripts/tasks/`. The task API is the stable local
-entrypoint for developers, Trellis, and Codex hooks. Package scripts and Cargo
-commands remain implementation leaves; GitHub Actions is an explicit non-mise
-boundary and the sole executor for non-host platform work.
+Read this reference before adding, renaming, removing, documenting, or
+composing a `mise run` task or changing `scripts/tasks/`. The task API is the
+stable local entrypoint for developers. Package scripts and Cargo commands
+remain implementation leaves; GitHub Actions is an explicit non-mise boundary
+and the sole executor for non-host platform work. Optional Trellis files and
+prompt hooks do not extend the project task API.
 
 ## 2. Layout and Signatures
 
@@ -17,11 +18,9 @@ boundary and the sole executor for non-host platform work.
 .mise/tasks/frontend.toml
 .mise/tasks/rust.toml
 .mise/tasks/python.toml
-.mise/tasks/trellis.toml
 .mise/tasks/upstream.toml
 .mise/tasks/contracts.toml
 .mise/tasks/release.toml
-.mise/tasks/hooks.toml
 ```
 
 Included TOMLs use mise's task-file format (top-level task tables, no
@@ -48,8 +47,8 @@ instead of freezing a task count.
 `check` executes `env:check`, frontend, backend, and contracts. Its complete
 task-reference closure must have effect `read-only`. Mutation, dependency
 installation, build output, interactive tasks, temporary dependency tools,
-Trellis writes, Git ref writes, and preview-by-default maintenance tasks never
-enter that closure.
+Git ref writes, and preview-by-default maintenance tasks never enter that
+closure.
 
 `check:backend` uses structured sequential task references in this order:
 
@@ -104,10 +103,8 @@ read those values, parse variadic shell-escaped lists into argv arrays, validate
 SemVer/package/tag/enum/path inputs, and spawn a command without a shell.
 Arguments must never be concatenated into a command string.
 
-Trellis wrappers invoke each uv-managed `.py` script directly with
-`uv run --locked <script>`; they do not insert a system `python`, `python3`, or
-`py` executable token. `format:files` accepts one or more reviewed files and
-first validates every operand. It routes validated `.jsonl` names
+`format:files` accepts one or more reviewed files and first validates every
+operand. It routes validated `.jsonl` names
 case-insensitively through record formatting: before any write or Prettier
 invocation, it reads every such input, normalizes CRLF to LF, preserves blank
 rows, validates each nonblank record as JSON, and removes only insignificant
@@ -125,9 +122,9 @@ rollback-capable writer for per-file replacement. It rejects empty input,
 option-like values, parent traversal, repository-external paths, directories,
 symlinks, and realpath escapes. Repository-relative and
 absolute-inside-repository paths may contain whitespace or Unicode. JSONL
-formatting is syntactic record normalization only: for Trellis task context
-files, `trellis:validate` remains the authority for the context-record schema
-and repository-containment checks.
+formatting is syntactic record normalization only. A consumer-specific JSONL
+schema, if one exists, must be validated by that consumer's executable tests or
+tooling.
 
 On native Windows, local mise tasks resolve only the actually used `pnpm`
 command to `pnpm.exe`. This matches the audited `mise.lock` assets
@@ -149,12 +146,7 @@ values reach the wrapper.
 - Formatting is an explicit source-modifying leaf and does not prompt. The
   full `format` task retains its frontend-wide behavior; `format:files` is the
   safe reviewed-subset entrypoint. Its JSONL record normalization does not
-  replace the required Trellis context validation.
-- `trellis:reconcile` is source-modifying and applies only exact declared
-  overlays after a complete no-write preflight. `trellis:verify` is read-only
-  and belongs to `check:contracts`. Overlay schema, managed-path discovery,
-  update sequencing, and failure semantics are owned by
-  [Trellis Tooling](./trellis-tooling.md).
+  replace a consumer-specific schema check.
 - Version, dependency, toolchain, Python lock/dependency, icon, task-doc, and
   clean tasks preview by default; `--apply` is required to write.
 - `version:set` and `version:bump` delegate to the canonical atomic version
@@ -179,27 +171,12 @@ pipe characters, emits every loaded task, and writes only when
 `tasks:docs:generate --apply` is used. `tasks:docs:check` regenerates in memory
 and byte-compares with the committed document.
 
-Current developer docs and the project entrypoint must use the canonical task
-API. A legacy direct-execution occurrence fails `docs-contract-check.mjs`.
-Retired local cross-build tasks have no alias or deprecation forwarder.
-
-The same checker owns one explicit operational-Trellis document: the
-project-local `fyagent-trellis` entry skill. Bundled Trellis workflow and
-lifecycle skills remain byte-for-byte upstream-owned templates; FyAgent setup,
-command, native-evidence, and update rules must not be reintroduced there. In
-the project entrypoint, every use of mise's retired execution subcommand with
-its double-dash separator, or a bare `/finish-work` occurrence, is forbidden.
-Direct `python`/`python3`/`py` commands are forbidden only when their first
-script operand is `.trellis/scripts/*.py`; `uv run` is forbidden when its
-command is such a script or a Python launcher whose first script operand is
-such a script. The checker extracts small Markdown command candidates instead
-of applying those rules to arbitrary prose: fenced lines, inline code,
-`Run`/`Execute` imperatives, list items, blockquotes, shell prompts, and
-backslash, PowerShell-backtick, or cmd-caret continuations are command
-contexts. Unrelated Python/uv commands and prose remain outside this narrow
-entrypoint rule. Command candidates may not use recursive grep through `-r`,
-`-R`, a combined short-option cluster, or `--recursive`; the project entrypoint
-uses `rg` instead.
+Maintained repository docs use the live `mise run <task>` API for ordinary
+project operations. `docs-contract-check.mjs` scans the public READMEs,
+`CONTRIBUTING.md`, `.github` Markdown, and
+`docs/fyagent/development/**`; every concrete mise task reference must resolve
+through the loaded task metadata. Retired local cross-build tasks have no alias
+or deprecation forwarder.
 
 Every concrete `mise run <task>` reference must resolve through the live
 task-definition loader. The parser accepts the current documented boolean
@@ -208,56 +185,45 @@ supported), and the `--` option boundary. An unknown option fails closed, and
 task membership uses an own-property check so inherited object keys are not
 treated as task definitions.
 
-The `fyagent-trellis` entrypoint contains exactly one setup block bounded by the
-project-owned
-`<!-- fyagent:new-checkout-environment-gate:start -->` and matching `:end`
-markers. Inside that block, an affirmative new/fresh-checkout rule assigns
-explicit configuration review and manual execution to a human developer;
-exactly one fenced command block contains, in order and with no extra command,
-`mise trust`, `mise run bootstrap`, and `mise run system:check`. The same block
-ties the prohibition on automatic trust/bootstrap execution to skills, hooks,
-and repository tasks.
+`CONTRIBUTING.md` contains the standalone checkout sequence in one exact fenced
+block: `mise trust`, `mise run bootstrap`, `mise run system:check`, and
+`mise run dev`. Nearby prose states that trust is a manual developer security
+decision outside repository tasks, and the document names `mise run check` as
+the complete current-host gate.
 
-This operational scan is intentionally not recursive. Upstream lifecycle
-templates, generic `trellis-meta/**` and `trellis-channel/**`,
-`.trellis/scripts/**`, task archives and Git history, hook-contract Wrong
-examples, and CI's documented non-mise execution boundary remain outside it.
-Those files describe reusable architecture, implementation leaves, frozen
-evidence, negative examples, or GitHub Actions rather than FyAgent's routine
-local command API.
+Optional `.trellis/**` tasks, specs, scripts, skills, hooks, archives, and
+journals remain outside this contributor command contract. The docs checker
+does not turn them into contribution, build, CI, or release prerequisites.
 
 ## 7. Validation / Error Matrix
 
-| Condition                                                                          | Required result                                    |
-| ---------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Missing description/effect/usage                                                   | `tasks:validate` fails                             |
-| Missing task reference or DAG cycle                                                | mise/task contract fails                           |
-| `check` reaches a non-read-only effect                                             | Fail closed                                        |
-| A parameter is interpolated into a shell command                                   | Reject; spawn validated argv instead               |
-| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`               | Task-runner and DEP0040 contracts fail             |
-| A Rust filter begins with `-` or contains `--target`                               | Reject before rustc or Cargo starts                |
-| A fixed native operation receives forwarded argv                                   | Reject before rustc or Tauri starts                |
-| Caller compiler/wrapper/runner/linker/target env redirects a task                  | Reject before rustc/rustdoc starts                 |
-| Any Rust/rustdoc flag env contains a target token                                  | Reject before rustc/rustdoc starts                 |
-| Target-specific flags or process-loader/runtime injection are set                  | Reject before rustc/rustdoc starts                 |
-| Absolute rustc/rustdoc identity and process host disagree                          | Reject before Cargo/Tauri starts                   |
-| User Cargo config selects target/compiler/wrapper/flags/runner/linker              | Reject before the toolchain starts                 |
-| A standard task selects a non-host OS/architecture                                 | Reject before any toolchain starts                 |
-| A local wrapper bridges to a foreign executable/emulator                           | Reject; require a native Actions job               |
-| Mutation task has neither preview default nor explicit confirmation                | Reject                                             |
-| Clean path resolves outside the repository                                         | Reject without deletion                            |
-| Upstream safety/remotes/worktree do not match                                      | Reject before fetch/merge                          |
-| Generated task reference differs by one byte                                       | `tasks:docs:check` fails                           |
-| New active doc uses a legacy entrypoint                                            | `docs-contract-check.mjs` fails                    |
-| Operational Trellis doc bypasses mise or names an unknown task                     | `docs-contract-check.mjs` fails                    |
-| Project setup safety marker disappears during a Trellis update                     | `docs-contract-check.mjs` fails                    |
-| Trellis wrapper names a system Python executable                                   | Task contract test fails                           |
-| `format:files` receives an option, directory, symlink, or escape                   | Reject before Prettier or JSONL writes             |
-| A reviewed `.jsonl` target is not valid UTF-8                                      | Identify the file; no Prettier or JSONL write      |
-| A nonblank reviewed `.jsonl` record is invalid JSON                                | Identify file and line; no Prettier or JSONL write |
-| A changed JSONL target no longer matches its preflight bytes                       | Preserve the newer bytes and fail                  |
-| A formatted Trellis context file still violates record/schema or containment rules | `trellis:validate` remains the required authority  |
-| Managed Trellis divergence is undeclared or stale                                  | `trellis:verify` fails                             |
+| Condition                                                             | Required result                                    |
+| --------------------------------------------------------------------- | -------------------------------------------------- |
+| Missing description/effect/usage                                      | `tasks:validate` fails                             |
+| Missing task reference or DAG cycle                                   | mise/task contract fails                           |
+| `check` reaches a non-read-only effect                                | Fail closed                                        |
+| A parameter is interpolated into a shell command                      | Reject; spawn validated argv instead               |
+| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`  | Task-runner and DEP0040 contracts fail             |
+| A Rust filter begins with `-` or contains `--target`                  | Reject before rustc or Cargo starts                |
+| A fixed native operation receives forwarded argv                      | Reject before rustc or Tauri starts                |
+| Caller compiler/wrapper/runner/linker/target env redirects a task     | Reject before rustc/rustdoc starts                 |
+| Any Rust/rustdoc flag env contains a target token                     | Reject before rustc/rustdoc starts                 |
+| Target-specific flags or process-loader/runtime injection are set     | Reject before rustc/rustdoc starts                 |
+| Absolute rustc/rustdoc identity and process host disagree             | Reject before Cargo/Tauri starts                   |
+| User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject before the toolchain starts                 |
+| A standard task selects a non-host OS/architecture                    | Reject before any toolchain starts                 |
+| A local wrapper bridges to a foreign executable/emulator              | Reject; require a native Actions job               |
+| Mutation task has neither preview default nor explicit confirmation   | Reject                                             |
+| Clean path resolves outside the repository                            | Reject without deletion                            |
+| Upstream safety/remotes/worktree do not match                         | Reject before fetch/merge                          |
+| Generated task reference differs by one byte                          | `tasks:docs:check` fails                           |
+| New active doc uses a legacy entrypoint                               | `docs-contract-check.mjs` fails                    |
+| Standalone setup order or manual trust guidance disappears            | `docs-contract-check.mjs` fails                    |
+| `format:files` receives an option, directory, symlink, or escape      | Reject before Prettier or JSONL writes             |
+| A reviewed `.jsonl` target is not valid UTF-8                         | Identify the file; no Prettier or JSONL write      |
+| A nonblank reviewed `.jsonl` record is invalid JSON                   | Identify file and line; no Prettier or JSONL write |
+| A changed JSONL target no longer matches its preflight bytes          | Preserve the newer bytes and fail                  |
+| A formatted JSONL file violates a consumer-specific schema            | The consumer's executable validation still fails   |
 
 ## 8. Tests Required
 
@@ -266,8 +232,6 @@ local command API.
   Rust order, retired task, and forbidden command scans.
 - Real parameter/flag transport smoke tests, including dry-run `version:set`,
   a test filter, Python preview input, and upstream tag validation.
-- Pure Trellis uv-argv tests requiring direct script invocation without a
-  system Python executable name.
 - `format:files` tests for empty input, option injection, parent/outside paths,
   directories, symlinks, realpath escape, and successful multi-file whitespace,
   Unicode, and absolute-inside-repository argv transport. Cover mixed JSONL
@@ -305,12 +269,9 @@ local command API.
 - Clean preview tests proving canonical repository-only targets and zero writes.
 - Docs generation/check tests including a description containing `|` to prove
   table escaping.
-- Project-entrypoint documentation fixtures covering direct Python/py, uv,
-  `mise exec`, bare `/finish-work`, every recursive-grep spelling, Markdown
-  command contexts and continuations, mise options and own-property task
-  lookup, the bounded new-checkout quality gate, update/native evidence rules,
-  and the explicit upstream, generic, internal, historical, Wrong-example, and
-  CI exclusions.
+- Maintained-document fixtures covering mise options, continuations,
+  own-property task lookup, the exact standalone checkout sequence, manual
+  trust guidance, the full local `check` gate, and unknown task rejection.
 - `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
   `taskDocs.test.ts`, `systemCheck.test.ts`, and
   `localBuildBoundary.test.ts`.

@@ -1,10 +1,11 @@
 # WorkBuddy configuration flow
 
-The [WorkBuddy configuration spec](../../../../.trellis/spec/backend/workbuddy-configuration.md)
-owns WorkBuddy URL normalization, remote model discovery, document parsing,
-overwrite/revision behavior, backup and atomic replacement, errors, and IPC.
-It is independent of Codex provider configuration even when the renderer
-presents both as configuration experiences.
+Current WorkBuddy services, typed renderer flows, and tests define URL
+normalization, remote model discovery, document parsing, overwrite/revision
+behavior, backup and atomic replacement, errors, and IPC. Retained WorkBuddy
+notes under `.trellis/spec/` are optional AI-assistance review material.
+WorkBuddy remains independent of Codex provider configuration even when the
+renderer presents both as configuration experiences.
 
 ## Data flow
 

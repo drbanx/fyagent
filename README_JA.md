@@ -161,8 +161,8 @@ FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
 各機能の詳しい使い方については、**[ユーザーマニュアル](docs/user-manual/ja/README.md)** をご覧ください。プロバイダ管理、MCP/Prompts/Skills、プロキシとフェイルオーバーなど、すべての機能を網羅しています。
 
 コントリビューターは、責務別の
-**[現在の開発ドキュメント](docs/fyagent/development/README.md)** から始め、そこから
-各 active spec の唯一の owner を参照してください。
+**[現在の開発ドキュメント](docs/fyagent/development/README.md)** から始め、関連する
+現在のコード、設定、テスト、workflow で動作を確認してください。
 
 ## クイックスタート
 

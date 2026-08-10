@@ -164,7 +164,8 @@ Ausführliche Anleitungen zu jeder Funktion finden Sie im **[Benutzerhandbuch](d
 
 Mitwirkende beginnen mit der nach Zuständigkeit gegliederten
 **[aktuellen Entwicklungsdokumentation](docs/fyagent/development/README.md)**
-und folgen von dort dem jeweils einzigen aktiven Spec-Owner.
+und prüfen das relevante Verhalten anschließend im aktuellen Code, in der
+Konfiguration, in den Tests und in den Workflows.
 
 ## Schnellstart
 
