@@ -1392,13 +1392,27 @@ describe("FyAgent release workflow", () => {
     expect(transform).toContain(
       "SIGNING_MODE_CONFIG: ${{ vars.FYAGENT_WINDOWS_SIGNING_MODE }}",
     );
-    expect(transform).toContain("$hasProviderConfig");
+    expect(transform).toContain(
+      "$providerConfig | Where-Object { $_ -cne '' }",
+    );
+    expect(transform.match(/if \(\$hasProviderConfig\)/gu)).toHaveLength(2);
+    expect(transform).toContain(
+      "$requiredProviderConfig | Where-Object { $_ -ceq '' }",
+    );
+    expect(transform).toContain(
+      "if ([string]$env:SIGNER_CREDENTIAL_CONFIG -cne '')",
+    );
     expect(transform).toContain("$stagingSignerEnvironment");
     expect(transform).toContain("$managedSignerEnvironment");
     expect(transform).toContain(
       "@($managedSignerEnvironment + $stagingSignerEnvironment)",
     );
     expect(transform).toContain("[IO.File]::Delete($adapterPath)");
+    expect(
+      transform.indexOf("foreach ($name in $stagingSignerEnvironment)"),
+    ).toBeLessThan(
+      transform.indexOf("node scripts/release/windows-signing.mjs transform"),
+    );
     expect(transform.slice(transform.indexOf("run: |"))).not.toContain(
       "${{ secrets.",
     );

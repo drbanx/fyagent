@@ -248,10 +248,19 @@ describe("Windows signing adapter configuration", () => {
     expect(ATTESTATION_BUNDLE_NAME).toBe("artifact-attestation.sigstore.json");
   });
 
-  it("selects unsigned mode only when the provider selector and inputs are absent", () => {
+  it("selects unsigned mode when provider inputs are absent or cleared", () => {
     expect(resolveSignerConfiguration({})).toBeNull();
     expect(
       resolveSignerConfiguration({ FYAGENT_WINDOWS_SIGNING_MODE: "unsigned" }),
+    ).toBeNull();
+    expect(
+      resolveSignerConfiguration({
+        FYAGENT_WINDOWS_SIGNING_MODE: "unsigned",
+        FYAGENT_WINDOWS_SIGNER_ADAPTER: "",
+        FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER: "",
+        FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256: "",
+        FYAGENT_WINDOWS_SIGNER_CREDENTIAL: "",
+      }),
     ).toBeNull();
     expect(() =>
       resolveSignerConfiguration({
@@ -554,6 +563,38 @@ describe("Windows signing asset evidence", () => {
     expect(
       parsePeImage(readFileSync(assetPath)).certificateSize,
     ).toBeGreaterThan(0);
+  });
+
+  it("keeps an explicitly unsigned formal candidate unchanged after Windows clears provider keys", () => {
+    const directory = temporaryDirectory();
+    const assetPath = writeAsset(directory, "x64");
+    const originalBytes = readFileSync(assetPath);
+    let signerCount = 0;
+
+    transformWindowsCandidate(
+      {
+        assetPath,
+        architecture: "x64",
+        version,
+        sourceSha,
+        environment: {
+          FYAGENT_WINDOWS_SIGNING_MODE: "unsigned",
+          FYAGENT_WINDOWS_SIGNER_ADAPTER: "",
+          FYAGENT_WINDOWS_SIGN_EXPECTED_PUBLISHER: "",
+          FYAGENT_WINDOWS_SIGN_EXPECTED_CERTIFICATE_SHA256: "",
+          FYAGENT_WINDOWS_SIGNER_CREDENTIAL: "",
+        },
+      },
+      {
+        probeAuthenticode: () => unsignedEvidence(),
+        invokeSigner: () => {
+          signerCount += 1;
+        },
+      },
+    );
+
+    expect(signerCount).toBe(0);
+    expect(readFileSync(assetPath)).toEqual(originalBytes);
   });
 
   it("rejects command failure and Authenticode-only byte violations", () => {

@@ -14,6 +14,7 @@ Note；合入来源和边界记录在
 
 ## FyAgent
 
+- [v0.3.3 (English)](v0.3.3-en.md)
 - [v0.3.2 (English)](v0.3.2-en.md)
 - [v0.3.1 unpublished candidate (English)](v0.3.1-en.md)
 - [v0.3.0 (中文)](v0.3.0-zh.md)
