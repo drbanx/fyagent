@@ -42,7 +42,7 @@ mod platform {
 }
 
 #[cfg(target_os = "windows")]
-#[allow(dead_code)]
+#[allow(dead_code, unused_imports, clippy::enum_variant_names)]
 #[path = "../src/windows_runtime/mod.rs"]
 mod windows_runtime;
 
