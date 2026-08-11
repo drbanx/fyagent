@@ -1396,8 +1396,11 @@ fn windows_rename_relative_file(
         .len()
         .checked_mul(size_of::<u16>())
         .ok_or_else(|| temp_error("installer final file name is too long"))?;
-    let buffer_size = std::mem::offset_of!(FILE_RENAME_INFO, FileName)
-        .checked_add(name_bytes)
+    // Windows requires the complete inline FILE_RENAME_INFO structure plus
+    // the variable file-name bytes, not merely the offset of FileName plus
+    // those bytes. The latter omits the inline WCHAR and trailing alignment
+    // on both supported Windows architectures and is rejected by the API.
+    let buffer_size = windows_rename_information_buffer_size(name_bytes)
         .ok_or_else(|| temp_error("installer final file rename buffer is too large"))?;
     let word_size = size_of::<usize>();
     let mut storage = vec![0_usize; buffer_size.div_ceil(word_size)];
@@ -1430,6 +1433,13 @@ fn windows_rename_relative_file(
         ));
     }
     directory.revalidate()
+}
+
+#[cfg(target_os = "windows")]
+fn windows_rename_information_buffer_size(name_bytes: usize) -> Option<usize> {
+    use windows::Win32::Storage::FileSystem::FILE_RENAME_INFO;
+
+    std::mem::size_of::<FILE_RENAME_INFO>().checked_add(name_bytes)
 }
 
 #[cfg(target_os = "windows")]
@@ -1626,6 +1636,20 @@ fn temp_error(message: &str) -> InstallerError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_rename_buffer_includes_the_complete_inline_structure() {
+        use std::mem::{offset_of, size_of};
+
+        use windows::Win32::Storage::FileSystem::FILE_RENAME_INFO;
+
+        let name_bytes = "installer.msix".encode_utf16().count() * size_of::<u16>();
+        let buffer_size = windows_rename_information_buffer_size(name_bytes).unwrap();
+
+        assert_eq!(buffer_size, size_of::<FILE_RENAME_INFO>() + name_bytes);
+        assert!(buffer_size > offset_of!(FILE_RENAME_INFO, FileName) + name_bytes);
+    }
 
     #[test]
     fn creates_only_a_canonical_uuid_direct_child() {

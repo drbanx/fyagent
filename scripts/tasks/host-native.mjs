@@ -26,6 +26,7 @@ const TAURI_OPERATIONS = Object.freeze({
 });
 
 const CARGO_OPERATIONS = new Set(["check", "clippy", "test"]);
+const RUST_TEST_FEATURE = "fyagent/test-hooks";
 const WINDOWS_USER_HELPER_PREPARE_SCRIPT =
   "scripts/prepare-windows-user-helper.mjs";
 const OWNED_TOOLCHAIN_ENVIRONMENT = Object.freeze([
@@ -829,6 +830,9 @@ export function planCargoTask({
       "--target",
       target,
       ...commonArguments,
+      "--features",
+      RUST_TEST_FEATURE,
+      "--no-fail-fast",
       ...(filters.length === 1 ? ["--", filters[0]] : []),
     ];
   }

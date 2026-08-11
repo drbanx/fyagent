@@ -264,7 +264,11 @@ Within Cargo, check and Clippy use `--keep-going` so all still-buildable
 dependency-graph branches are attempted before the command returns failure.
 This does not claim that a target whose dependency failed can run. Rust tests
 use `--no-fail-fast`, which continues across test executables after an
-executable fails. The workflow therefore exposes all diagnostics that remain
+executable fails. Backend test commands alone enable `fyagent/test-hooks` so
+integration-test fixtures can bind Windows user paths to their explicit
+`FYAGENT_TEST_HOME`; check, Clippy, native contract compilation, and production
+builds retain the frozen Explorer-user fail-closed boundary. The workflow
+therefore exposes all diagnostics that remain
 executable in the current job, then fails once at the collection boundary; it
 never turns a failed check into a green job.
 

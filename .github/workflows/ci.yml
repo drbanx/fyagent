@@ -433,7 +433,7 @@ jobs:
       - name: Run Rust tests
         id: rust-tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
+        run: cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
 
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
@@ -510,7 +510,7 @@ jobs:
       - name: Run Rust tests
         id: rust-tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
+        run: cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
 
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
@@ -708,7 +708,7 @@ jobs:
       - name: Run Rust tests
         id: rust-tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
+        run: cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
 
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}

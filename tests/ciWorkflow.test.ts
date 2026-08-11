@@ -298,8 +298,12 @@ describe("automatic CI workflow", () => {
         "cargo clippy --workspace --all-targets --keep-going --locked --manifest-path src-tauri/Cargo.toml -- -D warnings",
       );
       expect(block).toContain(
-        "cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast",
+        "cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast",
       );
+      expect(namedStepBlock(id, "Check Rust workspace")).not.toContain(
+        "test-hooks",
+      );
+      expect(namedStepBlock(id, "Run Clippy")).not.toContain("test-hooks");
     }
     expect(jobBlock("backend-windows")).toContain(
       "FYAGENT_WINDOWS_MANIFEST: test",
@@ -531,6 +535,7 @@ describe("automatic CI workflow", () => {
     expect(block).toContain(
       "cargo test --target '${{ matrix.rust_host }}' --lib --locked --manifest-path src-tauri/Cargo.toml $testName -- --exact",
     );
+    expect(block).not.toContain("test-hooks");
     expect(block).toContain(
       'if ($exitCode -ne 0 -or $joined -notmatch "test result: ok\\. 1 passed; 0 failed")',
     );

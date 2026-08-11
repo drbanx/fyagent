@@ -1060,8 +1060,10 @@ fn rename_leaf_without_replacement(
         .len()
         .checked_mul(size_of::<u16>())
         .ok_or_else(|| bridge_integrity_error("the package bridge rename length overflowed"))?;
-    let buffer_size = offset_of!(FILE_RENAME_INFO, FileName)
-        .checked_add(name_bytes)
+    // The variable-length buffer starts with the complete inline structure.
+    // Using only the FileName offset omits its inline WCHAR and trailing ABI
+    // alignment, which SetFileInformationByHandle rejects on Windows.
+    let buffer_size = rename_information_buffer_size(name_bytes)
         .ok_or_else(|| bridge_integrity_error("the package bridge rename buffer overflowed"))?;
     let word_size = size_of::<usize>();
     let mut storage = vec![0_usize; buffer_size.div_ceil(word_size)];
@@ -1086,6 +1088,10 @@ fn rename_leaf_without_replacement(
         )
     }
     .map_err(|_| bridge_integrity_error("the package bridge partial file could not be finalized"))
+}
+
+fn rename_information_buffer_size(name_bytes: usize) -> Option<usize> {
+    size_of::<FILE_RENAME_INFO>().checked_add(name_bytes)
 }
 
 fn mark_handle_for_deletion(file: &File) -> Result<(), InstallerError> {
@@ -1745,6 +1751,15 @@ fn bridge_checksum_error(message: &'static str) -> InstallerError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rename_buffer_includes_the_complete_inline_structure() {
+        let name_bytes = INSTALLER_FILE_NAME.encode_utf16().count() * size_of::<u16>();
+        let buffer_size = rename_information_buffer_size(name_bytes).unwrap();
+
+        assert_eq!(buffer_size, size_of::<FILE_RENAME_INFO>() + name_bytes);
+        assert!(buffer_size > offset_of!(FILE_RENAME_INFO, FileName) + name_bytes);
+    }
 
     #[test]
     fn fixed_layout_names_are_single_safe_components() {

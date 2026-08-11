@@ -382,6 +382,9 @@ describe("local build boundary", () => {
       "--locked",
       "--manifest-path",
       "src-tauri/Cargo.toml",
+      "--features",
+      "fyagent/test-hooks",
+      "--no-fail-fast",
       "--",
       "settings",
     ]);

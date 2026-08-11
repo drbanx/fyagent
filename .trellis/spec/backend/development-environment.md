@@ -175,6 +175,13 @@ The enforced current-host boundary covers `pnpm dev`, `pnpm build`, and the
 canonical `mise run dev`, `build`, `build:binary`, `build:debug`, `check`,
 `rust:check`, `rust:clippy`, and `rust:test` paths. `rust:test` additionally
 accepts at most one non-option test-name filter through mise usage metadata.
+The test plan alone enables `fyagent/test-hooks`, allowing integration-test
+fixtures to route Windows user paths through their explicit
+`FYAGENT_TEST_HOME`; check, Clippy, Tauri builds, and production binaries do not
+enable that feature and retain the frozen Explorer-user fail-closed boundary.
+It also uses `--no-fail-fast` before the test-harness separator so every
+independent test executable runs even when an earlier executable fails; an
+optional test-name filter remains after `--` and is passed only to the harness.
 The aggregate `check` task runs a pure host-native guard before `env:check`, so
 caller compiler, wrapper, runner, target environment, or target-bearing flags
 cannot reach even the initial rustc toolchain probe. The guard launches no
