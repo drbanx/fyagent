@@ -149,8 +149,12 @@ export function resolveSignerConfiguration(environment) {
     SIGNING_MODE_NAME,
   );
   const mode = environment[SIGNING_MODE_NAME];
-  const supplied = SIGNER_CONFIGURATION_NAMES.filter((name) =>
-    Object.prototype.hasOwnProperty.call(environment, name),
+  // Windows can preserve a cleared process variable as an empty child entry.
+  // Provider mode still validates every required own key below.
+  const supplied = SIGNER_CONFIGURATION_NAMES.filter(
+    (name) =>
+      Object.prototype.hasOwnProperty.call(environment, name) &&
+      environment[name] !== "",
   );
 
   if (!hasMode) {
