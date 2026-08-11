@@ -282,7 +282,7 @@ export function validateDocsContract() {
   const tasks = loadTaskDefinitions();
   const maintainedDocs = [
     "README.md",
-    "README_ZH.md",
+    "README_EN.md",
     "README_JA.md",
     "CONTRIBUTING.md",
     ...markdownFilesUnder(".github"),
