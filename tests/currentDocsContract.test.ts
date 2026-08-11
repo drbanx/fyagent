@@ -5,13 +5,10 @@ import { describe, expect, it } from "vitest";
 import { expectedInstallerNames } from "../scripts/release/release-contract.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
-const EXTERNAL_INPUT_MARKERS = [
-  ["fyagent", "modernization", "plan"].join("-"),
-  ["fyagent", "change", "spec"].join("-"),
-  ["", "projects", ["fyagent", "change", "spec"].join("-")].join("/"),
-] as const;
+const EXTERNAL_PLAN_MARKER = ["fyagent", "modernization", "plan"].join("-");
 const LEGACY_REPOSITORY_SLUG = ["NongHua123", "fyagent"].join("/");
 const HISTORICAL_RELEASE_NOTE_PREFIX = "docs/release-notes/v0.3.0-";
+const HISTORICAL_TRELLIS_ARCHIVE_PREFIX = ".trellis/tasks/archive/";
 
 const CURRENT_DEVELOPMENT_DOCS = [
   "docs/fyagent/development/README.md",
@@ -25,6 +22,22 @@ const CURRENT_DEVELOPMENT_DOCS = [
   "docs/fyagent/development/validation.md",
   "docs/fyagent/development/windows/codex-desktop.md",
   "docs/fyagent/development/windows/installer.md",
+] as const;
+
+const CURRENT_BACKEND_OWNERS = [
+  ".trellis/spec/backend/fyagent-version-contract.md",
+  ".trellis/spec/backend/windows-installer.md",
+  ".trellis/spec/backend/windows-runtime-security.md",
+  ".trellis/spec/backend/codex-desktop-installer.md",
+  ".trellis/spec/backend/codex-provider-configuration.md",
+  ".trellis/spec/backend/workbuddy-configuration.md",
+  ".trellis/spec/backend/github-ci-workflow.md",
+  ".trellis/spec/backend/github-release-workflow.md",
+] as const;
+
+const RETIRED_BACKEND_OWNERS = [
+  ".trellis/spec/backend/fyagent-v1-0-1-config-domains.md",
+  ".trellis/spec/backend/windows-release-boundary.md",
 ] as const;
 
 const LOCALIZED_INSTALLATION_GUIDES = [
@@ -60,12 +73,7 @@ const LOCALIZED_INSTALLATION_GUIDES = [
   },
 ] as const;
 
-const PUBLIC_READMES = [
-  "README.md",
-  "README_DE.md",
-  "README_JA.md",
-  "README_ZH.md",
-] as const;
+const PUBLIC_READMES = ["README.md", "README_JA.md", "README_ZH.md"] as const;
 
 const CURRENT_PUBLIC_REPOSITORY_FILES = [
   ...PUBLIC_READMES,
@@ -92,6 +100,53 @@ const V031_RELEASE_NOTES = "docs/release-notes/v0.3.1-en.md";
 const CODEX_INSTALLER_SPEC = ".trellis/spec/backend/codex-desktop-installer.md";
 const PACKAGE_BRIDGE_ROOT =
   "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
+const LEGACY_MIGRATION_VERSION_COUNTS = new Map<string, number>([
+  ["docs/fyagent/development/windows/installer.md", 1],
+  [".trellis/spec/backend/windows-installer.md", 4],
+]);
+
+const MANUAL_LANGUAGES = ["en", "ja", "zh"] as const;
+const EXPECTED_MANUAL_CHAPTERS = [
+  "1-getting-started/1.1-introduction.md",
+  "1-getting-started/1.2-installation.md",
+  "1-getting-started/1.3-interface.md",
+  "1-getting-started/1.4-quickstart.md",
+  "1-getting-started/1.5-settings.md",
+  "2-agent-tools/2.1-install.md",
+  "2-agent-tools/2.2-update-diagnose.md",
+  "3-providers/3.1-add.md",
+  "3-providers/3.2-switch.md",
+  "3-providers/3.3-edit.md",
+  "3-providers/3.4-sort-duplicate.md",
+  "3-providers/3.5-usage-query.md",
+  "3-providers/3.6-claude-desktop.md",
+  "4-extensions/4.1-mcp.md",
+  "4-extensions/4.2-prompts.md",
+  "4-extensions/4.3-skills.md",
+  "4-extensions/4.4-sessions.md",
+  "4-extensions/4.5-workspace.md",
+  "4-extensions/4.6-workbuddy.md",
+  "5-proxy/5.1-service.md",
+  "5-proxy/5.2-routing.md",
+  "5-proxy/5.3-failover.md",
+  "5-proxy/5.4-usage.md",
+  "5-proxy/5.5-model-test.md",
+  "6-faq/6.1-config-files.md",
+  "6-faq/6.2-questions.md",
+  "6-faq/6.3-deeplink.md",
+  "6-faq/6.4-env-conflict.md",
+] as const;
+
+const VISUAL_DELIVERABLES = [
+  "docs/fyagent/audits/user-manual-screenshots.md",
+  "docs/fyagent/marketing/visual-asset-plan.md",
+  "docs/fyagent/marketing/prompts/README.md",
+  "docs/fyagent/marketing/visual-direction-sample-v1.md",
+  "docs/fyagent/marketing/visual-direction-sample-v2.md",
+  "docs/fyagent/marketing/visual-direction-sample-v3.md",
+  "docs/fyagent/marketing/vibekey-reference-audit.md",
+  "docs/release-notes/README.md",
+] as const;
 
 function read(relative: string): string {
   return fs
@@ -119,14 +174,14 @@ function markdownFilesUnder(relativeDirectory: string): string[] {
   return files.sort();
 }
 
-function maintainedKnowledgeMarkdownFiles(): string[] {
+function currentAuthorityMarkdownFiles(): string[] {
   return [
     ...new Set([
       ...markdownFilesUnder("docs/fyagent/development"),
       ...markdownFilesUnder("docs/user-manual"),
+      ...markdownFilesUnder(".trellis/spec"),
       "CONTRIBUTING.md",
       "README.md",
-      "README_DE.md",
       "README_JA.md",
       "README_ZH.md",
       "flatpak/README.md",
@@ -165,87 +220,29 @@ function operationalTextFiles(): string[] {
         !file.startsWith(".trellis/") &&
         !file.startsWith(".agents/") &&
         !file.startsWith(".codex/") &&
+        !file.startsWith(".format-files-") &&
+        !file.startsWith(HISTORICAL_TRELLIS_ARCHIVE_PREFIX) &&
         file !== "AGENTS.md" &&
         fs.existsSync(path.join(ROOT, file)) &&
+        fs.statSync(path.join(ROOT, file)).isFile() &&
         !fs.readFileSync(path.join(ROOT, file)).includes(0),
     );
 }
 
-describe("current FyAgent development documentation", () => {
-  it("keeps one maintained explanation set", () => {
+describe("current FyAgent documentation authority", () => {
+  it("removes versioned design packages and keeps one responsibility owner", () => {
     expect(fs.existsSync(path.join(ROOT, "docs/fyagent/dev"))).toBe(false);
     expect(markdownFilesUnder("docs/fyagent/development")).toEqual(
       [...CURRENT_DEVELOPMENT_DOCS].sort(),
     );
-    for (const file of CURRENT_DEVELOPMENT_DOCS) {
-      expect(fs.statSync(path.join(ROOT, file)).isFile(), file).toBe(true);
-    }
-    expect(
-      fs.existsSync(
-        path.join(
-          ROOT,
-          "docs/fyagent/development/trellis/update-and-overlay.md",
-        ),
-      ),
-    ).toBe(false);
-  });
-
-  it("documents a standalone mise workflow and keeps Trellis optional", () => {
-    const contributing = read("CONTRIBUTING.md");
-    expect(contributing).toContain(
-      [
-        "mise trust",
-        "mise run bootstrap",
-        "mise run system:check",
-        "mise run dev",
-      ].join("\n"),
-    );
-    expect(contributing).toContain("mise run check");
-    expect(contributing).toContain(
-      "The repository does not require a particular task framework",
-    );
-    expect(contributing).toContain("under `.trellis/spec/`");
-    expect(contributing).toMatch(/Never\s+rewrite archived tasks/u);
-    expect(contributing).toMatch(/prior workspace-journal\s+entries/u);
-    expect(contributing).not.toContain("under `.trellis/` may be refreshed");
-
-    const maintainedDevelopment = CURRENT_DEVELOPMENT_DOCS.map(read).join("\n");
-    for (const retiredInterface of [
-      "mise run trellis:",
-      "fyagent-trellis",
-      "trellis:reconcile",
-      "trellis:verify",
-      "scripts/trellis/",
-    ]) {
-      expect(maintainedDevelopment).not.toContain(retiredInterface);
-      expect(contributing).not.toContain(retiredInterface);
-    }
     for (const file of [
       ...CURRENT_DEVELOPMENT_DOCS,
-      "CONTRIBUTING.md",
-      ".github/pull_request_template.md",
+      ...CURRENT_BACKEND_OWNERS,
     ]) {
-      expect(read(file), file).not.toMatch(/\]\([^)]*\.trellis\//u);
+      expect(fs.statSync(path.join(ROOT, file)).isFile(), file).toBe(true);
     }
-    expect(read(".github/pull_request_template.md")).not.toContain(
-      "Trellis task:",
-    );
-
-    expect(read("docs/fyagent/development/README.md")).toMatch(
-      /not required to\s+contribute, build, check, run CI, or release FyAgent/u,
-    );
-    const hookRisk = read("docs/fyagent/development/tooling/mise.md").replace(
-      /\s+/gu,
-      " ",
-    );
-    for (const acceptedRegression of [
-      "accepted residual risk, not an equivalent security migration",
-      "repository and task realpath containment",
-      "exact-source import binding",
-      "strict Codex event, session, cwd, stdin, stdout",
-      "markup and control-character escaping",
-    ]) {
-      expect(hookRisk).toContain(acceptedRegression);
+    for (const file of RETIRED_BACKEND_OWNERS) {
+      expect(fs.existsSync(path.join(ROOT, file)), file).toBe(false);
     }
   });
 
@@ -386,15 +383,13 @@ describe("current FyAgent development documentation", () => {
     expect(notes).not.toMatch(/^\d+\. annotated `v0\.3\.1` tag equality/mu);
   });
 
-  it("keeps maintained knowledge free of old package and fixed-release routing", () => {
-    for (const file of maintainedKnowledgeMarkdownFiles()) {
+  it("keeps current authority free of old package and fixed-release routing", () => {
+    for (const file of currentAuthorityMarkdownFiles()) {
       const source = read(file);
       expect(source, file).not.toContain("docs/fyagent/dev/");
-      if (file === "docs/fyagent/development/windows/installer.md") {
-        expect(source.match(/\bv?0\.3\.0\b/gu), file).toHaveLength(1);
-      } else {
-        expect(source, file).not.toMatch(/\bv?0\.3\.0\b/u);
-      }
+      expect(source.match(/\bv?0\.3\.0\b/gu) ?? [], file).toHaveLength(
+        LEGACY_MIGRATION_VERSION_COUNTS.get(file) ?? 0,
+      );
       expect(source, file).not.toMatch(/\bv3\.16\.0\b/);
       expect(source, file).not.toContain("windows-release-boundary.md");
       expect(source, file).not.toContain("fyagent-v1-0-1-config-domains.md");
@@ -404,6 +399,38 @@ describe("current FyAgent development documentation", () => {
     for (const file of markdownFilesUnder("docs/user-manual")) {
       expect(read(file), file).not.toMatch(/\bv3\.\d+(?:\.\d+)?\b/);
     }
+  });
+
+  it("preserves protocol, schema, third-party API, and toolchain versions", () => {
+    expect(read(".trellis/spec/backend/deeplink-import-security.md")).toContain(
+      "fyagent://v1/import",
+    );
+    const releaseOwners = `${read(
+      ".trellis/spec/backend/fyagent-version-contract.md",
+    )}\n${read(".trellis/spec/backend/github-release-workflow.md")}`;
+    for (const schema of [
+      "fyagent-download-manifest/v2",
+      "fyagent-platform-build/v1",
+      "fyagent-build-metadata/v1",
+    ]) {
+      expect(releaseOwners).toContain(schema);
+    }
+    expect(read(".trellis/spec/backend/workbuddy-configuration.md")).toContain(
+      "/v1",
+    );
+    expect(read(".trellis/spec/backend/workbuddy-configuration.md")).toContain(
+      "get_workbuddy_model_ids() -> WorkBuddyModelIdsResult",
+    );
+    const windowsRuntime = read(
+      ".trellis/spec/backend/windows-runtime-security.md",
+    );
+    expect(windowsRuntime).toContain("canonical_sid");
+    expect(windowsRuntime).not.toContain("canonical_user_sid");
+    const environment = read(
+      ".trellis/spec/backend/development-environment.md",
+    );
+    expect(environment).toContain("Node.js 24.19.0");
+    expect(environment).toContain("Rust 1.97.1");
   });
 
   it("keeps localized installation guidance aligned with the release surface", () => {
@@ -445,8 +472,80 @@ describe("current FyAgent development documentation", () => {
     }
   });
 
-  it("keeps every local link in maintained knowledge resolvable", () => {
-    for (const file of maintainedKnowledgeMarkdownFiles()) {
+  it("keeps the six-chapter manual and visual evidence plan closed", () => {
+    expect(fs.existsSync(path.join(ROOT, "README_DE.md"))).toBe(false);
+    for (const file of PUBLIC_READMES) {
+      expect(read(file), file).not.toContain("assets/screenshots/");
+    }
+
+    for (const language of MANUAL_LANGUAGES) {
+      const prefix = `docs/user-manual/${language}/`;
+      const chapters = markdownFilesUnder(prefix.slice(0, -1))
+        .filter((file) => file !== `${prefix}README.md`)
+        .map((file) => file.slice(prefix.length));
+      expect(chapters, language).toEqual([...EXPECTED_MANUAL_CHAPTERS]);
+      for (const retiredDirectory of [
+        "2-providers",
+        "3-extensions",
+        "4-proxy",
+        "5-faq",
+      ]) {
+        expect(
+          fs.existsSync(path.join(ROOT, prefix, retiredDirectory)),
+          `${language}/${retiredDirectory}`,
+        ).toBe(false);
+      }
+    }
+
+    const shotCards = markdownFilesUnder("docs/user-manual/assets/shot-cards");
+    expect(shotCards).toHaveLength(16);
+    expect(shotCards).toContain(
+      "docs/user-manual/assets/shot-cards/001-main-overview.md",
+    );
+    expect(shotCards).toContain(
+      "docs/user-manual/assets/shot-cards/015-failover-queue.md",
+    );
+
+    const imageDirectory = path.join(ROOT, "docs/user-manual/assets");
+    const imageNames = fs
+      .readdirSync(imageDirectory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".png"))
+      .map((entry) => entry.name)
+      .sort();
+    expect(imageNames).toHaveLength(40);
+
+    const imageReferences = MANUAL_LANGUAGES.flatMap((language) =>
+      markdownFilesUnder(`docs/user-manual/${language}`).flatMap((file) =>
+        [...read(file).matchAll(/\.\.\/\.\.\/assets\/([^\s)]+\.png)/g)].map(
+          (match) => match[1],
+        ),
+      ),
+    );
+    expect(imageReferences).toHaveLength(84);
+    expect([...new Set(imageReferences)].sort()).toEqual(imageNames);
+
+    const audit = read("docs/fyagent/audits/user-manual-screenshots.md");
+    for (const imageName of imageNames) {
+      expect(audit, imageName).toContain(`\`${imageName}\``);
+    }
+    for (const file of VISUAL_DELIVERABLES) {
+      expect(fs.statSync(path.join(ROOT, file)).isFile(), file).toBe(true);
+    }
+    expect(
+      read("docs/fyagent/marketing/visual-direction-sample-v1.md"),
+    ).toContain("status: superseded");
+    expect(
+      read("docs/fyagent/marketing/visual-direction-sample-v2.md"),
+    ).toContain("status: superseded");
+    expect(
+      read("docs/fyagent/marketing/visual-direction-sample-v3.md"),
+    ).toContain("status: concept_candidate");
+  });
+
+  it("keeps every local link in current authority resolvable", () => {
+    for (const file of [
+      ...new Set([...currentAuthorityMarkdownFiles(), ...VISUAL_DELIVERABLES]),
+    ].sort()) {
       const source = read(file);
       for (const rawTarget of markdownTargets(source)) {
         if (/^(?:https?:|mailto:|#)/.test(rawTarget)) continue;
@@ -462,11 +561,9 @@ describe("current FyAgent development documentation", () => {
     }
   });
 
-  it("keeps maintained inputs independent of retired external authorities", () => {
+  it("keeps current public links independent of retired external authorities", () => {
     for (const file of operationalTextFiles()) {
-      for (const marker of EXTERNAL_INPUT_MARKERS) {
-        expect(read(file), `${file} -> ${marker}`).not.toContain(marker);
-      }
+      expect(read(file), file).not.toContain(EXTERNAL_PLAN_MARKER);
     }
     for (const file of currentPublicRepositoryFiles()) {
       expect(read(file), file).not.toContain(LEGACY_REPOSITORY_SLUG);

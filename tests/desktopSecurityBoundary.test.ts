@@ -59,7 +59,6 @@ const rendererLifecyclePaths = [
 ];
 const activeWindowsInstallDocs = [
   path.resolve(__dirname, "..", "README.md"),
-  path.resolve(__dirname, "..", "README_DE.md"),
   path.resolve(__dirname, "..", "README_JA.md"),
   path.resolve(__dirname, "..", "README_ZH.md"),
   path.resolve(
@@ -176,7 +175,9 @@ describe("desktop IPC capability and CSP boundary", () => {
   });
 
   it("reserves desktop visual baselines for explicit Git LFS review", () => {
-    expect(fs.readFileSync(gitAttributesPath, "utf8")).toContain(
+    const gitAttributes = fs.readFileSync(gitAttributesPath, "utf8");
+    expect(gitAttributes).toContain("*.mjs text eol=lf");
+    expect(gitAttributes).toContain(
       "tests/e2e/visual-baselines/**/*.png filter=lfs diff=lfs merge=lfs -text",
     );
   });
