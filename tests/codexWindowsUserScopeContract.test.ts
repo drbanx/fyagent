@@ -427,7 +427,7 @@ describe("Codex Windows interactive-user contract", () => {
       /error::\{[^}]*InstallerErrorCode[^}]*SuggestedAction[^}]*\}/,
     );
     expect(domainTest).toMatch(
-      /#\[cfg\(target_os = "windows"\)\]\s+#\[allow\(dead_code\)\]\s+#\[path = "\.\.\/src\/windows_runtime\/mod\.rs"\]\s+mod windows_runtime;/,
+      /#\[cfg\(target_os = "windows"\)\]\s+#\[allow\(dead_code, unused_imports, clippy::enum_variant_names\)\]\s+#\[path = "\.\.\/src\/windows_runtime\/mod\.rs"\]\s+mod windows_runtime;/,
     );
     expect(releaseCheck).toContain(
       '"tests/codexWindowsUserScopeContract.test.ts"',

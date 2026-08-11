@@ -1404,7 +1404,10 @@ fn windows_rename_relative_file(
     let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
     unsafe {
         (*information).Anonymous.ReplaceIfExists = false;
-        (*information).RootDirectory = HANDLE(directory.handle().as_raw_handle());
+        // A fixed simple name with a null root is a same-directory rename. This
+        // keeps the operation bound to the already-open source handle without
+        // asking Windows to reopen the target through a second directory root.
+        (*information).RootDirectory = HANDLE::default();
         (*information).FileNameLength = u32::try_from(name_bytes)
             .map_err(|_| temp_error("installer final file name is too long"))?;
         std::ptr::copy_nonoverlapping(
@@ -1717,6 +1720,9 @@ mod tests {
         let path = job_directory.path().to_path_buf();
 
         job_directory.cleanup().unwrap();
+        // Windows removes a delete-pending directory when its last handle is
+        // closed. The capability intentionally retains that handle until drop.
+        drop(job_directory);
 
         assert!(!path.exists());
         assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
@@ -1768,6 +1774,9 @@ mod tests {
         let path = job_directory.path().to_path_buf();
         let unknown = root.path().join("not-a-job-directory");
         fs::create_dir(&unknown).unwrap();
+        // Stale cleanup models a prior process's abandoned directory. Do not
+        // keep the creator's non-delete-sharing handle alive during the scan.
+        drop(job_directory);
 
         let removed = JobTempDir::cleanup_stale_under(
             root.path(),

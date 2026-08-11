@@ -117,6 +117,7 @@ windows = { version = "0.61", features = [
   "System",
   "Wdk_Foundation",
   "Wdk_Storage_FileSystem",
+  "Wdk_System_Registry",
   "Win32_Foundation",
   "Win32_Security",
   "Win32_Security_Authorization",

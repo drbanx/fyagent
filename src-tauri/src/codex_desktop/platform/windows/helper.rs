@@ -1514,6 +1514,13 @@ mod tests {
 
     const BRIDGE_IDENTITY: PinnedPackageIdentity = PinnedPackageIdentity::new(7, 11, 13);
 
+    fn production_source() -> &'static str {
+        include_str!("helper.rs")
+            .split_once("#[cfg(test)]\nmod tests {")
+            .expect("helper production source must precede the test module")
+            .0
+    }
+
     fn started(identity: PinnedPackageIdentity) -> HelperMessage {
         HelperMessage::Started { package: identity }
     }
@@ -1573,7 +1580,7 @@ mod tests {
 
     #[test]
     fn parent_runner_orders_authenticated_hello_before_control_and_admission() {
-        let source = include_str!("helper.rs");
+        let source = production_source();
         let raw_read = source.find("read_frame(first_frame_timeout)").unwrap();
         let client_validation = source.find("validate_client(").unwrap();
         let hello_acceptance = source.find("sequence.accept(first_message)").unwrap();
@@ -1603,7 +1610,7 @@ mod tests {
 
     #[test]
     fn pipe_security_contract_is_local_first_instance_message_mode_and_minimal() {
-        let source = include_str!("helper.rs");
+        let source = production_source();
         assert!(source.contains("FILE_FLAG_FIRST_PIPE_INSTANCE"));
         assert!(source.contains("PIPE_TYPE_MESSAGE"));
         assert!(source.contains("PIPE_READMODE_MESSAGE"));

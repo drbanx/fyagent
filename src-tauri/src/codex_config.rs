@@ -2097,9 +2097,8 @@ pub fn prepare_codex_config_text_with_model_catalog(
     config_text: &str,
     profile: CodexCatalogToolProfile,
 ) -> Result<String, AppError> {
-    let catalog_path = get_codex_model_catalog_path();
-
     if let Some(catalog) = codex_model_catalog_from_settings(settings, config_text, profile)? {
+        let catalog_path = get_codex_model_catalog_path();
         let config_text = set_codex_model_catalog_json_field(config_text, Some(&catalog_path))?;
         // Disable web_search only for native gateways on the reject blacklist
         // (MiMo/LongCat/MiniMax by host or model brand; Qwen3-Coder by model).

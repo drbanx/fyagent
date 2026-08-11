@@ -344,6 +344,7 @@ mod windows {
         use uuid::Uuid;
         use windows::{
             core::{PCWSTR, PWSTR},
+            Wdk::System::Registry::NtDeleteKey,
             Win32::{
                 Foundation::{CloseHandle, LocalFree, HANDLE, HLOCAL},
                 Security::{
@@ -355,7 +356,8 @@ mod windows {
         };
         use winreg::{
             enums::{
-                HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_LINK, REG_OPTION_CREATE_LINK,
+                HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_LINK,
+                REG_OPTION_CREATE_LINK, REG_OPTION_OPEN_LINK,
             },
             RegKey, RegValue,
         };
@@ -427,7 +429,7 @@ mod windows {
                 let mut first_error = None;
                 if let Some(parent) = self.parent.take() {
                     for link_name in ["LeafLink", "IntermediateLink"] {
-                        match parent.delete_subkey(link_name) {
+                        match delete_registry_link(&parent, link_name) {
                             Ok(()) => {}
                             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
                             Err(error) if first_error.is_none() => first_error = Some(error),
@@ -444,6 +446,15 @@ mod windows {
                 }
                 first_error.map_or(Ok(()), Err)
             }
+        }
+
+        fn delete_registry_link(parent: &RegKey, name: &str) -> io::Result<()> {
+            const DELETE_ACCESS: u32 = 0x0001_0000;
+            let link =
+                parent.open_subkey_with_options_flags(name, REG_OPTION_OPEN_LINK, DELETE_ACCESS)?;
+            unsafe { NtDeleteKey(HANDLE(link.raw_handle())) }
+                .ok()
+                .map_err(io::Error::other)
         }
 
         impl Drop for IsolatedRegistryTree {
@@ -554,6 +565,7 @@ mod windows {
                 false,
             );
             assert!(normal.is_ok(), "REG_OPTION_OPEN_LINK must open normal keys");
+            drop(normal);
 
             let leaf_components = [
                 "Software",
@@ -571,6 +583,7 @@ mod windows {
                 leaf_result,
                 Err(RegistryTraversalError::SymbolicLinkComponent)
             ));
+            drop(leaf_result);
 
             let intermediate_components = [
                 "Software",
@@ -589,6 +602,7 @@ mod windows {
                 intermediate_result,
                 Err(RegistryTraversalError::SymbolicLinkComponent)
             ));
+            drop(intermediate_result);
 
             let target = tree
                 .parent()
