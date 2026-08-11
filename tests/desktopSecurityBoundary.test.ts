@@ -59,8 +59,8 @@ const rendererLifecyclePaths = [
 ];
 const activeWindowsInstallDocs = [
   path.resolve(__dirname, "..", "README.md"),
+  path.resolve(__dirname, "..", "README_EN.md"),
   path.resolve(__dirname, "..", "README_JA.md"),
-  path.resolve(__dirname, "..", "README_ZH.md"),
   path.resolve(
     __dirname,
     "..",

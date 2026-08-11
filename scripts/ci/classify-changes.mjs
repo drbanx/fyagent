@@ -88,8 +88,8 @@ const DOCUMENTATION_ROOT_FILES = new Set([
   "LICENSING.md",
   "MEMORY.md",
   "README.md",
+  "README_EN.md",
   "README_JA.md",
-  "README_ZH.md",
   "SECURITY.md",
   "SUPPORT.md",
   "THIRD_PARTY_NOTICES.md",
@@ -100,6 +100,7 @@ const DOCUMENTATION_ROOT_FILES = new Set([
 // retired root-document names owned so history comparisons remain classifiable.
 const LEGACY_DOCUMENTATION_ROOT_FILES = new Set([
   "README_DE.md",
+  "README_ZH.md",
   "session-manager.md",
 ]);
 

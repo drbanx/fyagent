@@ -73,7 +73,7 @@ const LOCALIZED_INSTALLATION_GUIDES = [
   },
 ] as const;
 
-const PUBLIC_READMES = ["README.md", "README_JA.md", "README_ZH.md"] as const;
+const PUBLIC_READMES = ["README.md", "README_EN.md", "README_JA.md"] as const;
 
 const CURRENT_PUBLIC_REPOSITORY_FILES = [
   ...PUBLIC_READMES,
@@ -182,8 +182,8 @@ function currentAuthorityMarkdownFiles(): string[] {
       ...markdownFilesUnder(".trellis/spec"),
       "CONTRIBUTING.md",
       "README.md",
+      "README_EN.md",
       "README_JA.md",
-      "README_ZH.md",
       "flatpak/README.md",
     ]),
   ].sort();
@@ -470,6 +470,19 @@ describe("current FyAgent documentation authority", () => {
         );
       }
     }
+  });
+
+  it("uses Simplified Chinese as the repository homepage and keeps language links explicit", () => {
+    const chinese = read("README.md");
+    const english = read("README_EN.md");
+    const japanese = read("README_JA.md");
+
+    expect(chinese).toContain("For You Agent：为你而生，也由你掌控");
+    expect(chinese).toContain('href="README_EN.md">English</a>');
+    expect(english).toContain('href="README.md">简体中文</a>');
+    expect(japanese).toContain('href="README_EN.md">English</a>');
+    expect(japanese).toContain('href="README.md">简体中文</a>');
+    expect(fs.existsSync(path.join(ROOT, "README_ZH.md"))).toBe(false);
   });
 
   it("keeps the six-chapter manual and visual evidence plan closed", () => {

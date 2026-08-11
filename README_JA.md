@@ -2,7 +2,7 @@
   <img src="assets/fyagent.png" width="128" alt="FyAgent アイコン">
   <h1>FyAgent</h1>
   <p>日常的に使う AI コーディングツールの設定を、ひとつのデスクトップアプリへ。</p>
-  <p><a href="README.md">English</a> · <a href="README_ZH.md">简体中文</a></p>
+  <p><a href="README_EN.md">English</a> · <a href="README.md">简体中文</a></p>
 </div>
 
 FyAgent は、プロバイダー、拡張機能、プロキシルーティング、利用履歴をまとめて管理します。Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes に対応しており、モデルやエンドポイントを変えるたびに複数の設定ファイルを手で編集する必要がありません。

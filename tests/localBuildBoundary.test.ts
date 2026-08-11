@@ -94,7 +94,7 @@ const LOCAL_CROSS_EXECUTION_MARKERS = [
 ];
 const CURRENT_DOCUMENTS = [
   "README.md",
-  "README_ZH.md",
+  "README_EN.md",
   "README_JA.md",
   "CONTRIBUTING.md",
   "docs/fyagent/development/tooling/mise.md",
