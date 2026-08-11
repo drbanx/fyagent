@@ -1461,6 +1461,7 @@ fn extend_from_path_list(
     }
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn extend_from_cli_path_env(
     paths: &mut Vec<std::path::PathBuf>,
     value: Option<std::ffi::OsString>,
@@ -1475,6 +1476,7 @@ fn extend_from_cli_path_env(
     }
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn should_skip_cli_path_env_dir(path: &Path) -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -1488,7 +1490,7 @@ fn should_skip_cli_path_env_dir(path: &Path) -> bool {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", test))]
 fn is_windows_app_execution_alias_dir(path: &Path) -> bool {
     let normalized = path
         .to_string_lossy()
@@ -1499,7 +1501,7 @@ fn is_windows_app_execution_alias_dir(path: &Path) -> bool {
         .ends_with("\\microsoft\\windowsapps")
 }
 
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[cfg(test)]
 fn push_env_child_dir(
     paths: &mut Vec<std::path::PathBuf>,
     value: Option<std::ffi::OsString>,
@@ -2982,7 +2984,7 @@ pub(crate) fn run_detected_tool_command_with_timeout(
 
     #[cfg(target_os = "windows")]
     {
-        run_windows_tool_command_capture(&tool_path, args, deadline, extra_env, working_dir)
+        run_windows_tool_command_capture(&tool_path, dir, args, deadline, extra_env, working_dir)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -3007,6 +3009,7 @@ pub(crate) fn run_detected_tool_command_with_timeout(
 #[cfg(target_os = "windows")]
 fn run_windows_tool_command_capture(
     tool_path: &Path,
+    tool_dir: &Path,
     args: &[&str],
     deadline: Option<CommandDeadline>,
     extra_env: &[(&str, String)],
@@ -3037,7 +3040,7 @@ fn run_windows_tool_command_capture(
         let command_processor = crate::windows_runtime::system_command_path()
             .ok_or_else(|| "Windows system command processor is unavailable".to_owned())?;
         let mut cmd = Command::new(command_processor);
-        crate::windows_runtime::configure_shell_user_command(&mut cmd, tool_path.parent())
+        crate::windows_runtime::configure_shell_user_command(&mut cmd, Some(tool_dir))
             .map_err(|error| error.to_string())?;
         cmd.args(["/D", "/S", "/C"])
             .raw_arg(&command_line)
@@ -3045,7 +3048,7 @@ fn run_windows_tool_command_capture(
         cmd
     } else {
         let mut cmd = Command::new(tool_path);
-        crate::windows_runtime::configure_shell_user_command(&mut cmd, tool_path.parent())
+        crate::windows_runtime::configure_shell_user_command(&mut cmd, Some(tool_dir))
             .map_err(|error| error.to_string())?;
         cmd.args(args).creation_flags(CREATE_NO_WINDOW);
         cmd

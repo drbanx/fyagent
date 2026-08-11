@@ -201,7 +201,7 @@ describe("Codex Windows interactive-user contract", () => {
       /#\[cfg\(not\(target_os = "windows"\)\)\]\s+\{\s+Self::Explicit\(JobTempDir::system_root\(\)\)\s+\}/u,
     );
     expect(tempRoot).toMatch(
-      /#\[cfg\(any\(not\(target_os = "windows"\), test\)\)\]\s+pub\(crate\) fn system_root\(\)[\s\S]+?std::env::temp_dir\(\)/u,
+      /#\[cfg\(not\(target_os = "windows"\)\)\]\s+pub\(crate\) fn system_root\(\)[\s\S]+?std::env::temp_dir\(\)/u,
     );
 
     const windowsJob = tempRoot.slice(
@@ -276,7 +276,7 @@ describe("Codex Windows interactive-user contract", () => {
       '#[cfg(any(not(target_os = "windows"), test, feature = "test-hooks"))]',
     );
     expect(hostConfig).toMatch(
-      /#\[cfg\(target_os = "windows"\)\]\s+\{\s+return crate::windows_runtime::user_home_dir\(\)/,
+      /#\[cfg\(target_os = "windows"\)\]\s+\{\s+crate::windows_runtime::user_home_dir\(\)\s+\}/,
     );
     expect(hermesConfig).toMatch(
       /#\[cfg\(not\(target_os = "windows"\)\)\]\s+if let Some\(raw\) = std::env::var_os\("HERMES_HOME"\)/,

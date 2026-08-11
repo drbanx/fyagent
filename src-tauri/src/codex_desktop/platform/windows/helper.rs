@@ -506,7 +506,8 @@ impl ParentControlEvent {
 }
 
 struct AdmittedHelperProcess {
-    handle: OwnedWin32Handle,
+    // Retain the authenticated process object through settlement or quarantine.
+    _process_handle: OwnedWin32Handle,
     _image: PinnedHelperImage,
 }
 
@@ -806,7 +807,7 @@ impl OneShotPipeServer {
             return Err(helper_identity_error());
         }
         Ok(AdmittedHelperProcess {
-            handle: process,
+            _process_handle: process,
             _image: connected_image,
         })
     }

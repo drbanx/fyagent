@@ -31,7 +31,7 @@ use super::{
     verify::ArtifactKind,
 };
 
-#[cfg(any(not(target_os = "windows"), test))]
+#[cfg(not(target_os = "windows"))]
 const TEMP_ROOT_DIRECTORY_NAME: &str = "fyagent-codex-installer";
 const STALE_JOB_DIRECTORY_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -186,7 +186,7 @@ impl TrustedDirectory {
                     "installer staging directory path no longer matches its handle",
                 ));
             }
-            return Ok(());
+            Ok(())
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -305,6 +305,7 @@ pub(crate) struct JobTempDir {
 
 #[derive(Clone, Copy)]
 enum ArtifactPolicy {
+    #[cfg(any(not(target_os = "windows"), test))]
     CrossPlatform,
     #[cfg(any(target_os = "windows", test))]
     WindowsMsixOnly,
@@ -313,6 +314,7 @@ enum ArtifactPolicy {
 impl ArtifactPolicy {
     fn permits_file_name(self, file_name: &str) -> bool {
         match self {
+            #[cfg(any(not(target_os = "windows"), test))]
             Self::CrossPlatform => matches!(
                 file_name,
                 "installer.msix" | "installer.msix.part" | "installer.dmg" | "installer.dmg.part"
@@ -324,6 +326,7 @@ impl ArtifactPolicy {
 
     fn cleanup_kinds(self) -> &'static [ArtifactKind] {
         match self {
+            #[cfg(any(not(target_os = "windows"), test))]
             Self::CrossPlatform => &[ArtifactKind::Msix, ArtifactKind::Dmg],
             #[cfg(any(target_os = "windows", test))]
             Self::WindowsMsixOnly => &[ArtifactKind::Msix],
@@ -338,7 +341,7 @@ impl fmt::Debug for JobTempDir {
 }
 
 impl JobTempDir {
-    #[cfg(any(not(target_os = "windows"), test))]
+    #[cfg(not(target_os = "windows"))]
     pub(crate) fn system_root() -> PathBuf {
         std::env::temp_dir().join(TEMP_ROOT_DIRECTORY_NAME)
     }
@@ -368,6 +371,7 @@ impl JobTempDir {
         }
     }
 
+    #[cfg(any(not(target_os = "windows"), test))]
     fn cleanup_stale_under(
         root: &Path,
         minimum_age: Duration,
@@ -804,7 +808,7 @@ impl JobTempDir {
             };
             windows_mark_handle_for_deletion(&file)?;
             drop(file);
-            return self.validate_job_directory();
+            self.validate_job_directory()
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -842,6 +846,7 @@ fn ensure_path_absent_for_temp(path: &Path) -> Result<(), InstallerError> {
     }
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn canonical_job_id(value: &str) -> Result<String, InstallerError> {
     if !is_canonical_job_id(value) {
         return Err(temp_error("installer job ID is not a canonical UUID"));
@@ -1601,16 +1606,6 @@ fn directory_identity_and_modified(
         },
         modified,
     ))
-}
-
-#[cfg(target_os = "windows")]
-fn is_link_or_reparse_point(path: &Path) -> Result<bool, InstallerError> {
-    use std::os::windows::fs::MetadataExt;
-
-    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
-    let metadata = fs::symlink_metadata(path)
-        .map_err(|_| temp_error("installer staging path could not be inspected"))?;
-    Ok(metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
 }
 
 #[cfg(not(target_os = "windows"))]

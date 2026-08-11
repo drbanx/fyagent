@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(target_os = "macos")]
 use crate::config::get_home_dir;
 use crate::config::{atomic_write, delete_file, read_json_file, write_json_file};
 use crate::database::Database;

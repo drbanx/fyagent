@@ -1250,7 +1250,7 @@ fn enumerate_directory_names(
                     .cast::<FILE_ID_BOTH_DIR_INFO>()
             };
             let name_bytes = information.FileNameLength as usize;
-            if name_bytes == 0 || !name_bytes.is_multiple_of(size_of::<u16>()) {
+            if name_bytes == 0 || name_bytes % size_of::<u16>() != 0 {
                 return Err(bridge_integrity_error(
                     "a package bridge directory name record was invalid",
                 ));
@@ -1282,7 +1282,7 @@ fn enumerate_directory_names(
                 break;
             }
             let next = information.NextEntryOffset as usize;
-            if next < record_bytes || !next.is_multiple_of(align_of::<FILE_ID_BOTH_DIR_INFO>()) {
+            if next < record_bytes || next % align_of::<FILE_ID_BOTH_DIR_INFO>() != 0 {
                 return Err(bridge_integrity_error(
                     "a package bridge directory record offset was invalid",
                 ));

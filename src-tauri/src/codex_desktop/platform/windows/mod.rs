@@ -107,6 +107,7 @@ impl WindowsHelperDeadlines {
     };
 }
 
+#[derive(Clone)]
 struct WindowsInstallDependencies {
     context_revalidator: Arc<dyn WindowsContextRevalidator>,
     pin_factory: Arc<dyn WindowsFilePinFactory>,
@@ -229,7 +230,7 @@ pub(crate) struct WindowsPlatformAdapter {
 }
 
 impl WindowsPlatformAdapter {
-    pub(crate) fn new(
+    fn new(
         package_manager: Arc<dyn WindowsPackageManager>,
         user_context: Arc<InteractiveUserContext>,
         host: WindowsHost,
@@ -393,10 +394,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         progress: PlatformProgressSink,
     ) -> BoxFuture<'a, Result<(), InstallerError>> {
         let package_manager = self.package_manager.clone();
-        let context_revalidator = self.install_dependencies.context_revalidator.clone();
-        let pin_factory = self.install_dependencies.pin_factory.clone();
-        let helper_runner = self.install_dependencies.helper_runner.clone();
-        let deadlines = self.install_dependencies.deadlines;
+        let install_dependencies = self.install_dependencies.clone();
         let user_context = self.user_context.clone();
         let host = self.host.clone();
         let publisher_evidence = self.publisher_evidence.clone();
@@ -409,10 +407,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
             run_blocking(move || {
                 install_current_user(
                     package_manager.as_ref(),
-                    context_revalidator.as_ref(),
-                    pin_factory.as_ref(),
-                    helper_runner.as_ref(),
-                    deadlines,
+                    &install_dependencies,
                     &user_context,
                     &host,
                     &publisher_evidence,
@@ -653,9 +648,9 @@ fn preflight(
     }
     #[cfg(target_os = "windows")]
     {
-        return Ok(PlatformInstallPlan::new(vec![
+        Ok(PlatformInstallPlan::new(vec![
             package_bridge::program_data_bridge_probe_path()?,
-        ]));
+        ]))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -679,10 +674,7 @@ fn validate_package(
 
 fn install_current_user(
     package_manager: &dyn WindowsPackageManager,
-    context_revalidator: &dyn WindowsContextRevalidator,
-    pin_factory: &dyn WindowsFilePinFactory,
-    helper_runner: &dyn WindowsUserHelperRunner,
-    deadlines: WindowsHelperDeadlines,
+    install_dependencies: &WindowsInstallDependencies,
     user_context: &InteractiveUserContext,
     host: &WindowsHost,
     publisher_evidence: &VerifiedPublisherEvidence,
@@ -712,13 +704,20 @@ fn install_current_user(
         );
     }
 
+    let context_revalidator = install_dependencies.context_revalidator.as_ref();
     require_current_context(context_revalidator, user_context)?;
     package.revalidate_artifact()?;
-    let pin = pin_factory.open(package)?;
+    let pin = install_dependencies.pin_factory.open(package)?;
     pin.recheck()?;
     require_current_context(context_revalidator, user_context)?;
 
-    let helper_result = helper_runner.run(user_context, job_id, pin, progress, deadlines);
+    let helper_result = install_dependencies.helper_runner.run(
+        user_context,
+        job_id,
+        pin,
+        progress,
+        install_dependencies.deadlines,
+    );
     require_current_context(context_revalidator, user_context)?;
     helper_result?;
 

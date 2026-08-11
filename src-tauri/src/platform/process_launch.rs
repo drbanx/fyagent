@@ -161,10 +161,6 @@ where
             InteractiveUserLaunch::TrustedWindowsAppAumid(aumid) => {
                 self.launcher.open_trusted_windows_app_aumid(&aumid)
             }
-            #[cfg(target_os = "windows")]
-            InteractiveUserLaunch::FyAgentUserHelper { job_id, pipe_nonce } => self
-                .launcher
-                .launch_fyagent_user_helper(&job_id, &pipe_nonce),
         }
     }
 
@@ -185,11 +181,6 @@ enum InteractiveUserLaunch {
     Directory(PathBuf),
     TerminalScript(PathBuf),
     TrustedWindowsAppAumid(String),
-    #[cfg(target_os = "windows")]
-    FyAgentUserHelper {
-        job_id: CanonicalJobId,
-        pipe_nonce: PipeNonce,
-    },
 }
 
 impl InteractiveUserLaunch {
@@ -229,14 +220,6 @@ impl InteractiveUserLaunch {
         }
 
         Ok(Self::TrustedWindowsAppAumid(aumid.to_owned()))
-    }
-
-    #[cfg(target_os = "windows")]
-    fn fyagent_user_helper(job_id: &CanonicalJobId, pipe_nonce: &PipeNonce) -> Self {
-        Self::FyAgentUserHelper {
-            job_id: job_id.clone(),
-            pipe_nonce: pipe_nonce.clone(),
-        }
     }
 }
 

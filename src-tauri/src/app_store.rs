@@ -216,7 +216,7 @@ pub fn set_app_config_dir_to_store(
 
         write_windows_store(&store_path, &document, WINDOWS_APP_PATHS_STORE_MAX_BYTES)?;
         refresh_app_config_dir_override(app);
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]

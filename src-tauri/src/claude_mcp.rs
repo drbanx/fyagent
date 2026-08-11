@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+#[cfg(not(windows))]
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};

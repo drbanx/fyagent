@@ -298,6 +298,9 @@ impl fmt::Debug for PlatformInstallPlan {
 #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 #[derive(Clone)]
 pub struct VerifiedPackage {
+    // Windows production consumes the downloader-retained file capability.
+    // The raw path remains necessary for macOS production and regression tests.
+    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
     artifact_path: PathBuf,
     locked_release: ReleaseDescriptor,
     // Production evidence always contains the downloader capability. The
@@ -325,6 +328,7 @@ impl VerifiedPackage {
         })
     }
 
+    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
     fn artifact_path(&self) -> &Path {
         &self.artifact_path
     }

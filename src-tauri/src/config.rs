@@ -31,7 +31,7 @@ pub fn get_home_dir() -> PathBuf {
 
     #[cfg(target_os = "windows")]
     {
-        return crate::windows_runtime::user_home_dir();
+        crate::windows_runtime::user_home_dir()
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -76,9 +76,9 @@ pub(crate) fn get_user_roaming_app_data_dir() -> PathBuf {
 pub(crate) fn get_user_temp_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        return get_user_local_app_data_dir()
+        get_user_local_app_data_dir()
             .join("com.fyagent.desktop")
-            .join("temp");
+            .join("temp")
     }
 
     #[cfg(not(target_os = "windows"))]

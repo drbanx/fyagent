@@ -770,11 +770,19 @@ describe("Codex current-user helper static contract", () => {
   });
 
   it("retains source and bridge after unknown admission and cleans only a settled close", () => {
+    const admittedProcess = section(
+      parentHelper,
+      "struct AdmittedHelperProcess",
+      "\nstruct HelperLifetime",
+    );
+    expect(admittedProcess).toContain("_process_handle: OwnedWin32Handle");
+
     const lifetime = section(
       parentHelper,
       "struct HelperLifetime",
       "\nstatic HELPER_GATE",
     );
+    expect(lifetime).toContain("process: Option<AdmittedHelperProcess>");
     expect(lifetime).toMatch(
       /pin:\s*Option<Box<dyn WindowsVerifiedFilePin>>[\s\S]+?bridge:\s*Option<ProtectedPackageBridge>/u,
     );
@@ -1012,9 +1020,8 @@ describe("Codex current-user helper static contract", () => {
     expect(activeWindowsInstaller).not.toMatch(
       /StagePackage(?:ByUri)?Async|RegisterPackagesByFullNameAsync|ProvisionPackage|RemoveForAllUsers/iu,
     );
-    expect(windowsAdapter).toContain(
-      "helper_runner.run(user_context, job_id, pin, progress, deadlines)",
-    );
+    expect(windowsAdapter).toContain("install_dependencies.helper_runner.run(");
+    expect(windowsAdapter).toContain("install_dependencies.deadlines");
   });
 
   it("treats Cancel as a request and exits only after true terminal observation", () => {
