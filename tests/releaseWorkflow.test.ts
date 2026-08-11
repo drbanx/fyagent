@@ -1051,6 +1051,23 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain('"refs/tags/$GITHUB_REF_NAME"');
     expect(eligibility).toContain('release_tag="v$app_version"');
     expect(eligibility).toContain('check --tag "$release_tag"');
+    const versionContractStep = namedStepBlock(
+      eligibility,
+      "Validate repository, workflow, ref, source, and version",
+    );
+    expectExactLine(
+      versionContractStep,
+      '            "$candidate_contract_root/src-tauri/user-helper"',
+    );
+    expectExactLine(
+      versionContractStep,
+      '          cp candidate-source/src-tauri/user-helper/Cargo.toml "$candidate_contract_root/src-tauri/user-helper/Cargo.toml"',
+    );
+    expect(
+      versionContractStep.indexOf(
+        "cp candidate-source/src-tauri/user-helper/Cargo.toml",
+      ),
+    ).toBeLessThan(versionContractStep.indexOf('app_version="$(node'));
     expect(eligibility).toContain(
       "node scripts/release/verify-dev-release-remote.mjs",
     );

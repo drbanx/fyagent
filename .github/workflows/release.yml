@@ -208,11 +208,12 @@ jobs:
           candidate_contract_root="$RUNNER_TEMP/fyagent-candidate-version-contract"
           rm -rf "$candidate_contract_root"
           mkdir -p "$candidate_contract_root/scripts" \
-            "$candidate_contract_root/src-tauri"
+            "$candidate_contract_root/src-tauri/user-helper"
           cp scripts/version.mjs "$candidate_contract_root/scripts/version.mjs"
           cp candidate-source/package.json "$candidate_contract_root/package.json"
           cp candidate-source/src-tauri/tauri.conf.json "$candidate_contract_root/src-tauri/tauri.conf.json"
           cp candidate-source/src-tauri/Cargo.toml "$candidate_contract_root/src-tauri/Cargo.toml"
+          cp candidate-source/src-tauri/user-helper/Cargo.toml "$candidate_contract_root/src-tauri/user-helper/Cargo.toml"
           cp candidate-source/src-tauri/Cargo.lock "$candidate_contract_root/src-tauri/Cargo.lock"
           app_version="$(node "$candidate_contract_root/scripts/version.mjs" get)"
           release_tag="v$app_version"
