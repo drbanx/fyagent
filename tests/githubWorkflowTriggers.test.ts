@@ -50,7 +50,13 @@ describe("GitHub workflow trigger policy", () => {
     const source = readWorkflow("ci.yml");
 
     expect(source).toContain("desktop-acceptance-contract:");
-    expect(source).toContain("run: pnpm test:desktop:mock");
+    expect(source).toContain(
+      "run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance",
+    );
+    expect(source).toContain(
+      "run: node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",
+    );
+    expect(source).not.toContain("run: pnpm test:desktop:mock");
     expect(source).toContain("run: pnpm test:desktop:visual:preflight");
     expect(source).not.toContain("run: pnpm test:e2e");
   });

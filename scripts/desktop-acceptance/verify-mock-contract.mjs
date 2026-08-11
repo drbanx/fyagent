@@ -44,8 +44,13 @@ requireCondition(
   "manual CI must include the desktop acceptance contract job",
 );
 requireCondition(
-  workflow.includes("run: pnpm test:desktop:mock"),
-  "manual CI must run the mock-only acceptance contract",
+  workflow.includes(
+    "run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance",
+  ) &&
+    workflow.includes(
+      "run: node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",
+    ),
+  "CI must collect the mock-only tests and verifier as independent diagnostics",
 );
 requireCondition(
   workflow.includes("run: pnpm test:desktop:visual:preflight"),

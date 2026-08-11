@@ -57,6 +57,17 @@ function jobBlock(id: string): string {
   return source.slice(start + 1, bodyStart + next);
 }
 
+function namedStepBlock(jobId: string, stepName: string): string {
+  const job = jobBlock(jobId);
+  const marker = `      - name: ${stepName}\n`;
+  const start = job.indexOf(marker);
+  expect(start, `${jobId}/${stepName}`).toBeGreaterThan(-1);
+  const bodyStart = start + marker.length;
+  const next = job.slice(bodyStart).search(/^      - name:/m);
+  if (next < 0) return job.slice(start);
+  return job.slice(start, bodyStart + next);
+}
+
 function actionSteps(action: string): string[] {
   const escaped = action.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const expression = new RegExp(
@@ -87,25 +98,25 @@ describe("automatic CI workflow", () => {
     expect(changes).toContain(".domains |= with_entries(.value = true)");
 
     expect(jobBlock("contracts")).toContain(
-      "if: needs.changes.result == 'success' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.docs_spec == 'true')",
+      "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.docs_spec == 'true'))) }}",
     );
     expect(jobBlock("frontend")).toContain(
-      "if: needs.changes.result == 'success' && needs.changes.outputs.frontend == 'true'",
+      "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.frontend == 'true')) }}",
     );
     expect(jobBlock("desktop-acceptance-contract")).toContain(
-      "if: needs.changes.result == 'success' && needs.changes.outputs.desktop == 'true'",
+      "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.desktop == 'true')) }}",
     );
     expect(jobBlock("backend-linux")).toContain(
-      "if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'",
+      "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.backend == 'true')) }}",
     );
     expect(jobBlock("backend-windows")).toContain(
-      "needs.changes.outputs.backend == 'true' || needs.changes.outputs.windows_native == 'true'",
+      "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.windows_native == 'true'))) }}",
     );
     expect(jobBlock("windows-native-contracts")).toContain(
-      "if: needs.changes.result == 'success' && needs.changes.outputs.windows_native == 'true'",
+      "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.windows_native == 'true')) }}",
     );
     expect(jobBlock("backend-macos")).toContain(
-      "if: needs.changes.result == 'success' && needs.changes.outputs.backend == 'true'",
+      "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.backend == 'true')) }}",
     );
 
     const required = jobBlock("required");
@@ -268,8 +279,10 @@ describe("automatic CI workflow", () => {
     expect(releaseCheck).toContain('"tests/formatFiles.test.ts"');
     expect(releaseCheck).toContain('"tests/taskAtomicWriter.test.ts"');
     expect(releaseCheck).toContain(
-      'run("node", ["scripts/tasks/task-contract-check.mjs"]);',
+      '["scripts/tasks/task-contract-check.mjs"],',
     );
+    expect(releaseCheck).toContain("for (const [id, command, args] of plan)");
+    expect(releaseCheck).toContain("throw new AggregateError(");
   });
 
   it("runs locked Rust checks on Linux, Windows, and macOS", () => {
@@ -279,13 +292,13 @@ describe("automatic CI workflow", () => {
         "node scripts/ci/verify-toolchain.mjs --tools node,pnpm,rust",
       );
       expect(block).toContain(
-        "cargo check --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml",
+        "cargo check --workspace --all-targets --keep-going --locked --manifest-path src-tauri/Cargo.toml",
       );
       expect(block).toContain(
-        "cargo clippy --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml -- -D warnings",
+        "cargo clippy --workspace --all-targets --keep-going --locked --manifest-path src-tauri/Cargo.toml -- -D warnings",
       );
       expect(block).toContain(
-        "cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml",
+        "cargo test --workspace --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast",
       );
     }
     expect(jobBlock("backend-windows")).toContain(
@@ -293,6 +306,8 @@ describe("automatic CI workflow", () => {
     );
     const windows = jobBlock("backend-windows");
     expect(windows).toContain(`- name: Prepare Windows user helper sidecar
+        id: prepare-helper
+        if: \${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
           TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
           TAURI_ENV_DEBUG: "true"
@@ -314,6 +329,133 @@ describe("automatic CI workflow", () => {
     expect(jobBlock("backend-linux")).toContain(
       "cargo fmt --all --check --manifest-path src-tauri/Cargo.toml",
     );
+  });
+
+  it("collects every CI diagnostic before each job restores its failure", () => {
+    const collectedSteps = {
+      changes: ["Setup Node.js", "Classify explicit base and head commits"],
+      contracts: [
+        "Setup pnpm",
+        "Setup Node.js",
+        "Resolve locked toolchain facts",
+        "Setup uv and managed Python",
+        "Setup Rust",
+        "Synchronize locked Python environment",
+        "Install frontend dependencies",
+        "Verify active toolchains",
+        "Run repository and release contracts",
+      ],
+      frontend: [
+        "Setup pnpm",
+        "Setup Node.js",
+        "Resolve locked toolchain facts",
+        "Setup uv and managed Python",
+        "Synchronize locked Python environment",
+        "Install frontend dependencies",
+        "Verify active toolchains",
+        "Verify application version contract",
+        "TypeScript type check",
+        "Check formatting",
+        "Unit tests",
+        "Locale key parity",
+      ],
+      "desktop-acceptance-contract": [
+        "Setup pnpm",
+        "Setup Node.js",
+        "Install frontend dependencies",
+        "Verify active toolchains",
+        "Run mock-only desktop acceptance tests",
+        "Verify mock-only desktop acceptance contract",
+        "Verify native Fetch through MSW and Tauri mock",
+        "Verify visual baseline capture policy",
+      ],
+      "backend-linux": [
+        "Setup pnpm",
+        "Setup Node.js",
+        "Setup Rust",
+        "Verify active toolchains",
+        "Install Linux system dependencies",
+        "Create frontend dist placeholder",
+        "Check Rust formatting",
+        "Check Rust workspace",
+        "Run Clippy",
+        "Run Rust tests",
+      ],
+      "backend-windows": [
+        "Setup pnpm",
+        "Setup Node.js",
+        "Setup Rust",
+        "Verify active toolchains",
+        "Create frontend dist placeholder",
+        "Prepare Windows user helper sidecar",
+        "Check Rust workspace",
+        "Run Clippy",
+        "Run Rust tests",
+      ],
+      "windows-native-contracts": [
+        "Setup Node.js",
+        "Setup Rust",
+        "Resolve locked toolchain facts",
+        "Setup uv and managed Python",
+        "Synchronize locked Python environment",
+        "Verify managed Windows toolchains",
+        "Create frontend dist placeholder",
+        "Verify native Rust architecture",
+        "Prepare Windows user helper sidecar",
+        "Exercise explicit-SID Main package inventory",
+        "Verify managed Python architecture",
+      ],
+      "backend-macos": [
+        "Setup pnpm",
+        "Setup Node.js",
+        "Setup Rust",
+        "Verify active toolchains",
+        "Create frontend dist placeholder",
+        "Check Rust workspace",
+        "Run Clippy",
+        "Run Rust tests",
+      ],
+      required: [
+        "Read current run-attempt job conclusions",
+        "Evaluate required dependency results",
+      ],
+    } as const;
+
+    for (const [jobId, stepNames] of Object.entries(collectedSteps)) {
+      const actualNames = [
+        ...jobBlock(jobId).matchAll(/^      - name: (.+)$/gm),
+      ].map((match) => match[1]);
+      expect(actualNames[0], jobId).toMatch(/^Checkout(?: |$)/u);
+      expect(actualNames.slice(1), jobId).toEqual([
+        ...stepNames,
+        "Evaluate collected diagnostics",
+      ]);
+      const checkout = namedStepBlock(jobId, actualNames[0]);
+      expect(checkout).toContain("id: checkout");
+      expect(checkout).not.toContain("continue-on-error: true");
+
+      const stepIds = stepNames.map((stepName) => {
+        const step = namedStepBlock(jobId, stepName);
+        expect(step).toContain(
+          "if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}",
+        );
+        expect(step).not.toContain("continue-on-error: true");
+        const id = /^        id: ([a-z][a-z0-9-]*)$/m.exec(step)?.[1];
+        expect(id, `${jobId}/${stepName}`).toBeDefined();
+        return id!;
+      });
+
+      const evaluator = namedStepBlock(jobId, "Evaluate collected diagnostics");
+      expect(evaluator).toContain(
+        "if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}",
+      );
+      expect(evaluator).not.toContain("continue-on-error: true");
+      expect(evaluator).toContain(`CI_REQUIRED_STEPS: ${stepIds.join(",")}`);
+      expect(evaluator).toContain("CI_STEP_RESULTS: ${{ toJSON(steps) }}");
+      expect(evaluator).toContain(
+        "run: node scripts/ci/evaluate-step-outcomes.mjs",
+      );
+    }
   });
 
   it("runs managed Python and the explicit-SID package smoke on native Windows x64 and ARM64", () => {
@@ -371,6 +513,8 @@ describe("automatic CI workflow", () => {
       "run: New-Item -ItemType Directory -Force dist | Out-Null",
     );
     expect(block).toContain(`- name: Prepare Windows user helper sidecar
+        id: prepare-helper
+        if: \${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
           TAURI_ENV_TARGET_TRIPLE: \${{ matrix.rust_host }}
           TAURI_ENV_DEBUG: "true"
@@ -391,7 +535,7 @@ describe("automatic CI workflow", () => {
       'if ($exitCode -ne 0 -or $joined -notmatch "test result: ok\\. 1 passed; 0 failed")',
     );
     expect(block).not.toContain("windowsInstallerQuery.integration.ps1");
-    expect(block.match(/^      - name:/gm)).toHaveLength(12);
+    expect(block.match(/^      - name:/gm)).toHaveLength(13);
     expect(block.match(/^        uses:/gm)).toHaveLength(4);
     expect(block).not.toMatch(/\b(?:npm|npx|pnpm|yarn|bun)\b|bundle|signing/i);
   });

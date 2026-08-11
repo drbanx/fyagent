@@ -238,6 +238,45 @@ atomically stages the matching helper executable. The desktop build remains
 fail closed when its declared Tauri sidecar is absent; CI must not substitute an
 empty placeholder or make the resource optional.
 
+Every CI job treats checkout as the hard prerequisite, then collects the raw
+outcome of every repository-owned setup or validation step that follows it.
+Every later step uses the explicit condition
+`!cancelled() && steps.checkout.outcome == 'success'`: checkout failure stops
+the job, cancellation stops expensive work, and an ordinary validation failure
+does not hide later independent diagnostics. Collected steps must not use
+`continue-on-error`; otherwise a setup action's post-job failure could be
+rewritten after the evaluator has already run. A final
+`evaluate-step-outcomes.mjs` step checks each exact expected step ID's raw
+`outcome` and returns nonzero if any step failed, was skipped, was cancelled, or
+did not report a valid result. It must not use `conclusion`, and a missing
+result must fail closed. Checkout failure, setup-action post failure, runner
+loss, and job timeout remain native job failures and are still rejected by
+`CI / Required`.
+
+If the changed-path classifier job finishes with `failure` rather than
+`cancelled`, every conditional CI domain runs instead of trusting absent or
+partial classifier outputs. This preserves fail-closed coverage while still
+collecting frontend, contract, backend, desktop, and native diagnostics from
+their independent checkouts. A cancelled classifier run remains cancelled and
+does not start replacement diagnostics.
+
+Within Cargo, check and Clippy use `--keep-going` so all still-buildable
+dependency-graph branches are attempted before the command returns failure.
+This does not claim that a target whose dependency failed can run. Rust tests
+use `--no-fail-fast`, which continues across test executables after an
+executable fails. The workflow therefore exposes all diagnostics that remain
+executable in the current job, then fails once at the collection boundary; it
+never turns a failed check into a green job.
+
+The repository-contract runner applies the same rule inside its single CI
+step: version, lockfile, dependency, task-document, NSIS, and contract-test
+diagnostics all run before it returns an aggregate failure. Composite package
+scripts must not hide independent CI diagnostics behind shell `&&`; the
+desktop acceptance job runs its mock test suite and its mock-contract verifier
+as separately collected steps. Dependent operations may still stop locally
+when their prerequisite is absent, but that failure must not suppress an
+independent later diagnostic.
+
 ## 8. Matching-architecture Windows native contract
 
 `windows-native-contracts` is a fail-fast-disabled two-entry matrix:
@@ -292,6 +331,8 @@ Required automated fixtures cover:
 - legal skip versus required skip, unexpected execution, failure,
   cancellation, timeout, classifier failure, incomplete API evidence, and
   result/conclusion mismatch;
+- exact per-job collected step IDs, raw-outcome aggregation, cancellation
+  boundaries, Cargo keep-going, and Rust test no-fail-fast semantics;
 - immutable Action pins, minimal permissions, exact runners/toolchains, and
   the x64/ARM64 explicit-SID smoke wiring.
 
