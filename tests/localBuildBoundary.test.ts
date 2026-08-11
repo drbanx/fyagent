@@ -96,7 +96,6 @@ const CURRENT_DOCUMENTS = [
   "README.md",
   "README_ZH.md",
   "README_JA.md",
-  "README_DE.md",
   "CONTRIBUTING.md",
   "docs/fyagent/development/tooling/mise.md",
   "docs/fyagent/development/validation.md",
