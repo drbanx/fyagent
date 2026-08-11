@@ -156,6 +156,18 @@ low-level maintenance commands own any such customization. `rust:fmt` and
 `rust:fmt:check` remain the exceptions because rustfmt does not compile or run
 a target executable.
 
+On Windows only, `rust:check`, `rust:clippy`, and `rust:test` invoke the same
+dependency-free `scripts/prepare-windows-user-helper.mjs` packaging input
+preparer exactly once after caller, Cargo-config, runner, and absolute
+rustc/rustdoc current-host validation, but before the main workspace Cargo
+command. The wrapper supplies its canonical current-host target as
+`TAURI_ENV_TARGET_TRIPLE` and fixes `TAURI_ENV_DEBUG=true`; a preparation
+failure stops before workspace Cargo. Linux and macOS Rust tasks do not run
+this Windows resource step. This preserves the Tauri `externalBin` resource
+fail-closed contract for local Windows Rust compilation without turning a
+local compile or test into PackageManager, ACL, setup, or other native-runtime
+evidence.
+
 This spec is the active execution boundary. Historical build decisions may
 explain provenance, but they do not override the current host-native contract.
 
@@ -225,6 +237,7 @@ the standard version file and `mise.lock` captured before the attempt.
 | Any supported Rust/rustdoc flag env contains `--target`               | Reject before probing rustc/rustdoc or starting Cargo/Tauri                             |
 | `rustc`/`rustdoc` identity differs from host or each other            | Reject before Cargo/Tauri execution                                                     |
 | User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject the effective config before rustc/rustdoc/Cargo/Tauri starts                     |
+| A Windows helper preparation fails or selects another target/profile  | Stop before the main workspace Cargo command                                            |
 | A local command selects another OS/architecture by any route          | Reject before compilation, packaging, or verification                                   |
 | A non-host result is offered as native acceptance evidence            | Keep the gate pending and require the matching native Actions runner                    |
 | Host native libraries are missing                                     | `system:check` fails with a non-elevating installation hint                             |
@@ -253,6 +266,11 @@ the standard version file and `mise.lock` captured before the attempt.
   resolution and matching `-vV` identities, case-insensitive compiler/wrapper/
   runner/target rejection, target-bearing flag rejection, and fixed
   Tauri/Cargo argv plus owned child environment.
+- Unit-test Windows Rust task ordering and environment: one helper preparation
+  after all current-host validations and before workspace Cargo, the exact
+  canonical target, `TAURI_ENV_DEBUG=true`, and no workspace Cargo after
+  preparation failure. Prove Linux/macOS Rust tasks never invoke the helper
+  preparer.
 - Smoke the real `pnpm dev`/`pnpm build` and canonical mise wrappers with
   rejected arguments/environment, proving the error occurs before rustc,
   rustdoc, Cargo, Tauri, or a frontend build command can start. Fake native

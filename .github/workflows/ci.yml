@@ -356,6 +356,12 @@ jobs:
         shell: bash
         run: mkdir -p dist
 
+      - name: Prepare Windows user helper sidecar
+        env:
+          TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
+          TAURI_ENV_DEBUG: "true"
+        run: node scripts/prepare-windows-user-helper.mjs
+
       - name: Check Rust workspace
         run: cargo check --workspace --all-targets --locked --manifest-path src-tauri/Cargo.toml
 
@@ -441,6 +447,12 @@ jobs:
           if ($rustHost -cne '${{ matrix.rust_host }}') {
             throw "Rust host mismatch: expected ${{ matrix.rust_host }}, got $rustHost"
           }
+
+      - name: Prepare Windows user helper sidecar
+        env:
+          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_host }}
+          TAURI_ENV_DEBUG: "true"
+        run: node scripts/prepare-windows-user-helper.mjs
 
       - name: Exercise explicit-SID Main package inventory
         shell: pwsh

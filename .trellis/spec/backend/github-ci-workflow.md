@@ -228,7 +228,15 @@ contracts, and the local canonical check owns the real mise boundary.
 Backend jobs run locked Cargo check, clippy with warnings denied, and tests on
 Linux, Windows, and macOS. Linux additionally owns `cargo fmt --check` and the
 reviewed system dependency set. The Windows backend uses the test manifest and
-the native x64 `windows-2025` runner.
+the native x64 `windows-2025` runner. Before any Windows backend Cargo command
+can compile the desktop crate, the job invokes the repository-owned
+`scripts/prepare-windows-user-helper.mjs` with the exact x64 target and debug
+profile. The dependency-free script first delegates workspace membership,
+package-version inheritance, and lockfile validation to the `check` command of
+`scripts/version.mjs` through the current Node executable, then builds and
+atomically stages the matching helper executable. The desktop build remains
+fail closed when its declared Tauri sidecar is absent; CI must not substitute an
+empty placeholder or make the resource optional.
 
 ## 8. Matching-architecture Windows native contract
 
@@ -239,10 +247,13 @@ the native x64 `windows-2025` runner.
 | `windows-2025`   | `X64`               | `x86_64-pc-windows-msvc`  | `win-amd64`             |
 | `windows-11-arm` | `ARM64`             | `aarch64-pc-windows-msvc` | `win-arm64`             |
 
-Before Cargo execution, each child requires exact `RUNNER_ARCH`, exactly one
-`rustc -vV` host line, and equality with the matrix host. Cargo receives that
-host through explicit `--target`; an x64 compatibility process cannot satisfy
-the ARM64 contract. The exact test name is:
+Before Cargo compilation, each child requires exact `RUNNER_ARCH`, exactly one
+`rustc -vV` host line, and equality with the matrix host. After that check and
+before the explicit-SID test builds the desktop crate, the child invokes the
+same dependency-free helper preparation script with `matrix.rust_host` and the
+debug profile. The native job does not install pnpm or frontend dependencies.
+Cargo receives that host through explicit `--target`; an x64 compatibility
+process cannot satisfy the ARM64 contract. The exact test name is:
 
 ```text
 codex_desktop::platform::windows::deployment::tests::native_explicit_sid_main_query_smoke

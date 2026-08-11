@@ -291,6 +291,26 @@ describe("automatic CI workflow", () => {
     expect(jobBlock("backend-windows")).toContain(
       "FYAGENT_WINDOWS_MANIFEST: test",
     );
+    const windows = jobBlock("backend-windows");
+    expect(windows).toContain(`- name: Prepare Windows user helper sidecar
+        env:
+          TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
+          TAURI_ENV_DEBUG: "true"
+        run: node scripts/prepare-windows-user-helper.mjs`);
+    expect(windows.indexOf("Prepare Windows user helper sidecar")).toBeLessThan(
+      windows.indexOf("Check Rust workspace"),
+    );
+    const firstWindowsCargo = windows.search(/^        run: cargo\s/mu);
+    expect(firstWindowsCargo).toBeGreaterThan(-1);
+    expect(windows.indexOf("Prepare Windows user helper sidecar")).toBeLessThan(
+      firstWindowsCargo,
+    );
+    expect(windows).not.toContain("pnpm install");
+    expect(
+      source.match(
+        /^        run: node scripts\/prepare-windows-user-helper\.mjs$/gm,
+      ),
+    ).toHaveLength(2);
     expect(jobBlock("backend-linux")).toContain(
       "cargo fmt --all --check --manifest-path src-tauri/Cargo.toml",
     );
@@ -350,10 +370,18 @@ describe("automatic CI workflow", () => {
     expect(block).toContain(
       "run: New-Item -ItemType Directory -Force dist | Out-Null",
     );
+    expect(block).toContain(`- name: Prepare Windows user helper sidecar
+        env:
+          TAURI_ENV_TARGET_TRIPLE: \${{ matrix.rust_host }}
+          TAURI_ENV_DEBUG: "true"
+        run: node scripts/prepare-windows-user-helper.mjs`);
     expect(block).toContain(
       "codex_desktop::platform::windows::deployment::tests::native_explicit_sid_main_query_smoke",
     );
     expect(block.indexOf("Verify native Rust architecture")).toBeLessThan(
+      block.indexOf("Prepare Windows user helper sidecar"),
+    );
+    expect(block.indexOf("Prepare Windows user helper sidecar")).toBeLessThan(
       block.indexOf("Exercise explicit-SID Main package inventory"),
     );
     expect(block).toContain(
@@ -363,7 +391,7 @@ describe("automatic CI workflow", () => {
       'if ($exitCode -ne 0 -or $joined -notmatch "test result: ok\\. 1 passed; 0 failed")',
     );
     expect(block).not.toContain("windowsInstallerQuery.integration.ps1");
-    expect(block.match(/^      - name:/gm)).toHaveLength(11);
+    expect(block.match(/^      - name:/gm)).toHaveLength(12);
     expect(block.match(/^        uses:/gm)).toHaveLength(4);
     expect(block).not.toMatch(/\b(?:npm|npx|pnpm|yarn|bun)\b|bundle|signing/i);
   });

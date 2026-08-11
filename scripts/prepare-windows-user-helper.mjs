@@ -5,7 +5,6 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { parse as parseToml } from "smol-toml";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TAURI_DIR = path.join(ROOT, "src-tauri");
@@ -23,9 +22,45 @@ function fail(message) {
 function requiredEnvironment(name) {
   const value = process.env[name]?.trim();
   if (!value) {
-    fail(`${name} must be supplied by the Tauri build`);
+    fail(`${name} must be supplied by trusted Windows build orchestration`);
   }
   return value;
+}
+
+function checkedDesktopVersion() {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(ROOT, "scripts", "version.mjs"), "check"],
+    {
+      cwd: ROOT,
+      env: process.env,
+      encoding: "utf8",
+      shell: false,
+    },
+  );
+  if (result.error) {
+    fail(`version contract check could not start: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    fail(
+      `version contract check exited with status ${result.status ?? "unknown"}`,
+    );
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+    fail("version contract check emitted unexpected stderr");
+  }
+
+  const match =
+    /^FyAgent version contract OK: ((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))\r?\n$/u.exec(
+      result.stdout,
+    );
+  if (!match) {
+    fail("version contract check emitted unexpected stdout");
+  }
+  return match[1];
 }
 
 const target = requiredEnvironment("TAURI_ENV_TARGET_TRIPLE");
@@ -33,18 +68,7 @@ if (!SUPPORTED_TARGETS.has(target)) {
   fail(`unsupported target ${JSON.stringify(target)}`);
 }
 
-const desktopManifest = parseToml(
-  fs.readFileSync(path.join(TAURI_DIR, "Cargo.toml"), "utf8"),
-);
-const helperManifest = parseToml(
-  fs.readFileSync(path.join(HELPER_DIR, "Cargo.toml"), "utf8"),
-);
-const desktopVersion = desktopManifest.workspace?.package?.version;
-const helperInheritsVersion =
-  helperManifest.package?.version?.workspace === true;
-if (!desktopVersion || !helperInheritsVersion) {
-  fail("helper must inherit the desktop workspace version");
-}
+const desktopVersion = checkedDesktopVersion();
 
 const debug = process.env.TAURI_ENV_DEBUG === "true";
 const profile = debug ? "debug" : "release";

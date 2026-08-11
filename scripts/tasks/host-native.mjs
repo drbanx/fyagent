@@ -26,6 +26,8 @@ const TAURI_OPERATIONS = Object.freeze({
 });
 
 const CARGO_OPERATIONS = new Set(["check", "clippy", "test"]);
+const WINDOWS_USER_HELPER_PREPARE_SCRIPT =
+  "scripts/prepare-windows-user-helper.mjs";
 const OWNED_TOOLCHAIN_ENVIRONMENT = Object.freeze([
   "CARGO_BUILD_TARGET",
   "TAURI_ENV_TARGET_TRIPLE",
@@ -892,6 +894,8 @@ export function executeCargoTask({
   runCommand = run,
   resolveToolCommand = resolveToolExecutable,
   resolveRunner = resolveNativeRunner,
+  validateCargoConfig = assertNoCargoToolchainConfig,
+  nodeExecutable = process.execPath,
 }) {
   assertCargoRequest({
     operation,
@@ -899,7 +903,7 @@ export function executeCargoTask({
     forwardedArguments,
     environment,
   });
-  assertNoCargoToolchainConfig({ environment });
+  validateCargoConfig({ environment });
   const rustcExecutable = resolveToolCommand({
     tool: "rustc",
     environment,
@@ -930,6 +934,23 @@ export function executeCargoTask({
     rustdocExecutable,
     nativeRunnerConfig,
   });
+  if (platform === "win32") {
+    if (
+      typeof nodeExecutable !== "string" ||
+      !path.win32.isAbsolute(nodeExecutable)
+    ) {
+      throw new Error(
+        "The canonical Node executable must be an absolute Windows path",
+      );
+    }
+    runCommand(nodeExecutable, [WINDOWS_USER_HELPER_PREPARE_SCRIPT], {
+      env: {
+        ...plan.environment,
+        TAURI_ENV_TARGET_TRIPLE: plan.target,
+        TAURI_ENV_DEBUG: "true",
+      },
+    });
+  }
   runCommand(plan.command, plan.args, { env: plan.environment });
   return plan;
 }

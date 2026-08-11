@@ -920,10 +920,45 @@ describe("Codex current-user helper static contract", () => {
       ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"],
     );
     expect(prepareHelper).toMatch(/SUPPORTED_TARGETS\.has\(target\)/u);
+    const prepareImports = [
+      ...prepareHelper.matchAll(/(?:\bfrom\s+|^import\s+)["']([^"']+)["']/gmu),
+    ].map((match) => match[1]);
+    expect(prepareImports.length).toBeGreaterThan(0);
+    expect(
+      prepareImports.every((specifier) => specifier.startsWith("node:")),
+    ).toBe(true);
+    expect(prepareHelper).not.toMatch(/\b(?:import|require)\s*\(/u);
+    expect(prepareHelper).not.toContain("smol-toml");
+    expect(prepareHelper).toContain(
+      "must be supplied by trusted Windows build orchestration",
+    );
+    expect(prepareHelper).toContain("process.execPath");
+    expect(prepareHelper).toMatch(
+      /\[path\.join\(ROOT, "scripts", "version\.mjs"\), "check"\]/u,
+    );
+    expect(prepareHelper).toContain("^FyAgent version contract OK:");
+    expect(prepareHelper).toContain("(?:0|[1-9]\\d*)");
+    expect(prepareHelper).toContain(
+      "version contract check emitted unexpected stderr",
+    );
+    expect(prepareHelper).toContain(
+      "version contract check emitted unexpected stdout",
+    );
+    expect(prepareHelper).toContain("process.stdout.write(result.stdout)");
+    expect(prepareHelper).toContain("process.stderr.write(result.stderr)");
     expect(prepareHelper).toMatch(/"--locked"/u);
     expect(prepareHelper).toMatch(/"--features"\s*,\s*"helper-runtime"/u);
     expect(prepareHelper).toMatch(/"--bin"\s*,\s*"fyagent-user-helper"/u);
-    expect(prepareHelper).toContain("shell: false");
+    expect(count(prepareHelper, "spawnSync(")).toBe(2);
+    expect(count(prepareHelper, "shell: false")).toBe(2);
+    expectInOrder(
+      prepareHelper,
+      [
+        "fs.copyFileSync(source, temporary, fs.constants.COPYFILE_EXCL)",
+        "fs.renameSync(temporary, destination)",
+      ],
+      "atomic helper sidecar staging",
+    );
 
     expect(windowsTauriConfig.bundle?.externalBin).toEqual([
       "binaries/fyagent-user-helper",
