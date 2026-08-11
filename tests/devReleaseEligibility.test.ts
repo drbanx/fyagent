@@ -67,7 +67,7 @@ function ciRun(
       path: ".github/workflows/ci.yml",
     },
     event: "push",
-    headBranch: "dev/laiyongjie",
+    headBranch: "main",
     headSha: SOURCE_SHA,
     status: "completed",
     conclusion: "success",
@@ -80,9 +80,7 @@ function validInput(
 ): DevReleaseEligibilityInput {
   const releaseTag = "v0.3.1";
   const ref =
-    mode === "preflight"
-      ? "refs/heads/dev/laiyongjie"
-      : `refs/tags/${releaseTag}`;
+    mode === "preflight" ? "refs/heads/main" : `refs/tags/${releaseTag}`;
   return {
     schema: DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA,
     repository: { ...REPOSITORY },
@@ -90,7 +88,7 @@ function validInput(
       dispatchSourceSha: mode === "preflight" ? SOURCE_SHA : null,
       name: mode === "preflight" ? "workflow_dispatch" : "push",
       ref,
-      refName: mode === "preflight" ? "dev/laiyongjie" : releaseTag,
+      refName: mode === "preflight" ? "main" : releaseTag,
       refType: mode === "preflight" ? "branch" : "tag",
       sha: SOURCE_SHA,
     },
@@ -106,8 +104,8 @@ function validInput(
       sourceSha: SOURCE_SHA,
     },
     remoteDev: {
-      name: "dev/laiyongjie",
-      ref: "refs/heads/dev/laiyongjie",
+      name: "main",
+      ref: "refs/heads/main",
       headSha: SOURCE_SHA,
     },
     remoteTag:
@@ -172,9 +170,9 @@ function bindEvidenceToRun(input: MutableRecord, run: MutableRecord) {
   input.ciEvidence.checkRuns = [requiredCheck(run.id, run.runAttempt)];
 }
 
-describe("dev release identity", () => {
+describe("main release identity", () => {
   it.each(["preflight", "formal"] as const)(
-    "freezes the exact eligible %s identity and successful dev CI attempt",
+    "freezes the exact eligible %s identity and successful main CI attempt",
     (mode) => {
       const output = evaluateDevReleaseEligibility(validInput(mode));
 
@@ -257,15 +255,16 @@ describe("dev release identity", () => {
       (input: MutableRecord) => (input.candidate.sourceSha = OTHER_SHA),
     ],
     [
-      "remote dev branch",
-      (input: MutableRecord) => (input.remoteDev.name = "main"),
+      "remote authority branch",
+      (input: MutableRecord) => (input.remoteDev.name = "dev/laiyongjie"),
     ],
     [
-      "remote dev ref",
-      (input: MutableRecord) => (input.remoteDev.ref = "refs/heads/main"),
+      "remote authority ref",
+      (input: MutableRecord) =>
+        (input.remoteDev.ref = "refs/heads/dev/laiyongjie"),
     ],
     [
-      "moved remote dev HEAD",
+      "moved remote main HEAD",
       (input: MutableRecord) => (input.remoteDev.headSha = OTHER_SHA),
     ],
   ])("rejects wrong %s identity", (_label, mutate) => {
@@ -279,7 +278,7 @@ describe("dev release identity", () => {
     ],
     [
       "branch ref",
-      (input: MutableRecord) => (input.event.ref = "refs/heads/main"),
+      (input: MutableRecord) => (input.event.ref = "refs/heads/dev/laiyongjie"),
     ],
     [
       "branch ref type",
@@ -287,7 +286,7 @@ describe("dev release identity", () => {
     ],
     [
       "branch ref name",
-      (input: MutableRecord) => (input.event.refName = "main"),
+      (input: MutableRecord) => (input.event.refName = "dev/laiyongjie"),
     ],
     [
       "workflow ref",
@@ -326,7 +325,7 @@ describe("dev release identity", () => {
       "workflow ref",
       (input: MutableRecord) =>
         (input.workflow.ref =
-          "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie"),
+          "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main"),
     ],
     [
       "missing annotated tag",
@@ -358,7 +357,7 @@ describe("dev release identity", () => {
   });
 });
 
-describe("exact dev push CI admission", () => {
+describe("exact main push CI admission", () => {
   it("selects the newest exact-source run and rerun attempt", () => {
     const input = mutableInput();
     const oldOtherSource = ciRun({
@@ -442,7 +441,7 @@ describe("exact dev push CI admission", () => {
     ],
     [
       "wrong run branch",
-      (input: MutableRecord) => (input.ciRuns[0].headBranch = "main"),
+      (input: MutableRecord) => (input.ciRuns[0].headBranch = "dev/laiyongjie"),
     ],
     [
       "wrong run SHA",
@@ -453,14 +452,14 @@ describe("exact dev push CI admission", () => {
     expectRejected(mutate);
   });
 
-  it("does not accept an old green commit after the dev branch moves", () => {
+  it("does not accept an old green commit after the main branch moves", () => {
     expectRejected((input) => {
       input.event.sha = OTHER_SHA;
       input.event.dispatchSourceSha = OTHER_SHA;
       input.workflow.sha = OTHER_SHA;
       input.candidate.sourceSha = OTHER_SHA;
       input.remoteDev.headSha = OTHER_SHA;
-    }, /no dev\/laiyongjie push CI run exists/);
+    }, /no main push CI run exists/);
   });
 
   it.each([
@@ -479,7 +478,7 @@ describe("exact dev push CI admission", () => {
             conclusion,
           }),
         );
-      }, /latest exact-source dev push CI run\/attempt must be completed successfully/);
+      }, /latest exact-source main push CI run\/attempt must be completed successfully/);
     },
   );
 

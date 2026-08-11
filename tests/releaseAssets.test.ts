@@ -47,8 +47,7 @@ const identity: ReleaseIdentity = {
   repository: "fy-agent/fyagent",
   repositoryId: "1313497021",
   workflowPath: ".github/workflows/release.yml",
-  workflowRef:
-    "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
+  workflowRef: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
   workflowSha: "b".repeat(40),
   runId: "123456",
   runAttempt: "2",
@@ -420,7 +419,7 @@ describe("release asset and metadata contract", () => {
   });
 
   it("freezes the NSIS-only Windows assets and the complete release file sets", () => {
-    expect(RELEASE_BRANCH).toBe("dev/laiyongjie");
+    expect(RELEASE_BRANCH).toBe("main");
     expect(expectedInstallerNames("0.3.0")).toHaveLength(10);
     expect(expectedInstallerNames("0.3.0")).toContain(
       "FyAgent-0.3.0-Windows-x64-setup.exe",
@@ -577,7 +576,7 @@ describe("release asset and metadata contract", () => {
         runAttempt: "2",
         event: "workflow_dispatch",
         mode: "preflight",
-        ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
+        ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
         sha: "b".repeat(40),
       },
       requiredCi: {
@@ -732,9 +731,9 @@ describe("release asset and metadata contract", () => {
       "preflight workflow ref",
       {
         workflowRef:
-          "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+          "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
       },
-      /Preflight must use the trusted dev\/laiyongjie workflow ref/,
+      /Preflight must use the trusted main workflow ref/,
     ],
     [
       "formal workflow ref",

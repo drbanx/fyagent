@@ -72,6 +72,12 @@ const MACOS_ADHOC_VERIFIER = path.join(
   "release",
   "verify-macos-adhoc-app.sh",
 );
+const MACOS_HDIUTIL_RETRY = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "retry-hdiutil.sh",
+);
 const PLATFORM_METADATA_WRITER = path.join(
   ROOT,
   "scripts",
@@ -636,7 +642,7 @@ describe("FyAgent release workflow", () => {
     }
     expect(notes).toContain("14 attachments total");
     expect(notes).toContain("13 subjects");
-    expect(notes).toContain("dev/laiyongjie");
+    expect(notes).toContain("main");
     expect(notes).toContain("NotSigned");
     expect(notes).toMatch(/Developer\s+ID/u);
     expect(notes).toContain("not notarized");
@@ -711,14 +717,14 @@ describe("FyAgent release workflow", () => {
     ).rejects.toThrow(/Unexpected trusted build input entry/u);
   });
 
-  it("supports an immutable dev preflight and stable tag candidates without publishing dispatches", () => {
+  it("supports an immutable main preflight and stable tag candidates without publishing dispatches", () => {
     const trigger = source.slice(0, source.indexOf("\npermissions:"));
     expect(trigger).toContain('      - "v*.*.*"');
     expect(trigger).not.toContain('      - "v*"');
     expect(trigger).not.toMatch(/^\s+- ["']v\d+\.\d+\.\d+["']\s*$/mu);
     expect(trigger).toContain("workflow_dispatch:");
     expect(trigger).toContain("source_sha:");
-    expect(trigger).toContain("dev/laiyongjie HEAD SHA");
+    expect(trigger).toContain("main HEAD SHA");
     expect(trigger).toContain("required: true");
     expect(source).toContain("release_mode='preflight'");
     expect(source).toContain("release_mode='formal'");
@@ -1035,7 +1041,7 @@ describe("FyAgent release workflow", () => {
     );
   });
 
-  it("binds repository, dev HEAD, annotated formal tag, and exact Required CI through the repository-owned verifier", () => {
+  it("binds repository, main HEAD, annotated formal tag, and exact Required CI through the repository-owned verifier", () => {
     const eligibility = source.slice(
       source.indexOf("\n  eligibility:\n"),
       source.indexOf("\n  build-windows:\n"),
@@ -1047,7 +1053,8 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain("path: candidate-source");
     expect(eligibility).not.toContain("installer-actions");
     expect(eligibility).not.toContain("pnpm install");
-    expect(eligibility).toContain("refs/heads/dev/laiyongjie");
+    expect(eligibility).toContain("refs/heads/main");
+    expect(eligibility).not.toContain("refs/heads/dev/laiyongjie");
     expect(eligibility).toContain('"refs/tags/$GITHUB_REF_NAME"');
     expect(eligibility).toContain('release_tag="v$app_version"');
     expect(eligibility).toContain('check --tag "$release_tag"');
@@ -1090,11 +1097,11 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain("checks: read");
     expect(eligibility).not.toContain("merge-base --is-ancestor");
     expect(eligibility).not.toContain("refs/remotes/origin/main");
-    expect(eligibility).not.toContain("branch=main");
+    expect(eligibility).not.toContain("branch=dev/laiyongjie");
     expect(
       namedStepBlock(
         eligibility,
-        "Bind remote dev, tag, and successful Required CI evidence",
+        "Bind remote main, tag, and successful Required CI evidence",
       ),
     ).not.toContain("\n        if:");
   });
@@ -1752,6 +1759,7 @@ jobs:
       source.indexOf("\n  pin-release-build-inputs:\n"),
     );
     const macAdhocVerifier = read(MACOS_ADHOC_VERIFIER);
+    const hdiutilRetry = read(MACOS_HDIUTIL_RETRY);
     expect(trackedMode(MACOS_ADHOC_VERIFIER)).toBe("100755");
     const tauriConfig = JSON.parse(read(TAURI_CONFIG)) as {
       bundle?: { macOS?: { signingIdentity?: string } };
@@ -1765,6 +1773,22 @@ jobs:
     expect(source).not.toContain("notarytool");
     expect(source).toContain("hdiutil attach");
     expect(source).toContain("-readonly");
+    expectExactLine(macJob, "          scripts/release/retry-hdiutil.sh \\");
+    expectExactLine(macJob, '            "$dmg_path" \\');
+    expectExactLine(macJob, "            -- \\");
+    expectExactLine(
+      macJob,
+      '            create -volname \'FyAgent\' -srcfolder "$stage" -ov -format UDZO "$dmg_path"',
+    );
+    expect(hdiutilRetry).toContain("max_attempts=5");
+    expect(hdiutilRetry).toContain("grep -Fq -- 'Resource busy'");
+    expect(hdiutilRetry).toContain("delay=$((1 << attempt))");
+    expect(hdiutilRetry).toContain('hdiutil "$@" >"$log_file" 2>&1');
+    expect(hdiutilRetry).not.toContain(" | ");
+    expect(hdiutilRetry).not.toContain("|| true");
+    expect(macJob).not.toContain("hdiutil create -volname");
+    expect(macJob).not.toContain("hdiutil detach -force");
+    expect(macJob).not.toMatch(/kill[^\n]*diskimages/iu);
     expect(tauriConfig.bundle?.macOS).not.toHaveProperty("signingIdentity");
     expect(macJob).not.toContain("APPLE_SIGNING_IDENTITY");
     expect(macJob).toContain(
@@ -1859,7 +1883,7 @@ jobs:
       "GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}",
     );
     expect(publish).toContain(
-      "Revalidate frozen dev release eligibility at publish start",
+      "Revalidate frozen main release eligibility at publish start",
     );
     expect(
       publish.match(/node scripts\/release\/verify-dev-release-remote\.mjs/gu),

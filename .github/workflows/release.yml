@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Immutable 40-character dev/laiyongjie HEAD SHA to preflight
+        description: Immutable 40-character main HEAD SHA to preflight
         required: true
         type: string
 
@@ -65,13 +65,13 @@ jobs:
               }
               if [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_SHA" ] ||
                 [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_WORKFLOW_SHA" ]; then
-                echo 'Preflight must attest the exact trusted dev workflow commit' >&2
+                echo 'Preflight must attest the exact trusted main workflow commit' >&2
                 exit 1
               fi
-              [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ]
+              [ "$GITHUB_REF" = 'refs/heads/main' ]
               [ "$GITHUB_REF_TYPE" = 'branch' ]
-              [ "$GITHUB_REF_NAME" = 'dev/laiyongjie' ]
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ]
+              [ "$GITHUB_REF_NAME" = 'main' ]
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ]
               requested_source_sha="$DISPATCH_SOURCE_SHA"
               requested_mode='preflight'
               ;;
@@ -156,20 +156,20 @@ jobs:
                 echo 'workflow_dispatch source_sha must be a lowercase full 40-character commit SHA' >&2
                 exit 1
               }
-              [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ] || {
-                echo "Preflight must run from trusted refs/heads/dev/laiyongjie; received $GITHUB_REF" >&2
+              [ "$GITHUB_REF" = 'refs/heads/main' ] || {
+                echo "Preflight must run from trusted refs/heads/main; received $GITHUB_REF" >&2
                 exit 1
               }
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ] || {
-                echo "Preflight workflow ref is not trusted dev/laiyongjie: $GITHUB_WORKFLOW_REF" >&2
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ] || {
+                echo "Preflight workflow ref is not trusted main: $GITHUB_WORKFLOW_REF" >&2
                 exit 1
               }
               [ "$source_sha" = "$DISPATCH_SOURCE_SHA" ] || {
                 echo "Dispatch input does not resolve to the exact candidate commit: $DISPATCH_SOURCE_SHA" >&2
                 exit 1
               }
-              if [ "$GITHUB_REF_TYPE" != 'branch' ] || [ "$GITHUB_REF_NAME" != 'dev/laiyongjie' ]; then
-                echo 'Preflight event is not the exact dev/laiyongjie branch' >&2
+              if [ "$GITHUB_REF_TYPE" != 'branch' ] || [ "$GITHUB_REF_NAME" != 'main' ]; then
+                echo 'Preflight event is not the exact main branch' >&2
                 exit 1
               fi
               release_mode='preflight'
@@ -232,7 +232,7 @@ jobs:
             printf 'generated_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Bind remote dev, tag, and successful Required CI evidence
+      - name: Bind remote main, tag, and successful Required CI evidence
         id: remote
         shell: bash
         env:
@@ -1426,7 +1426,10 @@ jobs:
           scripts/release/verify-macos-adhoc-app.sh "$unzip_root/FyAgent.app"
 
           ditto "$APP_PATH" "$stage/FyAgent.app"
-          hdiutil create -volname 'FyAgent' -srcfolder "$stage" -ov -format UDZO "$dmg_path"
+          scripts/release/retry-hdiutil.sh \
+            "$dmg_path" \
+            -- \
+            create -volname 'FyAgent' -srcfolder "$stage" -ov -format UDZO "$dmg_path"
           hdiutil verify "$dmg_path"
           mounted=true
           hdiutil attach "$dmg_path" -readonly -nobrowse -noautoopen -mountpoint "$mount_point"
@@ -1762,7 +1765,7 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Revalidate frozen dev release eligibility at publish start
+      - name: Revalidate frozen main release eligibility at publish start
         shell: bash
         env:
           RELEASE_APP_VERSION: ${{ needs.eligibility.outputs.app_version }}

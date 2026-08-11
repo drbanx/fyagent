@@ -9,21 +9,23 @@ notes under `.trellis/spec/` are optional AI-assistance review material.
 ## Exact-source progression
 
 ```text
-current remote development-branch HEAD
+merge into main
+  -> current remote main HEAD
   -> successful full push CI for that exact SHA
-  -> same-SHA dispatch preflight, never publication
-  -> frozen branch state
   -> annotated stable tag targeting that exact SHA
-  -> formal native build and evidence workflow
+  -> one formal native build and evidence workflow
   -> private draft upload and re-download verification
   -> one final publication transition
 ```
 
-Both preflight and formal mode require the same current development-branch
-source and successful push-CI evidence. Dispatch can build and verify candidate
-assets but its publication condition is always false. A formal run refuses a
-lightweight tag, a moved branch, stale green CI, identity mismatch, partial
-signer configuration, incomplete native evidence, or asset drift.
+Formal mode requires the current remote `main` source and successful push-CI
+evidence for that exact SHA. A same-SHA dispatch preflight remains available as
+an optional diagnostic, but it is not a release-closure prerequisite and its
+publication condition is always false. The shortest authoritative path is
+therefore `main` merge -> exact-SHA `CI / Required` success -> annotated tag ->
+one formal build. A formal run refuses a lightweight tag, a moved `main`, stale
+green CI, identity mismatch, partial signer configuration, incomplete native
+evidence, or asset drift.
 
 Platform acceptance is successful build and packaging on each matching native
 runner. Windows additionally requires strict unsigned/signing proof and the
