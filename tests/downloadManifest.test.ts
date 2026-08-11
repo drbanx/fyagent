@@ -46,7 +46,7 @@ function runGenerator(
       version,
       tag,
       sourceSha,
-      "https://github.com/NongHua123/fyagent/releases/download",
+      "https://github.com/fy-agent/fyagent/releases/download",
       publishedAt,
       manifestPath,
       ...overrides,
@@ -97,15 +97,15 @@ describe("release download manifest", () => {
     );
     expect(manifest.assets).toHaveLength(10);
     const windowsArm64 = manifest.assets.find(
-      ({ name }) => name === "FyAgent-0.3.0-Windows-arm64.msi",
+      ({ name }) => name === "FyAgent-0.3.0-Windows-arm64-setup.exe",
     );
-    const expectedContents = "contents:FyAgent-0.3.0-Windows-arm64.msi";
+    const expectedContents = "contents:FyAgent-0.3.0-Windows-arm64-setup.exe";
     expect(windowsArm64).toMatchObject({
       architecture: "arm64",
-      format: "msi",
+      format: "exe",
       sha256: createHash("sha256").update(expectedContents).digest("hex"),
       sizeBytes: Buffer.byteLength(expectedContents),
-      url: "https://github.com/NongHua123/fyagent/releases/download/v0.3.0/FyAgent-0.3.0-Windows-arm64.msi",
+      url: "https://github.com/fy-agent/fyagent/releases/download/v0.3.0/FyAgent-0.3.0-Windows-arm64-setup.exe",
     });
   });
 
@@ -159,7 +159,7 @@ describe("release download manifest", () => {
             version,
             candidateTag,
             candidateSha,
-            "https://github.com/NongHua123/fyagent/releases/download",
+            "https://github.com/fy-agent/fyagent/releases/download",
             publishedAt,
           ],
           { cwd: repositoryRoot, encoding: "utf8", stdio: "pipe" },

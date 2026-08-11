@@ -138,14 +138,88 @@ impl JobController {
     }
 }
 
+/// Process action selected by the single lifecycle cleanup owner.
+///
+/// The first accepted action is frozen for the process lifetime. This makes a
+/// concurrent explicit exit and restart deterministic without letting either
+/// later request silently reverse the user's first accepted intent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessLifecycleTransition {
+    Exit,
+    Restart,
+}
+
+/// Result of atomically claiming the process lifecycle slot.
+///
+/// Only `StartCleanup` transfers ownership of the one cleanup task to its
+/// caller. `CleanupInProgress` is deliberately not another cleanup permit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProcessLifecycleClaim {
+    StartCleanup(ProcessLifecycleTransition),
+    CleanupInProgress(ProcessLifecycleTransition),
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum ProcessLifecycleState {
+    #[default]
+    Idle,
+    Cleaning(ProcessLifecycleTransition),
+    Finalizing(ProcessLifecycleTransition),
+}
+
+/// Small in-memory coordinator shared by the installer-backed and pre-state
+/// lifecycle paths. The caller owns synchronization; `JobStore` keeps it under
+/// the same mutex as `try_start`, while startup recovery uses its own mutex
+/// before an installer service can exist.
+#[derive(Debug, Default)]
+pub(crate) struct ProcessLifecycleCoordinator {
+    state: ProcessLifecycleState,
+}
+
+impl ProcessLifecycleCoordinator {
+    pub(crate) const fn new() -> Self {
+        Self {
+            state: ProcessLifecycleState::Idle,
+        }
+    }
+
+    fn is_idle(&self) -> bool {
+        matches!(self.state, ProcessLifecycleState::Idle)
+    }
+
+    pub(crate) fn claim(&mut self, requested: ProcessLifecycleTransition) -> ProcessLifecycleClaim {
+        match self.state {
+            ProcessLifecycleState::Idle => {
+                self.state = ProcessLifecycleState::Cleaning(requested);
+                ProcessLifecycleClaim::StartCleanup(requested)
+            }
+            ProcessLifecycleState::Cleaning(current) => {
+                ProcessLifecycleClaim::CleanupInProgress(current)
+            }
+            ProcessLifecycleState::Finalizing(selected) => {
+                ProcessLifecycleClaim::CleanupInProgress(selected)
+            }
+        }
+    }
+
+    pub(crate) fn finalize(&mut self) -> Option<ProcessLifecycleTransition> {
+        match self.state {
+            ProcessLifecycleState::Cleaning(selected) => {
+                self.state = ProcessLifecycleState::Finalizing(selected);
+                Some(selected)
+            }
+            ProcessLifecycleState::Idle | ProcessLifecycleState::Finalizing(_) => None,
+        }
+    }
+}
+
 #[derive(Default)]
 struct JobStoreState {
     current: Option<JobController>,
-    // A successful application-restart request owns the same mutex as
-    // `try_start`. It prevents a new worker from appearing in the delay before
-    // the process re-execs, while preserving any active worker unchanged when
-    // the restart claim is refused.
-    restart_pending: bool,
+    // Lifecycle claims and `try_start` share this mutex. The typed state also
+    // makes cleanup ownership and first-wins action selection explicit instead
+    // of treating every repeated request as another successful cleanup permit.
+    process_lifecycle: ProcessLifecycleCoordinator,
     // The set is intentionally process-local.  It makes the "never reuse a
     // job id" invariant exact even if a UUID generator were ever to collide.
     issued_job_ids: HashSet<String>,
@@ -198,8 +272,8 @@ impl JobStore {
     ) -> Result<JobSnapshot, InstallerError> {
         let snapshot = {
             let mut state = self.lock_state()?;
-            if state.restart_pending {
-                return Err(restart_pending_error());
+            if !state.process_lifecycle.is_idle() {
+                return Err(process_lifecycle_transition_pending_error());
             }
             if let Some(current) = state.current.as_ref() {
                 if !current.is_terminal() {
@@ -225,26 +299,47 @@ impl JobStore {
         Ok(snapshot)
     }
 
-    /// Atomically reserves the job slot for an application restart. The claim
-    /// is valid only when there is no job or the retained snapshot is terminal;
-    /// a cancellation request remains non-terminal until its worker cleanup
-    /// acknowledgement, so it intentionally blocks restart here.
-    pub fn claim_restart(&self) -> Result<(), InstallerError> {
+    /// Atomically reserves the job slot for process exit or restart.
+    ///
+    /// The first accepted request owns the only cleanup task. Later requests
+    /// join that task without receiving another spawn permit or changing its
+    /// already-selected action. A fresh claim is valid only when there is no
+    /// job or the retained snapshot is terminal.
+    pub(crate) fn claim_process_lifecycle_transition(
+        &self,
+        requested: ProcessLifecycleTransition,
+    ) -> Result<ProcessLifecycleClaim, InstallerError> {
         let mut state = self.lock_state()?;
-        if state.restart_pending {
-            return Err(restart_pending_error());
+        if !state.process_lifecycle.is_idle() {
+            return Ok(state.process_lifecycle.claim(requested));
         }
         if let Some(current) = state.current.as_ref() {
-            if !restart_claim_is_allowed(Some(current.snapshot.stage)) {
+            if !process_lifecycle_claim_is_allowed(Some(current.snapshot.stage)) {
                 return Err(InstallerError::new(InstallerErrorCode::JobAlreadyRunning)
                     .with_context("job_id", &current.snapshot.job_id)
                     .with_diagnostic_message(
-                        "a non-terminal desktop installation job blocks application restart",
+                        "a non-terminal desktop installation job blocks process exit or restart",
                     ));
             }
         }
-        state.restart_pending = true;
-        Ok(())
+        Ok(state.process_lifecycle.claim(requested))
+    }
+
+    /// Commits the post-cleanup action exactly once.
+    ///
+    /// Once this returns an action, the cleanup owner is at the final process
+    /// exit/re-exec boundary. A second caller receives `None` and must not
+    /// perform another terminal action.
+    pub(crate) fn finalize_process_lifecycle_transition(
+        &self,
+    ) -> Result<Option<ProcessLifecycleTransition>, InstallerError> {
+        let mut state = self.lock_state()?;
+        if state.process_lifecycle.is_idle() {
+            return Err(internal_error(
+                "process lifecycle cleanup completed without an accepted claim",
+            ));
+        }
+        Ok(state.process_lifecycle.finalize())
     }
 
     /// Obtains the cancellation signal for the current job.  Service workers
@@ -580,19 +675,19 @@ fn job_not_found(job_id: &str) -> InstallerError {
         .with_diagnostic_message("the desktop installation job is not current")
 }
 
-/// Pure restart policy: only a missing job or a fully terminal snapshot may
-/// claim a process restart. In particular, `cancellable == false` does not
+/// Pure lifecycle policy: only a missing job or a fully terminal snapshot may
+/// claim process exit/restart. In particular, `cancellable == false` does not
 /// make a cancellable-stage job terminal; it can still be awaiting cleanup.
-fn restart_claim_is_allowed(job_stage: Option<JobStage>) -> bool {
+fn process_lifecycle_claim_is_allowed(job_stage: Option<JobStage>) -> bool {
     match job_stage {
         None => true,
         Some(stage) => stage.is_terminal(),
     }
 }
 
-fn restart_pending_error() -> InstallerError {
+fn process_lifecycle_transition_pending_error() -> InstallerError {
     InstallerError::new(InstallerErrorCode::JobAlreadyRunning)
-        .with_diagnostic_message("application restart already owns the desktop installation slot")
+        .with_diagnostic_message("process exit or restart owns the desktop installation slot")
 }
 
 fn invalid_transition(current: JobStage, next: JobStage, message: &'static str) -> InstallerError {
@@ -702,10 +797,10 @@ mod tests {
     }
 
     #[test]
-    fn restart_claim_allows_only_missing_or_terminal_jobs() {
-        assert!(restart_claim_is_allowed(None));
+    fn process_lifecycle_claim_allows_only_missing_or_terminal_jobs() {
+        assert!(process_lifecycle_claim_is_allowed(None));
         for terminal in [JobStage::Succeeded, JobStage::Failed, JobStage::Cancelled] {
-            assert!(restart_claim_is_allowed(Some(terminal)));
+            assert!(process_lifecycle_claim_is_allowed(Some(terminal)));
         }
         for active in [
             JobStage::Checking,
@@ -715,12 +810,12 @@ mod tests {
             JobStage::Installing,
             JobStage::VerifyingInstallation,
         ] {
-            assert!(!restart_claim_is_allowed(Some(active)));
+            assert!(!process_lifecycle_claim_is_allowed(Some(active)));
         }
     }
 
     #[test]
-    fn restart_claim_rejects_cancellation_pending_and_installing_without_modifying_them() {
+    fn lifecycle_claim_rejects_cancellation_pending_and_installing_without_modifying_them() {
         let cancellation_pending_store = JobStore::new();
         let cancellation_pending_job = cancellation_pending_store
             .try_start(release(), "t0")
@@ -729,7 +824,9 @@ mod tests {
             .request_cancel(&cancellation_pending_job.job_id, "t1")
             .unwrap();
 
-        let cancellation_error = cancellation_pending_store.claim_restart().unwrap_err();
+        let cancellation_error = cancellation_pending_store
+            .claim_process_lifecycle_transition(ProcessLifecycleTransition::Exit)
+            .unwrap_err();
         assert_eq!(
             cancellation_error.code(),
             InstallerErrorCode::JobAlreadyRunning
@@ -749,7 +846,9 @@ mod tests {
             .update_stage(&installing_job.job_id, JobStage::Installing, "t6")
             .unwrap();
 
-        let installing_error = installing_store.claim_restart().unwrap_err();
+        let installing_error = installing_store
+            .claim_process_lifecycle_transition(ProcessLifecycleTransition::Restart)
+            .unwrap_err();
         assert_eq!(
             installing_error.code(),
             InstallerErrorCode::JobAlreadyRunning
@@ -761,15 +860,109 @@ mod tests {
     }
 
     #[test]
-    fn restart_claim_allows_empty_or_terminal_slots_and_blocks_later_starts() {
+    fn duplicate_exit_and_restart_claims_do_not_issue_another_cleanup_permit() {
         let empty_store = JobStore::new();
-        empty_store.claim_restart().unwrap();
+        assert_eq!(
+            empty_store
+                .claim_process_lifecycle_transition(ProcessLifecycleTransition::Exit)
+                .unwrap(),
+            ProcessLifecycleClaim::StartCleanup(ProcessLifecycleTransition::Exit)
+        );
+        assert_eq!(
+            empty_store
+                .claim_process_lifecycle_transition(ProcessLifecycleTransition::Exit)
+                .unwrap(),
+            ProcessLifecycleClaim::CleanupInProgress(ProcessLifecycleTransition::Exit)
+        );
         let empty_start_error = empty_store.try_start(release(), "t0").unwrap_err();
         assert_eq!(
             empty_start_error.code(),
             InstallerErrorCode::JobAlreadyRunning
         );
 
+        let restart_store = JobStore::new();
+        assert_eq!(
+            restart_store
+                .claim_process_lifecycle_transition(ProcessLifecycleTransition::Restart)
+                .unwrap(),
+            ProcessLifecycleClaim::StartCleanup(ProcessLifecycleTransition::Restart)
+        );
+        assert_eq!(
+            restart_store
+                .claim_process_lifecycle_transition(ProcessLifecycleTransition::Restart)
+                .unwrap(),
+            ProcessLifecycleClaim::CleanupInProgress(ProcessLifecycleTransition::Restart)
+        );
+    }
+
+    #[test]
+    fn standalone_coordinator_keeps_pre_app_cleanup_single_flight() {
+        let mut coordinator = ProcessLifecycleCoordinator::new();
+        assert_eq!(
+            coordinator.claim(ProcessLifecycleTransition::Exit),
+            ProcessLifecycleClaim::StartCleanup(ProcessLifecycleTransition::Exit)
+        );
+        assert_eq!(
+            coordinator.claim(ProcessLifecycleTransition::Restart),
+            ProcessLifecycleClaim::CleanupInProgress(ProcessLifecycleTransition::Exit)
+        );
+        assert_eq!(
+            coordinator.finalize(),
+            Some(ProcessLifecycleTransition::Exit)
+        );
+        assert_eq!(coordinator.finalize(), None);
+    }
+
+    #[test]
+    fn first_lifecycle_action_wins_across_exit_restart_races() {
+        let exit_first = JobStore::new();
+        assert_eq!(
+            exit_first
+                .claim_process_lifecycle_transition(ProcessLifecycleTransition::Exit)
+                .unwrap(),
+            ProcessLifecycleClaim::StartCleanup(ProcessLifecycleTransition::Exit)
+        );
+        assert_eq!(
+            exit_first
+                .claim_process_lifecycle_transition(ProcessLifecycleTransition::Restart)
+                .unwrap(),
+            ProcessLifecycleClaim::CleanupInProgress(ProcessLifecycleTransition::Exit)
+        );
+        assert_eq!(
+            exit_first.finalize_process_lifecycle_transition().unwrap(),
+            Some(ProcessLifecycleTransition::Exit)
+        );
+
+        let restart_first = JobStore::new();
+        assert_eq!(
+            restart_first
+                .claim_process_lifecycle_transition(ProcessLifecycleTransition::Restart)
+                .unwrap(),
+            ProcessLifecycleClaim::StartCleanup(ProcessLifecycleTransition::Restart)
+        );
+        assert_eq!(
+            restart_first
+                .claim_process_lifecycle_transition(ProcessLifecycleTransition::Exit)
+                .unwrap(),
+            ProcessLifecycleClaim::CleanupInProgress(ProcessLifecycleTransition::Restart)
+        );
+        assert_eq!(
+            restart_first
+                .finalize_process_lifecycle_transition()
+                .unwrap(),
+            Some(ProcessLifecycleTransition::Restart)
+        );
+        assert_eq!(
+            restart_first
+                .finalize_process_lifecycle_transition()
+                .unwrap(),
+            None,
+            "only the original cleanup owner may execute the terminal action"
+        );
+    }
+
+    #[test]
+    fn lifecycle_claim_allows_a_terminal_slot_and_blocks_later_starts() {
         let terminal_store = JobStore::new();
         let terminal_job = terminal_store.try_start(release(), "t1").unwrap();
         let terminal = terminal_store
@@ -781,7 +974,12 @@ mod tests {
             .unwrap();
         assert_eq!(terminal.stage, JobStage::Failed);
 
-        terminal_store.claim_restart().unwrap();
+        assert_eq!(
+            terminal_store
+                .claim_process_lifecycle_transition(ProcessLifecycleTransition::Restart)
+                .unwrap(),
+            ProcessLifecycleClaim::StartCleanup(ProcessLifecycleTransition::Restart)
+        );
         let terminal_start_error = terminal_store.try_start(release(), "t3").unwrap_err();
         assert_eq!(
             terminal_start_error.code(),
@@ -794,7 +992,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_claim_and_start_compete_for_one_atomic_slot() {
+    fn lifecycle_claim_and_start_compete_for_one_atomic_slot() {
         let store = Arc::new(JobStore::new());
         let barrier = Arc::new(Barrier::new(3));
 
@@ -802,7 +1000,7 @@ mod tests {
         let claim_barrier = barrier.clone();
         let claim = thread::spawn(move || {
             claim_barrier.wait();
-            claim_store.claim_restart()
+            claim_store.claim_process_lifecycle_transition(ProcessLifecycleTransition::Exit)
         });
 
         let start_store = store.clone();

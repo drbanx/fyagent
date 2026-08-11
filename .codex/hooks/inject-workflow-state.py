@@ -98,11 +98,16 @@ def find_trellis_root(start: Path) -> Optional[Path]:
 def _detect_platform(input_data: dict) -> str | None:
     if isinstance(input_data.get("cursor_version"), str):
         return "cursor"
+    # CLAUDE_PROJECT_DIR is a compatibility alias that several hosts set
+    # alongside their own variable — CodeBuddy, ZCode and Trae all do. It must
+    # therefore be checked LAST, or every one of them is detected as claude and
+    # the context key becomes `claude_<their-session-id>`. That key does not
+    # match the session file `task.py start` wrote under the host's real name,
+    # so every turn reports no_task while the pointer exists on disk.
+    # Observed on CodeBuddy IDE 4.10.4: session file `codebuddy_ae54840e….json`
+    # alongside marker `update-check-claude_ae54840e….marker`, same id.
     env_map = {
-        # ZCode may set both ZCODE_PROJECT_DIR and CLAUDE_PROJECT_DIR; check
-        # ZCODE first so ZCode sessions aren't misdetected as claude.
         "ZCODE_PROJECT_DIR": "zcode",
-        "CLAUDE_PROJECT_DIR": "claude",
         "CURSOR_PROJECT_DIR": "cursor",
         "CODEBUDDY_PROJECT_DIR": "codebuddy",
         "FACTORY_PROJECT_DIR": "droid",
@@ -111,6 +116,8 @@ def _detect_platform(input_data: dict) -> str | None:
         "KIRO_PROJECT_DIR": "kiro",
         "COPILOT_PROJECT_DIR": "copilot",
         "TRAE_PROJECT_DIR": "trae",
+        # Last: the shared alias, only meaningful once no vendor key matched.
+        "CLAUDE_PROJECT_DIR": "claude",
     }
     for env_name, platform in env_map.items():
         if os.environ.get(env_name):
@@ -385,26 +392,16 @@ def _load_hook_input() -> dict:
     reader.start()
     try:
         raw = result_queue.get(timeout=0.2)
-    except queue.Empty as exc:
-        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
-            raise TimeoutError("timed out waiting for Codex hook input") from exc
+    except queue.Empty:
         return {}
 
     if isinstance(raw, Exception):
-        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
-            raise RuntimeError("failed to read Codex hook input") from raw
         return {}
     try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, ValueError) as exc:
-        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
-            raise ValueError("Codex hook input must be one JSON object") from exc
+        data = json.loads(raw) if raw.strip() else {}
+    except (json.JSONDecodeError, ValueError):
         return {}
-    if not isinstance(data, dict):
-        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
-            raise ValueError("Codex hook input must be a JSON object")
-        return {}
-    return data
+    return data if isinstance(data, dict) else {}
 
 
 def main() -> int:
@@ -422,8 +419,6 @@ def main() -> int:
 
     config = _read_trellis_config(root)
     if prompt_has_skip_keyword(data.get("prompt", ""), _resolve_skip_keyword(config)):
-        if _detect_platform(data) == "codex":
-            print(json.dumps({"continue": True}))
         return 0  # user opted out of the per-turn breadcrumb for this turn
 
     templates = load_breadcrumbs(root)

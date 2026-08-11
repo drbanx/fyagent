@@ -1,22 +1,20 @@
 # FyAgent User Manual / 用户手册 / ユーザーマニュアル
 
-> Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes
+Choose the language you prefer. The three editions follow the same six-chapter structure and describe the current repository behavior.
 
-## Language / 语言 / 言語
+| Language | Manual |
+|---|---|
+| 简体中文 | [打开中文手册](./zh/README.md) |
+| English | [Open the English manual](./en/README.md) |
+| 日本語 | [日本語マニュアルを開く](./ja/README.md) |
 
-| Language | Link |
-|----------|------|
-| [中文](./zh/README.md) | 简体中文用户手册 |
-| [English](./en/README.md) | English User Manual |
-| [日本語](./ja/README.md) | 日本語ユーザーマニュアル |
+## What is covered
 
-## Version / 版本 / バージョン
+1. Getting started: installation, interface, first provider, and personal settings.
+2. Agent tools: installing tools, checking versions, updating, and diagnosing conflicting installations.
+3. Providers: adding, switching, editing, ordering, usage queries, and Claude Desktop.
+4. Extensions: MCP, Prompts, Skills, sessions, workspaces, and WorkBuddy.
+5. Proxy and reliability: local routing, takeover, failover, usage, and model tests.
+6. Troubleshooting: configuration files, common questions, deep links, and environment conflicts.
 
-- Documentation version: v3.16.0
-- Last updated: 2026-05-29
-- Compatible with FyAgent v3.16.0+
-
-## Links
-
-- [GitHub Issues](https://github.com/NongHua123/cc-switch/issues)
-- [GitHub Repository](https://github.com/NongHua123/cc-switch)
+For release-specific installers and trust information, use the matching [GitHub Release](https://github.com/fy-agent/fyagent/releases) and its published evidence. For source work, start from the [development guide](../fyagent/development/README.md).

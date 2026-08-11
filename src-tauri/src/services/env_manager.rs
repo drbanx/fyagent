@@ -67,7 +67,7 @@ fn create_backup(conflicts: &[EnvConflict]) -> Result<BackupInfo, String> {
 
 /// Get backup directory path
 fn get_backup_dir() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
+    let home = crate::config::get_home_dir();
     Ok(home.join(".fyagent").join("backups"))
 }
 
@@ -77,8 +77,7 @@ fn delete_single_env(conflict: &EnvConflict) -> Result<(), String> {
     match conflict.source_type.as_str() {
         "system" => {
             if conflict.source_path.contains("HKEY_CURRENT_USER") {
-                let hkcu = RegKey::predef(HKEY_CURRENT_USER)
-                    .open_subkey_with_flags("Environment", KEY_ALL_ACCESS)
+                let hkcu = crate::windows_runtime::open_shell_user_environment_update()
                     .map_err(|e| format!("打开注册表失败: {}", e))?;
 
                 hkcu.delete_value(&conflict.var_name)
@@ -171,8 +170,7 @@ fn restore_single_env(conflict: &EnvConflict) -> Result<(), String> {
     match conflict.source_type.as_str() {
         "system" => {
             if conflict.source_path.contains("HKEY_CURRENT_USER") {
-                let (hkcu, _) = RegKey::predef(HKEY_CURRENT_USER)
-                    .create_subkey("Environment")
+                let hkcu = crate::windows_runtime::create_or_open_shell_user_environment_update()
                     .map_err(|e| format!("打开注册表失败: {}", e))?;
 
                 hkcu.set_value(&conflict.var_name, &conflict.var_value)

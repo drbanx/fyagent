@@ -13,8 +13,12 @@ use windows::{
     core::{BOOL, PWSTR},
     Win32::{
         Foundation::{
-            CloseHandle, GetLastError, ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER,
-            ERROR_NO_MORE_FILES, FILETIME, HANDLE, HWND, LPARAM,
+            CloseHandle, GetLastError, LocalFree, ERROR_INSUFFICIENT_BUFFER,
+            ERROR_INVALID_PARAMETER, ERROR_NO_MORE_FILES, FILETIME, HANDLE, HLOCAL, HWND, LPARAM,
+        },
+        Security::{
+            Authorization::ConvertSidToStringSidW, GetTokenInformation, TokenUser, TOKEN_QUERY,
+            TOKEN_USER,
         },
         Storage::Packaging::Appx::GetPackageFamilyName,
         System::{
@@ -23,8 +27,8 @@ use windows::{
                 TH32CS_SNAPPROCESS,
             },
             Threading::{
-                GetProcessTimes, OpenProcess, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-                PROCESS_TERMINATE,
+                GetProcessTimes, OpenProcess, OpenProcessToken, TerminateProcess,
+                PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
             },
         },
         UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId},
@@ -35,6 +39,9 @@ use crate::codex_desktop::{
     error::{InstallerError, InstallerErrorCode},
     platform::{RuntimeInspection, TrustedRuntimeInstance, WINDOWS_CODEX_STABLE_IDENTITY},
     types::{InstalledApplication, LaunchTarget},
+};
+use crate::windows_runtime::{
+    revalidate_interactive_user_context, user_sid_matches_context, InteractiveUserContext,
 };
 
 struct OwnedHandle(HANDLE);
@@ -68,10 +75,12 @@ impl Drop for OwnedHandle {
 /// helpers without a top-level window are ignored and never become a
 /// process-name-style close target.
 pub(super) fn inspect(
+    context: &InteractiveUserContext,
     installed: &InstalledApplication,
 ) -> Result<RuntimeInspection, InstallerError> {
+    require_current_context(context)?;
     let package_family_name = trusted_package_family_name(installed)?;
-    let candidate_process_ids = matching_process_ids(&package_family_name)?;
+    let candidate_process_ids = matching_process_ids(context, &package_family_name)?;
     let top_level_windows = collect_top_level_windows(&candidate_process_ids)?;
 
     let process_ids = top_level_windows
@@ -86,6 +95,7 @@ pub(super) fn inspect(
         .into_iter()
         .map(|process_id| {
             let process = open_verified_process(
+                context,
                 process_id,
                 &package_family_name,
                 PROCESS_QUERY_LIMITED_INFORMATION,
@@ -107,9 +117,11 @@ pub(super) fn inspect(
 /// immediately before `TerminateProcess`; an exited process is harmless, but
 /// a recycled PID or changed package identity fails closed and stops launch.
 pub(super) fn force_shutdown(
+    context: &InteractiveUserContext,
     installed: &InstalledApplication,
     instances: &[TrustedRuntimeInstance],
 ) -> Result<(), InstallerError> {
+    require_current_context(context)?;
     for target in bound_windows_runtimes(installed, instances)? {
         let process = match unsafe {
             OpenProcess(
@@ -125,9 +137,11 @@ pub(super) fn force_shutdown(
         if package_family_for_process(process.raw()).as_deref()
             != Some(target.package_family_name.as_str())
             || process_creation_time(process.raw())? != target.creation_time
+            || !process_belongs_to_context(process.raw(), context)
         {
             return Err(runtime_identity_error());
         }
+        require_current_context(context)?;
         unsafe { TerminateProcess(process.raw(), 1) }.map_err(|_| force_shutdown_error())?;
     }
     Ok(())
@@ -137,9 +151,11 @@ pub(super) fn force_shutdown(
 /// general discovery: a later process is never a replacement shutdown target,
 /// while a PID reuse with mismatched evidence fails closed.
 pub(super) fn is_instance_running(
+    context: &InteractiveUserContext,
     installed: &InstalledApplication,
     instances: &[TrustedRuntimeInstance],
 ) -> Result<bool, InstallerError> {
+    require_current_context(context)?;
     for target in bound_windows_runtimes(installed, instances)? {
         let process = match unsafe {
             OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, target.process_id)
@@ -151,6 +167,7 @@ pub(super) fn is_instance_running(
         if package_family_for_process(process.raw()).as_deref()
             != Some(target.package_family_name.as_str())
             || process_creation_time(process.raw())? != target.creation_time
+            || !process_belongs_to_context(process.raw(), context)
         {
             return Err(runtime_identity_error());
         }
@@ -229,7 +246,10 @@ fn bound_windows_runtimes(
         .collect()
 }
 
-fn matching_process_ids(package_family_name: &str) -> Result<Vec<u32>, InstallerError> {
+fn matching_process_ids(
+    context: &InteractiveUserContext,
+    package_family_name: &str,
+) -> Result<Vec<u32>, InstallerError> {
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
         .map_err(|_| runtime_identity_error())?;
     let snapshot = OwnedHandle::new(snapshot)?;
@@ -257,6 +277,7 @@ fn matching_process_ids(package_family_name: &str) -> Result<Vec<u32>, Installer
             {
                 let handle = OwnedHandle::new(handle)?;
                 if package_family_for_process(handle.raw()).as_deref() == Some(package_family_name)
+                    && process_belongs_to_context(handle.raw(), context)
                 {
                     matches.push(process_id);
                 }
@@ -317,6 +338,7 @@ unsafe extern "system" fn collect_window_callback(hwnd: HWND, lparam: LPARAM) ->
 }
 
 fn open_verified_process(
+    context: &InteractiveUserContext,
     process_id: u32,
     expected_package_family_name: &str,
     requested_access: windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS,
@@ -324,7 +346,9 @@ fn open_verified_process(
     let handle = unsafe { OpenProcess(requested_access, false, process_id) }
         .map_err(|_| runtime_identity_error())?;
     let handle = OwnedHandle::new(handle)?;
-    if package_family_for_process(handle.raw()).as_deref() != Some(expected_package_family_name) {
+    if package_family_for_process(handle.raw()).as_deref() != Some(expected_package_family_name)
+        || !process_belongs_to_context(handle.raw(), context)
+    {
         return Err(runtime_identity_error());
     }
     Ok(handle)
@@ -367,6 +391,63 @@ fn process_creation_time(handle: HANDLE) -> Result<u64, InstallerError> {
         (u64::from(creation_time.dwHighDateTime) << 32) | u64::from(creation_time.dwLowDateTime);
     (value != 0)
         .then_some(value)
+        .ok_or_else(runtime_identity_error)
+}
+
+fn process_belongs_to_context(handle: HANDLE, context: &InteractiveUserContext) -> bool {
+    let process_sid = process_user_sid(handle);
+    user_sid_matches_context(context, process_sid.as_deref())
+}
+
+fn process_user_sid(process: HANDLE) -> Option<String> {
+    let mut token = HANDLE::default();
+    unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) }.ok()?;
+    let token = OwnedHandle::new(token).ok()?;
+
+    let mut required = 0_u32;
+    let _ = unsafe { GetTokenInformation(token.raw(), TokenUser, None, 0, &mut required) };
+    if required < std::mem::size_of::<TOKEN_USER>() as u32 {
+        return None;
+    }
+    // TOKEN_USER contains pointer-aligned fields. A byte vector does not
+    // guarantee that alignment before the Win32 buffer is cast back.
+    let mut buffer = vec![0_usize; (required as usize).div_ceil(size_of::<usize>())];
+    unsafe {
+        GetTokenInformation(
+            token.raw(),
+            TokenUser,
+            Some(buffer.as_mut_ptr().cast()),
+            required,
+            &mut required,
+        )
+    }
+    .ok()?;
+    let token_user = unsafe { &*(buffer.as_ptr().cast::<TOKEN_USER>()) };
+    if token_user.User.Sid.is_invalid() {
+        return None;
+    }
+
+    let mut string_sid = PWSTR::null();
+    unsafe { ConvertSidToStringSidW(token_user.User.Sid, &mut string_sid) }.ok()?;
+    if string_sid.is_null() {
+        return None;
+    }
+    let value = unsafe { string_sid.to_string() }.ok();
+    unsafe {
+        let _ = LocalFree(Some(HLOCAL(string_sid.0.cast())));
+    }
+    value.filter(|value| {
+        value.starts_with("S-")
+            && value.len() <= 184
+            && value
+                .bytes()
+                .all(|byte| byte == b'S' || byte == b'-' || byte.is_ascii_digit())
+    })
+}
+
+fn require_current_context(context: &InteractiveUserContext) -> Result<(), InstallerError> {
+    revalidate_interactive_user_context(context)
+        .then_some(())
         .ok_or_else(runtime_identity_error)
 }
 

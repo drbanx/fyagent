@@ -7,8 +7,14 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::fs::MetadataExt;
+
 use tauri::AppHandle;
 use url::Url;
+
+#[cfg(target_os = "windows")]
+use fyagent_user_helper::{layout::USER_HELPER_EXECUTABLE_FILE_NAME, CanonicalJobId, PipeNonce};
 
 #[cfg(not(target_os = "windows"))]
 use tauri_plugin_opener::OpenerExt;
@@ -23,11 +29,25 @@ pub(crate) enum ProcessLaunchError {
     InvalidDirectory,
     InvalidTerminalScript,
     InvalidWindowsAppAumid,
+    #[cfg(target_os = "windows")]
+    InvalidUserHelper,
     InteractiveUserUnavailable,
     #[cfg(not(target_os = "windows"))]
     PlatformLaunchFailed,
     #[cfg(target_os = "windows")]
     WorkerFailed,
+}
+
+/// Result of the Explorer STA helper launch boundary. `MayHaveLaunched` means
+/// `ShellExecute` was attempted or the caller lost observability while the
+/// non-cancellable STA call still owned the request. Only `NotInvoked` proves
+/// failure happened before that side-effect boundary.
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UserHelperLaunchOutcome {
+    Confirmed,
+    MayHaveLaunched,
+    NotInvoked(ProcessLaunchError),
 }
 
 impl ProcessLaunchError {
@@ -37,6 +57,8 @@ impl ProcessLaunchError {
             Self::InvalidDirectory => "external_launch_invalid_directory",
             Self::InvalidTerminalScript => "external_launch_invalid_terminal_script",
             Self::InvalidWindowsAppAumid => "external_launch_invalid_windows_app_aumid",
+            #[cfg(target_os = "windows")]
+            Self::InvalidUserHelper => "fyagent_user_helper_invalid",
             Self::InteractiveUserUnavailable => "interactive_user_launcher_unavailable",
             #[cfg(not(target_os = "windows"))]
             Self::PlatformLaunchFailed => "external_launch_failed",
@@ -61,6 +83,30 @@ pub(crate) trait InteractiveUserLauncher: Send + Sync {
     /// Opens a shape-validated AUMID that was already bound to a verified
     /// installed application by the Codex Desktop domain layer.
     fn open_trusted_windows_app_aumid(&self, aumid: &str) -> Result<(), ProcessLaunchError>;
+
+    /// Starts only FyAgent's installed sibling helper with the fixed package
+    /// action and shape-validated capability arguments.
+    #[cfg(target_os = "windows")]
+    fn launch_fyagent_user_helper(
+        &self,
+        job_id: &CanonicalJobId,
+        pipe_nonce: &PipeNonce,
+    ) -> Result<(), ProcessLaunchError>;
+
+    /// Typed production boundary that preserves an in-flight STA timeout.
+    /// Test launchers implementing only the ordinary method are synchronous
+    /// and therefore default to a confirmed outcome.
+    #[cfg(target_os = "windows")]
+    fn begin_fyagent_user_helper_launch(
+        &self,
+        job_id: &CanonicalJobId,
+        pipe_nonce: &PipeNonce,
+    ) -> UserHelperLaunchOutcome {
+        match self.launch_fyagent_user_helper(job_id, pipe_nonce) {
+            Ok(()) => UserHelperLaunchOutcome::Confirmed,
+            Err(error) => UserHelperLaunchOutcome::NotInvoked(error),
+        }
+    }
 }
 
 /// Injectable business service used by the platform adapter and fake tests.
@@ -117,6 +163,16 @@ where
             }
         }
     }
+
+    #[cfg(target_os = "windows")]
+    fn begin_fyagent_user_helper_launch(
+        &self,
+        job_id: &CanonicalJobId,
+        pipe_nonce: &PipeNonce,
+    ) -> UserHelperLaunchOutcome {
+        self.launcher
+            .begin_fyagent_user_helper_launch(job_id, pipe_nonce)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,6 +221,44 @@ impl InteractiveUserLaunch {
 
         Ok(Self::TrustedWindowsAppAumid(aumid.to_owned()))
     }
+}
+
+/// Resolves the only helper image accepted by both the Explorer launcher and
+/// the parent pipe's post-connect process check. The helper must be a regular,
+/// non-reparse sibling of the running FyAgent executable.
+#[cfg(target_os = "windows")]
+pub(crate) fn fixed_user_helper_path() -> Result<PathBuf, ProcessLaunchError> {
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+
+    let executable = std::env::current_exe().map_err(|_| ProcessLaunchError::InvalidUserHelper)?;
+    let install_root = executable
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or(ProcessLaunchError::InvalidUserHelper)?;
+    let helper = install_root.join(USER_HELPER_EXECUTABLE_FILE_NAME);
+    let metadata =
+        std::fs::symlink_metadata(&helper).map_err(|_| ProcessLaunchError::InvalidUserHelper)?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    {
+        return Err(ProcessLaunchError::InvalidUserHelper);
+    }
+    Ok(helper)
+}
+
+/// Launches the fixed sibling helper through Explorer as the frozen Shell
+/// user. No executable, action, package path, working directory, or privilege
+/// selector is supplied by an IPC caller.
+#[cfg(target_os = "windows")]
+pub(crate) fn launch_fyagent_user_helper_as_user(
+    job_id: &CanonicalJobId,
+    pipe_nonce: &PipeNonce,
+) -> UserHelperLaunchOutcome {
+    ProcessLaunchService::new(
+        crate::platform::windows::interactive_user::ExplorerInteractiveUserLauncher,
+    )
+    .begin_fyagent_user_helper_launch(job_id, pipe_nonce)
 }
 
 /// Opens an HTTP(S) URL through the interactive user's shell.
@@ -362,6 +456,9 @@ mod tests {
         sync::{Arc, Mutex},
     };
 
+    #[cfg(target_os = "windows")]
+    use fyagent_user_helper::{CanonicalJobId, PipeNonce};
+
     use super::{InteractiveUserLauncher, ProcessLaunchError, ProcessLaunchService};
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -370,6 +467,11 @@ mod tests {
         Directory(String),
         TerminalScript(String),
         WindowsAppAumid(String),
+        #[cfg(target_os = "windows")]
+        FyAgentUserHelper {
+            job_id: String,
+            pipe_nonce: String,
+        },
     }
 
     #[derive(Default, Clone)]
@@ -421,6 +523,22 @@ mod tests {
                 .lock()
                 .expect("fake lock")
                 .push(RecordedLaunch::WindowsAppAumid(aumid.to_owned()));
+            self.failure.map_or(Ok(()), Err)
+        }
+
+        #[cfg(target_os = "windows")]
+        fn launch_fyagent_user_helper(
+            &self,
+            job_id: &CanonicalJobId,
+            pipe_nonce: &PipeNonce,
+        ) -> Result<(), ProcessLaunchError> {
+            self.calls
+                .lock()
+                .expect("fake lock")
+                .push(RecordedLaunch::FyAgentUserHelper {
+                    job_id: job_id.as_str().to_owned(),
+                    pipe_nonce: pipe_nonce.as_str().to_owned(),
+                });
             self.failure.map_or(Ok(()), Err)
         }
     }
@@ -570,6 +688,29 @@ mod tests {
             );
         }
         assert_eq!(launcher.recorded_calls().len(), 1);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn user_helper_fake_accepts_only_typed_job_and_pipe_capabilities() {
+        let launcher = FakeInteractiveUserLauncher::default();
+        let job_id = CanonicalJobId::parse("123e4567-e89b-12d3-a456-426614174000")
+            .expect("canonical job ID");
+        let pipe_nonce =
+            PipeNonce::parse("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+                .expect("canonical pipe nonce");
+
+        launcher
+            .launch_fyagent_user_helper(&job_id, &pipe_nonce)
+            .expect("typed helper launch");
+
+        assert_eq!(
+            launcher.recorded_calls(),
+            vec![RecordedLaunch::FyAgentUserHelper {
+                job_id: job_id.as_str().to_owned(),
+                pipe_nonce: pipe_nonce.as_str().to_owned(),
+            }]
+        );
     }
 
     #[test]

@@ -211,12 +211,18 @@ impl fmt::Debug for TrustedInstallationCandidate {
 }
 
 /// Candidate discovery is deliberately separate from legacy local installer
-/// discovery. An adapter that cannot produce an exact lifecycle identity must
-/// return `UntrustedTarget`; the service will then do zero close/launch work.
+/// discovery. Multiple individually trusted installations remain an explicit
+/// ambiguity, while an adapter without exact lifecycle identity returns
+/// `UntrustedTarget`; both states authorize zero close/launch work.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RestartCandidateInspection {
     NotInstalled,
     Trusted(Vec<TrustedInstallationCandidate>),
+    AmbiguousInstallations,
+    // Only macOS currently constructs this cross-platform outcome. The common
+    // service still matches it on every target so the public state remains
+    // stable when another adapter gains equivalent fail-closed discovery.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     UntrustedTarget,
     Unsupported(UnsupportedReason),
 }
@@ -292,6 +298,9 @@ impl fmt::Debug for PlatformInstallPlan {
 #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 #[derive(Clone)]
 pub struct VerifiedPackage {
+    // Windows production consumes the downloader-retained file capability.
+    // The raw path remains necessary for macOS production and regression tests.
+    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
     artifact_path: PathBuf,
     locked_release: ReleaseDescriptor,
     // Production evidence always contains the downloader capability. The
@@ -319,8 +328,14 @@ impl VerifiedPackage {
         })
     }
 
+    #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
     fn artifact_path(&self) -> &Path {
         &self.artifact_path
+    }
+
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    fn job_id(&self) -> Option<&str> {
+        self.artifact.as_ref().map(DownloadedArtifact::job_id)
     }
 
     fn platform(&self) -> DesktopPlatform {
@@ -346,6 +361,21 @@ impl VerifiedPackage {
                     "validated package is missing artifact integrity evidence",
                 )),
         }
+    }
+
+    /// Returns the final MSIX already opened through the downloader's retained
+    /// job-directory capability. The Windows pin factory must consume this
+    /// handle instead of reopening `artifact_path` from a mutable full path.
+    #[cfg(target_os = "windows")]
+    pub(crate) fn open_artifact_for_pinning(&self) -> Result<std::fs::File, InstallerError> {
+        self.artifact
+            .as_ref()
+            .ok_or_else(|| {
+                InstallerError::new(InstallerErrorCode::InternalError).with_diagnostic_message(
+                    "validated package is missing its retained artifact capability",
+                )
+            })?
+            .open_for_read()
     }
 
     pub(crate) fn locked_release(&self) -> &ReleaseDescriptor {
@@ -439,11 +469,11 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
     fn inspect_local(&self) -> BoxFuture<'_, Result<LocalInstallStatus, InstallerError>>;
 
     /// Enumerate only candidates with exact lifecycle identity evidence. The
-    /// default supports the old unique-installation adapters but treats their
-    /// ambiguous result as untrusted rather than selecting an arbitrary
-    /// candidate. Windows overrides this to retain all exact PFN-bound records
-    /// for the restart-plan comparator; macOS presently fails closed until its
-    /// target bundle identity is independently validated.
+    /// default supports the old unique-installation adapters but preserves an
+    /// ambiguous result without selecting an arbitrary candidate. Windows
+    /// overrides this to bind its one exact same-user PFN or return explicit
+    /// installation ambiguity; macOS presently fails closed until its target
+    /// bundle identity is independently validated.
     fn inspect_restart_candidates(
         &self,
     ) -> BoxFuture<'_, Result<RestartCandidateInspection, InstallerError>> {
@@ -460,10 +490,8 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
                 LocalInstallStatus::Unsupported { reason } => {
                     Ok(RestartCandidateInspection::Unsupported(reason))
                 }
-                // Legacy discovery exposes summaries but not the exact
-                // restart identity that would bind every close/launch action.
                 LocalInstallStatus::Ambiguous { .. } => {
-                    Ok(RestartCandidateInspection::UntrustedTarget)
+                    Ok(RestartCandidateInspection::AmbiguousInstallations)
                 }
             }
         })

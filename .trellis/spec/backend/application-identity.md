@@ -13,11 +13,13 @@ application identity. It does not migrate, alias, discover, import, or clean up
 the former application's local state. This boundary prevents an incomplete
 compatibility layer from making old and new state appear interchangeable.
 
-Repository provenance is a separate contract: the repository is
-`NongHua123/fyagent`. Real repository URLs, release links, historical facts,
+Repository provenance is a separate contract: the canonical repository is
+`fy-agent/fyagent`. Real repository URLs, release links, historical facts,
 licenses, and upstream attribution must remain factual even when they contain
-the former name. Never invent a FyAgent domain, repository, package listing,
-or attribution to make text look uniform.
+a former application or repository-owner name. A pre-transfer repository URL
+may remain only in dated evidence; the current source, issue, release, and
+eligibility surfaces use the canonical owner. Never invent a FyAgent domain,
+repository, package listing, or attribution to make text look uniform.
 
 ## 2. Signatures
 
@@ -40,12 +42,12 @@ The active application identity is:
 | Codex generated catalog                                 | `fyagent-model-catalog.json`             |
 | Flatpak manifest, desktop, and metainfo stem            | `com.fyagent.desktop`                    |
 
-The source repository and public source/release links remain:
+The source repository and public source/release links are:
 
 ```text
-repository: NongHua123/fyagent
-source:     https://github.com/NongHua123/fyagent
-releases:   https://github.com/NongHua123/fyagent/releases
+repository: fy-agent/fyagent
+source:     https://github.com/fy-agent/fyagent
+releases:   https://github.com/fy-agent/fyagent/releases
 ```
 
 ## 3. Contracts
@@ -80,8 +82,9 @@ releases:   https://github.com/NongHua123/fyagent/releases
 
 ### Public text and provenance
 
-- User-facing current-product text says FyAgent, but links to source, issues,
-  releases, and contribution history use the real repository location.
+- User-facing current-product text says FyAgent, and current links to source,
+  issues, releases, and contribution history use the canonical repository
+  location.
 - Historical changelogs, release notes, design baselines, copyright notices,
   licenses, and upstream issue references remain historically accurate, except
   that commercial campaign material is removed under the repository's current
@@ -90,29 +93,30 @@ releases:   https://github.com/NongHua123/fyagent/releases
   provenance or compatibility requirements. Remove them rather than carrying
   them into runtime configuration, public documentation, or release history.
 - Installation documentation may advertise only distribution channels that
-  actually exist. Do not infer `fyagent.io`, a renamed GitHub repository,
+  actually exist. Do not infer `fyagent.io`, another GitHub repository,
   Homebrew cask, AUR package, Pages deployment, signing, or notarization.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                                                  | Required result                                                                                                             |
-| ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| Former app identifier, scheme, data root, database name, executable, or owned serialization marker appears in active runtime/configuration | Reject the change or classify and remove the active dependency.                                                             |
-| A former installation or data directory exists                                                                                             | FyAgent ignores it and starts with independent state; no automatic migration or cleanup.                                    |
-| A former deep link is opened                                                                                                               | It is not registered or accepted as a FyAgent import.                                                                       |
-| A current release workflow expects the former executable or bundle ID                                                                      | Static release tests or CI fail before publication.                                                                         |
-| A real repository URL, LICENSE line, historical record, or upstream reference contains the former name                                     | Preserve it and record it as an evidence-backed exception; do not cosmetically rewrite it.                                  |
-| Runtime configuration, public documentation, or release history contains commercial campaign material                                      | Remove it; it does not establish an identity or provenance exception.                                                       |
-| Public text points to an unverified FyAgent domain, repository, package manager entry, signature, or notarization claim                    | Remove the claim and link to the verified repository/release surface instead.                                               |
-| The identity changes on only one layer                                                                                                     | Reject as incomplete; verify package, Rust, Tauri, OS integration, storage, UI, tests, docs, and release workflow together. |
-| Static checks pass but native installation/launch was not exercised                                                                        | Report native acceptance as pending; do not claim installation, signing, or upgrade compatibility.                          |
+| Condition                                                                                                                                  | Required result                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Former app identifier, scheme, data root, database name, executable, or owned serialization marker appears in active runtime/configuration | Reject the change or classify and remove the active dependency.                                                                |
+| A former installation or data directory exists                                                                                             | FyAgent ignores it and starts with independent state; no automatic migration or cleanup.                                       |
+| A former deep link is opened                                                                                                               | It is not registered or accepted as a FyAgent import.                                                                          |
+| A current release workflow expects the former executable or bundle ID                                                                      | Static release tests or CI fail before publication.                                                                            |
+| A dated pre-transfer URL, LICENSE line, historical record, or upstream reference contains a former name                                    | Preserve it only as an evidence-backed historical exception; do not use it as current source/release authority.                |
+| A current source, issue, release, contribution, or eligibility surface uses a former repository owner                                      | Reject it and replace it with the canonical `fy-agent/fyagent` location; redirect continuity is not a current-authority alias. |
+| Runtime configuration, public documentation, or release history contains commercial campaign material                                      | Remove it; it does not establish an identity or provenance exception.                                                          |
+| Public text points to an unverified FyAgent domain, repository, package manager entry, signature, or notarization claim                    | Remove the claim and link to the verified repository/release surface instead.                                                  |
+| The identity changes on only one layer                                                                                                     | Reject as incomplete; verify package, Rust, Tauri, OS integration, storage, UI, tests, docs, and release workflow together.    |
+| Static checks pass but native installation/launch was not exercised                                                                        | Report native acceptance as pending; do not claim installation, signing, or upgrade compatibility.                             |
 
 ## 5. Good / Base / Bad Cases
 
 - Good: a fresh install registers `fyagent://`, stores state in `~/.fyagent`,
   launches the `fyagent` binary under `com.fyagent.desktop`, and produces
   FyAgent-named artifacts while source links still point to the real
-  `NongHua123/fyagent` repository.
+  `fy-agent/fyagent` repository.
 - Base: the machine also contains the former application and its data. FyAgent
   leaves both untouched and presents independent fresh state.
 - Bad: startup checks the former data directory, accepts the former URL scheme,
@@ -133,8 +137,9 @@ releases:   https://github.com/NongHua123/fyagent/releases
   expected artifact names on every platform.
 - Static identity audits classify every former-name hit. Active code and
   current instructions must have none unless the token is an external fact;
-  negative assertions, repository URLs, history, legal attribution, upstream
-  references are reviewed exceptions.
+  negative assertions, dated pre-transfer evidence, history, legal
+  attribution, and upstream references are reviewed exceptions. Current
+  repository links are not exceptions.
 - Parse changed JSON, plist/XML, TOML, YAML, and locale files. Run format,
   type-check, unit/integration, Rust, and platform packaging checks in the
   authorized environment; keep native install/launch and signed/notarized
@@ -150,8 +155,8 @@ let root = find_existing(".cc-switch").unwrap_or(home.join(".fyagent"));
 ```
 
 ```text
-# A blind text replacement corrupts facts outside application identity.
-https://github.com/NongHua123/fyagent
+# A blind product-identity replacement corrupts factual upstream provenance.
+https://github.com/farion1231/cc-switch
 ```
 
 ### Correct
@@ -164,5 +169,5 @@ let root = home.join(".fyagent");
 ```text
 # Product identity and repository provenance are deliberately independent.
 product:    FyAgent
-repository: https://github.com/NongHua123/fyagent
+repository: https://github.com/fy-agent/fyagent
 ```

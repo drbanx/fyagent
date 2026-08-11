@@ -1492,12 +1492,16 @@ fn load_codex_model_template_from_cache() -> Result<Option<Value>, AppError> {
 
 /// Fixed candidates for locating the `codex` CLI when it is not on the process
 /// PATH (common in GUI apps launched outside a terminal).
+#[cfg(not(windows))]
 const CODEX_CLI_FIXED_CANDIDATES: &[&str] = &[
     "codex",                                // PATH (all platforms)
     "/opt/homebrew/bin/codex",              // macOS Apple Silicon Homebrew
     "/usr/local/bin/codex",                 // macOS Intel Homebrew / Linux
     "/home/linuxbrew/.linuxbrew/bin/codex", // Linux Homebrew
 ];
+
+#[cfg(windows)]
+const CODEX_CLI_FIXED_CANDIDATES: &[&str] = &[];
 
 fn push_codex_cli_candidate(
     candidates: &mut Vec<PathBuf>,
@@ -1589,6 +1593,7 @@ fn push_home_codex_cli_candidates(
     );
 }
 
+#[cfg(not(windows))]
 fn push_env_codex_cli_candidates(candidates: &mut Vec<PathBuf>, seen: &mut HashSet<String>) {
     for (env_key, suffix) in [
         ("NPM_CONFIG_PREFIX", &["bin", "codex"][..]),
@@ -1624,14 +1629,16 @@ fn push_env_codex_cli_candidates(candidates: &mut Vec<PathBuf>, seen: &mut HashS
             &["installation", "bin", "codex"],
         );
     }
+}
 
-    #[cfg(windows)]
-    {
-        if let Some(appdata) = std::env::var_os("APPDATA") {
-            let npm_dir = PathBuf::from(appdata).join("npm");
-            for name in ["codex.cmd", "codex.exe", "codex"] {
-                push_existing_codex_cli_candidate(candidates, seen, npm_dir.join(name));
-            }
+#[cfg(windows)]
+fn push_env_codex_cli_candidates(candidates: &mut Vec<PathBuf>, seen: &mut HashSet<String>) {
+    // Never consume elevated-process user tool variables on Windows. The
+    // ordinary Codex CLI candidates come only from Alice's frozen directories
+    // and OS-resolved system locations.
+    for directory in crate::windows_runtime::safe_command_search_paths() {
+        for name in ["codex.cmd", "codex.exe", "codex"] {
+            push_existing_codex_cli_candidate(candidates, seen, directory.join(name));
         }
     }
 }
@@ -1645,12 +1652,24 @@ fn codex_cli_candidates() -> Vec<PathBuf> {
     }
 
     push_env_codex_cli_candidates(&mut candidates, &mut seen);
-    push_home_codex_cli_candidates(&mut candidates, &mut seen, &get_home_dir());
+    let home = get_home_dir();
+    #[cfg(windows)]
+    if crate::windows_runtime::is_local_command_path(&home) {
+        push_home_codex_cli_candidates(&mut candidates, &mut seen, &home);
+    }
+    #[cfg(not(windows))]
+    push_home_codex_cli_candidates(&mut candidates, &mut seen, &home);
 
     candidates
 }
 
-fn codex_bundled_models_command(candidate: &Path) -> Command {
+fn codex_bundled_cli_allowed(target_is_windows: bool, formal_windows_build: bool) -> bool {
+    !target_is_windows || !formal_windows_build
+}
+
+fn codex_bundled_models_command(
+    candidate: &Path,
+) -> Result<Command, crate::windows_runtime::WindowsStartupErrorCode> {
     let mut command = Command::new(candidate);
     command
         .args(["debug", "models", "--bundled"])
@@ -1662,16 +1681,33 @@ fn codex_bundled_models_command(candidate: &Path) -> Command {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
+        crate::windows_runtime::configure_shell_user_command(&mut command, candidate.parent())?;
+        command
+            .current_dir(crate::windows_runtime::require_interactive_user_context().user_profile());
         command.creation_flags(CREATE_NO_WINDOW);
     }
 
-    command
+    Ok(command)
 }
 
 fn load_codex_model_template_from_bundled() -> Result<Option<Value>, AppError> {
+    if !codex_bundled_cli_allowed(
+        cfg!(target_os = "windows"),
+        crate::windows_runtime::formal_windows_build(),
+    ) {
+        return Ok(None);
+    }
+
     for candidate in codex_cli_candidates() {
         let candidate_label = candidate.to_string_lossy();
-        let output = match codex_bundled_models_command(&candidate).output() {
+        let mut command = match codex_bundled_models_command(&candidate) {
+            Ok(command) => command,
+            Err(error) => {
+                log::debug!("failed to configure Codex CLI environment: {error}");
+                continue;
+            }
+        };
+        let output = match command.output() {
             Ok(output) => output,
             Err(err) => {
                 log::debug!("failed to run `{candidate_label} debug models --bundled`: {err}");
@@ -2061,9 +2097,8 @@ pub fn prepare_codex_config_text_with_model_catalog(
     config_text: &str,
     profile: CodexCatalogToolProfile,
 ) -> Result<String, AppError> {
-    let catalog_path = get_codex_model_catalog_path();
-
     if let Some(catalog) = codex_model_catalog_from_settings(settings, config_text, profile)? {
+        let catalog_path = get_codex_model_catalog_path();
         let config_text = set_codex_model_catalog_json_field(config_text, Some(&catalog_path))?;
         // Disable web_search only for native gateways on the reject blacklist
         // (MiMo/LongCat/MiniMax by host or model brand; Qwen3-Coder by model).
@@ -5718,6 +5753,7 @@ web_search = "disabled"
         );
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn codex_cli_candidates_are_non_empty() {
         let candidates = codex_cli_candidates();
@@ -5729,9 +5765,10 @@ web_search = "disabled"
         );
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn codex_bundled_models_command_uses_expected_program_and_args() {
-        let command = codex_bundled_models_command(Path::new("codex"));
+        let command = codex_bundled_models_command(Path::new("codex")).unwrap();
         assert_eq!(command.get_program(), "codex");
         assert_eq!(
             command
@@ -5740,6 +5777,13 @@ web_search = "disabled"
                 .collect::<Vec<_>>(),
             ["debug", "models", "--bundled"]
         );
+    }
+
+    #[test]
+    fn formal_windows_build_never_runs_user_codex_cli_fallback() {
+        assert!(!codex_bundled_cli_allowed(true, true));
+        assert!(codex_bundled_cli_allowed(true, false));
+        assert!(codex_bundled_cli_allowed(false, true));
     }
 
     #[test]

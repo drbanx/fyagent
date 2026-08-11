@@ -14,13 +14,9 @@ export default defineConfig({
     setupFiles: ["./tests/setupGlobals.ts", "./tests/setupTests.ts"],
     globals: true,
     // The version contract uses Node's native test runner. Keep those tests
-    // (and the immutable reference package) out of Vitest discovery so the
-    // two runners can coexist in the project-level test command.
-    exclude: [
-      ...configDefaults.exclude,
-      "**/*.test.mjs",
-      "docs/fyagent/dev/v1-0.2.1/**",
-    ],
+    // out of Vitest discovery so both runners can coexist in the project-level
+    // test command.
+    exclude: [...configDefaults.exclude, "**/*.test.mjs"],
     coverage: {
       reporter: ["text", "lcov"],
     },

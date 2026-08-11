@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/index.md","reason":"Routes existing backend owners that must be migrated without duplication."}
+{"file":".trellis/spec/frontend/index.md","reason":"Routes renderer contracts and cross-layer references that must remain current."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Preserve true tooling versions and current-context boundaries."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace mutable rules to one owner across code, specs, docs, and tests."}
+{"file":".trellis/tasks/08-09-docs-spec-current-state-migration/migration-inventory.md","reason":"Task-local ledger classifying all 197 former development-package files and each substantive section by disposition and unique current owner."}
+{"file":"docs/fyagent/development/","type":"directory","reason":"Responsibility-oriented current architecture explanations, operator routes, and generated mise task reference."}

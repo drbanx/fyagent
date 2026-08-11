@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
 
@@ -155,32 +156,114 @@ export function repositoryPath(relativePath) {
   return absolute;
 }
 
+function writeTemporaryFile(absolute, content, mode, temporaryPaths) {
+  const temporaryPath = path.join(
+    path.dirname(absolute),
+    `.${path.basename(absolute)}.fyagent-task-${process.pid}-${randomUUID()}.tmp`,
+  );
+  const descriptor = fs.openSync(temporaryPath, "wx", mode ?? 0o666);
+  temporaryPaths.add(temporaryPath);
+
+  let writeError;
+  try {
+    fs.writeFileSync(descriptor, content);
+  } catch (error) {
+    writeError = error;
+  }
+
+  try {
+    fs.closeSync(descriptor);
+  } catch (closeError) {
+    if (writeError !== undefined) {
+      throw new AggregateError(
+        [writeError, closeError],
+        "Writing and closing an atomic temporary file both failed",
+        { cause: writeError },
+      );
+    }
+    throw closeError;
+  }
+  if (writeError !== undefined) throw writeError;
+
+  // rename inherits the temporary file's permissions, not the destination's.
+  if (mode !== null) fs.chmodSync(temporaryPath, mode);
+  return temporaryPath;
+}
+
+function cleanupTemporaryFiles(temporaryPaths, recoveryErrors) {
+  for (const temporaryPath of temporaryPaths) {
+    try {
+      fs.rmSync(temporaryPath, { force: true });
+    } catch (error) {
+      recoveryErrors.push(error);
+    }
+  }
+  temporaryPaths.clear();
+}
+
 export function writeFilesAtomically(changes) {
   const originals = new Map();
-  const temporary = [];
+  const temporaryPaths = new Set();
+  const staged = [];
+  const replaced = [];
   try {
     for (const [relativePath, content] of changes) {
       const absolute = repositoryPath(relativePath);
-      originals.set(
+      const exists = fs.existsSync(absolute);
+      const original = exists
+        ? {
+            content: fs.readFileSync(absolute),
+            mode: fs.statSync(absolute).mode & 0o7777,
+          }
+        : { content: null, mode: null };
+      originals.set(absolute, original);
+      staged.push([
+        writeTemporaryFile(absolute, content, original.mode, temporaryPaths),
         absolute,
-        fs.existsSync(absolute) ? fs.readFileSync(absolute) : null,
-      );
-      const temporaryPath = `${absolute}.fyagent-task-${process.pid}.tmp`;
-      fs.writeFileSync(temporaryPath, content, { flag: "wx" });
-      temporary.push([temporaryPath, absolute]);
+      ]);
     }
-    for (const [temporaryPath, absolute] of temporary) {
+    for (const [temporaryPath, absolute] of staged) {
       fs.renameSync(temporaryPath, absolute);
+      temporaryPaths.delete(temporaryPath);
+      replaced.push(absolute);
     }
-  } catch (error) {
-    for (const [temporaryPath] of temporary) {
-      fs.rmSync(temporaryPath, { force: true });
+  } catch (primaryError) {
+    const recoveryErrors = [];
+    cleanupTemporaryFiles(temporaryPaths, recoveryErrors);
+
+    for (const absolute of replaced.reverse()) {
+      const original = originals.get(absolute);
+      try {
+        if (original.content === null) {
+          fs.rmSync(absolute, { force: true });
+        } else {
+          const temporaryPath = writeTemporaryFile(
+            absolute,
+            original.content,
+            original.mode,
+            temporaryPaths,
+          );
+          fs.renameSync(temporaryPath, absolute);
+          temporaryPaths.delete(temporaryPath);
+        }
+      } catch (error) {
+        recoveryErrors.push(error);
+      }
     }
-    for (const [absolute, original] of originals) {
-      if (original === null) fs.rmSync(absolute, { force: true });
-      else fs.writeFileSync(absolute, original);
+    cleanupTemporaryFiles(temporaryPaths, recoveryErrors);
+
+    if (recoveryErrors.length > 0) {
+      const detail =
+        primaryError instanceof Error
+          ? primaryError.message
+          : String(primaryError);
+      throw new AggregateError(
+        [primaryError, ...recoveryErrors],
+        `Atomic file write failed: ${detail}; ${recoveryErrors.length} recovery operation(s) also failed`,
+        { cause: primaryError },
+      );
     }
-    throw error;
+    throw primaryError;
   }
 }
 

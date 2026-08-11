@@ -711,17 +711,11 @@ fn settings_store() -> &'static RwLock<AppSettings> {
 
 fn resolve_override_path(raw: &str) -> PathBuf {
     if raw == "~" {
-        if let Some(home) = dirs::home_dir() {
-            return home;
-        }
+        return crate::config::get_home_dir();
     } else if let Some(stripped) = raw.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        return crate::config::get_home_dir().join(stripped);
     } else if let Some(stripped) = raw.strip_prefix("~\\") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        return crate::config::get_home_dir().join(stripped);
     }
 
     PathBuf::from(raw)

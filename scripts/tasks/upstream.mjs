@@ -3,7 +3,7 @@
 import process from "node:process";
 import { capture, fail, run, usageBoolean, usageValue } from "./lib.mjs";
 
-const ORIGIN = /^https:\/\/github\.com\/NongHua123\/fyagent(?:\.git)?$/i;
+const ORIGIN = /^https:\/\/github\.com\/fy-agent\/fyagent(?:\.git)?$/i;
 const UPSTREAM = /^https:\/\/github\.com\/farion1231\/cc-switch(?:\.git)?$/i;
 const TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 

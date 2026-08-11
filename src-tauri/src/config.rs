@@ -1,25 +1,27 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fs;
+#[cfg(any(target_os = "windows", test))]
+use std::io::Read;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::AppError;
 
-/// 获取用户主目录，带回退和日志
+/// 获取用户主目录。
 ///
 /// ## Windows 注意事项
 ///
-/// - `dirs::home_dir()` 在 Windows 上使用 `SHGetKnownFolderPath(FOLDERID_Profile)`，
-///   返回的是真实用户目录（类似 `C:\\Users\\Alice`），与 v3.10.2 行为一致。
-/// - 不要直接使用 `HOME` 环境变量：它可能由 Git/Cygwin/MSYS 等第三方工具注入，
-///   且不一定等于用户目录，可能导致 `.fyagent/fyagent.db` 路径变化，从而“看起来像数据丢失”。
+/// - Windows 必须使用进程启动时冻结的 Explorer Shell 用户目录。正式程序
+///   是提升后的进程，`dirs`/环境变量会错误指向批准 UAC 的管理员。
+/// - Windows 上下文缺失是启动不变量破坏，不能回落到进程用户或当前目录。
 ///
 /// ## 测试隔离
 ///
-/// 为了让 Windows CI/本地测试能稳定隔离真实用户数据，可通过 `FYAGENT_TEST_HOME`
-/// 显式覆盖 home dir（仅用于测试/调试场景）。
+/// 非 Windows 保留既有的 `FYAGENT_TEST_HOME` 覆盖兼容性。Windows 正式构建
+/// 禁止环境变量覆盖冻结的 Shell 用户；仅测试或 `test-hooks` 构建允许覆盖。
 pub fn get_home_dir() -> PathBuf {
+    #[cfg(any(not(target_os = "windows"), test, feature = "test-hooks"))]
     if let Ok(home) = std::env::var("FYAGENT_TEST_HOME") {
         let trimmed = home.trim();
         if !trimmed.is_empty() {
@@ -27,10 +29,60 @@ pub fn get_home_dir() -> PathBuf {
         }
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        crate::windows_runtime::user_home_dir()
+    }
+
+    #[cfg(not(target_os = "windows"))]
     dirs::home_dir().unwrap_or_else(|| {
         log::warn!("无法获取用户主目录，回退到当前目录");
         PathBuf::from(".")
     })
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn get_user_local_app_data_dir() -> PathBuf {
+    #[cfg(any(test, feature = "test-hooks"))]
+    if let Ok(home) = std::env::var("FYAGENT_TEST_HOME") {
+        let home = home.trim();
+        if !home.is_empty() {
+            return PathBuf::from(home).join("AppData").join("Local");
+        }
+    }
+    crate::windows_runtime::user_local_app_data_dir()
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn get_user_roaming_app_data_dir() -> PathBuf {
+    #[cfg(any(test, feature = "test-hooks"))]
+    if let Ok(home) = std::env::var("FYAGENT_TEST_HOME") {
+        let home = home.trim();
+        if !home.is_empty() {
+            return PathBuf::from(home).join("AppData").join("Roaming");
+        }
+    }
+    crate::windows_runtime::user_roaming_app_data_dir()
+}
+
+/// Returns the scratch root used for transient FyAgent user data.
+///
+/// Windows release processes can run as an administrator other than the
+/// Explorer user. The ambient process temp directory would then be Bob-owned
+/// and unreadable to Alice-launched terminal hand-offs, while also placing
+/// temporary database/provider data in the wrong profile. Keep these files
+/// under the frozen Shell user's LocalAppData instead. Other platforms retain
+/// their existing process temp behavior.
+pub(crate) fn get_user_temp_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        get_user_local_app_data_dir()
+            .join("com.fyagent.desktop")
+            .join("temp")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    std::env::temp_dir()
 }
 
 /// 获取 Claude Code 配置目录路径
@@ -296,6 +348,33 @@ pub fn write_text_file(path: &Path, data: &str) -> Result<(), AppError> {
     atomic_write(path, data.as_bytes())
 }
 
+/// Reads a small control file without allowing an untrusted user-owned file to
+/// allocate an arbitrary amount of memory in the elevated desktop process.
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn read_bounded_file(path: &Path, max_bytes: usize) -> std::io::Result<Vec<u8>> {
+    let limit = max_bytes.checked_add(1).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "bounded file limit exceeds the supported range",
+        )
+    })?;
+    let limit = u64::try_from(limit).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "bounded file limit exceeds the supported range",
+        )
+    })?;
+    let mut bytes = Vec::new();
+    fs::File::open(path)?.take(limit).read_to_end(&mut bytes)?;
+    if bytes.len() > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("file exceeds the {max_bytes}-byte limit"),
+        ));
+    }
+    Ok(bytes)
+}
+
 /// 原子写入：写入临时文件后 rename 替换，避免半写状态
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
@@ -444,6 +523,18 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_file_read_accepts_exact_limit_and_rejects_larger_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("control.json");
+        std::fs::write(&path, b"1234").unwrap();
+        assert_eq!(read_bounded_file(&path, 4).unwrap(), b"1234");
+
+        std::fs::write(&path, b"12345").unwrap();
+        let error = read_bounded_file(&path, 4).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
 
     #[cfg(windows)]
     #[test]

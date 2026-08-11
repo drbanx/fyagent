@@ -13,21 +13,19 @@ const paths = Object.freeze({
   packageJson: path.join(repositoryRoot, "package.json"),
   tauriConfig: path.join(repositoryRoot, "src-tauri", "tauri.conf.json"),
   cargoManifest: path.join(repositoryRoot, "src-tauri", "Cargo.toml"),
-  cargoLock: path.join(repositoryRoot, "src-tauri", "Cargo.lock"),
-  installerActionsManifest: path.join(
+  helperCargoManifest: path.join(
     repositoryRoot,
     "src-tauri",
-    "installer-actions",
+    "user-helper",
     "Cargo.toml",
   ),
+  cargoLock: path.join(repositoryRoot, "src-tauri", "Cargo.lock"),
 });
 
 const STABLE_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const LOCAL_CARGO_PACKAGES = Object.freeze([
-  "fyagent",
-  "fyagent-installer-actions",
-]);
-const REQUIRED_WORKSPACE_MEMBERS = Object.freeze([".", "installer-actions"]);
+const CARGO_SEMVER_COMPONENT_MAX = (1n << 64n) - 1n;
+const LOCAL_CARGO_PACKAGES = Object.freeze(["fyagent", "fyagent-user-helper"]);
+const REQUIRED_WORKSPACE_MEMBERS = Object.freeze([".", "user-helper"]);
 const REQUIRED_PACKAGE_SCRIPTS = Object.freeze({
   "version:get": "node scripts/version.mjs get",
   "version:check": "node scripts/version.mjs check",
@@ -250,7 +248,7 @@ function collectWorkspaceErrors(cargoText) {
       );
     if (!sameMembers) {
       errors.push(
-        'src-tauri/Cargo.toml [workspace] members must be [".", "installer-actions"]',
+        'src-tauri/Cargo.toml [workspace] members must be [".", "user-helper"]',
       );
     }
   } catch (error) {
@@ -373,16 +371,28 @@ function inspectLocalLockPackages(
   version,
   { allowVersionDrift = false } = {},
 ) {
+  const entries = parseCargoLockPackages(lockText);
   const byName = new Map(
     LOCAL_CARGO_PACKAGES.map((packageName) => [packageName, []]),
   );
-  for (const entry of parseCargoLockPackages(lockText)) {
+  for (const entry of entries) {
     if (entry.name && byName.has(entry.name)) {
       byName.get(entry.name).push(entry);
     }
   }
 
   const errors = [];
+  for (const entry of entries) {
+    if (
+      entry.sourceCount === 0 &&
+      (entry.nameCount !== 1 || !LOCAL_CARGO_PACKAGES.includes(entry.name))
+    ) {
+      errors.push(
+        "src-tauri/Cargo.lock contains unexpected source-less local package " +
+          JSON.stringify(entry.name ?? "<missing-name>"),
+      );
+    }
+  }
   for (const packageName of LOCAL_CARGO_PACKAGES) {
     const entries = byName.get(packageName) ?? [];
     if (entries.length === 0) {
@@ -474,17 +484,21 @@ function validateVersion(version) {
     );
   }
 
-  const major = Number(match[1]);
-  const minor = Number(match[2]);
-  const patch = Number(match[3]);
-  if (major > 255 || minor > 255 || patch > 65535) {
+  const components = {
+    major: BigInt(match[1]),
+    minor: BigInt(match[2]),
+    patch: BigInt(match[3]),
+  };
+  if (
+    Object.values(components).some(
+      (component) => component > CARGO_SEMVER_COMPONENT_MAX,
+    )
+  ) {
     fail(
-      "version " +
-        version +
-        " exceeds Windows Installer ProductVersion limits (major/minor <= 255, patch <= 65535)",
+      `version ${version} exceeds Cargo's unsigned 64-bit SemVer component range`,
     );
   }
-  return { major, minor, patch };
+  return components;
 }
 
 function collectPackageJsonErrors(packageJson) {
@@ -516,6 +530,7 @@ function collectPackageJsonErrors(packageJson) {
 
 function inspectContract({ tag, allowLocalLockVersionDrift = false } = {}) {
   const cargoText = readText(paths.cargoManifest);
+  const helperCargoText = readText(paths.helperCargoManifest);
   const cargoLockText = readText(paths.cargoLock);
   const packageJson = readJson(paths.packageJson);
   const tauriConfig = readJson(paths.tauriConfig);
@@ -529,22 +544,13 @@ function inspectContract({ tag, allowLocalLockVersionDrift = false } = {}) {
       "src-tauri/Cargo.toml",
       "fyagent",
     ),
+    ...collectPackageManifestErrors(
+      helperCargoText,
+      "src-tauri/user-helper/Cargo.toml",
+      "fyagent-user-helper",
+    ),
     ...collectPackageJsonErrors(packageJson),
   ];
-
-  if (!fs.existsSync(paths.installerActionsManifest)) {
-    errors.push(
-      "src-tauri/installer-actions/Cargo.toml is required for the FyAgent workspace",
-    );
-  } else {
-    errors.push(
-      ...collectPackageManifestErrors(
-        readText(paths.installerActionsManifest),
-        "src-tauri/installer-actions/Cargo.toml",
-        "fyagent-installer-actions",
-      ),
-    );
-  }
 
   if (Object.prototype.hasOwnProperty.call(tauriConfig, "version")) {
     errors.push(
@@ -734,11 +740,11 @@ function bumpVersion(currentVersion, kind) {
   const { major, minor, patch } = validateVersion(currentVersion);
   switch (kind) {
     case "patch":
-      return major + "." + minor + "." + (patch + 1);
+      return `${major}.${minor}.${patch + 1n}`;
     case "minor":
-      return major + "." + (minor + 1) + ".0";
+      return `${major}.${minor + 1n}.0`;
     case "major":
-      return major + 1 + ".0.0";
+      return `${major + 1n}.0.0`;
     default:
       fail(
         "bump kind must be patch, minor, or major; received " +

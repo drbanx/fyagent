@@ -8,8 +8,8 @@ FyAgent. They are evidence-based reference material for changes under
 
 Before changing renderer code:
 
-1. Read the guideline that owns the change and inspect the nearest existing
-   feature or primitive.
+1. Read the nearest relevant guideline and inspect the existing feature,
+   primitive, and executable tests.
 2. Locate the existing Tauri API facade, query hook, type, schema, and test
    family before creating another one.
 3. Classify state as local UI state, Context state, or backend/resource state.
@@ -25,19 +25,25 @@ Before changing renderer code:
    [Application Identity Contract](../backend/application-identity.md).
 8. Run local tooling through the shared
    [Development Environment Contract](../backend/development-environment.md).
+9. For Codex Provider capability/restart UI or WorkBuddy navigation, consult
+   the dedicated cross-layer note below and confirm it against current code and
+   tests; do not infer behavior from an archived feature label.
 
 ## Guidelines
 
-| Guide                                                              | Use it for                                                                                   |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| [Directory Structure](./directory-structure.md)                    | Selecting the existing frontend layer and test location.                                     |
-| [Component Guidelines](./component-guidelines.md)                  | UI primitives, props, styling, translation, and form composition.                            |
-| [Hook Guidelines](./hook-guidelines.md)                            | Naming, placement, effects, cleanup, and stateful hook APIs.                                 |
-| [State Management](./state-management.md)                          | React state, Context, TanStack Query keys, mutations, and persistence.                       |
-| [Type Safety](./type-safety.md)                                    | Strict TypeScript, domain types, Zod schemas, and Tauri wire contracts.                      |
-| [Quality Guidelines](./quality-guidelines.md)                      | Core and desktop-contract checks, Vitest/MSW setup, translations, and accessible primitives. |
-| [Application Brand Assets](../backend/application-brand-assets.md) | Cross-platform generated icons and renderer About reuse.                                     |
-| [Application Identity](../backend/application-identity.md)         | FyAgent-owned runtime identity and factual repository/provenance boundaries.                 |
+| Guide                                                                      | Use it for                                                                                               |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [Directory Structure](./directory-structure.md)                            | Selecting the existing frontend layer and test location.                                                 |
+| [Component Guidelines](./component-guidelines.md)                          | UI primitives, props, styling, translation, and form composition.                                        |
+| [Hook Guidelines](./hook-guidelines.md)                                    | Naming, placement, effects, cleanup, and stateful hook APIs.                                             |
+| [State Management](./state-management.md)                                  | React state, Context, TanStack Query keys, mutations, and persistence.                                   |
+| [Type Safety](./type-safety.md)                                            | Strict TypeScript, domain types, Zod schemas, and Tauri wire contracts.                                  |
+| [Quality Guidelines](./quality-guidelines.md)                              | Core and desktop-contract checks, Vitest/MSW setup, translations, and accessible primitives.             |
+| [Application Brand Assets](../backend/application-brand-assets.md)         | Cross-platform generated icons and renderer About reuse.                                                 |
+| [Application Identity](../backend/application-identity.md)                 | FyAgent-owned runtime identity and factual repository/provenance boundaries.                             |
+| [Codex Provider Configuration](../backend/codex-provider-configuration.md) | Codex native-capability controls, warnings, live-change result, and trusted restart handoff.             |
+| [Codex Desktop Installer](../backend/codex-desktop-installer.md)           | Installer/restart facade DTOs, job snapshots, progress presentation, and trusted launch outcomes.        |
+| [WorkBuddy Configuration](../backend/workbuddy-configuration.md)           | Top-level navigation, query isolation, model selection, overwrite confirmation, and credential lifetime. |
 
 ## Quality Check
 
@@ -67,5 +73,5 @@ from duplicate declarations in `mise.toml`.
 - [CONTRIBUTING.md](../../../CONTRIBUTING.md) records the maintained
   contribution expectations, including strict TypeScript and translated UI
   text.
-- [Development Environment](../backend/development-environment.md) defines the
-  required local mise command boundary.
+- [Development Environment](../backend/development-environment.md) summarizes
+  the local mise command boundary enforced by repository tasks and tests.

@@ -59,6 +59,11 @@ interface DownloadSpeedMeasurement {
   bytesPerSecond: number;
 }
 
+interface DownloadSpeedSnapshotIdentity {
+  jobId: string;
+  sequence: number;
+}
+
 function deriveDownloadSpeed(
   previous: DownloadSpeedSample | null,
   job: JobSnapshot | null | undefined,
@@ -373,20 +378,62 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   const [actionError, setActionError] = useState<unknown>(null);
   const [isActing, setIsActing] = useState(false);
   const downloadSpeedSampleRef = useRef<DownloadSpeedSample | null>(null);
+  const downloadSpeedSnapshotRef = useRef<DownloadSpeedSnapshotIdentity | null>(
+    null,
+  );
   const [downloadSpeedMeasurement, setDownloadSpeedMeasurement] =
     useState<DownloadSpeedMeasurement | null>(null);
   const [acknowledgedMetadataChangeJobId, setAcknowledgedMetadataChangeJobId] =
     useState<string | null>(null);
 
-  const mergeJobSnapshot = useCallback(
-    (incoming: JobSnapshot) => {
-      queryClient.setQueryData<JobSnapshot | null>(
-        codexDesktopKeys.job(),
-        (current) =>
-          shouldAcceptJobSnapshot(current, incoming) ? incoming : current,
+  // Native events can coalesce before React renders; retain every accepted
+  // snapshot so the next accepted event still has its adjacent baseline.
+  const recordDownloadSpeedSnapshot = useCallback(
+    (snapshot: JobSnapshot | null | undefined) => {
+      const identity = snapshot
+        ? { jobId: snapshot.jobId, sequence: snapshot.sequence }
+        : null;
+      if (
+        identity &&
+        downloadSpeedSnapshotRef.current &&
+        identity.jobId === downloadSpeedSnapshotRef.current.jobId &&
+        identity.sequence === downloadSpeedSnapshotRef.current.sequence
+      ) {
+        return;
+      }
+
+      downloadSpeedSnapshotRef.current = identity;
+      const next = deriveDownloadSpeed(
+        downloadSpeedSampleRef.current,
+        snapshot,
+      );
+      downloadSpeedSampleRef.current = next.sample;
+      setDownloadSpeedMeasurement(
+        snapshot && next.bytesPerSecond != null
+          ? {
+              jobId: snapshot.jobId,
+              sequence: snapshot.sequence,
+              bytesPerSecond: next.bytesPerSecond,
+            }
+          : null,
       );
     },
-    [queryClient],
+    [],
+  );
+
+  const mergeJobSnapshot = useCallback(
+    (incoming: JobSnapshot) => {
+      let accepted = false;
+      queryClient.setQueryData<JobSnapshot | null>(
+        codexDesktopKeys.job(),
+        (current) => {
+          accepted = shouldAcceptJobSnapshot(current, incoming);
+          return accepted ? incoming : current;
+        },
+      );
+      if (accepted) recordDownloadSpeedSnapshot(incoming);
+    },
+    [queryClient, recordDownloadSpeedSnapshot],
   );
 
   useEffect(() => {
@@ -424,18 +471,28 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   }, [mergeJobSnapshot]);
 
   useEffect(() => {
+    let disposed = false;
+
     const recoverOnFocus = () => {
       void codexDesktopApi
         .getJob()
         .then((snapshot) => {
-          if (snapshot) mergeJobSnapshot(snapshot);
+          if (!disposed && snapshot) mergeJobSnapshot(snapshot);
         })
         .catch((error) => {
-          console.warn("Failed to refresh Codex desktop installer job", error);
+          if (!disposed) {
+            console.warn(
+              "Failed to refresh Codex desktop installer job",
+              error,
+            );
+          }
         });
     };
     window.addEventListener("focus", recoverOnFocus);
-    return () => window.removeEventListener("focus", recoverOnFocus);
+    return () => {
+      disposed = true;
+      window.removeEventListener("focus", recoverOnFocus);
+    };
   }, [mergeJobSnapshot]);
 
   const local = localQuery.data;
@@ -454,18 +511,8 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   });
 
   useLayoutEffect(() => {
-    const next = deriveDownloadSpeed(downloadSpeedSampleRef.current, job);
-    downloadSpeedSampleRef.current = next.sample;
-    setDownloadSpeedMeasurement(
-      job && next.bytesPerSecond != null
-        ? {
-            jobId: job.jobId,
-            sequence: job.sequence,
-            bytesPerSecond: next.bytesPerSecond,
-          }
-        : null,
-    );
-  }, [job]);
+    recordDownloadSpeedSnapshot(job);
+  }, [job, recordDownloadSpeedSnapshot]);
 
   const isAcknowledgedMetadataChange =
     job?.stage === "failed" && job.jobId === acknowledgedMetadataChangeJobId;

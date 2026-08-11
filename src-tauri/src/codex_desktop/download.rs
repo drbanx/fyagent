@@ -6,7 +6,6 @@
 
 use std::{
     fmt,
-    fs::OpenOptions,
     future::Future,
     io::Write,
     path::{Path, PathBuf},
@@ -290,19 +289,28 @@ where
 /// Opaque evidence that one fixed job artifact completed the downloader's
 /// integrity checks.
 ///
-/// In addition to the final path, retain only the canonical job-root capability
-/// needed to reopen that directory later. Platform adapters must revalidate
-/// this evidence immediately before every package parser, mount, or deployment
-/// consumes the file; retaining a bare path would leave a replacement window
-/// between download verification and platform installation.
-#[derive(Clone, PartialEq, Eq)]
+/// The cloneable job-directory capability is retained with the final path. On
+/// Windows it owns the directory handles used for every relative reopen, so a
+/// later parser or pin never starts again from a mutable full path.
+#[derive(Clone)]
 pub struct DownloadedArtifact {
     path: PathBuf,
     size: u64,
-    job_root: PathBuf,
+    job_directory: JobTempDir,
     job_id: String,
     artifact_kind: ArtifactKind,
 }
+
+impl PartialEq for DownloadedArtifact {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
+            && self.size == other.size
+            && self.job_id == other.job_id
+            && self.artifact_kind == other.artifact_kind
+    }
+}
+
+impl Eq for DownloadedArtifact {}
 
 impl fmt::Debug for DownloadedArtifact {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -320,11 +328,13 @@ impl DownloadedArtifact {
         &self.path
     }
 
-    /// Reopens the downloader-owned UUID directory and repeats the fixed-file
-    /// and descriptor integrity gates. `JobTempDir::open_existing` restores
-    /// canonical root/direct-child containment, while
-    /// `validate_existing_artifact` rejects links, reparse points, and
-    /// non-regular files before SHA-256 is calculated.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    pub(crate) fn job_id(&self) -> &str {
+        &self.job_id
+    }
+
+    /// Reopens the fixed file through the retained directory capability and
+    /// repeats the descriptor integrity gates immediately before consumption.
     #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     pub(crate) fn revalidate_against(
         &self,
@@ -340,8 +350,7 @@ impl DownloadedArtifact {
             );
         }
 
-        let job_directory = JobTempDir::open_existing(&self.job_root, &self.job_id)?;
-        if job_directory.final_path(self.artifact_kind) != self.path {
+        if self.job_directory.final_path(self.artifact_kind) != self.path {
             return Err(
                 InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
                     .with_diagnostic_message(
@@ -349,8 +358,22 @@ impl DownloadedArtifact {
                     ),
             );
         }
-        job_directory.validate_existing_artifact(&self.path)?;
-        verify::verify_file(&self.path, release.expected_size, &release.expected_sha256)
+        let file = self.open_for_read()?;
+        verify::verify_reader(file, release.expected_size, &release.expected_sha256)
+    }
+
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    pub(crate) fn open_for_read(&self) -> Result<std::fs::File, InstallerError> {
+        if self.job_directory.final_path(self.artifact_kind) != self.path {
+            return Err(
+                InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                    .with_diagnostic_message(
+                        "downloaded artifact path no longer matches the retained job capability",
+                    ),
+            );
+        }
+        self.job_directory
+            .open_final_artifact_for_read(self.artifact_kind)
     }
 
     fn from_completed_download(
@@ -361,10 +384,6 @@ impl DownloadedArtifact {
         let artifact_kind = artifact_kind_for_endpoint(release.download_endpoint)?;
         let path = job_directory.final_path(artifact_kind);
         job_directory.validate_existing_artifact(&path)?;
-        let job_root = job_directory.path().parent().ok_or_else(|| {
-            InstallerError::new(InstallerErrorCode::InternalError)
-                .with_diagnostic_message("installer job directory has no trusted root")
-        })?;
         let job_id = job_directory
             .path()
             .file_name()
@@ -377,7 +396,7 @@ impl DownloadedArtifact {
         Ok(Self {
             path,
             size,
-            job_root: job_root.to_path_buf(),
+            job_directory: job_directory.clone(),
             job_id: job_id.to_owned(),
             artifact_kind,
         })
@@ -451,8 +470,7 @@ pub(crate) async fn download_release(
     job_directory
         .validate_artifact_path(&part_path)
         .and_then(|_| job_directory.validate_artifact_path(&final_path))
-        .and_then(|_| ensure_path_absent(&part_path))
-        .and_then(|_| ensure_path_absent(&final_path))
+        .and_then(|_| job_directory.ensure_final_artifact_absent(artifact_kind))
         .map_err(|error| error.with_endpoint_kind(endpoint.kind()))?;
 
     for attempt in 1..=MAX_DOWNLOAD_ATTEMPTS {
@@ -527,6 +545,21 @@ async fn download_attempt(
     progress: &dyn DownloadProgressSink,
     attempt: u8,
 ) -> Result<DownloadedArtifact, DownloadAttemptError> {
+    let artifact_kind = artifact_kind_for_endpoint(release.download_endpoint)
+        .map_err(DownloadAttemptError::terminal)?;
+    if cancellation.is_cancelled() {
+        return Err(DownloadAttemptError::terminal(cancelled_error()));
+    }
+    job_directory
+        .validate_artifact_path(part_path)
+        .map_err(DownloadAttemptError::terminal)?;
+    let mut output = job_directory.create_part_file(artifact_kind).map_err(|_| {
+        DownloadAttemptError::terminal(
+            InstallerError::new(InstallerErrorCode::DownloadFailed)
+                .with_diagnostic_message("installer partial file could not be created"),
+        )
+    })?;
+
     let response = match get_with_redirects(transport, initial_url.clone(), cancellation).await {
         Ok(response) => response,
         Err(RedirectRequestError::Cancelled) => {
@@ -564,29 +597,17 @@ async fn download_attempt(
         ));
     }
 
-    job_directory
-        .validate_artifact_path(part_path)
-        .map_err(DownloadAttemptError::terminal)?;
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(part_path)
-        .map_err(|_| {
-            DownloadAttemptError::terminal(
-                InstallerError::new(InstallerErrorCode::DownloadFailed)
-                    .with_diagnostic_message("installer partial file could not be created"),
-            )
-        })?;
     let mut body = response.body;
     let mut completed_bytes = 0_u64;
     let mut last_progress_emit = Instant::now();
     let mut last_progress_bytes = 0_u64;
 
-    while let Some(chunk) = body.next().await {
-        if cancellation.is_cancelled() {
-            return Err(DownloadAttemptError::terminal(cancelled_error()));
-        }
-
+    loop {
+        let chunk = match race_with_cancellation(body.next(), cancellation).await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(_) => return Err(DownloadAttemptError::terminal(cancelled_error())),
+        };
         let chunk = chunk.map_err(transport_attempt_error)?;
         completed_bytes = completed_bytes
             .checked_add(chunk.len() as u64)
@@ -649,19 +670,13 @@ async fn download_attempt(
                 .with_diagnostic_message("installer partial file could not be synchronized"),
         )
     })?;
-    drop(output);
-
     job_directory
         .validate_artifact_path(part_path)
         .and_then(|_| job_directory.validate_artifact_path(final_path))
-        .and_then(|_| ensure_path_absent(final_path))
         .map_err(DownloadAttemptError::terminal)?;
-    std::fs::rename(part_path, final_path).map_err(|_| {
-        DownloadAttemptError::terminal(
-            InstallerError::new(InstallerErrorCode::DownloadFailed)
-                .with_diagnostic_message("installer partial file could not be finalized"),
-        )
-    })?;
+    job_directory
+        .finalize_part_file(artifact_kind, output)
+        .map_err(finalize_download_error)?;
 
     progress.emit(DownloadProgressUpdate {
         phase: ProgressPhase::Verification,
@@ -673,10 +688,10 @@ async fn download_attempt(
     if cancellation.is_cancelled() {
         return Err(DownloadAttemptError::terminal(cancelled_error()));
     }
-    job_directory
-        .validate_existing_artifact(final_path)
+    let final_file = job_directory
+        .open_final_artifact_for_read(artifact_kind)
         .map_err(DownloadAttemptError::terminal)?;
-    verify::verify_file(final_path, release.expected_size, &release.expected_sha256)
+    verify::verify_reader(final_file, release.expected_size, &release.expected_sha256)
         .map_err(DownloadAttemptError::terminal)?;
     progress.emit(DownloadProgressUpdate {
         phase: ProgressPhase::Verification,
@@ -687,6 +702,16 @@ async fn download_attempt(
     });
     DownloadedArtifact::from_completed_download(job_directory, release, completed_bytes)
         .map_err(DownloadAttemptError::terminal)
+}
+
+fn finalize_download_error(source: InstallerError) -> DownloadAttemptError {
+    let platform_error_code = source.to_dto().details.platform_error_code;
+    let mut error = InstallerError::new(InstallerErrorCode::DownloadFailed)
+        .with_diagnostic_message("installer partial file could not be finalized");
+    if let Some(platform_error_code) = platform_error_code {
+        error = error.with_platform_error_code(platform_error_code);
+    }
+    DownloadAttemptError::terminal(error)
 }
 
 fn artifact_kind_for_endpoint(
@@ -735,25 +760,8 @@ async fn sleep_with_cancellation(
     }
 }
 
-fn ensure_path_absent(path: &Path) -> Result<(), InstallerError> {
-    match std::fs::symlink_metadata(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Ok(_) => Err(InstallerError::new(InstallerErrorCode::InternalError)
-            .with_diagnostic_message("installer temporary file unexpectedly already exists")),
-        Err(_) => Err(InstallerError::new(InstallerErrorCode::InternalError)
-            .with_diagnostic_message("installer temporary file could not be inspected")),
-    }
-}
-
 fn remove_file_if_exists(job_directory: &JobTempDir, path: &Path) {
-    if job_directory.validate_artifact_path(path).is_err() {
-        return;
-    }
-    match std::fs::remove_file(path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(_) => {}
-    }
+    let _ = job_directory.remove_artifact_if_present(path);
 }
 
 fn cancelled_error() -> InstallerError {
@@ -1032,6 +1040,21 @@ mod tests {
     }
 
     #[test]
+    fn finalize_failure_preserves_the_platform_error_code() {
+        let source = InstallerError::new(InstallerErrorCode::InternalError)
+            .with_platform_error_code("NTSTATUS 0xC000000D");
+
+        let failure = finalize_download_error(source);
+        let dto = failure.error.to_dto();
+
+        assert_eq!(dto.code, InstallerErrorCode::DownloadFailed);
+        assert_eq!(
+            dto.details.platform_error_code.as_deref(),
+            Some("NTSTATUS 0xC000000D")
+        );
+    }
+
+    #[test]
     fn only_transient_statuses_are_retried() {
         assert_eq!(retry_disposition_for_status(408), RetryDisposition::Retry);
         assert_eq!(retry_disposition_for_status(429), RetryDisposition::Retry);
@@ -1144,6 +1167,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn partial_file_create_failure_stops_before_the_transport_request() {
+        let expected_bytes = b"validated installer bytes";
+        let release = fixture_release(expected_bytes);
+        let transport = FakeTransport::new([body_response(
+            200,
+            Some(expected_bytes.len() as u64),
+            [Ok(Bytes::from_static(expected_bytes))],
+        )]);
+        let directory = tempfile::tempdir().unwrap();
+        let job_directory = test_job_directory(&directory);
+        let part_path = job_directory.part_path(ArtifactKind::Msix);
+        let injected_create_failure = AtomicBool::new(false);
+        let progress = |_| {
+            if !injected_create_failure.swap(true, AtomicOrdering::SeqCst) {
+                std::fs::create_dir(&part_path).unwrap();
+            }
+        };
+
+        let error = download_release(
+            &transport,
+            &release,
+            &job_directory,
+            &AtomicBool::new(false),
+            &progress,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code(), InstallerErrorCode::DownloadFailed);
+        assert_eq!(error.to_dto().details.attempt, Some(1));
+        assert_eq!(transport.request_count(), 0);
+        assert!(part_path.is_dir());
+    }
+
+    #[tokio::test]
     async fn downloads_to_a_fixed_local_name_and_emits_bounded_progress() {
         let expected_bytes = b"validated installer bytes";
         let release = fixture_release(expected_bytes);
@@ -1225,7 +1283,10 @@ mod tests {
         let mut transient_stream_failure = body_response(
             200,
             None,
-            [Err(TransportError::retryable("connection reset"))],
+            [
+                Ok(Bytes::from_static(b"stale-prefix")),
+                Err(TransportError::retryable("connection reset")),
+            ],
         );
         transient_stream_failure.retry_after = Some("1".to_owned());
         let transport = FakeTransport::new([
@@ -1396,7 +1457,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancellation_aborts_a_pending_request_before_any_file_is_created() {
+    async fn cancellation_aborts_a_pending_request_and_cleans_the_reserved_partial_file() {
         let release = fixture_release(b"ab");
         let directory = tempfile::tempdir().unwrap();
         let job_directory = test_job_directory(&directory);
@@ -1419,6 +1480,40 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.code(), InstallerErrorCode::DownloadCancelled);
+        assert_no_artifact_files(job_directory.path());
+    }
+
+    #[tokio::test]
+    async fn cancellation_aborts_a_pending_body_and_cleans_the_reserved_partial_file() {
+        let release = fixture_release(b"ab");
+        let transport = FakeTransport::new([TransportResponse {
+            status: 200,
+            location: None,
+            content_length: Some(2),
+            retry_after: None,
+            body: Box::pin(stream::pending()),
+        }]);
+        let directory = tempfile::tempdir().unwrap();
+        let job_directory = test_job_directory(&directory);
+        let cancellation = Arc::new(AtomicBool::new(false));
+        let cancellation_for_task = Arc::clone(&cancellation);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            cancellation_for_task.store(true, AtomicOrdering::Release);
+        });
+
+        let error = download_release(
+            &transport,
+            &release,
+            &job_directory,
+            cancellation.as_ref(),
+            &|_| {},
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code(), InstallerErrorCode::DownloadCancelled);
+        assert_eq!(transport.request_count(), 1);
         assert_no_artifact_files(job_directory.path());
     }
 }

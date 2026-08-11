@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { exit } from "@tauri-apps/plugin-process";
 import { AlertTriangle, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -93,7 +92,7 @@ export function DatabaseUpgrade({ payload }: DatabaseUpgradeProps) {
           <Button
             variant="ghost"
             className="ml-auto text-muted-foreground"
-            onClick={() => void exit(0)}
+            onClick={() => void invoke("exit_app")}
           >
             {t("dbUpgrade.quit", "退出")}
           </Button>

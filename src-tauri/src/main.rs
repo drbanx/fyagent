@@ -2,26 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    // The experimental all-users path is parsed before Tauri creates a runtime.
-    // It is never registered as an IPC command or UI action.
-    if let Some(exit_code) = fyagent_lib::maybe_run_codex_desktop_headless() {
-        std::process::exit(exit_code);
-    }
-
-    // This runs before `fyagent_lib::run()` installs its panic hook or creates
-    // a Tauri builder. A formal Windows build must prove its runtime privilege
-    // and acquire the native per-user instance guard before any user data,
-    // logging, database, or tray initialization can occur.
+    // Resolve Explorer's immutable Shell-user authority before the panic hook,
+    // Tauri, or any user-path lookup. The elevated
+    // process account is never a fallback for this boundary.
     #[cfg(target_os = "windows")]
-    match fyagent_lib::early_windows_startup_gate() {
-        fyagent_lib::WindowsStartupDisposition::Continue => {}
-        fyagent_lib::WindowsStartupDisposition::ForwardedToExistingInstance => return,
-        fyagent_lib::WindowsStartupDisposition::Blocked(code) => {
-            // Pre-logger diagnostics are fixed codes only: no SID, account,
-            // path, token, command line, or native error is ever printed.
-            eprintln!("{code}");
-            std::process::exit(1);
-        }
+    if let Err(code) = fyagent_lib::initialize_windows_user_context() {
+        eprintln!("{code}");
+        std::process::exit(1);
     }
 
     // 在 Linux 上设置 WebKit 环境变量以解决 DMA-BUF 渲染问题

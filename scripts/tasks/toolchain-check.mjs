@@ -260,19 +260,13 @@ if (!pythonOnly) {
     }
     return configs;
   });
-  record("mise task metadata and hooks", () => {
+  record("mise task metadata", () => {
     run("mise", ["tasks", "validate", "--errors-only"], { capture: true });
     const tasks = JSON.parse(
       capture("mise", ["tasks", "ls", "--local", "--json"]),
     );
     const names = new Set(tasks.map((task) => task.name));
-    for (const name of [
-      "codex:hook:workflow-state",
-      "codex:hook:subagent-context",
-      "codex:hooks:check",
-    ]) {
-      if (!names.has(name)) throw new Error(`Missing hook task: ${name}`);
-    }
+    if (names.size === 0) throw new Error("mise did not load any local tasks");
     return `${names.size} tasks`;
   });
   record("standard version facts", () => {

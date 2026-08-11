@@ -1,369 +1,374 @@
-# GitHub CI, Required Gate, and Labeler Contract
+# GitHub CI Workflow Contract
 
-## 1. Scope / Trigger
+## 1. Scope and stable public result
 
-This contract applies to `.github/workflows/ci.yml`,
-`.github/workflows/labeler.yml`, `.github/labeler.yml`, and the pure-Node CI
-helpers under `scripts/ci/`. Read it before changing an automatic CI event,
-required job, runner label, toolchain setup, Action reference, workflow token
-permission, or pull-request labeling behavior.
+This contract owns `.github/workflows/ci.yml`,
+`scripts/ci/classify-changes.mjs`, `scripts/ci/required-gate.mjs`, and their
+fixture suites. It applies to pull requests, merge queue candidates, pushes to
+`main` and `dev/laiyongjie`, and manual diagnostics.
 
-The CI workflow runs for all of these events without a workflow-level path
-filter:
+This workflow owns scheduling and aggregation, not the underlying product
+behavior. Windows installer/runtime review guidance is recorded in
+[Windows Installer](./windows-installer.md) and
+[Windows Runtime Security](./windows-runtime-security.md); executable authority
+remains in the workflow, implementation, scripts, and tests.
+
+The only stable aggregate result is:
+
+```text
+CI / Required
+```
+
+The workflow has no top-level `paths` or `paths-ignore` filter. The aggregate
+job uses `if: always()`, so a docs-only change, classifier failure, cancelled
+domain job, or timeout cannot make the required result disappear.
+
+The workflow triggers are:
 
 ```yaml
-on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
-  merge_group:
-    types: [checks_requested]
-  workflow_dispatch:
+pull_request:
+  branches: [main]
+push:
+  branches: [main, dev/laiyongjie]
+merge_group:
+  types: [checks_requested]
+workflow_dispatch:
 ```
 
-The Labeler runs automatically from the trusted base context and retains an
-explicit numeric manual replay:
+- every `main` push remains a full CI run;
+- every `dev/laiyongjie` push is a full CI run and is the only CI event that
+  can satisfy the dev-release eligibility contract;
+- PR and `merge_group` runs execute only affected domains;
+- `workflow_dispatch` is a full diagnostic run and is never release evidence
+  because its event is not `push`.
 
-```yaml
-on:
-  pull_request_target:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        required: true
-        type: number
-```
+Repository branch protection, rulesets, merge methods, and Main Provenance are
+outside this workflow. The current release trust is the exact successful dev
+push chain, not an administrator-enforced main-branch claim.
 
-Local static validation does not prove that GitHub accepted, scheduled, or
-completed any of these remote events. Local execution is host-native only;
-every non-host native CI result comes from its matching Actions runner.
+## 2. Explicit change classification
 
-## 2. Signatures
-
-### Required topology
+The repository-owned public CLI is:
 
 ```text
-contracts        (ubuntu-24.04) \
-frontend         (ubuntu-24.04)  \
-desktop-acceptance-contract (ubuntu-24.04) +--> CI / Required (ubuntu-24.04, always)
-backend-linux    (ubuntu-24.04)   /
-backend-windows  (windows-2022)  /
-windows-msi-query (windows-2022 x64 + windows-11-arm ARM64) /
-backend-macos    (macos-15)     /
+node scripts/ci/classify-changes.mjs --base <sha> --head <sha> --json
 ```
 
-The seven dependency job IDs are an exact machine-readable contract:
+Both revisions must be full 40-character commit object IDs. The classifier
+does not read `GITHUB_EVENT_NAME`, `GITHUB_REF`, or any other ambient GitHub
+policy input. It obtains the changed path set through a NUL-delimited Git diff,
+classifies both sides of rename/copy records, and emits exactly:
+
+```json
+{
+  "domains": {
+    "contracts": true,
+    "frontend": false,
+    "desktop": false,
+    "backend": false,
+    "windowsNative": false,
+    "docsSpec": true
+  },
+  "unknownPaths": [],
+  "forceFull": false
+}
+```
+
+Path ownership exists only in the classifier module. Workflow YAML may map
+domain booleans to jobs, but it must not duplicate repository path globs.
+
+Classification invariants:
+
+- workflow, classifier, release, repository task, mise, optional agent/hook,
+  and toolchain control-plane paths set `forceFull=true` and every domain true;
+- `package.json` and pnpm dependency roots widen contracts/frontend/desktop;
+- every `src-tauri/**` change reaches contracts plus its backend/native owner,
+  so version, release, manifest, NSIS, and desktop-security static suites cannot
+  be skipped by a Rust-only plan;
+- Cargo workspace and lock roots widen contracts/backend/windowsNative;
+- Windows runtime, NSIS, Windows packaging, and Codex Windows ownership reach
+  contracts plus `windowsNative`;
+- docs and optional Trellis specs/tasks/journals reach docsSpec plus the
+  lightweight contracts owner;
+- a new path without an owner is returned in sorted `unknownPaths`, printed as
+  JSON, and makes the CLI fail;
+- unknown paths are never silently treated as no-op or full CI;
+- missing revisions, non-commit objects, malformed diff output, unsafe paths,
+  duplicate flags, and option injection fail closed.
+
+The classifier's `forceFull` is path-derived only. Event policy is applied by
+the workflow after classification:
+
+- PR and merge-group candidates keep the classifier plan;
+- pushes to either configured branch and manual diagnostics replace the plan
+  with `forceFull=true` and every existing domain true;
+- event forcing never clears `unknownPaths` or converts a classifier error to
+  success.
+
+## 3. Base and head identity
+
+The classifier receives these explicit inputs:
+
+| Event               | Base                    | Head                    | Event policy     |
+| ------------------- | ----------------------- | ----------------------- | ---------------- |
+| `pull_request`      | `pull_request.base.sha` | `pull_request.head.sha` | affected domains |
+| `merge_group`       | `merge_group.base_sha`  | `merge_group.head_sha`  | affected domains |
+| `push`              | event `before`          | `github.sha`            | full             |
+| `workflow_dispatch` | `github.sha`            | `github.sha`            | full             |
+
+A first branch push whose `before` value is forty zeroes uses `head` as the
+classifier base, then relies on the independent event full-run policy. Checkout
+uses complete comparison history and never executes a path-filter action as a
+second authority.
+
+PR checks intentionally classify the PR head against the explicit base rather
+than inferring identity from a local merge commit. Merge queue checks use the
+event's explicit group base/head pair. A missing event SHA is a classifier job
+failure and therefore a failed `CI / Required`.
+
+## 4. Domain-to-job topology
 
 ```text
-contracts
-frontend
-desktop-acceptance-contract
-backend-linux
-backend-windows
-windows-msi-query
-backend-macos
+changes
+  ├─ contracts
+  ├─ frontend
+  ├─ desktop-acceptance-contract
+  ├─ backend-linux
+  ├─ backend-windows
+  ├─ windows-native-contracts (X64, ARM64)
+  └─ backend-macos
+         ↓
+    CI / Required
 ```
 
-`scripts/ci/required-gate.mjs` is the single evaluator used by the workflow and
-its unit tests. It accepts a JSON object with exactly those seven keys and accepts
-only `result: success` for every key. Missing, extra, malformed, `failure`,
-`cancelled`, `skipped`, and unknown results fail the gate. The stable displayed
-check name is `CI / Required`; dependency job display names may evolve without
-changing that external context.
+The requested job mapping is exact:
 
-### Toolchain facts
+| Job ID                        | Requested when               |
+| ----------------------------- | ---------------------------- |
+| `contracts`                   | `contracts \|\| docsSpec`    |
+| `frontend`                    | `frontend`                   |
+| `desktop-acceptance-contract` | `desktop`                    |
+| `backend-linux`               | `backend`                    |
+| `backend-windows`             | `backend \|\| windowsNative` |
+| `windows-native-contracts`    | `windowsNative`              |
+| `backend-macos`               | `backend`                    |
+
+Every domain job needs `changes` and may run only after classifier success.
+Docs/spec-only changes therefore execute the repository contracts gate but do
+not start frontend, Rust, macOS, or Windows-heavy jobs. The contracts job runs
+the task, docs, Python lock, version, and release contract suite; it does not
+require Trellis task state, overlay reconciliation, or hook execution.
+
+## 5. Required aggregation and timeout evidence
+
+`scripts/ci/required-gate.mjs` is the pure evaluator for the stable aggregate.
+It receives:
+
+1. exact `toJSON(needs)` results for `changes` plus the seven domain job IDs;
+2. the exact classifier/event plan emitted by `changes`;
+3. the current workflow run-attempt Jobs REST response.
+
+The evaluator requires exact keys and booleans. Its result rules are:
+
+- `changes` must be successful;
+- a requested job must be successful;
+- a non-requested job must be skipped;
+- a requested skip is failure, not an optimization;
+- an unrequested job that runs is policy drift and fails;
+- failure, cancellation, timeout, missing results, unknown conclusions,
+  incomplete pagination, and result/API disagreement all fail;
+- matrix conclusions are aggregated without allowing one successful child to
+  hide a failed, cancelled, or timed-out child.
+
+GitHub's `needs.<job>.result` exposes only `success`, `failure`, `cancelled`,
+and `skipped`; it cannot distinguish a timeout from ordinary failure. The
+Required job therefore has job-local `actions: read`, reads the exact current
+run and attempt through the Jobs REST API, and uses its explicit `timed_out`
+conclusion. The token is scoped only to the collection step. The evaluator
+runs in the following step without a token environment.
+
+The API response must be complete: `total_count` equals the received jobs
+array length. The current topology is below one page; a future topology that
+exceeds the bound must add complete pagination in the same change.
+
+## 6. Concurrency and reruns
+
+- PR, merge-group, main push, and dev push groups cancel stale in-progress
+  runs when a newer commit for the same ref/group arrives.
+- each manual diagnostic run uses its own run ID/attempt group and sets
+  `cancel-in-progress=false`; two manual diagnostics do not cancel each other.
+- a native GitHub rerun remains the same run identity with a later attempt and
+  keeps the original `GITHUB_SHA`/`GITHUB_REF` semantics.
+- release eligibility accepts a successful rerun only while that original SHA
+  is still the current remote `dev/laiyongjie` HEAD.
+
+## 7. Job and toolchain contracts
+
+All direct third-party Actions use reviewed full 40-character commit SHAs.
+Workflow permissions default to `contents: read`; no CI job has write
+permission or accesses repository secrets. Every checkout sets
+`persist-credentials: false`.
+
+CI does not invoke mise. Version and toolchain facts come from the standard
+repository files through the repository-owned verifier:
+
+- `.node-version` for Node;
+- `packageManager` in `package.json` for pnpm;
+- `rust-toolchain.toml` for Rust;
+- `mise.lock` for the reviewed uv lock value;
+- `.python-version` for managed Python.
+
+The workflow does not duplicate literal Node, pnpm, Rust, uv, Python, or
+application versions. Rust setup disables its implicit cache. uv setup pins
+the resolved reviewed version and disables cache. pnpm installation uses the
+frozen lockfile. The frontend full unit suite excludes only the five
+host-mise integration suites; the contracts job owns their pure/static
+contracts, and the local canonical check owns the real mise boundary.
+
+Backend jobs run locked Cargo check, clippy with warnings denied, and tests on
+Linux, Windows, and macOS. Linux additionally owns `cargo fmt --check` and the
+reviewed system dependency set. The Windows backend uses the test manifest and
+the native x64 `windows-2025` runner. Before any Windows backend Cargo command
+can compile the desktop crate, the job invokes the repository-owned
+`scripts/prepare-windows-user-helper.mjs` with the exact x64 target and debug
+profile. The dependency-free script first delegates workspace membership,
+package-version inheritance, and lockfile validation to the `check` command of
+`scripts/version.mjs` through the current Node executable, then builds and
+atomically stages the matching helper executable. The desktop build remains
+fail closed when its declared Tauri sidecar is absent; CI must not substitute an
+empty placeholder or make the resource optional.
+
+Every CI job treats checkout as the hard prerequisite, then collects the raw
+outcome of every repository-owned setup or validation step that follows it.
+Every later step uses the explicit condition
+`!cancelled() && steps.checkout.outcome == 'success'`: checkout failure stops
+the job, cancellation stops expensive work, and an ordinary validation failure
+does not hide later independent diagnostics. Collected steps must not use
+`continue-on-error`; otherwise a setup action's post-job failure could be
+rewritten after the evaluator has already run. A final
+`evaluate-step-outcomes.mjs` step checks each exact expected step ID's raw
+`outcome` and returns nonzero if any step failed, was skipped, was cancelled, or
+did not report a valid result. It must not use `conclusion`, and a missing
+result must fail closed. Checkout failure, setup-action post failure, runner
+loss, and job timeout remain native job failures and are still rejected by
+`CI / Required`.
+
+If the changed-path classifier job finishes with `failure` rather than
+`cancelled`, every conditional CI domain runs instead of trusting absent or
+partial classifier outputs. This preserves fail-closed coverage while still
+collecting frontend, contract, backend, desktop, and native diagnostics from
+their independent checkouts. A cancelled classifier run remains cancelled and
+does not start replacement diagnostics.
+
+Within Cargo, check and Clippy use `--keep-going` so all still-buildable
+dependency-graph branches are attempted before the command returns failure.
+This does not claim that a target whose dependency failed can run. Rust tests
+use `--no-fail-fast`, which continues across test executables after an
+executable fails. Backend test commands alone enable `fyagent/test-hooks` so
+integration-test fixtures can bind Windows user paths to their explicit
+`FYAGENT_TEST_HOME`; check, Clippy, native contract compilation, and production
+builds retain the frozen Explorer-user fail-closed boundary. The workflow
+therefore exposes all diagnostics that remain
+executable in the current job, then fails once at the collection boundary; it
+never turns a failed check into a green job.
+
+The repository-contract runner applies the same rule inside its single CI
+step: version, lockfile, dependency, task-document, NSIS, and contract-test
+diagnostics all run before it returns an aggregate failure. Composite package
+scripts must not hide independent CI diagnostics behind shell `&&`; the
+desktop acceptance job runs its mock test suite and its mock-contract verifier
+as separately collected steps. Dependent operations may still stop locally
+when their prerequisite is absent, but that failure must not suppress an
+independent later diagnostic.
+
+## 8. Matching-architecture Windows native contract
+
+`windows-native-contracts` is a fail-fast-disabled two-entry matrix:
+
+| Runner           | GitHub architecture | Rust host                 | Managed Python platform |
+| ---------------- | ------------------- | ------------------------- | ----------------------- |
+| `windows-2025`   | `X64`               | `x86_64-pc-windows-msvc`  | `win-amd64`             |
+| `windows-11-arm` | `ARM64`             | `aarch64-pc-windows-msvc` | `win-arm64`             |
+
+Before Cargo compilation, each child requires exact `RUNNER_ARCH`, exactly one
+`rustc -vV` host line, and equality with the matrix host. After that check and
+before the explicit-SID test builds the desktop crate, the child invokes the
+same dependency-free helper preparation script with `matrix.rust_host` and the
+debug profile. The native job does not install pnpm or frontend dependencies.
+Cargo receives that host through explicit `--target`; an x64 compatibility
+process cannot satisfy the ARM64 contract. The exact test name is:
 
 ```text
-Node       <- .node-version
-pnpm       <- package.json#packageManager
-Rust       <- rust-toolchain.toml [toolchain].channel and components
-Python     <- .python-version
-uv         <- the unique [[tools.uv]] entry in mise.lock
+codex_desktop::platform::windows::deployment::tests::native_explicit_sid_main_query_smoke
 ```
 
-`scripts/ci/verify-toolchain.mjs` parses those sources without project
-dependencies, resolves the locked uv and Python versions into GitHub step
-outputs, and compares the installed runtimes with the same values. It must not
-contain a second literal version set.
+The command requires exactly one passed test. It exercises the real WinRT
+explicit-SID `PackageTypes.Main` adapter and malformed-SID HRESULT propagation
+without Store, network, a real Codex package, or a multi-account VM.
 
-The `contracts` and `frontend` jobs resolve the uv version from `mise.lock`,
-pass that output to the pinned `astral-sh/setup-uv` Action, disable its cache,
-run `uv sync --locked`, and verify uv plus the managed Python before tests. The
-frontend job must create this locked `.venv` before the full unit suite because
-the development-hook behavior tests invoke the real Python harness.
+The same matrix installs the exact managed Python implementation/platform and
+proves the native Python platform through the locked uv environment. Zero
+tests, wrong architecture, missing managed Python, timeout, or preview runner
+unavailability fails the matrix. Cross-compilation and structural inspection
+are not substitutes for either native runner.
 
-## 3. Contracts
+## 9. Desktop acceptance and Labeler boundaries
 
-### Events, dependencies, and fail-closed aggregation
+The desktop acceptance job remains mock-only. It runs the mock acceptance
+contract, native Fetch/MSW/Tauri mock, and visual baseline preflight; it does
+not start a native window or claim hardware-in-the-loop evidence.
 
-- Every trigger reaches the same seven unconditional dependency jobs and the
-  same `CI / Required` aggregate job. A top-level path filter, conditional
-  omission of a dependency job, or event-specific weaker gate is prohibited.
-- `CI / Required` uses `if: always()` and receives all dependency results via
-  `toJSON(needs)`. It must run even when a dependency fails, is cancelled, or
-  is unexpectedly skipped.
-- The evaluator owns both the exact dependency set and accepted result set.
-  YAML-only string comparisons, success-by-default behavior, and accepting an
-  unknown GitHub result are prohibited.
-- Concurrency may cancel an obsolete run, but the latest candidate must still
-  produce its own completed Required result. A cancelled candidate is not a
-  passing source for merge or Release eligibility.
+`.github/workflows/labeler.yml` remains a separate trusted-base workflow. It
+uses `pull_request_target` plus numeric manual replay, does not checkout or run
+pull-request code, and has only `contents: read` and `pull-requests: write`.
+Labeler is not a CI dependency and cannot satisfy `CI / Required`.
 
-### Runners and toolchains
+## 10. Validation and evidence boundary
 
-- Required CI uses only `ubuntu-24.04`, `windows-2022`, `windows-11-arm`, and
-  `macos-15`; no `*-latest` runner is allowed.
-- `windows-msi-query` is one unconditional required job with a two-entry
-  native matrix: `windows-2022`/`X64` and
-  `windows-11-arm`/`Arm64`, with `fail-fast: false`. It checks out the
-  repository read-only and resolves Node/uv/Python only from the repository
-  facts. Each matrix row maps its runner to an explicit uv managed-Python
-  request: `windows-2022` uses `windows-x86_64`, while `windows-11-arm` uses
-  `windows-aarch64`. The request keeps the version from `.python-version`, uses
-  uv's full `implementation-version-os-arch-libc` request format, and remains in
-  `UV_PYTHON` for every subsequent command. The job requires managed Python,
-  performs `uv sync --locked --managed-python`, and executes the Trellis
-  task-list protocol through `uv run --locked --no-sync`. A version-only Python
-  request is forbidden because Windows on ARM can transparently select an
-  emulated x64 interpreter. Python's `sysconfig.get_platform()` must be
-  `win-amd64` on the x64 leg and `win-arm64` on the ARM64 leg, so an emulated
-  interpreter cannot satisfy the native environment gate. The same job then runs
-  `tests/windowsInstallerQuery.integration.ps1`; it does not install
-  pnpm, Rust, frontend, application, packaging, or signing dependencies. This
-  is the required native evidence path for the Windows ARM64 environment
-  contract without making mise an Actions dependency. The implementation,
-  static contract, and Child 3 remote gate are complete: after a version-only
-  request selected `win-amd64` on Windows on ARM in closeout run `31264604075`,
-  commit `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd` introduced the full request
-  above, and run `31265504901` passed the x64 (`93122857985`), ARM64
-  (`93122858012`), and aggregate Required (`93123992476`) jobs. The query fixture
-  creates a temporary MSI from checked-in `.idt` source and exercises the
-  production module on the runner's actual Windows Installer Automation
-  boundary. A job-level `timeout-minutes: 15` bounds setup, Python/Trellis, COM,
-  and fixture hangs
-  instead of inheriting GitHub's six-hour default.
-- `windows-11-arm` is a native hosted runner. Scheduling or image
-  unavailability is a retryable infrastructure failure, but it still fails
-  `CI / Required`; x64 substitution, cross-build, local Windows bridging, job
-  omission, or a skipped ARM64 conclusion cannot satisfy this gate.
-- CI never installs or invokes mise. GitHub Actions consume the repository's
-  standard version files directly, and the verification helper compares the
-  active runtime with those files.
-- That prohibition includes indirect test discovery. The contracts job uses
-  `release-check.mjs --ci`, which runs the pure Node lock, generated-doc, CI,
-  Release, and local-build contracts without calling the local task runtime.
-  The frontend Vitest run excludes only the five host-integration suites that
-  deliberately execute real mise commands: development environment, Codex
-  hooks, task API, generated task docs, and host system checks. The canonical
-  local `mise run check` remains the blocking owner of their real-task-runtime
-  cases. A dedicated CI step reruns the development-hook suite while excluding
-  only its two real-mise wiring cases, so the locked Python harness, integrity,
-  degradation, containment, and protocol behavior still fail the remote gate.
-- `actions/setup-node` uses `node-version-file: .node-version`.
-  `pnpm/action-setup` omits `version` and reads `packageManager`; it does not
-  install dependencies implicitly.
-- On Windows, the toolchain verifier launches the `pnpm.cmd` batch shim through
-  `ComSpec` (falling back to `cmd.exe`) with explicit `/d /s /c` arguments and
-  `shell: false`. Only its strict internal token character allowlist may enter
-  the command string; whitespace, quoting, expansion, control, and shell
-  metacharacters fail closed. Other tools and non-Windows invocation remain
-  direct process launches.
-- `actions-rust-lang/setup-rust-toolchain` omits toolchain, component, and
-  target inputs so `rust-toolchain.toml` remains authoritative. Its own cache
-  is disabled and `rustflags` is empty so it cannot override repository Cargo
-  configuration.
-- Rust check, Clippy, and tests use `--locked` on Linux, Windows, and macOS.
-  Linux alone owns rustfmt and native Linux prerequisite installation.
-  Windows uses `FYAGENT_WINDOWS_MANIFEST=test`; CI does not create a formal
-  elevated Windows candidate.
-- Full frontend tests run with deprecations promoted to failures. Focused
-  pending-deprecation and Native Fetch behavior probes are owned by the
-  dependency-removal contract and must remain in this gate once introduced.
+Required automated fixtures cover:
 
-### Immutable Actions and token permissions
+- docs/spec, frontend, desktop, backend, Windows native, dependency-root,
+  control-plane, multi-path union, rename/delete, and unknown paths;
+- malformed/missing/non-commit base/head revisions and option injection;
+- PR, merge-group, push, and manual event wiring;
+- event-forced full CI for both dev/main pushes and diagnostics;
+- legal skip versus required skip, unexpected execution, failure,
+  cancellation, timeout, classifier failure, incomplete API evidence, and
+  result/conclusion mismatch;
+- exact per-job collected step IDs, raw-outcome aggregation, cancellation
+  boundaries, Cargo keep-going, and Rust test no-fail-fast semantics;
+- immutable Action pins, minimal permissions, exact runners/toolchains, and
+  the x64/ARM64 explicit-SID smoke wiring.
 
-- Every third-party Action reference is one reviewed 40-character commit SHA
-  with a nearby version comment. Mutable major, tag, branch, or `latest`
-  references are prohibited.
-- The workflow default is exactly `contents: read`. CI does not request write
-  permissions or access repository secrets.
-- Checkout does not persist credentials. No dependency job may publish,
-  attest, tag, modify a Release, or mutate repository configuration.
+Local static and hermetic tests prove workflow structure and evaluator logic.
+They do not prove a hosted runner exists or that native code executed. Release
+closure requires the exact pushed dev HEAD's remote full run to finish with
+one successful `CI / Required`, including successful x64 and ARM64 native
+matrix children. `windows-11-arm` is public preview; unavailability blocks
+acceptance and is never converted into a reduced or cross-built run.
 
-The pins reviewed for this implementation are:
+## 11. Wrong and correct patterns
 
-| Action                                   | Version note | Commit                                     |
-| ---------------------------------------- | ------------ | ------------------------------------------ |
-| `actions/checkout`                       | `v7.0.1`     | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
-| `actions/setup-node`                     | `v7.0.0`     | `820762786026740c76f36085b0efc47a31fe5020` |
-| `pnpm/action-setup`                      | `v6.0.10`    | `0977fd99725f1db4007ccb2928dbb4e90d06cc86` |
-| `actions-rust-lang/setup-rust-toolchain` | `v1.17.0`    | `166cdcfd11aee3cb47222f9ddb555ce30ddb9659` |
-| `astral-sh/setup-uv`                     | `v9.0.0`     | `c771a70e6277c0a99b617c7a806ffedaca235ff9` |
-| `actions/labeler`                        | `v7.0.0`     | `bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13` |
-
-Changing a pin requires resolving the new official tag to its direct or peeled
-commit again and rerunning the static workflow contract.
-
-### Trusted-base Labeler
-
-- The automatic event is `pull_request_target`, so the workflow definition and
-  token authority come from the base repository rather than an untrusted fork.
-- The Labeler workflow never checks out a branch, executes a shell step, runs
-  pull-request code, restores a cache, uploads an artifact, or reads a secret.
-  Without checkout, Labeler v7 fetches `.github/labeler.yml` through the API at
-  `github.context.sha`, which is the base SHA for `pull_request_target`.
-- Its only write permission is `pull-requests: write`; `contents: read` is
-  needed to fetch the base configuration. `issues: write` is prohibited.
-  Therefore every configured label must exist before the workflow runs; label
-  creation is an explicit repository-maintenance action outside this workflow.
-- Manual replay accepts one required numeric `pr_number` and uses the same
-  pinned Action and configuration. It is not a path for executing PR code.
-
-### Remote enforcement and accepted residual risk
-
-The repository is public, but the approved v0.3.0 boundary deliberately does
-not configure branch protection, a main/tag ruleset, or a protected Release
-environment. The workflow can produce `CI / Required`, but GitHub does not
-administratively require that context before a maintainer merge, and a change
-with workflow-write authority could weaken a future workflow. This is an
-accepted workflow-only source-protection risk, not evidence of protected main
-or tags.
-
-The current personal-account repository plus the no-protection/no-ruleset
-decision cannot enable a real merge queue. The `merge_group(checks_requested)`
-trigger and static contract are implemented, but no genuine merge-group run can
-occur. The project owner accepted D113/D114 on 2026-08-08; D114 records that
-live event as N/A under the current governance, not as a successful run. Its
-accepted substitute evidence is the YAML trigger, fail-closed contract/static
-tests, and real PR/main/manual runs. Do not remove the trigger or describe a
-manual run as merge-group evidence.
-
-The first pull request that introduces or changes a `pull_request_target`
-workflow runs the Labeler version already present on the base branch. Automatic
-Labeler evidence for the new version therefore begins only after the workflow
-has reached the base branch; local tests and a manual run do not prove the
-automatic event.
-
-### Run observation discipline
-
-Trigger authorization and run observation are separate gates. After an
-Actions run is explicitly triggered, the initiating primary flow remains the
-single owner of its evidence and synchronously waits for the whole run to reach
-`completed`. It uses one blocking whole-run wait instead of delegating to a
-background/asynchronous monitoring agent or issuing repeated `list`, `view`,
-job-status, or check-status polling calls.
-
-This is the active
-[D117](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
-observation contract; it does not change trigger, retry, tag, or publication
-authority.
-
-Only after that wait returns does the primary flow read the final run and job
-result once. A successful result needs no log sweep. A failed result permits
-one retrieval of the failed-job logs for diagnosis; it does not authorize a
-rerun, cancellation, workflow change, tag, or publication. This keeps the run,
-job conclusion, and any failure log in one ordered evidence chain.
-
-## 4. Validation & Error Matrix
-
-| Condition                                                                                                                                                        | Required result                                                                                                                   |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Any required dependency is missing, extra, malformed, failed, cancelled, skipped, or unknown                                                                     | `CI / Required` fails and prints a machine-readable summary.                                                                      |
-| Either native Windows contract matrix leg cannot schedule, resolve its exact managed-Python architecture, prepare locked Python/Trellis, or pass its MSI fixture | `windows-msi-query` fails; Required remains red with no architecture fallback or conditional omission.                            |
-| A dependency job is conditional or a workflow-level path filter hides the workflow                                                                               | Static contract fails; do not merge the workflow change.                                                                          |
-| A Required runner uses `*-latest` or an unapproved label                                                                                                         | Static contract fails before remote execution.                                                                                    |
-| A third-party Action is not a reviewed full SHA with a version note                                                                                              | Static contract fails.                                                                                                            |
-| Node, pnpm, Rust, uv, or Python differs from its repository fact                                                                                                 | The affected job fails before its tests.                                                                                          |
-| Windows batch invocation contains a token outside the internal allowlist                                                                                         | Toolchain verification fails before `cmd.exe`; it never falls back to an implicit shell.                                          |
-| `mise.lock` has no unique uv entry or setup-uv receives an independent literal                                                                                   | Toolchain resolution fails; do not fall back to `latest`.                                                                         |
-| Full unit tests run without `uv sync --locked` and the managed `.venv`                                                                                           | Frontend CI fails; do not weaken the real hook harness.                                                                           |
-| Labeler checks out or executes PR code, reads secrets, or gains another write permission                                                                         | Reject the workflow as unsafe.                                                                                                    |
-| A configured label does not exist                                                                                                                                | Labeler fails without `issues: write`; create the reviewed label out of band, then rerun.                                         |
-| No real merge-group event can be produced under current repository governance                                                                                    | Record the accepted D114 live-run N/A exception; require YAML/static plus real PR/main/manual evidence, and never report success. |
-| A triggered run is delegated to an asynchronous monitor or sampled repeatedly                                                                                    | Stop the observation path; the initiating flow must perform one synchronous whole-run wait.                                       |
-| A completed successful run is followed by broad log retrieval                                                                                                    | Reject the extra collection; fetch failed-job logs only after a failed final result.                                              |
-
-## 5. Good / Base / Bad Cases
-
-- Good: A pull request starts all seven jobs, every result is `success`, and the
-  pure-Node evaluator completes the stable `CI / Required` context.
-- Good: A fork pull request triggers Labeler from the base workflow, fetches
-  the base configuration without checkout, and applies only existing labels
-  with the pull-request token scope.
-- Base: A manual CI dispatch runs the same complete gate. A manual Labeler
-  replay labels one numeric PR with the same safe workflow.
-- Bad: A `paths-ignore` rule prevents the Required context from appearing, a
-  `skipped` result passes, setup-uv silently chooses latest, or a platform job
-  hardcodes a second version.
-- Bad: Labeler checks out `pull_request.head.sha`, executes a script, requests
-  `issues: write`, or treats the workflow's privileged base token as safe for
-  arbitrary PR content.
-
-## 6. Tests Required
-
-Run the canonical read-only contract and type gates:
-
-```bash
-mise run release:check
-mise run typecheck
-mise run format:check
-```
-
-`tests/githubWorkflowTriggers.test.ts`, `tests/ciWorkflow.test.ts`,
-`tests/requiredCiGate.test.ts`, `tests/windowsInstallerQueryContract.test.ts`,
-and `tests/ciToolchainContract.test.ts` enforce
-the event, runner, Action, permission, dependency-result, and toolchain-source
-contracts. They also ensure the CI commands cannot rediscover the five
-mise-dependent host suites on a fresh runner. Run Prettier against the changed
-workflows, helpers, tests, and this spec. Run actionlint when it is installed;
-if it is unavailable, report that gap instead of claiming actionlint
-validation.
-
-Remote acceptance remains separate. Record the exact pull-request, main, and
-manual run URLs and source SHAs. Under D114, the unavailable live merge-group
-class is N/A only while the approved governance remains unchanged; local
-trigger/static evidence plus those real runs form the accepted substitute, but
-none may be described as a live merge-group success. Likewise, CI does not
-prove native Release installers, asset attestations, publication, or branch
-protection. For each authorized run, record the single completed run/job result
-after the synchronous wait and attach failed-job logs only when that result
-failed.
-
-## 7. Wrong vs Correct
-
-### Wrong
+Wrong:
 
 ```yaml
 on:
   pull_request:
     paths: ["src/**"]
-
-jobs:
-  required:
-    if: success()
 ```
 
-This can hide or skip the only stable context and cannot explain cancelled or
-missing dependencies.
-
-### Correct
+```js
+unknownPaths.length > 0 ? forceFull() : skipEverything();
+```
 
 ```yaml
-jobs:
-  required:
-    name: CI / Required
-    if: always()
-    needs:
-      - contracts
-      - frontend
-      - desktop-acceptance-contract
-      - backend-linux
-      - backend-windows
-      - windows-msi-query
-      - backend-macos
+if: ${{ needs.frontend.result != 'failure' }}
 ```
 
-Pass `toJSON(needs)` to the reviewed pure-Node evaluator and accept only the
-exact all-success dependency set.
+Correct:
+
+```text
+explicit base/head -> repository classifier -> requested domains
+requested success + authorized skip + REST conclusion -> CI / Required
+exact dev push SHA + successful CI / Required -> release eligibility
+```

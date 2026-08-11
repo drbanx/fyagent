@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(target_os = "macos")]
 use crate::config::get_home_dir;
 use crate::config::{atomic_write, delete_file, read_json_file, write_json_file};
 use crate::database::Database;
@@ -1241,9 +1241,7 @@ fn macos_paths_from_home(home: &Path) -> ClaudeDesktopPaths {
 
 #[cfg(windows)]
 fn windows_local_app_data_dir() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| get_home_dir().join("AppData").join("Local"))
+    crate::config::get_user_local_app_data_dir()
 }
 
 #[cfg(windows)]

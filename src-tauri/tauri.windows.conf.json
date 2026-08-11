@@ -1,5 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeDevCommand": "node scripts/prepare-windows-user-helper.mjs && pnpm run dev:renderer",
+    "beforeBuildCommand": "pnpm run build:renderer && node scripts/prepare-windows-user-helper.mjs"
+  },
   "app": {
     "windows": [
       {
@@ -13,5 +17,23 @@
         "minHeight": 600
       }
     ]
+  },
+  "bundle": {
+    "targets": ["nsis"],
+    "externalBin": ["binaries/fyagent-user-helper"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "template": "nsis/installer.nsi",
+        "installerHooks": "nsis/webview2-command.nsh",
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perMachine",
+        "languages": ["English", "SimpChinese"],
+        "displayLanguageSelector": false,
+        "startMenuFolder": "FyAgent"
+      }
+    }
   }
 }

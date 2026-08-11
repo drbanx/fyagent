@@ -747,7 +747,7 @@ def get_research_context(repo_root: str, task_dir: str | None) -> str:
 {spec_tree}
 ```
 
-To get structured package info, run: `python3 ./{DIR_WORKFLOW}/scripts/get_context.py --mode packages`
+To get structured package info, run: `python ./{DIR_WORKFLOW}/scripts/get_context.py --mode packages`
 
 ## Search Tips
 
@@ -865,7 +865,7 @@ Active task: {task_dir}
 {context}"""
 
 
-def _handle_codex_subagent_start(input_data: dict) -> bool:
+def _handle_codex_subagent_start(input_data: dict) -> None:
     """Emit Codex developer context for a recognised native Trellis subagent.
 
     The event supplies the parent session id. Disabling the generic
@@ -875,12 +875,19 @@ def _handle_codex_subagent_start(input_data: dict) -> bool:
     subagent_type = _codex_subagent_type(input_data)
     parent_session_id = _string_value(input_data.get("session_id"))
     if not subagent_type or not parent_session_id:
-        return False
+        return
 
-    cwd = _string_value(input_data.get("cwd")) or os.getcwd()
-    repo_root = find_repo_root(cwd)
+    # Payload cwd first, then our own — some hosts (CodeBuddy IDE 4.10.4)
+    # report "/" for every hook event. See inject-workflow-state.py.
+    repo_root = None
+    for candidate in (_string_value(input_data.get("cwd")), os.getcwd()):
+        if not candidate:
+            continue
+        repo_root = find_repo_root(candidate)
+        if repo_root:
+            break
     if not repo_root:
-        return False
+        return
 
     task_dir = get_current_task(
         repo_root,
@@ -891,12 +898,12 @@ def _handle_codex_subagent_start(input_data: dict) -> bool:
         require_existing=True,
     )
     if not task_dir:
-        return False
+        return
 
     if subagent_type in AGENTS_REQUIRE_TASK:
         task_dir_full = Path(repo_root) / task_dir
         if not task_dir_full.is_dir():
-            return False
+            return
 
     if subagent_type == AGENT_IMPLEMENT:
         context = get_implement_context(repo_root, task_dir)
@@ -906,7 +913,7 @@ def _handle_codex_subagent_start(input_data: dict) -> bool:
         context = get_research_context(repo_root, task_dir)
 
     if not context:
-        return False
+        return
 
     output = {
         "hookSpecificOutput": {
@@ -917,7 +924,6 @@ def _handle_codex_subagent_start(input_data: dict) -> bool:
         }
     }
     print(json.dumps(output, ensure_ascii=False))
-    return True
 
 
 def _extract_subagent_name(value: Any) -> str:
@@ -1041,24 +1047,18 @@ def main():
 
     try:
         input_data = json.load(sys.stdin)
-    except json.JSONDecodeError as exc:
-        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
-            raise SystemExit(f"invalid Codex hook input JSON: {exc}") from exc
+    except json.JSONDecodeError:
         sys.exit(0)
     if not isinstance(input_data, dict):
-        if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
-            raise SystemExit("Codex hook input must be a JSON object")
         sys.exit(0)
 
     if _hook_event_name(input_data) == "SubagentStart":
         try:
-            handled = _handle_codex_subagent_start(input_data)
+            _handle_codex_subagent_start(input_data)
         except Exception:
-            if os.environ.get("FYAGENT_CODEX_HOOK_STRICT") == "1":
-                raise
-            handled = False
-        if not handled:
-            print(json.dumps({"continue": True}))
+            # A native context hook must never prevent Codex from spawning the
+            # requested child when its runtime state is unavailable or stale.
+            pass
         sys.exit(0)
 
     subagent_type, original_prompt, tool_input = _parse_hook_input(input_data)

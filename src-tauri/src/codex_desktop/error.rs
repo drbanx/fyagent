@@ -35,13 +35,11 @@ pub enum InstallerErrorCode {
     PackageIdentityMismatch,
     PackageArchitectureMismatch,
     PackageSignatureInvalid,
-    WindowsUacCancelled,
-    WindowsElevationFailed,
     WindowsPackageInUse,
     WindowsDeploymentBlocked,
     WindowsDependencyMissing,
-    WindowsAllUsersUnsupported,
     WindowsDeploymentFailed,
+    MultipleInstallations,
     MacDmgMountFailed,
     MacAppNotFound,
     MacBundleIdMismatch,
@@ -80,13 +78,11 @@ impl InstallerErrorCode {
             Self::PackageIdentityMismatch => "codexDesktop.error.packageIdentityMismatch",
             Self::PackageArchitectureMismatch => "codexDesktop.error.packageArchitectureMismatch",
             Self::PackageSignatureInvalid => "codexDesktop.error.packageSignatureInvalid",
-            Self::WindowsUacCancelled => "codexDesktop.error.windowsUacCancelled",
-            Self::WindowsElevationFailed => "codexDesktop.error.windowsElevationFailed",
             Self::WindowsPackageInUse => "codexDesktop.error.windowsPackageInUse",
             Self::WindowsDeploymentBlocked => "codexDesktop.error.windowsDeploymentBlocked",
             Self::WindowsDependencyMissing => "codexDesktop.error.windowsDependencyMissing",
-            Self::WindowsAllUsersUnsupported => "codexDesktop.error.windowsAllUsersUnsupported",
             Self::WindowsDeploymentFailed => "codexDesktop.error.windowsDeploymentFailed",
+            Self::MultipleInstallations => "codexDesktop.error.multipleInstallations",
             Self::MacDmgMountFailed => "codexDesktop.error.macDmgMountFailed",
             Self::MacAppNotFound => "codexDesktop.error.macAppNotFound",
             Self::MacBundleIdMismatch => "codexDesktop.error.macBundleIdMismatch",
@@ -115,8 +111,6 @@ impl InstallerErrorCode {
                 | Self::DownloadTimeout
                 | Self::DownloadCancelled
                 | Self::InsufficientDiskSpace
-                | Self::WindowsUacCancelled
-                | Self::WindowsElevationFailed
                 | Self::WindowsPackageInUse
                 | Self::WindowsDeploymentFailed
                 | Self::MacDmgMountFailed
@@ -134,8 +128,6 @@ impl InstallerErrorCode {
             | Self::DownloadFailed
             | Self::DownloadTimeout
             | Self::DownloadCancelled
-            | Self::WindowsUacCancelled
-            | Self::WindowsElevationFailed
             | Self::WindowsDeploymentFailed
             | Self::MacDmgMountFailed
             | Self::MacCopyFailed
@@ -149,13 +141,12 @@ impl InstallerErrorCode {
                 SuggestedAction::ContactAdministrator
             }
             Self::InsufficientDiskSpace => SuggestedAction::FreeDiskSpace,
-            Self::MacMultipleInstallations | Self::MacTargetPathConflict => {
-                SuggestedAction::ResolvePathConflict
-            }
+            Self::MultipleInstallations
+            | Self::MacMultipleInstallations
+            | Self::MacTargetPathConflict => SuggestedAction::ResolvePathConflict,
             Self::PlatformUnsupported
             | Self::OsVersionUnsupported
             | Self::ArchitectureUnsupported
-            | Self::WindowsAllUsersUnsupported
             | Self::JobAlreadyRunning
             | Self::JobNotFound => SuggestedAction::None,
             _ => SuggestedAction::OpenLogs,
@@ -388,6 +379,15 @@ mod tests {
         assert_eq!(dto.message_key, "codexDesktop.error.metadataChanged");
         assert!(dto.retryable);
         assert_eq!(dto.suggested_action, SuggestedAction::Refresh);
+    }
+
+    #[test]
+    fn multiple_installations_uses_a_platform_neutral_manual_action() {
+        let dto = InstallerError::new(InstallerErrorCode::MultipleInstallations).to_dto();
+
+        assert_eq!(dto.message_key, "codexDesktop.error.multipleInstallations");
+        assert!(!dto.retryable);
+        assert_eq!(dto.suggested_action, SuggestedAction::ResolvePathConflict);
     }
 
     #[test]

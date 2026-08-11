@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   EXPECTED_INSTALLERS_BY_TARGET,
   EXPECTED_TARGETS,
+  WINDOWS_SIGNING_FRAGMENTS_BY_TARGET,
   assertExactDirectorySet,
   assertExactFileSet,
   expectedInstallerNames,
@@ -13,17 +14,20 @@ import {
 const [mode, inputRoot, outputDirectory, version] = process.argv.slice(2);
 if (!mode || !inputRoot || !outputDirectory || !version) {
   console.error(
-    "Usage: node scripts/release/collect-workflow-artifacts.mjs <installers|metadata> <download-root> <output-dir> <version>",
+    "Usage: node scripts/release/collect-workflow-artifacts.mjs <installers|metadata|signing> <download-root> <output-dir> <version>",
   );
   process.exit(1);
 }
 
 try {
-  if (!(mode === "installers" || mode === "metadata")) {
+  if (!(mode === "installers" || mode === "metadata" || mode === "signing")) {
     throw new Error(`Unsupported artifact collection mode: ${mode}`);
   }
   const installerNames = expectedInstallerNames(version);
-  const targetGroups = EXPECTED_TARGETS.map(({ targetGroup }) => targetGroup);
+  const targetGroups =
+    mode === "signing"
+      ? Object.keys(WINDOWS_SIGNING_FRAGMENTS_BY_TARGET)
+      : EXPECTED_TARGETS.map(({ targetGroup }) => targetGroup);
   const artifactNames = targetGroups.map(
     (targetGroup) => `${mode}-${targetGroup}`,
   );
@@ -41,7 +45,9 @@ try {
         ? EXPECTED_INSTALLERS_BY_TARGET[targetGroup].map(
             (index) => installerNames[index],
           )
-        : [`${targetGroup}.json`];
+        : mode === "metadata"
+          ? [`${targetGroup}.json`]
+          : [WINDOWS_SIGNING_FRAGMENTS_BY_TARGET[targetGroup]];
     assertExactFileSet(
       artifactDirectory,
       expected,
@@ -59,7 +65,11 @@ try {
   const expectedOutput =
     mode === "installers"
       ? installerNames
-      : targetGroups.map((targetGroup) => `${targetGroup}.json`);
+      : mode === "metadata"
+        ? targetGroups.map((targetGroup) => `${targetGroup}.json`)
+        : targetGroups.map(
+            (targetGroup) => WINDOWS_SIGNING_FRAGMENTS_BY_TARGET[targetGroup],
+          );
   assertExactFileSet(
     outputDirectory,
     expectedOutput,

@@ -9,8 +9,23 @@ import { describe, expect, it } from "vitest";
 import * as taskLibModule from "../scripts/tasks/lib.mjs";
 // @ts-expect-error The task runner executes this JavaScript helper directly.
 import * as hostNativeModule from "../scripts/tasks/host-native.mjs";
+// @ts-expect-error The task runner executes this JavaScript helper directly.
+import * as formatFilesModule from "../scripts/tasks/format-files.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
+const FORMAT_FIXTURES = new Set<string>();
+
+function createFormatFixture(prefix: string) {
+  const fixture = fs.mkdtempSync(path.join(ROOT, `.${prefix}`));
+  FORMAT_FIXTURES.add(fixture);
+  return fixture;
+}
+
+process.once("exit", () => {
+  for (const fixture of FORMAT_FIXTURES) {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
 
 type TaskDefinition = {
   confirm?: { default?: string; message?: string };
@@ -123,6 +138,169 @@ describe("canonical mise task API", () => {
     }
   });
 
+  it("formats only reviewed repository files and preserves argv boundaries", () => {
+    const fixture = createFormatFixture("format-files-test-");
+    const relativeFixture = path.relative(ROOT, fixture);
+    const spaced = path.join(relativeFixture, "with space.json");
+    const unicode = path.join(relativeFixture, "配置.json");
+    fs.writeFileSync(path.join(ROOT, spaced), "{}\n");
+    fs.writeFileSync(path.join(ROOT, unicode), "{}\n");
+
+    const calls: Array<{ command: string; args: string[] }> = [];
+    try {
+      formatFilesModule.formatFiles(
+        [spaced, path.join(ROOT, unicode)],
+        (command: string, args: string[]) => calls.push({ command, args }),
+      );
+      expect(calls).toEqual([
+        {
+          command: "pnpm",
+          args: [
+            "exec",
+            "prettier",
+            "--write",
+            "--",
+            spaced,
+            path.join(ROOT, unicode),
+          ],
+        },
+      ]);
+
+      for (const invalid of [
+        [],
+        ["--config"],
+        ["../outside.json"],
+        [path.join(os.tmpdir(), "outside.json")],
+        [relativeFixture],
+      ]) {
+        expect(
+          () => formatFilesModule.validateFormatFiles(invalid),
+          JSON.stringify(invalid),
+        ).toThrow();
+      }
+
+      if (process.platform !== "win32") {
+        const outside = path.join(os.tmpdir(), `fyagent-format-${process.pid}`);
+        const link = path.join(fixture, "escape.json");
+        fs.writeFileSync(outside, "{}\n");
+        fs.symlinkSync(outside, link);
+        expect(() =>
+          formatFilesModule.validateFormatFiles([path.relative(ROOT, link)]),
+        ).toThrow(/regular non-symlink file/);
+        fs.rmSync(outside, { force: true });
+      }
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes JSONL records before invoking Prettier and leaves all files unchanged on a parse failure", () => {
+    const fixture = createFormatFixture("format-files-jsonl-");
+    const relativeFixture = path.relative(ROOT, fixture);
+    const first = path.join(relativeFixture, "first.JSONL");
+    const invalid = path.join(relativeFixture, "second.jsonl");
+    const ordinary = path.join(relativeFixture, "ordinary.json");
+    const firstOriginal = ' { "first": true }\r\n';
+    const invalidOriginal = '{"second":true}\nnot-json\n';
+    fs.writeFileSync(path.join(ROOT, first), firstOriginal);
+    fs.writeFileSync(path.join(ROOT, invalid), invalidOriginal);
+    fs.writeFileSync(path.join(ROOT, ordinary), '{"ordinary":true}\n');
+
+    const calls: Array<{ command: string; args: string[] }> = [];
+    try {
+      expect(() =>
+        formatFilesModule.formatFiles(
+          [ordinary, first, invalid],
+          (command: string, args: string[]) => calls.push({ command, args }),
+        ),
+      ).toThrow(`Invalid JSONL record at ${invalid}:2`);
+      expect(calls).toEqual([]);
+      expect(fs.readFileSync(path.join(ROOT, first), "utf8")).toBe(
+        firstOriginal,
+      );
+      expect(fs.readFileSync(path.join(ROOT, invalid), "utf8")).toBe(
+        invalidOriginal,
+      );
+      expect(fs.readFileSync(path.join(ROOT, ordinary), "utf8")).toBe(
+        '{"ordinary":true}\n',
+      );
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("forwards whitespace and Unicode paths through the real format:files task", () => {
+    const fixture = createFormatFixture("format-files-mise-");
+    const first = path.join(fixture, "with space.json");
+    const second = path.join(fixture, "配置.json");
+    const jsonl = path.join(fixture, "Trellis 配置.jsonl");
+    const secondJsonl = path.join(fixture, "第二个 Trellis.jsonl");
+    fs.writeFileSync(first, '{"value":1}\n');
+    fs.writeFileSync(second, '{"value":2}\n');
+    fs.writeFileSync(
+      jsonl,
+      ' { "value": 9007199254740993, "duplicate": 1, "duplicate": 2, "escaped": "\\u0061", "negativeZero": -0, "nested": [ 1, 2 ] } \r\n\t\r\n',
+    );
+    fs.writeFileSync(
+      secondJsonl,
+      ' { "record": 1 } \r\n \t\r\n { "record": 2 } \r\n',
+    );
+
+    try {
+      const result = mise(
+        "format:files",
+        "--",
+        path.relative(ROOT, first),
+        path.relative(ROOT, second),
+        path.relative(ROOT, jsonl),
+        path.relative(ROOT, secondJsonl),
+      );
+      expect(result.status, output(result)).toBe(0);
+      expect(fs.readFileSync(first, "utf8")).toBe('{ "value": 1 }\n');
+      expect(fs.readFileSync(second, "utf8")).toBe('{ "value": 2 }\n');
+      expect(fs.readFileSync(jsonl, "utf8")).toBe(
+        '{"value":9007199254740993,"duplicate":1,"duplicate":2,"escaped":"\\u0061","negativeZero":-0,"nested":[1,2]}\n\n',
+      );
+      expect(fs.readFileSync(secondJsonl, "utf8")).toBe(
+        '{"record":1}\n\n{"record":2}\n',
+      );
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("fails the real format:files task before changing any file when JSONL is invalid", () => {
+    const fixture = createFormatFixture("format-files-invalid-");
+    const ordinary = path.join(fixture, "ordinary file.json");
+    const valid = path.join(fixture, "valid 配置.jsonl");
+    const invalid = path.join(fixture, "invalid 配置.jsonl");
+    const ordinaryOriginal = '{"ordinary":true}\n';
+    const validOriginal = ' { "valid": true } \r\n';
+    const invalidOriginal = '{"valid":true}\nnot-json\n';
+    fs.writeFileSync(ordinary, ordinaryOriginal);
+    fs.writeFileSync(valid, validOriginal);
+    fs.writeFileSync(invalid, invalidOriginal);
+
+    try {
+      const result = mise(
+        "format:files",
+        "--",
+        path.relative(ROOT, ordinary),
+        path.relative(ROOT, valid),
+        path.relative(ROOT, invalid),
+      );
+      expect(result.status, output(result)).not.toBe(0);
+      expect(output(result)).toContain(
+        `Invalid JSONL record at ${path.relative(ROOT, invalid)}:2`,
+      );
+      expect(fs.readFileSync(ordinary, "utf8")).toBe(ordinaryOriginal);
+      expect(fs.readFileSync(valid, "utf8")).toBe(validOriginal);
+      expect(fs.readFileSync(invalid, "utf8")).toBe(invalidOriginal);
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
   it("locks native pnpm executables and checksums for both Windows architectures", () => {
     const lock = readToml("mise.lock") as {
       tools: {
@@ -165,7 +343,7 @@ describe("canonical mise task API", () => {
       checkClosure: string[];
     };
     expect(report.ok).toBe(true);
-    expect(report.tasks).toBeGreaterThanOrEqual(80);
+    expect(report.tasks).toBeGreaterThanOrEqual(60);
     expect(report.checkClosure).toContain("check:contracts");
   });
 
@@ -220,7 +398,7 @@ describe("canonical mise task API", () => {
     const version = mise("version:set", "0.3.0");
     expect(version.status, output(version)).toBe(0);
     expect(output(version)).toContain("0.3.0");
-    expect(output(version)).toMatch(/preview|no files (?:would )?change/i);
+    expect(output(version)).toMatch(/would update|no files changed/i);
 
     const python = mise("python:add:dev", "httpx");
     expect(python.status, output(python)).toBe(0);
@@ -233,6 +411,15 @@ describe("canonical mise task API", () => {
   });
 
   it("forwards upstream parameters before any Git mutation can run", () => {
+    const upstreamTask = fs.readFileSync(
+      path.join(ROOT, "scripts", "tasks", "upstream.mjs"),
+      "utf8",
+    );
+    expect(upstreamTask).toContain(
+      "const ORIGIN = /^https:\\/\\/github\\.com\\/fy-agent\\/fyagent(?:\\.git)?$/i;",
+    );
+    expect(upstreamTask).not.toContain(["NongHua123", "fyagent"].join("\\/"));
+
     const result = mise("upstream:merge:prepare", "not-a-release-tag");
     expect(result.status).not.toBe(0);
     expect(output(result)).toContain("Upstream tag must be exact vX.Y.Z");
@@ -256,22 +443,6 @@ describe("canonical mise task API", () => {
         }),
       ]),
     );
-  });
-
-  it("validates every active Trellis task when no task is specified", () => {
-    const result = mise("trellis:validate");
-    expect(result.status, output(result)).toBe(0);
-    expect(output(result)).toMatch(/Validated \d+ active Trellis task\(s\)/);
-    expect(output(result)).not.toContain(
-      "the following arguments are required",
-    );
-  }, 60_000);
-
-  it("forwards the task CLI help flag through the canonical wrapper", () => {
-    const result = mise("trellis:task", "--", "--help");
-    expect(result.status, output(result)).toBe(0);
-    expect(output(result)).toContain("usage: task.py");
-    expect(output(result)).toContain("{create,add-context,validate");
   });
 
   it.each([
@@ -371,6 +542,9 @@ describe("canonical mise task API", () => {
       "--locked",
       "--manifest-path",
       "src-tauri/Cargo.toml",
+      "--features",
+      "fyagent/test-hooks",
+      "--no-fail-fast",
       "--",
       "settings",
     ]);
@@ -383,6 +557,248 @@ describe("canonical mise task API", () => {
       RUSTC: rustcExecutable,
       RUSTDOC: rustdocExecutable,
     });
+  });
+
+  it.each(["check", "clippy", "test"])(
+    "prepares the exact Windows helper once before rust:%s workspace Cargo",
+    (operation) => {
+      const platform: NodeJS.Platform = "win32";
+      const architecture = "x64";
+      const target = hostNativeModule.expectedRustTarget(
+        platform,
+        architecture,
+      ) as string;
+      const rustcExecutable = "C:\\verified\\toolchain\\rustc.exe";
+      const rustdocExecutable = "C:\\verified\\toolchain\\rustdoc.exe";
+      const nodeExecutable = "C:\\verified\\node.exe";
+      const verbose = (tool: "rustc" | "rustdoc") =>
+        `${tool} 1.97.1\ncommit-hash: verified-toolchain\nhost: ${target}\nrelease: 1.97.1`;
+      const calls: Array<{
+        command: string;
+        args: string[];
+        environment?: Record<string, string>;
+      }> = [];
+      const sequence: string[] = [];
+
+      const plan = hostNativeModule.executeCargoTask({
+        operation,
+        environment: {},
+        platform,
+        architecture,
+        nodeExecutable,
+        captureCommand: (command: string, args: string[]) => {
+          sequence.push(
+            command === rustcExecutable ? "probe:rustc" : "probe:rustdoc",
+          );
+          calls.push({ command, args });
+          return command === rustcExecutable
+            ? verbose("rustc")
+            : verbose("rustdoc");
+        },
+        runCommand: (
+          command: string,
+          args: string[],
+          options: { env: Record<string, string> },
+        ) => {
+          sequence.push(
+            args[0] === "scripts/prepare-windows-user-helper.mjs"
+              ? "run:helper"
+              : "run:cargo",
+          );
+          calls.push({ command, args, environment: options.env });
+        },
+        resolveToolCommand: ({ tool }: { tool: string }) => {
+          sequence.push(`resolve:${tool}`);
+          return tool === "rustc" ? rustcExecutable : rustdocExecutable;
+        },
+        resolveRunner: () => {
+          sequence.push("resolve:runner");
+          return `target.${target}.runner=[${JSON.stringify(nodeExecutable)}]`;
+        },
+        validateCargoConfig: () => {
+          sequence.push("validate:cargo-config");
+        },
+      }) as {
+        command: string;
+        args: string[];
+        target: string;
+        environment: Record<string, string>;
+      };
+
+      expect(calls).toHaveLength(4);
+      expect(sequence).toEqual([
+        "validate:cargo-config",
+        "resolve:rustc",
+        "resolve:rustdoc",
+        "resolve:runner",
+        "probe:rustc",
+        "probe:rustdoc",
+        "run:helper",
+        "run:cargo",
+      ]);
+      expect(calls.slice(0, 2)).toEqual([
+        { command: rustcExecutable, args: ["-vV"] },
+        { command: rustdocExecutable, args: ["-vV"] },
+      ]);
+      expect(calls[2]).toMatchObject({
+        command: nodeExecutable,
+        args: ["scripts/prepare-windows-user-helper.mjs"],
+        environment: {
+          RUSTC: rustcExecutable,
+          RUSTDOC: rustdocExecutable,
+          TAURI_ENV_TARGET_TRIPLE: target,
+          TAURI_ENV_DEBUG: "true",
+        },
+      });
+      expect(calls[3]).toEqual({
+        command: "cargo",
+        args: plan.args,
+        environment: plan.environment,
+      });
+      expect(
+        calls.filter(
+          ({ args }) =>
+            args.length === 1 &&
+            args[0] === "scripts/prepare-windows-user-helper.mjs",
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    ["linux", "x64"],
+    ["darwin", "arm64"],
+  ] as const)(
+    "does not prepare the Windows helper for %s/%s Rust tasks",
+    (platform, architecture) => {
+      const target = hostNativeModule.expectedRustTarget(
+        platform,
+        architecture,
+      ) as string;
+      const rustcExecutable = "/verified/toolchain/rustc";
+      const rustdocExecutable = "/verified/toolchain/rustdoc";
+      const calls: Array<{ command: string; args: string[] }> = [];
+
+      hostNativeModule.executeCargoTask({
+        operation: "check",
+        environment: {},
+        platform,
+        architecture,
+        nodeExecutable: "/verified/node",
+        captureCommand: (command: string, args: string[]) => {
+          calls.push({ command, args });
+          const tool = command === rustcExecutable ? "rustc" : "rustdoc";
+          return `${tool} 1.97.1\ncommit-hash: verified-toolchain\nhost: ${target}\nrelease: 1.97.1`;
+        },
+        runCommand: (command: string, args: string[]) =>
+          calls.push({ command, args }),
+        resolveToolCommand: ({ tool }: { tool: string }) =>
+          tool === "rustc" ? rustcExecutable : rustdocExecutable,
+        resolveRunner: () => `target.${target}.runner=["/verified/node"]`,
+      });
+
+      expect(calls.map(({ command }) => command)).toEqual([
+        rustcExecutable,
+        rustdocExecutable,
+        "cargo",
+      ]);
+      expect(calls.flatMap(({ args }) => args)).not.toContain(
+        "scripts/prepare-windows-user-helper.mjs",
+      );
+    },
+  );
+
+  it("stops before Windows workspace Cargo when helper preparation fails", () => {
+    const platform: NodeJS.Platform = "win32";
+    const architecture = "arm64";
+    const target = hostNativeModule.expectedRustTarget(
+      platform,
+      architecture,
+    ) as string;
+    const rustcExecutable = "C:\\verified\\toolchain\\rustc.exe";
+    const rustdocExecutable = "C:\\verified\\toolchain\\rustdoc.exe";
+    const nodeExecutable = "C:\\verified\\node.exe";
+    const runCalls: Array<{ command: string; args: string[] }> = [];
+
+    expect(() =>
+      hostNativeModule.executeCargoTask({
+        operation: "test",
+        environment: {},
+        platform,
+        architecture,
+        nodeExecutable,
+        captureCommand: (command: string) => {
+          const tool = command === rustcExecutable ? "rustc" : "rustdoc";
+          return `${tool} 1.97.1\ncommit-hash: verified-toolchain\nhost: ${target}\nrelease: 1.97.1`;
+        },
+        runCommand: (command: string, args: string[]) => {
+          runCalls.push({ command, args });
+          throw new Error("helper preparation failed");
+        },
+        resolveToolCommand: ({ tool }: { tool: string }) =>
+          tool === "rustc" ? rustcExecutable : rustdocExecutable,
+        resolveRunner: () =>
+          `target.${target}.runner=[${JSON.stringify(nodeExecutable)}]`,
+      }),
+    ).toThrow("helper preparation failed");
+    expect(runCalls).toEqual([
+      {
+        command: nodeExecutable,
+        args: ["scripts/prepare-windows-user-helper.mjs"],
+      },
+    ]);
+  });
+
+  it("does not prepare the Windows helper before current-host toolchain validation", () => {
+    let runCalls = 0;
+    expect(() =>
+      hostNativeModule.executeCargoTask({
+        operation: "check",
+        environment: {},
+        platform: "win32",
+        architecture: "x64",
+        captureCommand: (command: string) => {
+          const tool = command.toLowerCase().includes("rustdoc")
+            ? "rustdoc"
+            : "rustc";
+          return `${tool} 1.97.1\ncommit-hash: verified-toolchain\nhost: aarch64-pc-windows-msvc\nrelease: 1.97.1`;
+        },
+        runCommand: () => {
+          runCalls += 1;
+        },
+        resolveToolCommand: ({ tool }: { tool: string }) =>
+          `C:\\verified\\${tool}.exe`,
+        resolveRunner: () => "verified-native-runner",
+      }),
+    ).toThrow(/does not match current host/);
+    expect(runCalls).toBe(0);
+  });
+
+  it("requires the Windows helper preparer to use an absolute Node executable", () => {
+    const target = "x86_64-pc-windows-msvc";
+    let runCalls = 0;
+    expect(() =>
+      hostNativeModule.executeCargoTask({
+        operation: "check",
+        environment: {},
+        platform: "win32",
+        architecture: "x64",
+        nodeExecutable: "node.exe",
+        captureCommand: (command: string) => {
+          const tool = command.toLowerCase().includes("rustdoc")
+            ? "rustdoc"
+            : "rustc";
+          return `${tool} 1.97.1\ncommit-hash: verified-toolchain\nhost: ${target}\nrelease: 1.97.1`;
+        },
+        runCommand: () => {
+          runCalls += 1;
+        },
+        resolveToolCommand: ({ tool }: { tool: string }) =>
+          `C:\\verified\\${tool}.exe`,
+        resolveRunner: () => "verified-native-runner",
+      }),
+    ).toThrow("canonical Node executable must be an absolute Windows path");
+    expect(runCalls).toBe(0);
   });
 
   it.runIf(process.platform !== "win32")(

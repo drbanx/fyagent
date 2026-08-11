@@ -77,6 +77,10 @@ export const settingsApi = {
     return await invoke("get_config_dir", { app: appId });
   },
 
+  async getUserHomeDir(): Promise<string> {
+    return await invoke("get_user_home_dir");
+  },
+
   async openConfigFolder(appId: AppId): Promise<void> {
     await invoke("open_config_folder", { app: appId });
   },

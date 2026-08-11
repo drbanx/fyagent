@@ -1,0 +1,34 @@
+{
+  "id": "docs-spec-current-state-migration",
+  "name": "docs-spec-current-state-migration",
+  "title": "Docs and spec current-state migration",
+  "description": "Migrate active knowledge to current-state specs and development docs and retire versioned current packages.",
+  "status": "completed",
+  "dev_type": "docs",
+  "scope": "active specs, current development docs, indexes, links, and contract tests",
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-09",
+  "completedAt": "2026-08-10",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "c3282b3b8c65e61b59b6262891475add709b8542",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-09-fyagent-modernization",
+  "relatedFiles": [
+    ".trellis/tasks/08-09-docs-spec-current-state-migration/migration-inventory.md",
+    "docs/fyagent/development/",
+    "docs/fyagent/dev/"
+  ],
+  "notes": "The task-local inventory reviewed all 197 versioned development-package files before the exact old tree was removed. Current development docs explain responsibility and route normative rules to active specs; repository authority now uses fy-agent/fyagent. Formal Release and later remote evidence were deferred by the 2026-08-10 strategy and are not claimed.",
+  "meta": {
+    "inventoryFileCount": 197,
+    "archiveBaselineHead": "50cca3ac5863a323934b4b9071b318492590b7e8",
+    "archiveBaselineTree": "c76153dc5c92ebd09c415b468b096d3aea2424e9"
+  }
+}

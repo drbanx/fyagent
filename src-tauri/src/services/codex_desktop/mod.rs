@@ -22,14 +22,16 @@ use crate::codex_desktop::{
     cancellation::{cancellation_error, NeverCancelled},
     download::{download_release, DownloadProgressSink, DownloadProgressUpdate, HttpTransport},
     error::{InstallerError, InstallerErrorCode},
-    jobs::{JobCancellation, JobEventSink, JobStore},
+    jobs::{
+        JobCancellation, JobEventSink, JobStore, ProcessLifecycleClaim, ProcessLifecycleTransition,
+    },
     platform::{
         installed_application_matches_release, CodexDesktopPlatform, PlatformProgressReporter,
         PlatformProgressSink, RestartCandidateInspection, RuntimeInspection,
         TrustedInstallationCandidate,
     },
     source::{CacheMode, ReleaseSource},
-    temp::JobTempDir,
+    temp::{JobTempDir, JobTempRoot},
     types::{
         CodexDesktopManualRestartReason, CodexDesktopRestartOutcome, CodexDesktopRuntimeAmbiguity,
         CodexDesktopRuntimeStatus, CpuArchitecture, DesktopPlatform, InstallResult,
@@ -93,7 +95,7 @@ pub(crate) struct CodexDesktopServiceDependencies {
     platform: Arc<dyn CodexDesktopPlatform>,
     transport: Arc<dyn HttpTransport>,
     disk_space_probe: Arc<dyn DiskSpaceProbe>,
-    temp_root: PathBuf,
+    temp_root: JobTempRoot,
     log_directory: PathBuf,
 }
 
@@ -104,7 +106,7 @@ impl CodexDesktopServiceDependencies {
         platform: Arc<dyn CodexDesktopPlatform>,
         transport: Arc<dyn HttpTransport>,
         disk_space_probe: Arc<dyn DiskSpaceProbe>,
-        temp_root: PathBuf,
+        temp_root: impl Into<JobTempRoot>,
         log_directory: PathBuf,
     ) -> Self {
         Self {
@@ -112,7 +114,7 @@ impl CodexDesktopServiceDependencies {
             platform,
             transport,
             disk_space_probe,
-            temp_root,
+            temp_root: temp_root.into(),
             log_directory,
         }
     }
@@ -206,7 +208,7 @@ pub struct CodexDesktopService {
     platform: Arc<dyn CodexDesktopPlatform>,
     transport: Arc<dyn HttpTransport>,
     disk_space_probe: Arc<dyn DiskSpaceProbe>,
-    temp_root: PathBuf,
+    temp_root: JobTempRoot,
     log_directory: PathBuf,
     clock: Arc<dyn InstallerClock>,
     job_store: JobStore,
@@ -225,6 +227,7 @@ enum InstallFlowOutcome {
 
 enum RestartPlanInspection {
     NotInstalled,
+    AmbiguousInstallations,
     UntrustedTarget,
     Unsupported(UnsupportedReason),
     Plan(RestartPlan),
@@ -325,6 +328,9 @@ impl CodexDesktopService {
     pub async fn get_runtime_status(&self) -> Result<CodexDesktopRuntimeStatus, InstallerError> {
         Ok(match self.inspect_restart_plan().await? {
             RestartPlanInspection::NotInstalled => CodexDesktopRuntimeStatus::NotInstalled,
+            RestartPlanInspection::AmbiguousInstallations => CodexDesktopRuntimeStatus::Ambiguous {
+                reason: CodexDesktopRuntimeAmbiguity::Installations,
+            },
             RestartPlanInspection::UntrustedTarget => CodexDesktopRuntimeStatus::UntrustedTarget,
             RestartPlanInspection::Unsupported(reason) => {
                 CodexDesktopRuntimeStatus::Unsupported { reason }
@@ -371,6 +377,7 @@ impl CodexDesktopService {
                 }
             }
             Ok(RestartPlanInspection::UntrustedTarget) => manual_untrusted_restart(),
+            Ok(RestartPlanInspection::AmbiguousInstallations) => manual_untrusted_restart(),
             Ok(RestartPlanInspection::Unsupported(_)) => {
                 CodexDesktopRestartOutcome::ManualRestartRequired {
                     reason: CodexDesktopManualRestartReason::Unsupported,
@@ -419,6 +426,7 @@ impl CodexDesktopService {
                 }
             }
             Ok(RestartPlanInspection::UntrustedTarget) => manual_untrusted_restart(),
+            Ok(RestartPlanInspection::AmbiguousInstallations) => manual_untrusted_restart(),
             Ok(RestartPlanInspection::Unsupported(_)) => {
                 CodexDesktopRestartOutcome::ManualRestartRequired {
                     reason: CodexDesktopManualRestartReason::Unsupported,
@@ -479,6 +487,9 @@ impl CodexDesktopService {
             }
             RestartCandidateInspection::UntrustedTarget => {
                 return Ok(RestartPlanInspection::UntrustedTarget)
+            }
+            RestartCandidateInspection::AmbiguousInstallations => {
+                return Ok(RestartPlanInspection::AmbiguousInstallations)
             }
             RestartCandidateInspection::Unsupported(reason) => {
                 return Ok(RestartPlanInspection::Unsupported(reason))
@@ -731,11 +742,24 @@ impl CodexDesktopService {
         self.job_store.get()
     }
 
-    /// Reserves the process-local installation slot for an approved application
-    /// restart. A restart never cancels or replaces an active worker; callers
-    /// must wait for it to reach a terminal snapshot before claiming the slot.
-    pub fn claim_restart(&self) -> Result<(), InstallerError> {
-        self.job_store.claim_restart()
+    /// Reserves the process-local installation slot for an approved process
+    /// exit or restart. The transition never cancels or replaces an active
+    /// worker; callers must wait for a terminal snapshot before claiming it.
+    /// Only `StartCleanup` authorizes the caller to spawn the shared cleanup
+    /// worker; repeated requests join the transition already in progress.
+    pub(crate) fn claim_process_lifecycle_transition(
+        &self,
+        requested: ProcessLifecycleTransition,
+    ) -> Result<ProcessLifecycleClaim, InstallerError> {
+        self.job_store.claim_process_lifecycle_transition(requested)
+    }
+
+    /// Selects the first accepted post-cleanup process action once. Later
+    /// conflicting requests cannot reverse that frozen action.
+    pub(crate) fn finalize_process_lifecycle_transition(
+        &self,
+    ) -> Result<Option<ProcessLifecycleTransition>, InstallerError> {
+        self.job_store.finalize_process_lifecycle_transition()
     }
 
     /// Atomically claims the process-local job slot and starts the worker only
@@ -785,10 +809,9 @@ impl CodexDesktopService {
                 self.platform.launch(&application).await
             }
             LocalInstallStatus::Unsupported { reason } => Err(unsupported_status_error(reason)),
-            LocalInstallStatus::Ambiguous { .. } => Err(InstallerError::new(
-                InstallerErrorCode::MacMultipleInstallations,
-            )
-            .with_diagnostic_message("local Codex installations are ambiguous")),
+            LocalInstallStatus::Ambiguous { error, .. } => {
+                Err(ambiguous_local_status_error(error.code))
+            }
             LocalInstallStatus::NotInstalled { .. } => {
                 Err(InstallerError::new(InstallerErrorCode::LaunchFailed)
                     .with_diagnostic_message("a supported Codex installation was not found"))
@@ -914,18 +937,15 @@ impl CodexDesktopService {
             LocalInstallStatus::Unsupported { reason } => {
                 return Err(unsupported_status_error(reason));
             }
-            LocalInstallStatus::Ambiguous { .. } => {
-                return Err(
-                    InstallerError::new(InstallerErrorCode::MacMultipleInstallations)
-                        .with_diagnostic_message("local Codex installations are ambiguous"),
-                );
+            LocalInstallStatus::Ambiguous { error, .. } => {
+                return Err(ambiguous_local_status_error(error.code));
             }
             LocalInstallStatus::NotInstalled { .. } => {}
         }
         self.ensure_not_cancelled(cancellation)?;
 
         self.transition_to(job_id, JobStage::Preflight, cancellation)?;
-        *temporary_directory = Some(JobTempDir::create(&self.temp_root, job_id)?);
+        *temporary_directory = Some(self.temp_root.create_job(job_id)?);
         let plan = self
             .platform
             .preflight(
@@ -945,11 +965,22 @@ impl CodexDesktopService {
                 .path(),
         )
         .chain(plan.additional_disk_paths().iter().map(PathBuf::as_path));
+        // The platform probe is path-shaped because it resolves capacity by
+        // volume only. Revalidate the held directory identities on both sides;
+        // all later artifact access remains relative to those held handles.
+        temporary_directory
+            .as_ref()
+            .expect("job temporary directory is assigned before disk preflight")
+            .revalidate()?;
         ensure_required_disk_space(
             self.disk_space_probe.as_ref(),
             disk_paths,
             release.expected_size,
         )?;
+        temporary_directory
+            .as_ref()
+            .expect("job temporary directory is assigned after disk preflight")
+            .revalidate()?;
         self.ensure_not_cancelled(cancellation)?;
 
         self.transition_to(job_id, JobStage::Downloading, cancellation)?;
@@ -1024,13 +1055,19 @@ impl CodexDesktopService {
         self.transition_to(job_id, JobStage::VerifyingInstallation, cancellation)?;
         self.publish_verification_progress(job_id)?;
         let status = self.platform.inspect_local().await?;
-        let LocalInstallStatus::Installed { application } = status else {
-            return Err(
-                InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
-                    .with_diagnostic_message(
-                        "post-install inspection did not find one matching Codex application",
-                    ),
-            );
+        let application = match status {
+            LocalInstallStatus::Installed { application } => application,
+            LocalInstallStatus::Ambiguous { error, .. } => {
+                return Err(ambiguous_local_status_error(error.code));
+            }
+            LocalInstallStatus::NotInstalled { .. } | LocalInstallStatus::Unsupported { .. } => {
+                return Err(
+                    InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+                        .with_diagnostic_message(
+                            "post-install inspection did not find one matching Codex application",
+                        ),
+                );
+            }
         };
         if !installed_application_matches_release(&application, &release)? {
             return Err(InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
@@ -1415,6 +1452,10 @@ fn unsupported_status_error(reason: UnsupportedReason) -> InstallerError {
     InstallerError::new(code).with_diagnostic_message("the current host cannot launch Codex")
 }
 
+fn ambiguous_local_status_error(code: InstallerErrorCode) -> InstallerError {
+    InstallerError::new(code).with_diagnostic_message("local Codex installations are ambiguous")
+}
+
 fn recover_lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
@@ -1441,6 +1482,7 @@ mod tests {
     use crate::codex_desktop::{
         cancellation::Cancellation,
         download::{TransportError, TransportFuture, TransportResponse},
+        error::SuggestedAction,
         platform::{
             PlatformInstallPlan, RestartCandidateInspection, TrustedInstallationCandidate,
             VerifiedPackage, WINDOWS_CODEX_STABLE_IDENTITY,
@@ -1600,12 +1642,37 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
     struct FixtureDiskProbe {
         paths: Mutex<Vec<PathBuf>>,
+        volume_available: bool,
+        available_bytes: u64,
+    }
+
+    impl Default for FixtureDiskProbe {
+        fn default() -> Self {
+            Self {
+                paths: Mutex::new(Vec::new()),
+                volume_available: true,
+                available_bytes: 16 * 1024 * 1024,
+            }
+        }
     }
 
     impl FixtureDiskProbe {
+        fn unavailable() -> Self {
+            Self {
+                volume_available: false,
+                ..Self::default()
+            }
+        }
+
+        fn insufficient() -> Self {
+            Self {
+                available_bytes: 0,
+                ..Self::default()
+            }
+        }
+
         fn paths(&self) -> Vec<PathBuf> {
             recover_lock(&self.paths).clone()
         }
@@ -1614,11 +1681,14 @@ mod tests {
     impl DiskSpaceProbe for FixtureDiskProbe {
         fn volume_key(&self, path: &Path) -> Result<VolumeKey, DiskSpaceProbeError> {
             recover_lock(&self.paths).push(path.to_path_buf());
+            if !self.volume_available {
+                return Err(DiskSpaceProbeError::Unavailable);
+            }
             VolumeKey::new("fixture-volume")
         }
 
         fn available_bytes(&self, _volume: &VolumeKey) -> Result<u64, DiskSpaceProbeError> {
-            Ok(16 * 1024 * 1024)
+            Ok(self.available_bytes)
         }
     }
 
@@ -1626,6 +1696,7 @@ mod tests {
     struct FixturePlatform {
         release: ReleaseDescriptor,
         initial_local_status: Arc<Mutex<LocalInstallStatus>>,
+        post_install_local_status: Arc<Mutex<Option<LocalInstallStatus>>>,
         preflight_calls: Arc<AtomicUsize>,
         install_calls: Arc<AtomicUsize>,
         launch_calls: Arc<AtomicUsize>,
@@ -1639,6 +1710,7 @@ mod tests {
                     platform: release.platform,
                     architecture: release.architecture,
                 })),
+                post_install_local_status: Arc::new(Mutex::new(None)),
                 release,
                 preflight_calls: Arc::new(AtomicUsize::new(0)),
                 install_calls: Arc::new(AtomicUsize::new(0)),
@@ -1667,6 +1739,10 @@ mod tests {
             *recover_lock(&self.initial_local_status) = status;
         }
 
+        fn set_post_install_local_status(&self, status: LocalInstallStatus) {
+            *recover_lock(&self.post_install_local_status) = Some(status);
+        }
+
         fn set_panic_on_preflight(&self, enabled: bool) {
             self.panic_on_preflight.store(enabled, Ordering::SeqCst);
         }
@@ -1683,9 +1759,11 @@ mod tests {
 
         fn inspect_local(&self) -> BoxFuture<'_, Result<LocalInstallStatus, InstallerError>> {
             let status = if self.install_calls.load(Ordering::SeqCst) > 0 {
-                LocalInstallStatus::Installed {
-                    application: self.installed_application(),
-                }
+                recover_lock(&self.post_install_local_status)
+                    .clone()
+                    .unwrap_or_else(|| LocalInstallStatus::Installed {
+                        application: self.installed_application(),
+                    })
             } else {
                 recover_lock(&self.initial_local_status).clone()
             };
@@ -1862,6 +1940,13 @@ mod tests {
                                 })
                                 .collect(),
                             error: InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                                .to_dto(),
+                        }
+                    }
+                    RestartCandidateInspection::AmbiguousInstallations => {
+                        LocalInstallStatus::Ambiguous {
+                            candidates: Vec::new(),
+                            error: InstallerError::new(InstallerErrorCode::MultipleInstallations)
                                 .to_dto(),
                         }
                     }
@@ -2078,19 +2163,37 @@ mod tests {
         force_gate: Option<Arc<Notify>>,
     ) -> ServiceHarness {
         let temporary_parent = tempfile::tempdir().unwrap();
+        let temp_root = temporary_parent.path().join("installer-temp");
+        harness_with_temp_root(
+            release,
+            artifact,
+            force_gate,
+            temporary_parent,
+            temp_root,
+            Arc::new(FixtureDiskProbe::default()),
+        )
+    }
+
+    fn harness_with_temp_root(
+        release: ReleaseDescriptor,
+        artifact: Vec<u8>,
+        force_gate: Option<Arc<Notify>>,
+        temporary_parent: tempfile::TempDir,
+        temp_root: PathBuf,
+        disk_probe: Arc<FixtureDiskProbe>,
+    ) -> ServiceHarness {
         let log_directory = tempfile::tempdir().unwrap();
         let source = Arc::new(match force_gate {
             Some(gate) => FixtureSource::with_force_gate(release.clone(), gate),
             None => FixtureSource::new(release.clone()),
         });
         let platform = Arc::new(FixturePlatform::new(release));
-        let disk_probe = Arc::new(FixtureDiskProbe::default());
         let dependencies = CodexDesktopServiceDependencies::new(
             source.clone(),
             platform.clone(),
             Arc::new(FixtureTransport::new(artifact)),
             disk_probe.clone(),
-            temporary_parent.path().join("installer-temp"),
+            temp_root,
             log_directory.path().to_path_buf(),
         );
         let service = CodexDesktopService::with_clock(dependencies, Arc::new(FixedClock));
@@ -2174,6 +2277,114 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unwritable_staging_root_fails_before_preflight_disk_probe_or_download() {
+        let artifact = b"fixture installer package".to_vec();
+        let release = release_for(&artifact, "1.2.3.4");
+        let temporary_parent = tempfile::tempdir().unwrap();
+        let blocked_ancestor = temporary_parent.path().join("not-a-directory");
+        std::fs::write(&blocked_ancestor, b"blocks staging root creation").unwrap();
+        let disk_probe = Arc::new(FixtureDiskProbe::default());
+        let harness = harness_with_temp_root(
+            release,
+            artifact,
+            None,
+            temporary_parent,
+            blocked_ancestor.join("codex-installer"),
+            disk_probe,
+        );
+
+        let checked = harness.service.check_latest(false).await.unwrap();
+        let started = harness
+            .service
+            .start_install(StartInstallRequest {
+                expected_release_id: checked.release_id,
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+
+        assert_eq!(terminal.stage, JobStage::Failed);
+        assert_eq!(
+            terminal.error.as_ref().map(|error| error.code),
+            Some(InstallerErrorCode::InternalError)
+        );
+        assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
+        assert!(harness.disk_probe.paths().is_empty());
+    }
+
+    #[tokio::test]
+    async fn unresolved_staging_volume_fails_without_probing_a_fallback_path() {
+        let artifact = b"fixture installer package".to_vec();
+        let release = release_for(&artifact, "1.2.3.4");
+        let temporary_parent = tempfile::tempdir().unwrap();
+        let temp_root = temporary_parent.path().join("installer-temp");
+        let disk_probe = Arc::new(FixtureDiskProbe::unavailable());
+        let harness = harness_with_temp_root(
+            release,
+            artifact,
+            None,
+            temporary_parent,
+            temp_root,
+            disk_probe,
+        );
+
+        let checked = harness.service.check_latest(false).await.unwrap();
+        let started = harness
+            .service
+            .start_install(StartInstallRequest {
+                expected_release_id: checked.release_id,
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+
+        assert_eq!(terminal.stage, JobStage::Failed);
+        assert_eq!(
+            terminal.error.as_ref().map(|error| error.code),
+            Some(InstallerErrorCode::InternalError)
+        );
+        let disk_paths = harness.disk_probe.paths();
+        assert_eq!(disk_paths.len(), 1);
+        assert!(disk_paths[0].ends_with(Path::new(&started.job_id)));
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn insufficient_space_on_the_staging_volume_fails_before_download() {
+        let artifact = b"fixture installer package".to_vec();
+        let release = release_for(&artifact, "1.2.3.4");
+        let temporary_parent = tempfile::tempdir().unwrap();
+        let temp_root = temporary_parent.path().join("installer-temp");
+        let disk_probe = Arc::new(FixtureDiskProbe::insufficient());
+        let harness = harness_with_temp_root(
+            release,
+            artifact,
+            None,
+            temporary_parent,
+            temp_root,
+            disk_probe,
+        );
+
+        let checked = harness.service.check_latest(false).await.unwrap();
+        let started = harness
+            .service
+            .start_install(StartInstallRequest {
+                expected_release_id: checked.release_id,
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+
+        assert_eq!(terminal.stage, JobStage::Failed);
+        assert_eq!(
+            terminal.error.as_ref().map(|error| error.code),
+            Some(InstallerErrorCode::InsufficientDiskSpace)
+        );
+        let disk_paths = harness.disk_probe.paths();
+        assert_eq!(disk_paths.len(), 1);
+        assert!(disk_paths[0].ends_with(Path::new(&started.job_id)));
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn direct_install_request_launches_an_equal_local_version_without_downloading() {
         let artifact = b"fixture installer package".to_vec();
         let release = release_for(&artifact, "1.2.3.4");
@@ -2238,6 +2449,71 @@ mod tests {
         assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 0);
         assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
         assert!(harness.disk_probe.paths().is_empty());
+    }
+
+    #[tokio::test]
+    async fn windows_ambiguous_install_preserves_the_platform_neutral_error() {
+        let artifact = b"fixture installer package".to_vec();
+        let release = release_for(&artifact, "1.2.3.4");
+        let harness = harness(release, artifact, None);
+        harness
+            .platform
+            .set_initial_local_status(LocalInstallStatus::Ambiguous {
+                candidates: Vec::new(),
+                error: InstallerError::new(InstallerErrorCode::MultipleInstallations).to_dto(),
+            });
+
+        let checked = harness.service.check_latest(false).await.unwrap();
+        let started = harness
+            .service
+            .start_install(StartInstallRequest {
+                expected_release_id: checked.release_id,
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+
+        assert_eq!(terminal.stage, JobStage::Failed);
+        assert_eq!(
+            terminal.error.as_ref().map(|error| error.code),
+            Some(InstallerErrorCode::MultipleInstallations)
+        );
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
+        assert!(harness.disk_probe.paths().is_empty());
+    }
+
+    #[tokio::test]
+    async fn post_install_ambiguity_preserves_the_platform_neutral_error() {
+        let artifact = b"fixture installer package".to_vec();
+        let release = release_for(&artifact, "1.2.3.4");
+        let harness = harness(release, artifact, None);
+        harness
+            .platform
+            .set_post_install_local_status(LocalInstallStatus::Ambiguous {
+                candidates: Vec::new(),
+                error: InstallerError::new(InstallerErrorCode::MultipleInstallations).to_dto(),
+            });
+
+        let checked = harness.service.check_latest(false).await.unwrap();
+        let started = harness
+            .service
+            .start_install(StartInstallRequest {
+                expected_release_id: checked.release_id,
+            })
+            .unwrap();
+        let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
+
+        assert_eq!(terminal.stage, JobStage::Failed);
+        let error = terminal
+            .error
+            .expect("post-install ambiguity must be visible");
+        assert_eq!(error.code, InstallerErrorCode::MultipleInstallations);
+        assert!(!error.retryable);
+        assert_eq!(error.suggested_action, SuggestedAction::ResolvePathConflict);
+        assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
@@ -2407,7 +2683,7 @@ mod tests {
         );
         harness
             .service
-            .claim_restart()
+            .claim_process_lifecycle_transition(ProcessLifecycleTransition::Restart)
             .expect("a failed worker no longer blocks restart claim");
     }
 
@@ -2448,13 +2724,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restart_claim_blocks_a_subsequent_start_install() {
+    async fn process_lifecycle_claim_blocks_a_subsequent_start_install() {
         let artifact = b"fixture installer package".to_vec();
         let release = release_for(&artifact, "1.2.3.4");
         let harness = harness(release, artifact, None);
 
         let checked = harness.service.check_latest(false).await.unwrap();
-        harness.service.claim_restart().unwrap();
+        harness
+            .service
+            .claim_process_lifecycle_transition(ProcessLifecycleTransition::Exit)
+            .unwrap();
 
         let error = harness
             .service
@@ -2490,6 +2769,24 @@ mod tests {
             });
         harness.service.launch().await.unwrap();
         assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 1);
+        assert!(recover_lock(&harness.source.calls).is_empty());
+    }
+
+    #[tokio::test]
+    async fn windows_ambiguous_launch_preserves_the_platform_neutral_error() {
+        let artifact = b"fixture installer package".to_vec();
+        let release = release_for(&artifact, "1.2.3.4");
+        let harness = harness(release, artifact, None);
+        harness
+            .platform
+            .set_initial_local_status(LocalInstallStatus::Ambiguous {
+                candidates: Vec::new(),
+                error: InstallerError::new(InstallerErrorCode::MultipleInstallations).to_dto(),
+            });
+
+        let error = harness.service.launch().await.unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::MultipleInstallations);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
         assert!(recover_lock(&harness.source.calls).is_empty());
     }
 
@@ -2764,6 +3061,32 @@ mod tests {
             .platform
             .queue_candidates([RestartCandidateInspection::UntrustedTarget]);
 
+        assert_eq!(
+            harness.service.request_restart().await,
+            CodexDesktopRestartOutcome::ManualRestartRequired {
+                reason: CodexDesktopManualRestartReason::UntrustedTarget,
+            }
+        );
+        assert_eq!(harness.platform.force_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.launch_calls.load(Ordering::SeqCst), 0);
+        assert!(recover_lock(&harness.platform.force_targets).is_empty());
+        assert!(recover_lock(&harness.platform.launch_targets).is_empty());
+    }
+
+    #[tokio::test]
+    async fn multiple_trusted_installations_are_ambiguous_but_never_destructive() {
+        let harness = restart_harness(restart_application("primary"));
+        harness.platform.queue_candidates([
+            RestartCandidateInspection::AmbiguousInstallations,
+            RestartCandidateInspection::AmbiguousInstallations,
+        ]);
+
+        assert_eq!(
+            harness.service.get_runtime_status().await.unwrap(),
+            CodexDesktopRuntimeStatus::Ambiguous {
+                reason: CodexDesktopRuntimeAmbiguity::Installations,
+            }
+        );
         assert_eq!(
             harness.service.request_restart().await,
             CodexDesktopRestartOutcome::ManualRestartRequired {

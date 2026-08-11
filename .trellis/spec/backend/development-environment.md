@@ -2,8 +2,8 @@
 
 ## 1. Scope / Trigger
 
-Read this contract before changing repository tool versions, `mise.toml`, any
-lockfile, Python/Trellis execution, local onboarding commands, WSL behavior, or
+Read this reference before changing repository tool versions, `mise.toml`, any
+lockfile, Python execution, local onboarding commands, WSL behavior, or
 the canonical task API, or any local compile, package, test, or verification
 path. It applies to native development on Linux, macOS, Windows, and WSL.
 GitHub Actions deliberately installs tools with native setup actions instead
@@ -71,11 +71,10 @@ and `uv.lock`. There is no system-Python fallback and mise does not inject
 `pyproject.toml`/`uv.lock`; one-off dependencies use `python:with` or
 `python:tool`.
 
-Ordinary Python and Trellis tasks use `uv run --locked` and may prepare the
-locked environment. Codex hooks use
-`uv run --locked --no-sync --offline`: an unprepared environment returns an
-explicit, non-blocking fallback, while malformed hook code or protocol output
-fails closed.
+Repository Python tasks use locked uv commands and may prepare the locked
+environment. Optional upstream Codex/Trellis prompt hooks are independent of
+the project task API and are not an environment, build, check, CI, or release
+prerequisite.
 
 ## 4. Setup and Execution Boundaries
 
@@ -98,8 +97,8 @@ remotes, refresh locks, build, tag, sign, upload, or publish.
 `env:check` is strict and read-only. It verifies the standard sources, actual
 versions, executable ownership, WSL path isolation, generated lock structure,
 uv-managed Python, `.venv`, offline locked Python execution, Rust components
-and sysroot, mise task metadata, and Codex hook task presence. `--json` emits
-one machine-readable report and any failed check exits nonzero.
+and sysroot, and mise task metadata. `--json` emits one machine-readable report
+and any failed check exits nonzero.
 
 `system:check` is strict and read-only. It probes current-host Tauri
 prerequisites and prints official package/tool hints; it never calls `sudo`, a
@@ -110,10 +109,11 @@ All maintained local project operations use `mise run <task>`. `pnpm dev` and
 wrapper. The lower-level `pnpm tauri` leaf remains available to reviewed
 GitHub Actions and repository maintenance code, but it is not a standard local
 development/build entrypoint and its direct output is not acceptance evidence.
-Legacy direct-execution examples are temporary migration debt owned by
-`08-07-migrate-docs-and-trellis-specs` and are explicitly allowlisted by
-`docs-contract-check.mjs`; new occurrences fail the contract. CI and Release
-remain the explicit non-mise execution boundary.
+Current developer instructions under `docs/fyagent/development/` and active
+specs use this command boundary; new direct-execution entrypoints fail the
+documentation contract. CI and Release remain the explicit non-mise execution
+boundary. Optional Trellis files and prompt hooks remain outside the project
+task contract.
 
 ## 5. Host-Native Local Execution
 
@@ -156,15 +156,32 @@ low-level maintenance commands own any such customization. `rust:fmt` and
 `rust:fmt:check` remain the exceptions because rustfmt does not compile or run
 a target executable.
 
-This is the active
-[D116](../../../docs/fyagent/dev/v1-0.3.0/decisions/DECISION-REGISTER.md)
-execution boundary. It tightens the current interpretation of older local-build
-decisions without rewriting their historical rows.
+On Windows only, `rust:check`, `rust:clippy`, and `rust:test` invoke the same
+dependency-free `scripts/prepare-windows-user-helper.mjs` packaging input
+preparer exactly once after caller, Cargo-config, runner, and absolute
+rustc/rustdoc current-host validation, but before the main workspace Cargo
+command. The wrapper supplies its canonical current-host target as
+`TAURI_ENV_TARGET_TRIPLE` and fixes `TAURI_ENV_DEBUG=true`; a preparation
+failure stops before workspace Cargo. Linux and macOS Rust tasks do not run
+this Windows resource step. This preserves the Tauri `externalBin` resource
+fail-closed contract for local Windows Rust compilation without turning a
+local compile or test into PackageManager, ACL, setup, or other native-runtime
+evidence.
+
+This spec is the active execution boundary. Historical build decisions may
+explain provenance, but they do not override the current host-native contract.
 
 The enforced current-host boundary covers `pnpm dev`, `pnpm build`, and the
 canonical `mise run dev`, `build`, `build:binary`, `build:debug`, `check`,
 `rust:check`, `rust:clippy`, and `rust:test` paths. `rust:test` additionally
 accepts at most one non-option test-name filter through mise usage metadata.
+The test plan alone enables `fyagent/test-hooks`, allowing integration-test
+fixtures to route Windows user paths through their explicit
+`FYAGENT_TEST_HOME`; check, Clippy, Tauri builds, and production binaries do not
+enable that feature and retain the frozen Explorer-user fail-closed boundary.
+It also uses `--no-fail-fast` before the test-harness separator so every
+independent test executable runs even when an earlier executable fails; an
+optional test-name filter remains after `--` and is passed only to the harness.
 The aggregate `check` task runs a pure host-native guard before `env:check`, so
 caller compiler, wrapper, runner, target environment, or target-bearing flags
 cannot reach even the initial rustc toolchain probe. The guard launches no
@@ -180,8 +197,9 @@ Matching native GitHub Actions runners are the only project path for non-host
 compilation, packaging, and verification. On a Linux x64 workstation this
 means that Windows, macOS, Linux ARM64, and every Windows/macOS architecture
 gate remain remote. Local WSL-to-Windows process bridging, Windows
-Candle/Light/MSI execution, and locally copied or staged Windows artifacts are
-diagnostic experiments at most and never acceptance evidence.
+installer execution, and locally copied or staged Windows artifacts are
+diagnostic experiments at most and never acceptance evidence. The current
+native setup contract is owned by [Windows Installer](./windows-installer.md).
 
 Repository tasks do not install non-host Rust targets or provision a
 cross-compilation environment. Adding a new supported platform therefore
@@ -226,6 +244,7 @@ the standard version file and `mise.lock` captured before the attempt.
 | Any supported Rust/rustdoc flag env contains `--target`               | Reject before probing rustc/rustdoc or starting Cargo/Tauri                             |
 | `rustc`/`rustdoc` identity differs from host or each other            | Reject before Cargo/Tauri execution                                                     |
 | User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject the effective config before rustc/rustdoc/Cargo/Tauri starts                     |
+| A Windows helper preparation fails or selects another target/profile  | Stop before the main workspace Cargo command                                            |
 | A local command selects another OS/architecture by any route          | Reject before compilation, packaging, or verification                                   |
 | A non-host result is offered as native acceptance evidence            | Keep the gate pending and require the matching native Actions runner                    |
 | Host native libraries are missing                                     | `system:check` fails with a non-elevating installation hint                             |
@@ -254,6 +273,11 @@ the standard version file and `mise.lock` captured before the attempt.
   resolution and matching `-vV` identities, case-insensitive compiler/wrapper/
   runner/target rejection, target-bearing flag rejection, and fixed
   Tauri/Cargo argv plus owned child environment.
+- Unit-test Windows Rust task ordering and environment: one helper preparation
+  after all current-host validations and before workspace Cargo, the exact
+  canonical target, `TAURI_ENV_DEBUG=true`, and no workspace Cargo after
+  preparation failure. Prove Linux/macOS Rust tasks never invoke the helper
+  preparer.
 - Smoke the real `pnpm dev`/`pnpm build` and canonical mise wrappers with
   rejected arguments/environment, proving the error occurs before rustc,
   rustdoc, Cargo, Tauri, or a frontend build command can start. Fake native
@@ -264,12 +288,12 @@ the standard version file and `mise.lock` captured before the attempt.
   out-of-bound/symlink/wrong-signature cases without building a foreign target.
 - Run `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
   `taskDocs.test.ts`, `systemCheck.test.ts`, and `localBuildBoundary.test.ts`.
-- In Required CI, run the locked uv/Python preparation and Trellis task-list
-  protocol on both `windows-2022` x64 and `windows-11-arm` ARM64. Require
-  an explicit uv full managed-Python request for each matrix architecture and
-  Python `sysconfig.get_platform()` to match `win-amd64`/`win-arm64`; a
-  version-only request can select Windows-on-ARM x64 emulation and therefore
-  does not prove a native interpreter.
+- In Required CI, run the locked uv/Python preparation on both `windows-2025`
+  x64 and `windows-11-arm` ARM64. Require an explicit uv full managed-Python
+  request for each matrix architecture and Python `sysconfig.get_platform()`
+  to match `win-amd64`/`win-arm64`; a version-only request can select
+  Windows-on-ARM x64 emulation and therefore does not prove a native
+  interpreter.
 - Scan active local task/package entrypoints for cross-target flags, retired
   cross-build scripts, foreign build tools, subsystem bridges, and emulators;
   exclude GitHub workflow definitions from that negative scan because they own

@@ -26,6 +26,7 @@ The direct consumers are:
 
 ```text
 src-tauri/tauri.conf.json                         Tauri bundle icon list
+src-tauri/tauri.windows.conf.json                 Windows setup/uninstaller ICO
 flatpak/com.fyagent.desktop.yml                  128x128 Flatpak icon
 src/assets/icons/app-icon.png                     renderer About icon
 src-tauri/src/lib.rs                              embedded macOS 3x tray template
@@ -58,17 +59,18 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                         | Required result                                                                     |
-| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Source is missing, not square 1024px RGBA, or lacks transparency                  | Stop before generation                                                              |
-| Preserved source differs from the approved input                                  | Reject the change                                                                   |
-| A previously tracked generated icon path is missing                               | Reject the inventory                                                                |
-| A generated PNG, ICO, or ICNS container cannot be decoded                         | Reject the output                                                                   |
-| About icon differs from generated `32x32.png`                                     | Reject the renderer asset                                                           |
-| Tray template has the wrong size, non-black visible RGB, or no partial alpha      | Reject the template                                                                 |
-| Third-party provider, screenshot, or DMG background appears in the diff           | Remove it from the icon change                                                      |
-| Static/build checks pass but native shell or Dock appearance is unobserved        | Keep native visual acceptance pending                                               |
-| A regenerated ICNS container differs byte-for-byte but decoded sizes/pixels match | Accept only with decoded-image evidence; container bytes are not a stable assertion |
+| Condition                                                                         | Required result                                                                       |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Source is missing, not square 1024px RGBA, or lacks transparency                  | Stop before generation                                                                |
+| Preserved source differs from the approved input                                  | Reject the change                                                                     |
+| A previously tracked generated icon path is missing                               | Reject the inventory                                                                  |
+| A generated PNG, ICO, or ICNS container cannot be decoded                         | Reject the output                                                                     |
+| About icon differs from generated `32x32.png`                                     | Reject the renderer asset                                                             |
+| Tray template has the wrong size, non-black visible RGB, or no partial alpha      | Reject the template                                                                   |
+| Third-party provider, screenshot, or DMG background appears in the diff           | Remove it from the icon change                                                        |
+| Static/build checks pass but native shell or Dock appearance is unobserved        | Keep native visual acceptance pending                                                 |
+| A regenerated ICNS container differs byte-for-byte but decoded sizes/pixels match | Accept only with decoded-image evidence; container bytes are not a stable assertion   |
+| A Windows setup has a default/extra group or frames that differ from `icon.ico`   | Reject raw setup before upload; reject sealed setup before attestation or publication |
 
 ## 5. Good / Base / Bad Cases
 
@@ -87,6 +89,10 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 - Enumerate ICO sizes and assert the expected Windows frames. Decode ICNS sizes
   through 1024px; compare decoded content rather than raw ICNS bytes when
   testing regeneration determinism.
+- Require each raw and final Windows setup to contain exactly the canonical
+  `icon.ico` frames, with no default, extra, or unreferenced icon resources.
+  [Windows installer](./windows-installer.md#6-tests-required) owns the PE
+  resource parser, adversarial layout limits, and final setup verifier details.
 - Assert the About file is byte-identical to `32x32.png`, all configured paths
   resolve, and the Flatpak source points to the generated 128px icon.
 - Assert each tray template size, visible RGB, alpha range, and centered content

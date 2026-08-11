@@ -17,7 +17,7 @@ function readHeaderBefore(source: string, marker: string): string {
 }
 
 describe("GitHub workflow trigger policy", () => {
-  it("runs the same CI gate for PRs, main, merge queue, and manual dispatch", () => {
+  it("keeps one required CI surface for PRs, merge queue, dev/main pushes, and diagnostics", () => {
     const source = readWorkflow("ci.yml");
     const triggerSection = readHeaderBefore(source, "\npermissions:");
 
@@ -29,7 +29,7 @@ describe("GitHub workflow trigger policy", () => {
         "  pull_request:",
         "    branches: [main]",
         "  push:",
-        "    branches: [main]",
+        "    branches: [main, dev/laiyongjie]",
         "  merge_group:",
         "    types: [checks_requested]",
         "  workflow_dispatch:",
@@ -38,13 +38,25 @@ describe("GitHub workflow trigger policy", () => {
     expect(triggerSection).not.toMatch(/paths(?:-ignore)?:/);
     expect(source).toContain("name: CI / Required");
     expect(source).toContain("if: always()");
+    expect(source).toContain(
+      "cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}",
+    );
+    expect(source).toContain(
+      "format('dispatch-{0}-{1}', github.run_id, github.run_attempt)",
+    );
   });
 
   it("keeps desktop acceptance in the automatic CI path and mock-only boundary", () => {
     const source = readWorkflow("ci.yml");
 
     expect(source).toContain("desktop-acceptance-contract:");
-    expect(source).toContain("run: pnpm test:desktop:mock");
+    expect(source).toContain(
+      "run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance",
+    );
+    expect(source).toContain(
+      "run: node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",
+    );
+    expect(source).not.toContain("run: pnpm test:desktop:mock");
     expect(source).toContain("run: pnpm test:desktop:visual:preflight");
     expect(source).not.toContain("run: pnpm test:e2e");
   });

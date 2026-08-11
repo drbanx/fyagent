@@ -12,7 +12,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { message } from "@tauri-apps/plugin-dialog";
-import { exit } from "@tauri-apps/plugin-process";
 import { FrontendErrorBoundary } from "./components/FrontendErrorBoundary";
 import {
   installGlobalErrorHandlers,
@@ -71,7 +70,7 @@ async function handleConfigLoadError(
     },
   );
 
-  await exit(1);
+  await invoke("exit_app");
 }
 
 // 监听后端的配置加载错误事件：仅提醒用户并强制退出，不修改任何配置文件
@@ -106,7 +105,7 @@ async function bootstrap() {
     }
     if (initError && (initError.path || initError.error)) {
       await handleConfigLoadError(initError);
-      // 注意：不会执行到这里，因为 exit(1) 会终止进程
+      // 注意：不会执行到这里，因为 exit_app 会终止进程
       return;
     }
   } catch (e) {

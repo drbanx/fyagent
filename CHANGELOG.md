@@ -8,6 +8,54 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1]
+
+FyAgent 0.3.1 modernizes the repository's Windows distribution, Codex Desktop
+user identity, local Trellis contracts, CI/release qualification, and current
+documentation without changing the database schema or user-data ownership
+boundary.
+
+### Changed
+
+- Replaced the formal Windows MSI/WiX surface with per-machine x64 and ARM64
+  NSIS setup executables. Graphical and silent installs use standard NSIS path
+  handling without a FyAgent absolute/fixed/local/UNC/reparse admission gate;
+  setup and uninstaller share the canonical FyAgent icon; and uninstall is
+  bounded to installer-owned files while preserving application and user data.
+- Bound ordinary Windows Codex Desktop discovery, install/update,
+  post-verification, restart, and launch to one same-session Shell SID context.
+  Inventory uses the explicit SID plus `PackageTypes.Main`; multiple trusted
+  Stable packages fail closed instead of being guessed by version.
+- Added deterministic, fail-closed Trellis overlay reconciliation and read-only
+  verification, uv-managed direct script wrappers, and safe explicit-file
+  formatting through `mise run format:files -- <files...>`.
+- Replaced versioned current-design packages under `docs/fyagent/dev/` with
+  responsibility-oriented development documents and single-owner active specs.
+  Real protocol, schema, third-party API, and toolchain versions remain
+  protected by tests.
+
+### CI and release contract
+
+- Pull-request and merge-group CI now classifies repository-owned domains;
+  unknown paths fail closed. Pushes to `dev/laiyongjie` and `main` still run the
+  complete graph under the stable `CI / Required` aggregate.
+- Formal publication is bound to equality between the annotated stable tag,
+  the live remote `dev/laiyongjie` HEAD, and a successful full push CI for the
+  same repository/workflow/branch/SHA. Dispatch remains preflight-only.
+- Windows signing supports either a complete provider configuration followed
+  by independent Authenticode verification or a strictly proven `NotSigned`
+  result for both architectures. Partial, inconsistent, or invalid signing
+  state blocks publication. Exact results are published in
+  `signing-status.json` and appended to the Release body.
+- The Release contract contains ten installers, three attested JSON evidence
+  files, and the Sigstore bundle: 13 attestation subjects and 14 attachments.
+  Publication requires matching native build/package success, exact asset,
+  metadata, attestation, transactional draft/re-download, and live eligibility
+  checks in the
+  [v0.3.1 Release Notes](docs/release-notes/v0.3.1-en.md). The optional Windows
+  install/uninstall lifecycle script is a manual diagnostic, not an Actions
+  gate. This changelog does not itself claim those remote gates have completed.
+
 ## [0.3.0]
 
 FyAgent 0.3.0 modernizes the imported CC Switch v3.19.2 codebase while keeping

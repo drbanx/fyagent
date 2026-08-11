@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
 import { writeFileSync } from "node:fs";
-import { buildBuildMetadata } from "./release-contract.mjs";
+import {
+  CI_WORKFLOW_PATH,
+  RELEASE_WORKFLOW_PATH,
+  buildBuildMetadata,
+} from "./release-contract.mjs";
 
 const [
   metadataDirectory,
@@ -35,10 +39,12 @@ if (
   !mode ||
   !workflowRef ||
   !workflowSha ||
+  !ciRunId ||
+  !ciRunAttempt ||
   !generatedAt
 ) {
   console.error(
-    "Usage: node scripts/release/generate-build-metadata.mjs <metadata-dir> <version> <tag> <source-sha> <repository> <repository-id> <run-id> <run-attempt> <event> <mode> <workflow-ref> <workflow-sha> <ci-run-id-or-empty> <ci-run-attempt-or-empty> <generated-at> [output]",
+    "Usage: node scripts/release/generate-build-metadata.mjs <metadata-dir> <version> <tag> <source-sha> <repository> <repository-id> <run-id> <run-attempt> <event> <mode> <workflow-ref> <workflow-sha> <ci-run-id> <ci-run-attempt> <generated-at> [output]",
   );
   process.exit(1);
 }
@@ -52,16 +58,16 @@ try {
       sourceSha,
       repository,
       repositoryId,
-      workflowPath: ".github/workflows/release.yml",
+      workflowPath: RELEASE_WORKFLOW_PATH,
       workflowRef,
       workflowSha,
       runId,
       runAttempt,
       event,
       mode,
-      ciWorkflowPath: mode === "formal" ? ".github/workflows/ci.yml" : null,
-      ciRunId: ciRunId || null,
-      ciRunAttempt: ciRunAttempt || null,
+      ciWorkflowPath: CI_WORKFLOW_PATH,
+      ciRunId,
+      ciRunAttempt,
     },
     generatedAt,
   });

@@ -12,7 +12,7 @@ export type GitHubRunnerArch = "X86" | "X64" | "ARM" | "ARM64";
 export interface InstallerRule {
   readonly suffix: string;
   readonly platform: ReleasePlatform;
-  readonly kind: "dmg" | "zip" | "msi" | "appimage" | "deb" | "rpm";
+  readonly kind: "dmg" | "zip" | "exe" | "appimage" | "deb" | "rpm";
   readonly architecture: ReleaseArchitecture;
 }
 
@@ -45,9 +45,9 @@ export interface ReleaseIdentity {
   runAttempt: string;
   event: string;
   mode: string;
-  ciWorkflowPath: string | null;
-  ciRunId: string | null;
-  ciRunAttempt: string | null;
+  ciWorkflowPath: string;
+  ciRunId: string;
+  ciRunAttempt: string;
 }
 
 export interface DownloadManifestAsset {
@@ -132,20 +132,20 @@ export interface BuildMetadata {
     runAttempt: string;
     job: "CI / Required";
     conclusion: "success";
-  } | null;
+  };
   generatedAt: string;
   targets: PlatformBuildTargetMetadata[];
 }
 
 export const PRODUCT_NAME: "FyAgent";
-export const FORMAL_VERSION: "0.3.0";
-export const FORMAL_TAG: "v0.3.0";
-export const EXPECTED_REPOSITORY: "NongHua123/fyagent";
+export const EXPECTED_REPOSITORY: "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID: "1313497021";
+export const RELEASE_BRANCH: "dev/laiyongjie";
 export const RELEASE_WORKFLOW_PATH: ".github/workflows/release.yml";
 export const CI_WORKFLOW_PATH: ".github/workflows/ci.yml";
 export const DOWNLOAD_MANIFEST_NAME: "download-manifest.json";
 export const BUILD_METADATA_NAME: "build-metadata.json";
+export const WINDOWS_SIGNING_STATUS_NAME: "signing-status.json";
 export const ATTESTATION_BUNDLE_NAME: "artifact-attestation.sigstore.json";
 
 export const GITHUB_RUNNER_ARCHITECTURES: readonly GitHubRunnerArch[];
@@ -154,7 +154,11 @@ export const EXPECTED_TARGETS: readonly ExpectedTarget[];
 export const EXPECTED_INSTALLERS_BY_TARGET: Readonly<
   Record<ReleaseTargetGroup, readonly number[]>
 >;
+export const WINDOWS_SIGNING_FRAGMENTS_BY_TARGET: Readonly<
+  Record<"windows-x64" | "windows-arm64", string>
+>;
 
+export function assertWindowsBundleVersion(version: string): void;
 export function assertReleaseIdentity(identity: {
   version: string;
   tag: string;

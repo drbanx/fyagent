@@ -60,9 +60,11 @@ pub fn get_opencode_config_path() -> PathBuf {
 }
 
 /// 获取 OpenCode SQLite 数据库路径
-/// 优先级: OPENCODE_DB 环境变量 > XDG_DATA_HOME > ~/.local/share/opencode
+/// 非 Windows 优先级: OPENCODE_DB 环境变量 > XDG_DATA_HOME > ~/.local/share/opencode。
+/// Windows 不读取提升进程环境，默认始终基于冻结的 Shell 用户目录。
 pub fn get_opencode_db_path() -> PathBuf {
     // 支持 OPENCODE_DB 环境变量覆盖（忽略空字符串）
+    #[cfg(not(target_os = "windows"))]
     if let Ok(custom_path) = std::env::var("OPENCODE_DB") {
         if !custom_path.is_empty() {
             let path = PathBuf::from(&custom_path);
@@ -79,6 +81,7 @@ pub fn get_opencode_db_path() -> PathBuf {
 
 fn get_opencode_data_dir() -> PathBuf {
     // 尊重 XDG_DATA_HOME（按 XDG 规范，空字符串视为未设置）
+    #[cfg(not(target_os = "windows"))]
     if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
         if !xdg_data.is_empty() {
             return PathBuf::from(xdg_data).join("opencode");

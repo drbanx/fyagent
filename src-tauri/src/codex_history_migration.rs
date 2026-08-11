@@ -2074,6 +2074,7 @@ base_url = "https://proxy.example/v1"
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
     #[serial]
     fn state_db_paths_include_codex_sqlite_home_env() {
         let dir = tempdir().expect("tempdir");
@@ -2090,6 +2091,20 @@ base_url = "https://proxy.example/v1"
                 sqlite_home.join(CODEX_STATE_DB_FILENAME),
             ]
         );
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    #[serial]
+    fn state_db_paths_ignore_elevated_process_sqlite_home_env() {
+        let dir = tempdir().expect("tempdir");
+        let codex_dir = dir.path().join(".codex");
+        let process_sqlite_home = dir.path().join("process-sqlite-home");
+        let _guard = EnvVarGuard::set("CODEX_SQLITE_HOME", &process_sqlite_home);
+
+        let paths = codex_state_db_paths(&codex_dir, "");
+
+        assert_eq!(paths, vec![codex_dir.join(CODEX_STATE_DB_FILENAME)]);
     }
 
     #[test]

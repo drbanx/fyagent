@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { DeepLinkImportRequest, deeplinkApi } from "@/lib/api/deeplink";
 import { parseDeepLinkConfigPreview } from "@/utils/deepLinkConfigPreview";
 import {
@@ -37,6 +37,8 @@ export function DeepLinkImportDialog() {
   const [providerActivationApproved, setProviderActivationApproved] =
     useState(false);
   const latestImportSequenceRef = useRef(0);
+  const translationRef = useRef(t);
+  translationRef.current = t;
 
   // 容错判断：MCP 导入结果可能缺少 type 字段
   const isMcpImportResult = (
@@ -83,7 +85,7 @@ export function DeepLinkImportDialog() {
             }
             // Config payloads can contain credentials, so show only a
             // translated, credential-free failure state in the renderer.
-            toast.error(t("deeplink.configMergeError"));
+            toast.error(translationRef.current("deeplink.configMergeError"));
             // Fall back to the original request below.
           }
         }
@@ -103,8 +105,22 @@ export function DeepLinkImportDialog() {
     const unlistenError = listen("deeplink-error", () => {
       // Never inspect this payload: older hosts included the original custom
       // protocol URL here, and such a URL may carry an API key.
-      toast.error(t("deeplink.parseError"));
+      toast.error(translationRef.current("deeplink.parseError"));
     });
+
+    // This private readiness signal is emitted only after both listeners have
+    // been installed. The native host can then drain parsed semantic requests
+    // without racing React startup or a lightweight WebView rebuild.
+    void Promise.all([unlistenImport, unlistenError])
+      .then(async () => {
+        if (!disposed) {
+          await emit("frontend-deeplink-ready");
+        }
+      })
+      .catch(() => {
+        // If the WebView is already tearing down, the native queue deliberately
+        // stays unready and retains any bounded pending request.
+      });
 
     return () => {
       disposed = true;
@@ -112,7 +128,7 @@ export function DeepLinkImportDialog() {
       unlistenImport.then((fn) => fn());
       unlistenError.then((fn) => fn());
     };
-  }, [t]);
+  }, []);
 
   const handleImport = async () => {
     if (!request) return;

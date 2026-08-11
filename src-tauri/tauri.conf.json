@@ -50,12 +50,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "windows": {
-      "wix": {
-        "template": "wix/per-machine-main.wxs",
-        "fragmentPaths": ["wix/fyagent-install-dir-ui.wxs"]
-      }
-    },
     "macOS": {
       "minimumSystemVersion": "12.0"
     }

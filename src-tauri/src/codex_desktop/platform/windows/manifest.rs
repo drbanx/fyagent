@@ -10,7 +10,6 @@ use std::{
     collections::{BTreeMap, HashSet},
     fs::File,
     io::{Read, Seek, SeekFrom},
-    path::Path,
 };
 
 use quick_xml::{
@@ -76,9 +75,10 @@ impl WindowsPackageManifest {
 
 /// Parses just the root MSIX manifest from a downloader-owned local package.
 pub(crate) fn parse_msix_manifest(
-    package_path: &Path,
+    mut file: File,
 ) -> Result<WindowsPackageManifest, InstallerError> {
-    let metadata = std::fs::metadata(package_path)
+    let metadata = file
+        .metadata()
         .map_err(|_| package_parse_error("MSIX package could not be inspected"))?;
     if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_MSIX_FILE_BYTES {
         return Err(package_parse_error(
@@ -86,8 +86,6 @@ pub(crate) fn parse_msix_manifest(
         ));
     }
 
-    let mut file = File::open(package_path)
-        .map_err(|_| package_parse_error("MSIX package could not be opened"))?;
     // zip 2.x stores parsed entries in a map keyed by name, which means a
     // duplicate central-directory name can be overwritten before `len()` or
     // `by_index()` sees it. Audit the bounded raw central directory first.
@@ -829,6 +827,10 @@ mod tests {
         archive.finish().unwrap();
     }
 
+    fn parse_test_package(path: &Path) -> Result<WindowsPackageManifest, InstallerError> {
+        parse_msix_manifest(File::open(path).unwrap())
+    }
+
     fn write_zip64_msix(path: &Path, entries: &[(&str, String)]) {
         write_msix(path, entries);
         let mut archive = std::fs::read(path).unwrap();
@@ -998,7 +1000,7 @@ mod tests {
                 &package,
                 &valid_entries(manifest(architecture, "OpenAI.Codex", PUBLISHER, app())),
             );
-            let parsed = parse_msix_manifest(&package).unwrap();
+            let parsed = parse_test_package(&package).unwrap();
             assert_eq!(parsed.identity_name(), "OpenAI.Codex");
             assert_eq!(parsed.publisher(), PUBLISHER);
             assert_eq!(parsed.architecture(), expected);
@@ -1019,7 +1021,7 @@ mod tests {
             &valid_entries(manifest("x64", "OpenAI.Codex", PUBLISHER, app())),
         );
 
-        let parsed = parse_msix_manifest(&package).unwrap();
+        let parsed = parse_test_package(&package).unwrap();
         assert_eq!(parsed.identity_name(), "OpenAI.Codex");
         assert_eq!(parsed.architecture(), CpuArchitecture::X86_64);
     }
@@ -1162,7 +1164,7 @@ mod tests {
             ],
         );
         assert_eq!(
-            parse_msix_manifest(&missing_signature).unwrap_err().code(),
+            parse_test_package(&missing_signature).unwrap_err().code(),
             InstallerErrorCode::PackageSignatureInvalid
         );
 
@@ -1179,7 +1181,7 @@ mod tests {
             ],
         );
         assert_eq!(
-            parse_msix_manifest(&path_variant).unwrap_err().code(),
+            parse_test_package(&path_variant).unwrap_err().code(),
             InstallerErrorCode::PackageParseFailed
         );
     }
@@ -1237,7 +1239,7 @@ mod tests {
             let package = directory.path().join(format!("{name}.msix"));
             write_msix(&package, &valid_entries(xml));
             assert_eq!(
-                parse_msix_manifest(&package).unwrap_err().code(),
+                parse_test_package(&package).unwrap_err().code(),
                 expected_error
             );
         }
@@ -1250,7 +1252,7 @@ mod tests {
         let xml = manifest("x64", "OpenAI.Codex", PUBLISHER, app());
         write_duplicate_manifest_msix(&package, &xml);
         assert_eq!(
-            parse_msix_manifest(&package).unwrap_err().code(),
+            parse_test_package(&package).unwrap_err().code(),
             InstallerErrorCode::PackageParseFailed
         );
     }

@@ -24,11 +24,7 @@ function writeFixtureFile(root, relativePath, content) {
   return filePath;
 }
 
-function createFixture({
-  version = "0.2.0",
-  withInstallerActions = true,
-  eol = "\n",
-} = {}) {
+function createFixture({ version = "0.2.0", eol = "\n" } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-version-test-"));
   fs.mkdirSync(path.join(root, "scripts"), { recursive: true });
   fs.copyFileSync(versionScript, path.join(root, "scripts", "version.mjs"));
@@ -59,15 +55,12 @@ function createFixture({
     ) + eol,
   );
 
-  const members = withInstallerActions
-    ? 'members = [".", "installer-actions"]'
-    : 'members = ["."]';
   writeFixtureFile(
     root,
     "src-tauri/Cargo.toml",
     [
       "[workspace]",
-      members,
+      'members = [".", "user-helper"]',
       'resolver = "2"',
       "",
       "[workspace.package]",
@@ -81,29 +74,18 @@ function createFixture({
     ].join(eol),
   );
 
-  if (withInstallerActions) {
-    writeFixtureFile(
-      root,
-      "src-tauri/installer-actions/Cargo.toml",
-      [
-        "[package]",
-        'name = "fyagent-installer-actions"',
-        "version.workspace = true",
-        'edition = "2021"',
-        "publish = false",
-        "",
-      ].join(eol),
-    );
-  }
+  writeFixtureFile(
+    root,
+    "src-tauri/user-helper/Cargo.toml",
+    [
+      "[package]",
+      'name = "fyagent-user-helper"',
+      "version.workspace = true",
+      'edition = "2021"',
+      "",
+    ].join(eol),
+  );
 
-  const helperBlock = withInstallerActions
-    ? [
-        "",
-        "[[package]]",
-        'name = "fyagent-installer-actions"',
-        'version = "' + version + '"',
-      ]
-    : [];
   writeFixtureFile(
     root,
     "src-tauri/Cargo.lock",
@@ -114,15 +96,20 @@ function createFixture({
       "[[package]]",
       'name = "dependency-a"',
       'version = "0.2.0"',
+      'source = "registry+https://github.com/rust-lang/crates.io-index"',
       "",
       "[[package]]",
       'name = "fyagent"',
       'version = "' + version + '"',
-      ...helperBlock,
+      "",
+      "[[package]]",
+      'name = "fyagent-user-helper"',
+      'version = "' + version + '"',
       "",
       "[[package]]",
       'name = "dependency-b"',
       'version = "0.2.0"',
+      'source = "registry+https://github.com/rust-lang/crates.io-index"',
       "",
     ].join(eol),
   );
@@ -177,6 +164,10 @@ test("set applies only the canonical Cargo value and local lock entries", (t) =>
 
   const packageBefore = readFixture(root, "package.json");
   const tauriBefore = readFixture(root, "src-tauri/tauri.conf.json");
+  const helperManifestBefore = readFixture(
+    root,
+    "src-tauri/user-helper/Cargo.toml",
+  );
   const result = run(root, "set", "0.2.1", "--apply");
 
   assert.equal(result.status, 0, result.stderr);
@@ -187,13 +178,17 @@ test("set applies only the canonical Cargo value and local lock entries", (t) =>
 
   const lock = readFixture(root, "src-tauri/Cargo.lock");
   assert.match(lock, /name = "fyagent"\nversion = "0\.2\.1"/);
-  assert.match(lock, /name = "fyagent-installer-actions"\nversion = "0\.2\.1"/);
+  assert.match(lock, /name = "fyagent-user-helper"\nversion = "0\.2\.1"/);
   assert.equal(
     (lock.match(/name = "dependency-[ab]"\nversion = "0\.2\.0"/g) ?? []).length,
     2,
   );
   assert.equal(readFixture(root, "package.json"), packageBefore);
   assert.equal(readFixture(root, "src-tauri/tauri.conf.json"), tauriBefore);
+  assert.equal(
+    readFixture(root, "src-tauri/user-helper/Cargo.toml"),
+    helperManifestBefore,
+  );
   assert.deepEqual(versionTemporaryFiles(root), []);
 });
 
@@ -217,23 +212,15 @@ test("get prints only the canonical application version", (t) => {
   assert.equal(result.stderr, "");
 });
 
-test("set rejects prerelease, v-prefixed, and MSI-incompatible values", (t) => {
-  const root = createFixture({ withInstallerActions: false });
+test("set rejects prerelease and v-prefixed values", (t) => {
+  const root = createFixture();
   t.after(() => removeFixture(root));
 
-  for (const invalid of [
-    "v0.2.1",
-    "0.2.1-beta.1",
-    "0.2.1+build.2",
-    "256.0.0",
-    "0.256.0",
-    "0.0.65536",
-  ]) {
+  for (const invalid of ["v0.2.1", "0.2.1-beta.1", "0.2.1+build.2"]) {
     const result = run(root, "set", invalid);
     assert.equal(result.status, 1, invalid + ": " + result.stderr);
   }
   assert.match(run(root, "set", "v0.2.1").stderr, /stable SemVer X\.Y\.Z/);
-  assert.match(run(root, "set", "256.0.0").stderr, /ProductVersion limits/);
 });
 
 test("set previews by default and --dry-run is the same non-writing mode", (t) => {
@@ -301,17 +288,26 @@ test("bump implements stable SemVer arithmetic", (t) => {
   }
 });
 
-test("bump rejects a result above the MSI ProductVersion range", (t) => {
-  const root = createFixture({ version: "255.255.65535" });
+test("set and bump preserve stable SemVer components beyond former packager limits", (t) => {
+  const root = createFixture({ version: "9007199254740993.256.65536" });
   t.after(() => removeFixture(root));
-  const cargoBefore = readFixture(root, "src-tauri/Cargo.toml");
-  const lockBefore = readFixture(root, "src-tauri/Cargo.lock");
 
-  const result = run(root, "bump", "major");
+  const checkResult = run(root, "check");
+  assert.equal(checkResult.status, 0, checkResult.stderr);
+
+  const bumpResult = run(root, "bump", "patch", "--apply");
+  assert.equal(bumpResult.status, 0, bumpResult.stderr);
+  assert.equal(run(root, "get").stdout.trim(), "9007199254740993.256.65537");
+});
+
+test("set rejects components outside Cargo's SemVer range", (t) => {
+  const root = createFixture();
+  t.after(() => removeFixture(root));
+
+  const result = run(root, "set", "18446744073709551616.0.0", "--apply");
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /ProductVersion limits/);
-  assert.equal(readFixture(root, "src-tauri/Cargo.toml"), cargoBefore);
-  assert.equal(readFixture(root, "src-tauri/Cargo.lock"), lockBefore);
+  assert.match(result.stderr, /Cargo's unsigned 64-bit SemVer component range/);
+  assert.equal(run(root, "get").stdout.trim(), "0.2.0");
 });
 
 test("check rejects duplicate metadata fields and a missing command", (t) => {
@@ -335,27 +331,21 @@ test("check rejects duplicate metadata fields and a missing command", (t) => {
   assert.match(result.stderr, /tauri\.conf\.json must omit version/);
 });
 
-test("check requires workspace shape, package inheritance, and local package names", (t) => {
+test("check requires workspace shape and package inheritance", (t) => {
   const root = createFixture();
   t.after(() => removeFixture(root));
   const cargoPath = "src-tauri/Cargo.toml";
-  const helperPath = "src-tauri/installer-actions/Cargo.toml";
 
   writeFixture(
     root,
     cargoPath,
     readFixture(root, cargoPath)
-      .replace('members = [".", "installer-actions"]', 'members = ["."]')
+      .replace(
+        'members = [".", "user-helper"]',
+        'members = [".", "user-helper", "unexpected"]',
+      )
       .replace('resolver = "2"', 'resolver = "1"')
       .replace("version.workspace = true", 'version = "0.2.0"'),
-  );
-  writeFixture(
-    root,
-    helperPath,
-    readFixture(root, helperPath).replace(
-      'name = "fyagent-installer-actions"',
-      'name = "wrong-helper"',
-    ),
   );
 
   const result = run(root, "check");
@@ -363,7 +353,6 @@ test("check requires workspace shape, package inheritance, and local package nam
   assert.match(result.stderr, /members must be/);
   assert.match(result.stderr, /resolver must be "2"/);
   assert.match(result.stderr, /must use exactly one version\.workspace/);
-  assert.match(result.stderr, /name must be "fyagent-installer-actions"/);
 });
 
 test("check rejects duplicate Cargo sections and local lock version fields", (t) => {
@@ -426,15 +415,37 @@ test("check rejects missing or non-local workspace lock package entries", (t) =>
     root,
     lockPath,
     original.replace(
-      '\n[[package]]\nname = "fyagent-installer-actions"\nversion = "0.2.0"\n',
+      '\n[[package]]\nname = "fyagent"\nversion = "0.2.0"\n',
       "\n",
     ),
   );
   result = run(root, "check");
   assert.equal(result.status, 1);
+  assert.match(result.stderr, /missing local package fyagent/);
+});
+
+test("check rejects an unexpected source-less local lock package", (t) => {
+  const root = createFixture();
+  t.after(() => removeFixture(root));
+  const lockPath = "src-tauri/Cargo.lock";
+
+  writeFixture(
+    root,
+    lockPath,
+    readFixture(root, lockPath) +
+      [
+        "[[package]]",
+        'name = "unexpected-local"',
+        'version = "0.2.0"',
+        "",
+      ].join("\n"),
+  );
+
+  const result = run(root, "check");
+  assert.equal(result.status, 1);
   assert.match(
     result.stderr,
-    /missing local package fyagent-installer-actions/,
+    /unexpected source-less local package "unexpected-local"/,
   );
 });
 
@@ -452,7 +463,7 @@ test("set repairs version drift in local lock entries without touching dependenc
   assert.equal(result.status, 0, result.stderr);
   const lock = readFixture(root, lockPath);
   assert.match(lock, /name = "fyagent"\nversion = "0\.2\.1"/);
-  assert.match(lock, /name = "fyagent-installer-actions"\nversion = "0\.2\.1"/);
+  assert.match(lock, /name = "fyagent-user-helper"\nversion = "0\.2\.1"/);
   assert.match(lock, /name = "dependency-a"\nversion = "0\.2\.0"/);
   assert.match(lock, /name = "dependency-b"\nversion = "0\.2\.0"/);
 });

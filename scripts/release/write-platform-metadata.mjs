@@ -2,8 +2,10 @@
 
 import { writeFileSync } from "node:fs";
 import {
+  CI_WORKFLOW_PATH,
   EXPECTED_TARGETS,
   GITHUB_RUNNER_ARCHITECTURES,
+  RELEASE_WORKFLOW_PATH,
 } from "./release-contract.mjs";
 
 const [output] = process.argv.slice(2);
@@ -21,8 +23,12 @@ function required(name) {
   return value.trim();
 }
 
-function optional(name) {
-  return process.env[name]?.trim() || null;
+function requiredPositiveInteger(name) {
+  const value = required(name);
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error(`${name} must be a positive decimal integer`);
+  }
+  return value;
 }
 
 function requireExpected(name, actual, expected, targetGroup) {
@@ -162,18 +168,8 @@ try {
   if (!(mode === "preflight" || mode === "formal")) {
     throw new Error(`Unsupported release mode: ${mode}`);
   }
-  const ciRunId = optional("EXPECTED_CI_RUN_ID");
-  const ciRunAttempt = optional("EXPECTED_CI_RUN_ATTEMPT");
-  if (mode === "formal" && (!ciRunId || !ciRunAttempt)) {
-    throw new Error(
-      "Formal platform metadata requires the bound Required CI attempt",
-    );
-  }
-  if (mode === "preflight" && (ciRunId || ciRunAttempt)) {
-    throw new Error(
-      "Preflight platform metadata must not claim a Required CI binding",
-    );
-  }
+  const ciRunId = requiredPositiveInteger("EXPECTED_CI_RUN_ID");
+  const ciRunAttempt = requiredPositiveInteger("EXPECTED_CI_RUN_ATTEMPT");
   const metadata = {
     schema: "fyagent-platform-build/v1",
     targetGroup,
@@ -198,14 +194,14 @@ try {
       sourceSha: required("SOURCE_SHA"),
       repository: required("GITHUB_REPOSITORY"),
       repositoryId: required("GITHUB_REPOSITORY_ID"),
-      workflowPath: ".github/workflows/release.yml",
+      workflowPath: RELEASE_WORKFLOW_PATH,
       workflowRef: required("GITHUB_WORKFLOW_REF"),
       workflowSha: required("GITHUB_WORKFLOW_SHA"),
       runId: required("GITHUB_RUN_ID"),
       runAttempt: required("GITHUB_RUN_ATTEMPT"),
       event: required("GITHUB_EVENT_NAME"),
       mode,
-      ciWorkflowPath: mode === "formal" ? ".github/workflows/ci.yml" : null,
+      ciWorkflowPath: CI_WORKFLOW_PATH,
       ciRunId,
       ciRunAttempt,
     },

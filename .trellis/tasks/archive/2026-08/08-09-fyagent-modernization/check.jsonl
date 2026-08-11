@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/index.md","reason":"Check cross-child ownership and spec synchronization."}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Check exact required CI and native-platform evidence."}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Check release eligibility, assets, attestation, and publication."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check end-to-end contracts across tasks, workflows, native code, and docs."}

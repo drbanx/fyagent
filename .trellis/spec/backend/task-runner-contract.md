@@ -2,11 +2,12 @@
 
 ## 1. Scope / Trigger
 
-Read this contract before adding, renaming, removing, documenting, or composing
-a `mise run` task or changing `scripts/tasks/`. The task API is the stable local
-entrypoint for developers, Trellis, and Codex hooks. Package scripts and Cargo
-commands remain implementation leaves; GitHub Actions is an explicit non-mise
-boundary and the sole executor for non-host platform work.
+Read this reference before adding, renaming, removing, documenting, or
+composing a `mise run` task or changing `scripts/tasks/`. The task API is the
+stable local entrypoint for developers. Package scripts and Cargo commands
+remain implementation leaves; GitHub Actions is an explicit non-mise boundary
+and the sole executor for non-host platform work. Optional Trellis files and
+prompt hooks do not extend the project task API.
 
 ## 2. Layout and Signatures
 
@@ -17,11 +18,9 @@ boundary and the sole executor for non-host platform work.
 .mise/tasks/frontend.toml
 .mise/tasks/rust.toml
 .mise/tasks/python.toml
-.mise/tasks/trellis.toml
 .mise/tasks/upstream.toml
 .mise/tasks/contracts.toml
 .mise/tasks/release.toml
-.mise/tasks/hooks.toml
 ```
 
 Included TOMLs use mise's task-file format (top-level task tables, no
@@ -38,18 +37,18 @@ Every public task has:
 - `interactive = true`, `raw = true`, or an explicit confirmation only when
   its I/O contract requires that behavior.
 
-The v0.3.0 baseline contains the eighty tasks generated in
+The canonical required subset is generated from live task metadata into
 `docs/fyagent/development/mise-tasks.md`. Later requirements may add tasks when
-they satisfy this contract; validation requires the canonical baseline as a
-subset instead of forbidding safe extensions.
+they satisfy this contract; validation requires the named baseline as a subset
+instead of freezing a task count.
 
 ## 3. Composition and Side Effects
 
 `check` executes `env:check`, frontend, backend, and contracts. Its complete
 task-reference closure must have effect `read-only`. Mutation, dependency
 installation, build output, interactive tasks, temporary dependency tools,
-Trellis writes, Git ref writes, and preview-by-default maintenance tasks never
-enter that closure.
+Git ref writes, and preview-by-default maintenance tasks never enter that
+closure.
 
 `check:backend` uses structured sequential task references in this order:
 
@@ -104,6 +103,29 @@ read those values, parse variadic shell-escaped lists into argv arrays, validate
 SemVer/package/tag/enum/path inputs, and spawn a command without a shell.
 Arguments must never be concatenated into a command string.
 
+`format:files` accepts one or more reviewed files and first validates every
+operand. It routes validated `.jsonl` names
+case-insensitively through record formatting: before any write or Prettier
+invocation, it reads every such input, normalizes CRLF to LF, preserves blank
+rows, validates each nonblank record as JSON, and removes only insignificant
+JSON whitespace outside strings. It does not reserialize parsed values, so
+large-number spellings, duplicate members, negative zero, and string escapes
+remain byte-identical. A JSON parse failure identifies its file and line,
+aborts the whole operation, and leaves every JSONL input untouched without
+starting Prettier. Only after all JSONL inputs parse does the task forward the
+remaining reviewed paths as distinct argv entries to the repository-locked
+Prettier. Immediately before committing, it compares every changed JSONL
+target with the bytes read during preflight; drift observed by that precommit
+check fails without overwriting the newer content. It stages the complete
+JSONL output set and uses the shared
+rollback-capable writer for per-file replacement. It rejects empty input,
+option-like values, parent traversal, repository-external paths, directories,
+symlinks, and realpath escapes. Repository-relative and
+absolute-inside-repository paths may contain whitespace or Unicode. JSONL
+formatting is syntactic record normalization only. A consumer-specific JSONL
+schema, if one exists, must be validated by that consumer's executable tests or
+tooling.
+
 On native Windows, local mise tasks resolve only the actually used `pnpm`
 command to `pnpm.exe`. This matches the audited `mise.lock` assets
 `pnpm-win-x64.exe` and `pnpm-win-arm64.exe`; both carry required SHA-256
@@ -121,7 +143,10 @@ values reach the wrapper.
 
 - `bootstrap` may install locked tools/dependencies but may not trust, install
   system packages, change Git, refresh locks, build, or publish.
-- Formatting is an explicit source-modifying leaf and does not prompt.
+- Formatting is an explicit source-modifying leaf and does not prompt. The
+  full `format` task retains its frontend-wide behavior; `format:files` is the
+  safe reviewed-subset entrypoint. Its JSONL record normalization does not
+  replace a consumer-specific schema check.
 - Version, dependency, toolchain, Python lock/dependency, icon, task-doc, and
   clean tasks preview by default; `--apply` is required to write.
 - `version:set` and `version:bump` delegate to the canonical atomic version
@@ -146,34 +171,59 @@ pipe characters, emits every loaded task, and writes only when
 `tasks:docs:generate --apply` is used. `tasks:docs:check` regenerates in memory
 and byte-compares with the committed document.
 
-Active docs that still use the retired direct-execution project-entrypoint style
-are an explicit Child 6 handoff allowlist. A new legacy occurrence fails
-`docs-contract-check.mjs`; removing an allowlisted occurrence is always safe.
-Retired local cross-build tasks have no alias or deprecation forwarder.
+Maintained repository docs use the live `mise run <task>` API for ordinary
+project operations. `docs-contract-check.mjs` scans the public READMEs,
+`CONTRIBUTING.md`, `.github` Markdown, and
+`docs/fyagent/development/**`; every concrete mise task reference must resolve
+through the loaded task metadata. Retired local cross-build tasks have no alias
+or deprecation forwarder.
+
+Every concrete `mise run <task>` reference must resolve through the live
+task-definition loader. The parser accepts the current documented boolean
+flags, short flags, value-taking `--jobs`/`--cd` forms (separate or `=` where
+supported), and the `--` option boundary. An unknown option fails closed, and
+task membership uses an own-property check so inherited object keys are not
+treated as task definitions.
+
+`CONTRIBUTING.md` contains the standalone checkout sequence in one exact fenced
+block: `mise trust`, `mise run bootstrap`, `mise run system:check`, and
+`mise run dev`. Nearby prose states that trust is a manual developer security
+decision outside repository tasks, and the document names `mise run check` as
+the complete current-host gate.
+
+Optional `.trellis/**` tasks, specs, scripts, skills, hooks, archives, and
+journals remain outside this contributor command contract. The docs checker
+does not turn them into contribution, build, CI, or release prerequisites.
 
 ## 7. Validation / Error Matrix
 
-| Condition                                                             | Required result                        |
-| --------------------------------------------------------------------- | -------------------------------------- |
-| Missing description/effect/usage                                      | `tasks:validate` fails                 |
-| Missing task reference or DAG cycle                                   | mise/task contract fails               |
-| `check` reaches a non-read-only effect                                | Fail closed                            |
-| A parameter is interpolated into a shell command                      | Reject; spawn validated argv instead   |
-| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`  | Task-runner and DEP0040 contracts fail |
-| A Rust filter begins with `-` or contains `--target`                  | Reject before rustc or Cargo starts    |
-| A fixed native operation receives forwarded argv                      | Reject before rustc or Tauri starts    |
-| Caller compiler/wrapper/runner/linker/target env redirects a task     | Reject before rustc/rustdoc starts     |
-| Any Rust/rustdoc flag env contains a target token                     | Reject before rustc/rustdoc starts     |
-| Target-specific flags or process-loader/runtime injection are set     | Reject before rustc/rustdoc starts     |
-| Absolute rustc/rustdoc identity and process host disagree             | Reject before Cargo/Tauri starts       |
-| User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject before the toolchain starts     |
-| A standard task selects a non-host OS/architecture                    | Reject before any toolchain starts     |
-| A local wrapper bridges to a foreign executable/emulator              | Reject; require a native Actions job   |
-| Mutation task has neither preview default nor explicit confirmation   | Reject                                 |
-| Clean path resolves outside the repository                            | Reject without deletion                |
-| Upstream safety/remotes/worktree do not match                         | Reject before fetch/merge              |
-| Generated task reference differs by one byte                          | `tasks:docs:check` fails               |
-| New active doc uses a legacy entrypoint                               | `docs-contract-check.mjs` fails        |
+| Condition                                                             | Required result                                    |
+| --------------------------------------------------------------------- | -------------------------------------------------- |
+| Missing description/effect/usage                                      | `tasks:validate` fails                             |
+| Missing task reference or DAG cycle                                   | mise/task contract fails                           |
+| `check` reaches a non-read-only effect                                | Fail closed                                        |
+| A parameter is interpolated into a shell command                      | Reject; spawn validated argv instead               |
+| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`  | Task-runner and DEP0040 contracts fail             |
+| A Rust filter begins with `-` or contains `--target`                  | Reject before rustc or Cargo starts                |
+| A fixed native operation receives forwarded argv                      | Reject before rustc or Tauri starts                |
+| Caller compiler/wrapper/runner/linker/target env redirects a task     | Reject before rustc/rustdoc starts                 |
+| Any Rust/rustdoc flag env contains a target token                     | Reject before rustc/rustdoc starts                 |
+| Target-specific flags or process-loader/runtime injection are set     | Reject before rustc/rustdoc starts                 |
+| Absolute rustc/rustdoc identity and process host disagree             | Reject before Cargo/Tauri starts                   |
+| User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject before the toolchain starts                 |
+| A standard task selects a non-host OS/architecture                    | Reject before any toolchain starts                 |
+| A local wrapper bridges to a foreign executable/emulator              | Reject; require a native Actions job               |
+| Mutation task has neither preview default nor explicit confirmation   | Reject                                             |
+| Clean path resolves outside the repository                            | Reject without deletion                            |
+| Upstream safety/remotes/worktree do not match                         | Reject before fetch/merge                          |
+| Generated task reference differs by one byte                          | `tasks:docs:check` fails                           |
+| New active doc uses a legacy entrypoint                               | `docs-contract-check.mjs` fails                    |
+| Standalone setup order or manual trust guidance disappears            | `docs-contract-check.mjs` fails                    |
+| `format:files` receives an option, directory, symlink, or escape      | Reject before Prettier or JSONL writes             |
+| A reviewed `.jsonl` target is not valid UTF-8                         | Identify the file; no Prettier or JSONL write      |
+| A nonblank reviewed `.jsonl` record is invalid JSON                   | Identify file and line; no Prettier or JSONL write |
+| A changed JSONL target no longer matches its preflight bytes          | Preserve the newer bytes and fail                  |
+| A formatted JSONL file violates a consumer-specific schema            | The consumer's executable validation still fails   |
 
 ## 8. Tests Required
 
@@ -182,6 +232,15 @@ Retired local cross-build tasks have no alias or deprecation forwarder.
   Rust order, retired task, and forbidden command scans.
 - Real parameter/flag transport smoke tests, including dry-run `version:set`,
   a test filter, Python preview input, and upstream tag validation.
+- `format:files` tests for empty input, option injection, parent/outside paths,
+  directories, symlinks, realpath escape, and successful multi-file whitespace,
+  Unicode, and absolute-inside-repository argv transport. Cover mixed JSONL
+  and Prettier inputs, CRLF/blank-row-preserving compact JSONL records, token
+  preservation for large numbers, duplicate members, escapes, and negative
+  zero, a later JSONL parse failure that leaves every JSONL byte-identical and
+  never invokes Prettier, Prettier failure before JSONL commit, and JSONL
+  preimage drift observed by the precommit check that preserves the newer
+  bytes.
 - Pure executable-resolution tests must require `pnpm.exe` only on Win32,
   preserve direct non-Windows commands, bind both native Windows pnpm lock
   assets and checksums, and prove the DEP0040 checker uses the shared resolver
@@ -210,6 +269,9 @@ Retired local cross-build tasks have no alias or deprecation forwarder.
 - Clean preview tests proving canonical repository-only targets and zero writes.
 - Docs generation/check tests including a description containing `|` to prove
   table escaping.
+- Maintained-document fixtures covering mise options, continuations,
+  own-property task lookup, the exact standalone checkout sequence, manual
+  trust guidance, the full local `check` gate, and unknown task rejection.
 - `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
   `taskDocs.test.ts`, `systemCheck.test.ts`, and
   `localBuildBoundary.test.ts`.

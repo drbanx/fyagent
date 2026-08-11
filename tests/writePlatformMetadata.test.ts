@@ -39,21 +39,21 @@ function releaseIdentity(mode: "preflight" | "formal"): ReleaseIdentity {
     productVersion: "0.3.0",
     tag: "v0.3.0",
     sourceSha,
-    repository: "NongHua123/fyagent",
+    repository: "fy-agent/fyagent",
     repositoryId: "1313497021",
     workflowPath: ".github/workflows/release.yml",
     workflowRef:
       mode === "formal"
-        ? "NongHua123/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0"
-        : "NongHua123/fyagent/.github/workflows/release.yml@refs/heads/main",
+        ? "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0"
+        : "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
     workflowSha: sourceSha,
     runId: "123456",
     runAttempt: "2",
     event: mode === "formal" ? "push" : "workflow_dispatch",
     mode,
-    ciWorkflowPath: mode === "formal" ? ".github/workflows/ci.yml" : null,
-    ciRunId: mode === "formal" ? "987654" : null,
-    ciRunAttempt: mode === "formal" ? "3" : null,
+    ciWorkflowPath: ".github/workflows/ci.yml",
+    ciRunId: "987654",
+    ciRunAttempt: "3",
   };
 }
 
@@ -84,10 +84,8 @@ function writerEnvironment(
     GITHUB_EVENT_NAME: identity.event,
     RELEASE_MODE: mode,
   };
-  if (mode === "formal") {
-    environment.EXPECTED_CI_RUN_ID = identity.ciRunId!;
-    environment.EXPECTED_CI_RUN_ATTEMPT = identity.ciRunAttempt!;
-  }
+  environment.EXPECTED_CI_RUN_ID = identity.ciRunId;
+  environment.EXPECTED_CI_RUN_ATTEMPT = identity.ciRunAttempt;
   if (expected.expectedContainer !== null) {
     environment.CONTAINER_IMAGE_REFERENCE =
       expected.expectedContainer.imageReference;
@@ -401,28 +399,36 @@ describe("write-platform-metadata CLI", () => {
     );
   });
 
-  it.each(["EXPECTED_CI_RUN_ID", "EXPECTED_CI_RUN_ATTEMPT"])(
-    "rejects formal metadata missing %s",
-    (variable) => {
+  it.each([
+    ["preflight", "EXPECTED_CI_RUN_ID"],
+    ["preflight", "EXPECTED_CI_RUN_ATTEMPT"],
+    ["formal", "EXPECTED_CI_RUN_ID"],
+    ["formal", "EXPECTED_CI_RUN_ATTEMPT"],
+  ] as const)("rejects %s metadata missing %s", (mode, variable) => {
+    expectWriterFailure(
+      EXPECTED_TARGETS[1],
+      (environment) => delete environment[variable],
+      new RegExp(variable),
+      mode,
+    );
+  });
+
+  it.each([
+    ["preflight", "EXPECTED_CI_RUN_ID", "0"],
+    ["preflight", "EXPECTED_CI_RUN_ATTEMPT", "attempt-3"],
+    ["formal", "EXPECTED_CI_RUN_ID", "-1"],
+    ["formal", "EXPECTED_CI_RUN_ATTEMPT", "3.0"],
+  ] as const)(
+    "rejects %s metadata with invalid %s",
+    (mode, variable, value) => {
       expectWriterFailure(
         EXPECTED_TARGETS[1],
-        (environment) => delete environment[variable],
-        /requires the bound Required CI attempt/,
-        "formal",
+        (environment) => (environment[variable] = value),
+        new RegExp(`${variable} must be a positive decimal integer`),
+        mode,
       );
     },
   );
-
-  it("rejects a Required-CI claim in preflight metadata", () => {
-    expectWriterFailure(
-      EXPECTED_TARGETS[1],
-      (environment) => {
-        environment.EXPECTED_CI_RUN_ID = "987654";
-        environment.EXPECTED_CI_RUN_ATTEMPT = "3";
-      },
-      /must not claim a Required CI binding/,
-    );
-  });
 
   it("does not replace an existing output file", () => {
     const root = temporaryDirectory();

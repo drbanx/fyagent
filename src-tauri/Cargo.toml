@@ -1,9 +1,9 @@
 [workspace]
-members = [".", "installer-actions"]
+members = [".", "user-helper"]
 resolver = "2"
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 
 [package]
 name = "fyagent"
@@ -18,10 +18,8 @@ rust-version = "1.85.0"
 
 [lib]
 name = "fyagent_lib"
-# V1 targets desktop only. Tauri's WiX bundler packages every release DLL as a
-# resource with a file KeyPath, which violates ICE38 for this per-user MSI.
-# Keep the Rust/static library outputs used by the desktop host and tests; add
-# `cdylib` back only together with an explicitly supported mobile build path.
+# V1 targets desktop only. Keep the Rust/static library outputs used by the
+# desktop host and tests; add `cdylib` only with a supported mobile build path.
 crate-type = ["staticlib", "rlib"]
 doctest = false
 
@@ -102,7 +100,8 @@ webkit2gtk = { version = "2.0.1", features = ["v2_16"] }
 libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winreg = "0.52"
+fyagent-user-helper = { path = "user-helper", default-features = false }
+winreg = "0.55"
 windows-sys = { version = "0.61", features = [
   "Win32_Globalization",
   "Win32_Storage_FileSystem",
@@ -116,6 +115,9 @@ windows = { version = "0.61", features = [
   "Foundation_Collections",
   "Management_Deployment",
   "System",
+  "Wdk_Foundation",
+  "Wdk_Storage_FileSystem",
+  "Wdk_System_Registry",
   "Win32_Foundation",
   "Win32_Security",
   "Win32_Security_Authorization",
@@ -124,11 +126,13 @@ windows = { version = "0.61", features = [
   "Win32_Storage_Packaging_Appx",
   "Win32_System_Com",
   "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Environment",
   "Win32_System_IO",
   "Win32_System_Ole",
   "Win32_System_Pipes",
   "Win32_System_Registry",
   "Win32_System_RemoteDesktop",
+  "Win32_System_SystemServices",
   "Win32_System_SystemInformation",
   "Win32_System_Threading",
   "Win32_System_Variant",
