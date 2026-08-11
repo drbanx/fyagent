@@ -696,6 +696,18 @@ function assertProcessStopGateContract(source, blocks) {
       ).length === 1,
     "process stop gate must have exactly one local macro definition",
   );
+  const gateDefinitionIndex = executableSource.indexOf(
+    "!macro FyAgentRequireProcessStopped ExecutableName DisplayName Label",
+  );
+  const firstGateInvocationIndex = executableSource.indexOf(
+    "!insertmacro FyAgentRequireProcessStopped ",
+  );
+  contract(
+    gateDefinitionIndex >= 0 &&
+      firstGateInvocationIndex >= 0 &&
+      gateDefinitionIndex < firstGateInvocationIndex,
+    "process stop gate macro must be defined before its first invocation",
+  );
   const expectedGateLines = [
     "fyagent_${Label}_process_retry:",
     '!if "${INSTALLMODE}" == "currentUser"',

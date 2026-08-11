@@ -113,6 +113,35 @@ Var NoShortcutMode
 Var OldMainBinaryName
 Var LegacyWixInstallDir
 
+; Never force-terminate a process that may own an admitted installer job or its
+; verified package handle. Interactive users may close it normally and retry;
+; passive/silent callers fail before any migration, cleanup, or payload write.
+; Keep this definition above PageLeaveReinstall, its first expansion site.
+!macro FyAgentRequireProcessStopped ExecutableName DisplayName Label
+  fyagent_${Label}_process_retry:
+    !if "${INSTALLMODE}" == "currentUser"
+      nsis_tauri_utils::FindProcessCurrentUser "${ExecutableName}"
+    !else
+      nsis_tauri_utils::FindProcess "${ExecutableName}"
+    !endif
+    Pop $R0
+    ${If} $R0 = 0
+      IfSilent fyagent_${Label}_process_silent fyagent_${Label}_process_interactive
+
+      fyagent_${Label}_process_interactive:
+        ${If} $PassiveMode = 1
+          Goto fyagent_${Label}_process_silent
+        ${EndIf}
+        MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL "Close ${DisplayName} normally before continuing. Choose Retry after it has exited." IDRETRY fyagent_${Label}_process_retry IDCANCEL fyagent_${Label}_process_cancel
+
+      fyagent_${Label}_process_cancel:
+        Abort "${DisplayName} is still running. No installer changes were made."
+
+      fyagent_${Label}_process_silent:
+        Abort "${DisplayName} is running. Close it normally, then run setup again."
+    ${EndIf}
+!macroend
+
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
 OutFile "${OUTFILE}"
@@ -470,34 +499,6 @@ Function .onInit
     !insertmacro MULTIUSER_INIT
   !endif
 FunctionEnd
-
-; Never force-terminate a process that may own an admitted installer job or its
-; verified package handle. Interactive users may close it normally and retry;
-; passive/silent callers fail before any migration, cleanup, or payload write.
-!macro FyAgentRequireProcessStopped ExecutableName DisplayName Label
-  fyagent_${Label}_process_retry:
-    !if "${INSTALLMODE}" == "currentUser"
-      nsis_tauri_utils::FindProcessCurrentUser "${ExecutableName}"
-    !else
-      nsis_tauri_utils::FindProcess "${ExecutableName}"
-    !endif
-    Pop $R0
-    ${If} $R0 = 0
-      IfSilent fyagent_${Label}_process_silent fyagent_${Label}_process_interactive
-
-      fyagent_${Label}_process_interactive:
-        ${If} $PassiveMode = 1
-          Goto fyagent_${Label}_process_silent
-        ${EndIf}
-        MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL "Close ${DisplayName} normally before continuing. Choose Retry after it has exited." IDRETRY fyagent_${Label}_process_retry IDCANCEL fyagent_${Label}_process_cancel
-
-      fyagent_${Label}_process_cancel:
-        Abort "${DisplayName} is still running. No installer changes were made."
-
-      fyagent_${Label}_process_silent:
-        Abort "${DisplayName} is running. Close it normally, then run setup again."
-    ${EndIf}
-!macroend
 
 ; The public v0.3.0 MSI is the only retired package migrated here. Querying the
 ; frozen architecture-specific ProductCode avoids starting Windows Installer on

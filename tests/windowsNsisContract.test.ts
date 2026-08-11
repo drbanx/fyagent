@@ -1428,6 +1428,20 @@ describe("Windows NSIS installer contract", () => {
 
   it("fails closed while the main or fixed helper process is running without force termination", () => {
     const source = fs.readFileSync(TEMPLATE, "utf8");
+    const gateDefinition = source.match(
+      /!macro FyAgentRequireProcessStopped ExecutableName DisplayName Label[\s\S]*?!macroend/u,
+    )?.[0];
+    expect(gateDefinition).toBeDefined();
+    const lateGateDefinition = source
+      .replace(`${gateDefinition}\n\n`, "")
+      .replace(
+        "; 5. Choose install directory page",
+        `${gateDefinition}\n\n; 5. Choose install directory page`,
+      );
+    expect(lateGateDefinition).not.toBe(source);
+    expect(() => verifyTemplate(lateGateDefinition)).toThrow(
+      /process stop gate macro must be defined before its first invocation/u,
+    );
     const installGates = [
       '!insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" install_main',
       '!insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" install_helper',
