@@ -8,11 +8,12 @@
 
 use std::{
     fmt, fs,
-    io::ErrorKind,
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
 
+#[cfg(any(not(target_os = "windows"), test))]
+use std::io::ErrorKind;
 #[cfg(target_os = "windows")]
 use std::path::Component;
 #[cfg(target_os = "windows")]
