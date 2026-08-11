@@ -281,9 +281,9 @@ async function collectRemoteDev(client, repoPath) {
   const branchObject = normalizeRef(
     branchResponse.body,
     DEV_REF,
-    "dev branch ref",
+    "main branch ref",
   );
-  expectEqual(branchObject.type, "commit", "dev branch ref object type");
+  expectEqual(branchObject.type, "commit", "main branch ref object type");
   return {
     name: DEV_BRANCH,
     ref: DEV_REF,

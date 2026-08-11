@@ -159,8 +159,8 @@ export const RELEASE_WORKFLOW_NAME: "Release";
 export const RELEASE_WORKFLOW_PATH: ".github/workflows/release.yml";
 export const CI_WORKFLOW_NAME: "CI";
 export const CI_WORKFLOW_PATH: ".github/workflows/ci.yml";
-export const DEV_BRANCH: "dev/laiyongjie";
-export const DEV_REF: "refs/heads/dev/laiyongjie";
+export const DEV_BRANCH: "main";
+export const DEV_REF: "refs/heads/main";
 export const REQUIRED_JOB_NAME: "CI / Required";
 
 export function evaluateDevReleaseEligibility(

@@ -42,9 +42,7 @@ type FixtureOptions = {
 function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
   const releaseTag = "v0.3.1";
   const ref =
-    mode === "preflight"
-      ? "refs/heads/dev/laiyongjie"
-      : `refs/tags/${releaseTag}`;
+    mode === "preflight" ? "refs/heads/main" : `refs/tags/${releaseTag}`;
   return {
     token: TOKEN,
     apiBase: "https://api.github.com",
@@ -52,7 +50,7 @@ function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
     repositoryId: "1313497021",
     eventName: mode === "preflight" ? "workflow_dispatch" : "push",
     ref,
-    refName: mode === "preflight" ? "dev/laiyongjie" : releaseTag,
+    refName: mode === "preflight" ? "main" : releaseTag,
     refType: mode === "preflight" ? "branch" : "tag",
     eventSha: SOURCE_SHA,
     workflowName: "Release",
@@ -93,7 +91,7 @@ function rawRun({
     name: "CI",
     path: ".github/workflows/ci.yml",
     event: "push",
-    head_branch: "dev/laiyongjie",
+    head_branch: "main",
     head_sha: headSha,
     status: "completed",
     conclusion: "success",
@@ -170,9 +168,9 @@ function fixtureFetch(options: FixtureOptions = {}) {
     if (path === "/repos/fy-agent/fyagent") {
       return jsonResponse(options.repository ?? REPOSITORY);
     }
-    if (path === "/repos/fy-agent/fyagent/git/ref/heads/dev/laiyongjie") {
+    if (path === "/repos/fy-agent/fyagent/git/ref/heads/main") {
       return jsonResponse({
-        ref: "refs/heads/dev/laiyongjie",
+        ref: "refs/heads/main",
         object: { type: "commit", sha: options.branchSha ?? SOURCE_SHA },
       });
     }
@@ -207,7 +205,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
     if (
       path === `/repos/fy-agent/fyagent/actions/workflows/${WORKFLOW_ID}/runs`
     ) {
-      expect(url.searchParams.get("branch")).toBe("dev/laiyongjie");
+      expect(url.searchParams.get("branch")).toBe("main");
       expect(url.searchParams.get("event")).toBe("push");
       expect(url.searchParams.get("head_sha")).toBe(SOURCE_SHA);
       if (url.searchParams.get("page") === "2") {
@@ -229,7 +227,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
         });
       }
       const next =
-        "<https://api.github.com/repos/fy-agent/fyagent/actions/workflows/314159/runs?branch=dev%2Flaiyongjie&event=push&head_sha=" +
+        "<https://api.github.com/repos/fy-agent/fyagent/actions/workflows/314159/runs?branch=main&event=push&head_sha=" +
         `${SOURCE_SHA}&per_page=100&page=2>; rel="next"`;
       return jsonResponse(
         {
@@ -435,7 +433,7 @@ describe("dev release remote evidence", () => {
     ).rejects.toThrow(/ciEvidence\.runAttempt/);
   });
 
-  it("rejects when the dev branch moves", async () => {
+  it("rejects when the main branch moves", async () => {
     const fixture = fixtureFetch({ branchSha: OTHER_SHA });
 
     await expect(
@@ -580,13 +578,13 @@ describe("remote verifier environment", () => {
       GITHUB_REPOSITORY: "fy-agent/fyagent",
       GITHUB_REPOSITORY_ID: "1313497021",
       GITHUB_EVENT_NAME: "workflow_dispatch",
-      GITHUB_REF: "refs/heads/dev/laiyongjie",
-      GITHUB_REF_NAME: "dev/laiyongjie",
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_REF_NAME: "main",
       GITHUB_REF_TYPE: "branch",
       GITHUB_SHA: SOURCE_SHA,
       GITHUB_WORKFLOW: "Release",
       GITHUB_WORKFLOW_REF:
-        "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
+        "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
       GITHUB_WORKFLOW_SHA: SOURCE_SHA,
       RELEASE_APP_VERSION: "0.3.1",
       RELEASE_TAG: "v0.3.1",

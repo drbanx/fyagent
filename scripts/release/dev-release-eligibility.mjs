@@ -9,7 +9,8 @@ export const RELEASE_WORKFLOW_NAME = "Release";
 export const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";
 export const CI_WORKFLOW_NAME = "CI";
 export const CI_WORKFLOW_PATH = ".github/workflows/ci.yml";
-export const DEV_BRANCH = "dev/laiyongjie";
+// Kept as a compatibility export for repository-owned release tooling.
+export const DEV_BRANCH = "main";
 export const DEV_REF = `refs/heads/${DEV_BRANCH}`;
 export const REQUIRED_JOB_NAME = "CI / Required";
 
@@ -580,7 +581,7 @@ function selectLatestSuccessfulCi(input, sourceSha) {
     selectedRun.conclusion !== "success"
   ) {
     fail(
-      "latest exact-source dev push CI run/attempt must be completed successfully",
+      `latest exact-source ${DEV_BRANCH} push CI run/attempt must be completed successfully`,
     );
   }
   validateCiEvidence(input.ciEvidence, selectedRun, sourceSha);

@@ -31,16 +31,19 @@ The YAML tag filter is only routing. The repository-owned eligibility engine
 accepts exactly stable `vX.Y.Z` with no prerelease, build metadata, missing
 component, or leading zero.
 
-- `workflow_dispatch` is a full five-target preflight for the current trusted
-  `dev/laiyongjie` HEAD. It may build and package native targets, prove and
-  seal Windows bytes, create workflow artifacts, and attest candidate bytes,
-  but it can never create or update a GitHub Release.
+- `workflow_dispatch` is an optional full five-target diagnostic preflight for
+  the current trusted `main` HEAD. It may build and package native targets,
+  prove and seal Windows bytes, create workflow artifacts, and attest candidate
+  bytes, but it can never create or update a GitHub Release and is not a
+  release-closure prerequisite.
 - a tag `push` is the only formal publication path. The remote tag must be an
-  annotated tag whose target commit equals the current remote
-  `dev/laiyongjie` HEAD and the exact successful full push CI source.
-- neither mode reads release authority from `main`, branch protection, a
-  ruleset, merge settings, or a Main Provenance workflow. This project does
-  not claim that those administrator controls exist.
+  annotated tag whose target commit equals the current remote `main` HEAD and
+  the exact successful full push CI source.
+- `main` is the release-authority branch. Runtime eligibility proves its live
+  remote HEAD and exact-source CI directly; it does not infer those facts from
+  branch protection, a ruleset, merge settings, or a separate provenance
+  workflow, and this project does not claim that those administrator controls
+  exist.
 - no branch push, manual signed mode, manual tag dispatch, partial target mode,
   cross-architecture substitute, local publish path, or update-in-place path
   exists.
@@ -55,10 +58,10 @@ Eligibility is the sole producer of these values:
 ```text
 app_version   = canonical Cargo stable version
 release_tag   = "v" + app_version
-source_sha    = current remote dev/laiyongjie HEAD
+source_sha    = current remote main HEAD
 workflow_sha  = source_sha
 release_mode  = preflight | formal
-ci_run_id     = exact successful dev push CI run
+ci_run_id     = exact successful main push CI run
 ci_attempt    = exact successful attempt of that run
 ```
 
@@ -67,9 +70,10 @@ attestation, and publication step consumes these values unchanged. Downstream
 jobs must not strip a ref, reread a second version source, select a newer CI
 attempt, or substitute a different source/workflow SHA.
 
-Both modes bind the same exact successful dev push CI. Preflight is therefore
-evidence for the same source that may later be tagged; it is not an unbound
-manual diagnostic. Formal mode additionally binds the remote annotated tag.
+Both modes bind the same exact successful `main` push CI. Preflight is an
+optional diagnostic for the same source that may later be tagged, not release
+authority or a closure gate. Formal mode additionally binds the remote
+annotated tag.
 
 The frozen output has exact keys:
 
@@ -102,9 +106,9 @@ Eligibility fails closed unless all of these facts agree:
 2. the workflow is `Release` at `.github/workflows/release.yml` and its
    workflow SHA equals the candidate source;
 3. the canonical version is stable `X.Y.Z` and the tag is exactly `vX.Y.Z`;
-4. the live `refs/heads/dev/laiyongjie` target equals candidate, event,
-   workflow, and checkout source SHA;
-5. preflight event/ref/workflow ref are the dev branch and its explicit
+4. the live `refs/heads/main` target equals candidate, event, workflow, and
+   checkout source SHA;
+5. preflight event/ref/workflow ref are the `main` branch and its explicit
    `source_sha` input equals the frozen source; remote tag evidence is absent;
 6. formal event/ref/workflow ref are the same version tag, the remote ref
    points to a Git `tag` object rather than directly to a commit, the annotated
@@ -112,7 +116,7 @@ Eligibility fails closed unless all of these facts agree:
 7. the CI workflow belongs to the same repository, is active, is named `CI`,
    and has path `.github/workflows/ci.yml`;
 8. among exact-source `push` runs whose head repository is the same repository
-   and whose head branch is `dev/laiyongjie`, the latest run number/attempt is
+   and whose head branch is `main`, the latest run number/attempt is
    completed successfully; an older green run cannot mask a later failed,
    cancelled, timed-out, or running attempt;
 9. the selected attempt contains exactly one completed/successful
@@ -299,7 +303,14 @@ re-evaluated when the locked Tauri CLI/bundler changes.
   Developer ID or Apple trust;
 - the DMG container itself must remain truly unsigned. ZIP and DMG package the
   same verified ad-hoc-sealed app and are re-opened to prove version and
-  executable digest identity.
+  executable digest identity;
+- DMG creation removes its explicit output before the first attempt and after
+  every failed attempt. It retries the same `hdiutil create` arguments only
+  when the captured diagnostic contains `Resource busy`, with at most five
+  attempts and `2`, `4`, `8`, and `16` second delays. Any other diagnostic, an
+  exhausted retry budget, or inability to remove partial output returns the
+  original `hdiutil` status immediately. The workflow does not pipe `hdiutil`,
+  force-detach images, or kill disk-image helpers.
 
 ### Linux
 
@@ -394,23 +405,23 @@ never called private or successful.
 
 ## 9. Failure matrix
 
-| Condition                                                                                                                  | Required result                                              |
-| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Candidate/version/tag/event/workflow/dev HEAD differs                                                                      | Fail before native builds.                                   |
-| Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                     | Fail before native builds; require exact `fy-agent/fyagent`. |
-| Formal tag is lightweight, points elsewhere, or changes                                                                    | Fail; never repair or move the tag.                          |
-| Exact-source dev CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
-| Preflight reaches a publish path or provider secret                                                                        | Static/remote gate fails.                                    |
-| Native runner, architecture, toolchain, Linux digest/OS, or source drifts                                                  | Fail that target; no fallback.                               |
-| Pinned build input ID/digest/manifest/file set drifts                                                                      | Fail before provider or trusted consumption.                 |
-| Signer configuration is partial/invalid or fresh signature proof fails                                                     | Fail; do not downgrade to unsigned.                          |
-| Windows proof/sealed binding, macOS identity, or Linux package set fails                                                   | Stop aggregation and publication.                            |
-| An intentional producer skip propagates past successful asset verification                                                 | Attestation still runs; abnormal direct needs fail visibly.  |
-| Ten/thirteen/fourteen file allowlist or digest differs                                                                     | Stop verification, attestation, or publication.              |
-| Live dev/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.        |
-| A draft/published Release already exists                                                                                   | Refuse update, replacement, or deletion.                     |
-| Upload/re-download/pre-PATCH verification fails                                                                            | Leave draft untouched and report it.                         |
-| Final PATCH is failed or ambiguous                                                                                         | Observe once; do not retry/delete or claim completion.       |
+| Condition                                                                                                                   | Required result                                              |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Candidate/version/tag/event/workflow/main HEAD differs                                                                      | Fail before native builds.                                   |
+| Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                      | Fail before native builds; require exact `fy-agent/fyagent`. |
+| Formal tag is lightweight, points elsewhere, or changes                                                                     | Fail; never repair or move the tag.                          |
+| Exact-source main CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
+| Preflight reaches a publish path or provider secret                                                                         | Static/remote gate fails.                                    |
+| Native runner, architecture, toolchain, Linux digest/OS, or source drifts                                                   | Fail that target; no fallback.                               |
+| Pinned build input ID/digest/manifest/file set drifts                                                                       | Fail before provider or trusted consumption.                 |
+| Signer configuration is partial/invalid or fresh signature proof fails                                                      | Fail; do not downgrade to unsigned.                          |
+| Windows proof/sealed binding, macOS identity, or Linux package set fails                                                    | Stop aggregation and publication.                            |
+| An intentional producer skip propagates past successful asset verification                                                  | Attestation still runs; abnormal direct needs fail visibly.  |
+| Ten/thirteen/fourteen file allowlist or digest differs                                                                      | Stop verification, attestation, or publication.              |
+| Live main/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.        |
+| A draft/published Release already exists                                                                                    | Refuse update, replacement, or deletion.                     |
+| Upload/re-download/pre-PATCH verification fails                                                                             | Leave draft untouched and report it.                         |
+| Final PATCH is failed or ambiguous                                                                                          | Observe once; do not retry/delete or claim completion.       |
 
 ## 10. Validation and evidence boundary
 
@@ -430,17 +441,20 @@ architecture, GitHub attestation, or public Release evidence. The manual
 Windows install lifecycle is diagnostic evidence outside this Release
 closure. Closure requires, in order:
 
-1. one unified work push whose current dev HEAD completes full
-   `CI / Required`;
-2. a successful same-SHA dispatch preflight;
-3. an annotated stable tag at that SHA and successful formal workflow;
-4. a public, non-prerelease, Latest Release with exact assets, disclosure,
+1. the release change is merged to `main`, and that exact current remote HEAD
+   completes `CI / Required` successfully;
+2. an annotated stable tag is created directly at that SHA and its single
+   formal build workflow succeeds;
+3. a public, non-prerelease, Latest Release has exact assets, disclosure,
    digests, metadata, and attestation;
-5. any later optional bookkeeping push is a new dev HEAD and must satisfy its
-   own CI requirements; it is not part of the release transaction.
+4. any later optional bookkeeping push is a new `main` HEAD and must satisfy
+   its own CI requirements; it is not part of the release transaction.
+
+A same-SHA dispatch preflight may be run for diagnosis, but closure neither
+requires nor infers success from it.
 
 `windows-11-arm` remains public preview and may block the run. Unsigned Windows
 installers may trigger trust prompts; disclosure, SHA-256, and attestation make
 the origin auditable but are not equivalent to Authenticode. The repository's
-unprotected `main` and lack of Main Provenance remain accepted out-of-scope
-risks and are not represented as release guarantees.
+administrative branch-protection and provenance-workflow settings remain
+outside runtime eligibility and are not represented as release guarantees.
