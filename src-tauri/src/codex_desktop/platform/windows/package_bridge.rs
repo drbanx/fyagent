@@ -28,8 +28,9 @@ use windows::{
     Wdk::{
         Foundation::OBJECT_ATTRIBUTES,
         Storage::FileSystem::{
-            NtCreateFile, FILE_CREATE, FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
-            FILE_OPEN_IF, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT,
+            FileRenameInformation, NtCreateFile, NtSetInformationFile, FILE_CREATE,
+            FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_IF,
+            FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
             NTCREATEFILE_CREATE_DISPOSITION, NTCREATEFILE_CREATE_OPTIONS,
         },
     },
@@ -56,7 +57,7 @@ use windows::{
         },
         Storage::FileSystem::{
             FileDispositionInfo, FileIdBothDirectoryInfo, FileIdBothDirectoryRestartInfo,
-            FileRenameInfo, FileStandardInfo, FlushFileBuffers, GetDiskFreeSpaceExW, GetDriveTypeW,
+            FileStandardInfo, FlushFileBuffers, GetDiskFreeSpaceExW, GetDriveTypeW,
             GetFileInformationByHandle, GetFileInformationByHandleEx, GetVolumeInformationW,
             GetVolumePathNameW, SetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, DELETE,
             FILE_ACCESS_RIGHTS, FILE_ALL_ACCESS, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
@@ -64,8 +65,8 @@ use windows::{
             FILE_ATTRIBUTE_RECALL_ON_OPEN, FILE_ATTRIBUTE_REPARSE_POINT, FILE_DELETE_CHILD,
             FILE_DISPOSITION_INFO, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_BACKUP_SEMANTICS,
             FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
-            FILE_ID_BOTH_DIR_INFO, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_SHARE_DELETE,
-            FILE_SHARE_MODE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_TRAVERSE,
+            FILE_ID_BOTH_DIR_INFO, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_MODE,
+            FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_TRAVERSE,
             FILE_WRITE_ATTRIBUTES, FILE_WRITE_EA, READ_CONTROL, SYNCHRONIZE, WRITE_DAC,
             WRITE_OWNER,
         },
@@ -305,7 +306,7 @@ impl ProtectedPackageBridge {
                 "the package bridge partial file identity was invalid",
             ));
         }
-        rename_leaf_without_replacement(&operation.file, &part, INSTALLER_FILE_NAME)?;
+        rename_leaf_without_replacement(&part, INSTALLER_FILE_NAME)?;
         if native_file_identity(&part, NativeObjectKind::RegularFile)? != part_identity {
             return Err(bridge_integrity_error(
                 "the package bridge file identity changed during finalization",
@@ -1045,11 +1046,7 @@ fn hash_exact_file(file: &File, expected_size: u64) -> Result<[u8; 32], Installe
     Ok(hasher.finalize().into())
 }
 
-fn rename_leaf_without_replacement(
-    operation: &File,
-    file: &File,
-    final_name: &str,
-) -> Result<(), InstallerError> {
+fn rename_leaf_without_replacement(file: &File, final_name: &str) -> Result<(), InstallerError> {
     let wide = final_name.encode_utf16().collect::<Vec<_>>();
     if wide.is_empty() || wide.contains(&0) {
         return Err(bridge_integrity_error(
@@ -1062,15 +1059,20 @@ fn rename_leaf_without_replacement(
         .ok_or_else(|| bridge_integrity_error("the package bridge rename length overflowed"))?;
     // The variable-length buffer starts with the complete inline structure.
     // Using only the FileName offset omits its inline WCHAR and trailing ABI
-    // alignment, which SetFileInformationByHandle rejects on Windows.
+    // alignment, which NtSetInformationFile rejects on Windows.
     let buffer_size = rename_information_buffer_size(name_bytes)
         .ok_or_else(|| bridge_integrity_error("the package bridge rename buffer overflowed"))?;
     let word_size = size_of::<usize>();
     let mut storage = vec![0_usize; buffer_size.div_ceil(word_size)];
-    let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    unsafe {
+    let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+    let mut io_status = IO_STATUS_BLOCK::default();
+    let status = unsafe {
         (*information).Anonymous.ReplaceIfExists = false;
-        (*information).RootDirectory = HANDLE(operation.as_raw_handle());
+        // A native simple name with a null root renames this already-pinned
+        // source handle within its current directory. Passing the long-lived
+        // operation handle as RootDirectory would require a second directory
+        // open whose write sharing conflicts with the capability pin.
+        (*information).RootDirectory = HANDLE::default();
         (*information).FileNameLength = u32::try_from(name_bytes)
             .map_err(|_| bridge_integrity_error("the package bridge final name was too long"))?;
         std::ptr::copy_nonoverlapping(
@@ -1078,20 +1080,27 @@ fn rename_leaf_without_replacement(
             (*information).FileName.as_mut_ptr(),
             wide.len(),
         );
-        SetFileInformationByHandle(
+        NtSetInformationFile(
             HANDLE(file.as_raw_handle()),
-            FileRenameInfo,
+            &mut io_status,
             information.cast(),
             u32::try_from(buffer_size).map_err(|_| {
                 bridge_integrity_error("the package bridge rename buffer was too large")
             })?,
+            FileRenameInformation,
         )
+    };
+    if status.is_err() {
+        return Err(bridge_integrity_error(
+            "the package bridge partial file could not be finalized",
+        )
+        .with_platform_error_code(format!("NTSTATUS 0x{:08X}", status.0 as u32)));
     }
-    .map_err(|_| bridge_integrity_error("the package bridge partial file could not be finalized"))
+    Ok(())
 }
 
 fn rename_information_buffer_size(name_bytes: usize) -> Option<usize> {
-    size_of::<FILE_RENAME_INFO>().checked_add(name_bytes)
+    size_of::<FILE_RENAME_INFORMATION>().checked_add(name_bytes)
 }
 
 fn mark_handle_for_deletion(file: &File) -> Result<(), InstallerError> {
@@ -1757,8 +1766,11 @@ mod tests {
         let name_bytes = INSTALLER_FILE_NAME.encode_utf16().count() * size_of::<u16>();
         let buffer_size = rename_information_buffer_size(name_bytes).unwrap();
 
-        assert_eq!(buffer_size, size_of::<FILE_RENAME_INFO>() + name_bytes);
-        assert!(buffer_size > offset_of!(FILE_RENAME_INFO, FileName) + name_bytes);
+        assert_eq!(
+            buffer_size,
+            size_of::<FILE_RENAME_INFORMATION>() + name_bytes
+        );
+        assert!(buffer_size > offset_of!(FILE_RENAME_INFORMATION, FileName) + name_bytes);
     }
 
     #[test]

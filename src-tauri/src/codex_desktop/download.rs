@@ -676,12 +676,7 @@ async fn download_attempt(
         .map_err(DownloadAttemptError::terminal)?;
     job_directory
         .finalize_part_file(artifact_kind, output)
-        .map_err(|_| {
-            DownloadAttemptError::terminal(
-                InstallerError::new(InstallerErrorCode::DownloadFailed)
-                    .with_diagnostic_message("installer partial file could not be finalized"),
-            )
-        })?;
+        .map_err(finalize_download_error)?;
 
     progress.emit(DownloadProgressUpdate {
         phase: ProgressPhase::Verification,
@@ -707,6 +702,16 @@ async fn download_attempt(
     });
     DownloadedArtifact::from_completed_download(job_directory, release, completed_bytes)
         .map_err(DownloadAttemptError::terminal)
+}
+
+fn finalize_download_error(source: InstallerError) -> DownloadAttemptError {
+    let platform_error_code = source.to_dto().details.platform_error_code;
+    let mut error = InstallerError::new(InstallerErrorCode::DownloadFailed)
+        .with_diagnostic_message("installer partial file could not be finalized");
+    if let Some(platform_error_code) = platform_error_code {
+        error = error.with_platform_error_code(platform_error_code);
+    }
+    DownloadAttemptError::terminal(error)
 }
 
 fn artifact_kind_for_endpoint(
@@ -1032,6 +1037,21 @@ mod tests {
             Url::parse("https://secret@cdn.example.test:8443/file?token=hidden#fragment").unwrap();
 
         assert_eq!(diagnostic_url(&url), "https://cdn.example.test:8443/file");
+    }
+
+    #[test]
+    fn finalize_failure_preserves_the_platform_error_code() {
+        let source = InstallerError::new(InstallerErrorCode::InternalError)
+            .with_platform_error_code("NTSTATUS 0xC000000D");
+
+        let failure = finalize_download_error(source);
+        let dto = failure.error.to_dto();
+
+        assert_eq!(dto.code, InstallerErrorCode::DownloadFailed);
+        assert_eq!(
+            dto.details.platform_error_code.as_deref(),
+            Some("NTSTATUS 0xC000000D")
+        );
     }
 
     #[test]

@@ -1381,9 +1381,11 @@ fn windows_rename_relative_file(
 ) -> Result<(), InstallerError> {
     use std::{mem::size_of, os::windows::io::AsRawHandle};
 
-    use windows::Win32::{
-        Foundation::HANDLE,
-        Storage::FileSystem::{FileRenameInfo, SetFileInformationByHandle, FILE_RENAME_INFO},
+    use windows::{
+        Wdk::Storage::FileSystem::{
+            FileRenameInformation, NtSetInformationFile, FILE_RENAME_INFORMATION,
+        },
+        Win32::{Foundation::HANDLE, System::IO::IO_STATUS_BLOCK},
     };
 
     directory.revalidate()?;
@@ -1396,21 +1398,23 @@ fn windows_rename_relative_file(
         .len()
         .checked_mul(size_of::<u16>())
         .ok_or_else(|| temp_error("installer final file name is too long"))?;
-    // Windows requires the complete inline FILE_RENAME_INFO structure plus
+    // Windows requires the complete inline FILE_RENAME_INFORMATION structure plus
     // the variable file-name bytes, not merely the offset of FileName plus
     // those bytes. The latter omits the inline WCHAR and trailing alignment
-    // on both supported Windows architectures and is rejected by the API.
+    // on both supported Windows architectures and is rejected by the native API.
     let buffer_size = windows_rename_information_buffer_size(name_bytes)
         .ok_or_else(|| temp_error("installer final file rename buffer is too large"))?;
     let word_size = size_of::<usize>();
     let mut storage = vec![0_usize; buffer_size.div_ceil(word_size)];
-    let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    unsafe {
+    let information = storage.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+    let mut io_status = IO_STATUS_BLOCK::default();
+    let status = unsafe {
         (*information).Anonymous.ReplaceIfExists = false;
-        // A fixed simple name with a null root is a same-directory rename. This
-        // keeps the operation bound to the already-open source handle without
-        // asking Windows to reopen the target through a second directory root.
-        (*information).RootDirectory = HANDLE::default();
+        // The native FileRenameInformation contract treats a simple name with
+        // a null root as a same-directory rename on this source handle. This
+        // avoids both Win32 current-directory resolution and reopening the
+        // pinned directory with incompatible sharing requirements.
+        (*information).RootDirectory = windows_same_directory_rename_root();
         (*information).FileNameLength = u32::try_from(name_bytes)
             .map_err(|_| temp_error("installer final file name is too long"))?;
         std::ptr::copy_nonoverlapping(
@@ -1418,15 +1422,21 @@ fn windows_rename_relative_file(
             (*information).FileName.as_mut_ptr(),
             wide.len(),
         );
-        SetFileInformationByHandle(
+        NtSetInformationFile(
             HANDLE(file.as_raw_handle()),
-            FileRenameInfo,
+            &mut io_status,
             information.cast(),
             u32::try_from(buffer_size)
                 .map_err(|_| temp_error("installer final file rename buffer is too large"))?,
+            FileRenameInformation,
         )
+    };
+    if status.is_err() {
+        return Err(
+            temp_error("installer partial file could not be finalized by handle")
+                .with_platform_error_code(format!("NTSTATUS 0x{:08X}", status.0 as u32)),
+        );
     }
-    .map_err(|_| temp_error("installer partial file could not be finalized by handle"))?;
     if windows_filesystem_identity(file, FilesystemObjectKind::RegularFile)? != before {
         return Err(temp_error(
             "installer file identity changed while it was finalized",
@@ -1436,10 +1446,15 @@ fn windows_rename_relative_file(
 }
 
 #[cfg(target_os = "windows")]
-fn windows_rename_information_buffer_size(name_bytes: usize) -> Option<usize> {
-    use windows::Win32::Storage::FileSystem::FILE_RENAME_INFO;
+fn windows_same_directory_rename_root() -> windows::Win32::Foundation::HANDLE {
+    windows::Win32::Foundation::HANDLE::default()
+}
 
-    std::mem::size_of::<FILE_RENAME_INFO>().checked_add(name_bytes)
+#[cfg(target_os = "windows")]
+fn windows_rename_information_buffer_size(name_bytes: usize) -> Option<usize> {
+    use windows::Wdk::Storage::FileSystem::FILE_RENAME_INFORMATION;
+
+    std::mem::size_of::<FILE_RENAME_INFORMATION>().checked_add(name_bytes)
 }
 
 #[cfg(target_os = "windows")]
@@ -1642,13 +1657,22 @@ mod tests {
     fn windows_rename_buffer_includes_the_complete_inline_structure() {
         use std::mem::{offset_of, size_of};
 
-        use windows::Win32::Storage::FileSystem::FILE_RENAME_INFO;
+        use windows::Wdk::Storage::FileSystem::FILE_RENAME_INFORMATION;
 
         let name_bytes = "installer.msix".encode_utf16().count() * size_of::<u16>();
         let buffer_size = windows_rename_information_buffer_size(name_bytes).unwrap();
 
-        assert_eq!(buffer_size, size_of::<FILE_RENAME_INFO>() + name_bytes);
-        assert!(buffer_size > offset_of!(FILE_RENAME_INFO, FileName) + name_bytes);
+        assert_eq!(
+            buffer_size,
+            size_of::<FILE_RENAME_INFORMATION>() + name_bytes
+        );
+        assert!(buffer_size > offset_of!(FILE_RENAME_INFORMATION, FileName) + name_bytes);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_native_rename_uses_source_handle_same_directory_semantics() {
+        assert!(windows_same_directory_rename_root().0.is_null());
     }
 
     #[test]
