@@ -747,8 +747,8 @@ describe("Windows NSIS installer contract", () => {
   it("pins maintenance install-location restoration to an exact pass-through", () => {
     const source = fs.readFileSync(TEMPLATE, "utf8");
     const aliasedRestoreGate = source.replace(
-      '  StrCmp $4 "" +2 0\n    StrCpy $INSTDIR $4',
-      `  StrCmp $4 "" +5 0
+      '  ${If} $4 != ""\n    StrCpy $INSTDIR $4',
+      `  \${If} $4 != ""
     StrCpy $5 $4
     StrCmp $5 "C:\\Program Files\\FyAgent" +2 0
       Abort
@@ -756,7 +756,7 @@ describe("Windows NSIS installer contract", () => {
     );
     expect(aliasedRestoreGate).not.toBe(source);
     expect(() => verifyTemplate(aliasedRestoreGate)).toThrow(
-      /RestorePreviousInstallLocation may only read the registered path/u,
+      /RestorePreviousInstallLocation must prefer the current NSIS path/u,
     );
   });
 
@@ -1059,8 +1059,8 @@ describe("Windows NSIS installer contract", () => {
 
     for (const mutation of [
       source.replace(
-        "  !insertmacro SetContext\n\n  ${If} $INSTDIR",
-        "\n  ${If} $INSTDIR",
+        "  !insertmacro SetContext\n\n  ; Capture the fixed v0.3.0 MSI marker",
+        "\n  ; Capture the fixed v0.3.0 MSI marker",
       ),
       source.replace(
         "Function un.onInit\n  SetRegView 64\n  !insertmacro SetContext\n",
@@ -1069,15 +1069,15 @@ describe("Windows NSIS installer contract", () => {
     ]) {
       expect(mutation).not.toBe(source);
       expect(() => verifyTemplate(mutation)).toThrow(
-        /must initialize the per-machine shell and registry context/u,
+        /must initialize the per-machine shell and registry context|v0\.3\.0 MSI install-path capture/u,
       );
     }
   });
 
-  it("opens legacy runtime directories without following or deleting them", () => {
+  it("opens only fixed cleanup anchors without following reparse points", () => {
     const source = fs.readFileSync(TEMPLATE, "utf8");
     const noFollowOpen =
-      "System::Call 'kernel32::CreateFileW(w \"${Path}\", i ${FYAGENT_FILE_READ_ATTRIBUTES}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8'";
+      "System::Call 'kernel32::CreateFileW(w \"${Path}\", i ${FYAGENT_DELETE}|${FYAGENT_FILE_READ_ATTRIBUTES}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8'";
     expect(source).toContain(noFollowOpen);
     for (const mutation of [
       source.replace(
@@ -1099,7 +1099,7 @@ describe("Windows NSIS installer contract", () => {
     ]) {
       expect(mutation).not.toBe(source);
       expect(() => verifyTemplate(mutation)).toThrow(
-        /legacy runtime (?:no-follow validation is missing|validation must issue|validation must not inspect)|write\/delete races/u,
+        /cleanup anchor|fixed cleanup anchor|relative cleanup directory/u,
       );
     }
   });
@@ -1112,7 +1112,7 @@ describe("Windows NSIS installer contract", () => {
         "!macro FyAgentCleanupLegacyMachineRuntime Label\n  nsExec::ExecToStack 'icacls \"$COMMONPROGRAMDATA\\FyAgent\" /grant:r Administrators:F'",
       );
     expect(() => verifyTemplate(source)).toThrow(
-      /best-effort, non-provisioning|must not inspect, repair, or recreate/u,
+      /exact handle-relative|non-provisioning|cleanup anchor/u,
     );
 
     const reprovisioned = fs
@@ -1126,39 +1126,493 @@ describe("Windows NSIS installer contract", () => {
     );
   });
 
-  it("keeps legacy cleanup known-only, non-recursive, and best-effort", () => {
+  it("keeps legacy cleanup name-exact, handle-relative, and best-effort", () => {
     const source = fs.readFileSync(TEMPLATE, "utf8");
     for (const mutation of [
       source.replace(
-        'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.state"',
-        'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\*"',
+        'StrCmp $R4 "business-" 0 fyagent_${Label}_legacy_name_done',
+        'StrCmp $R4 "business" 0 fyagent_${Label}_legacy_name_done',
+      ),
+      source.replace(
+        'StrCmp $R4 ".state" 0 fyagent_${Label}_legacy_name_done',
+        'StrCmp $R4 ".tmp" 0 fyagent_${Label}_legacy_name_done',
+      ),
+      source.replace(
+        '!insertmacro FyAgentValidateLegacyRuntimeName "$R1" ${Label}_legacy_entry $R5',
+        "StrCpy $R5 1",
+      ),
+      source.replace(
+        '!insertmacro FyAgentOpenDirectoryRelativeToHandle r5 $5 "runtime" ${Label}_runtime $3 $2',
+        '!insertmacro FyAgentOpenCleanupAnchorDirectory "$COMMONPROGRAMDATA\\FyAgent\\runtime" ${Label}_runtime $3 $2',
+      ),
+      source.replace(
+        '!insertmacro FyAgentDeleteRegularFileRelativeToHandle r3 $3 "$R1" ${Label}_legacy_file',
+        'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\$R1"',
+      ),
+      source.replace(
+        'FindFirst $R0 $R1 "$COMMONPROGRAMDATA\\FyAgent\\runtime\\*"',
+        'FindFirst $R0 $R1 "$COMMONPROGRAMDATA\\FyAgent\\*"',
       ),
       source.replace(
         "!macro FyAgentCleanupLegacyMachineRuntime Label",
         '!macro FyAgentCleanupLegacyMachineRuntime Label\n  Abort "cleanup failed"',
       ),
       source.replace(
-        'RMDir "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
-        'RMDir /r "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
+        "!macro FyAgentCleanupLegacyMachineRuntime Label",
+        "!macro FyAgentCleanupLegacyMachineRuntime Label\n  Quit",
+      ),
+      source.replace(
+        "FindNext $R0 $R1\n    IfErrors fyagent_${Label}_legacy_close_find",
+        "FindNext $R0 $R1\n    IfErrors fyagent_${Label}_close_runtime",
+      ),
+      source.replace(
+        "IfErrors fyagent_${Label}_close_runtime\n\n  fyagent_${Label}_legacy_entry:",
+        "IfErrors fyagent_${Label}_legacy_close_find\n\n  fyagent_${Label}_legacy_entry:",
+      ),
+      source.replace(
+        "!insertmacro FyAgentMarkEmptyDirectoryForDeletion r3 ${Label}_legacy_runtime\n    System::Call 'kernel32::CloseHandle(p r3) i .r4'",
+        "System::Call 'kernel32::CloseHandle(p r3) i .r4'\n    !insertmacro FyAgentMarkEmptyDirectoryForDeletion r3 ${Label}_legacy_runtime",
+      ),
+      source.replace(
+        "  !insertmacro FyAgentCleanupLegacyMachineRuntime uninstall_legacy_runtime\n",
+        "",
       ),
     ]) {
       expect(mutation).not.toBe(source);
       expect(() => verifyTemplate(mutation)).toThrow(
-        /known-only legacy runtime cleanup|best-effort, non-provisioning, and non-recursive/u,
+        /legacy|ProgramData|handle-relative|cleanup anchor|early exit/u,
       );
     }
   });
 
-  it("rejects reintroduced MSI or WiX migration behavior", () => {
-    const source = fs
-      .readFileSync(TEMPLATE, "utf8")
-      .replace(
+  it("cleans only exact artifacts in canonical direct-child staging UUID directories", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const mutations = [
+      source.replace(
+        "StrCmp $R3 36 0 fyagent_${Label}_uuid_done",
+        "StrCmp $R3 35 0 fyagent_${Label}_uuid_done",
+      ),
+      source.replace(
+        'StrCmp $R4 "f" fyagent_${Label}_uuid_next',
+        'StrCmp $R4 "F" fyagent_${Label}_uuid_next',
+      ),
+      source.replace(
+        '!insertmacro FyAgentValidateCanonicalUuid "$R1" ${Label}_staging_entry $R5',
+        "StrCpy $R5 1",
+      ),
+      source.replace(
+        'FindFirst $R0 $R1 "$INSTDIR\\cache\\codex-installer\\*"',
+        'FindFirst $R0 $R1 "$INSTDIR\\cache\\*"',
+      ),
+      source.replace(
+        '!insertmacro FyAgentOpenDirectoryRelativeToHandle r5 $5 "codex-installer" ${Label}_staging $3 $2',
+        '!insertmacro FyAgentOpenCleanupAnchorDirectory "$INSTDIR\\cache\\codex-installer" ${Label}_staging $3 $2',
+      ),
+      source.replace(
+        '!insertmacro FyAgentOpenDirectoryRelativeToHandle r3 $3 "$R1" ${Label}_staging_child $1 $R6',
+        '!insertmacro FyAgentOpenCleanupAnchorDirectory "$INSTDIR\\cache\\codex-installer\\$R1" ${Label}_staging_child $1 $R6',
+      ),
+      source.replace(
+        '!insertmacro FyAgentDeleteRegularFileRelativeToHandle r1 $1 "installer.msix.part" ${Label}_staging_part',
+        '!insertmacro FyAgentDeleteRegularFileRelativeToHandle r1 $1 "installer.msix.*" ${Label}_staging_part',
+      ),
+      source.replace(
+        '!insertmacro FyAgentDeleteRegularFileRelativeToHandle r1 $1 "installer.msix" ${Label}_staging_msix',
+        'Delete "$INSTDIR\\cache\\codex-installer\\$R1\\installer.msix"',
+      ),
+      source.replace(
+        '!insertmacro FyAgentDeleteRegularFileRelativeToHandle r1 $1 "installer.msix.part" ${Label}_staging_part',
+        'Delete "$INSTDIR\\cache\\codex-installer\\$R1\\installer.msix.part"',
+      ),
+      source.replace(
+        "!macro FyAgentCleanupKnownCodexInstallerStaging Label",
+        '!macro FyAgentCleanupKnownCodexInstallerStaging Label\n  Abort "cleanup failed"',
+      ),
+      source.replace(
+        "!macro FyAgentCleanupKnownCodexInstallerStaging Label",
+        "!macro FyAgentCleanupKnownCodexInstallerStaging Label\n  Quit",
+      ),
+      source.replace(
+        "FindNext $R0 $R1\n    IfErrors fyagent_${Label}_staging_close_find",
+        "FindNext $R0 $R1\n    IfErrors fyagent_${Label}_staging_close_root",
+      ),
+      source.replace(
+        "IfErrors fyagent_${Label}_staging_close_root\n\n  fyagent_${Label}_staging_entry:",
+        "IfErrors fyagent_${Label}_staging_close_find\n\n  fyagent_${Label}_staging_entry:",
+      ),
+      source.replace(
+        "!insertmacro FyAgentMarkEmptyDirectoryForDeletion r1 ${Label}_staging_child\n        System::Call 'kernel32::CloseHandle(p r1) i .r4'",
+        "System::Call 'kernel32::CloseHandle(p r1) i .r4'\n        !insertmacro FyAgentMarkEmptyDirectoryForDeletion r1 ${Label}_staging_child",
+      ),
+      source.replace(
+        "  !insertmacro FyAgentCleanupKnownCodexInstallerStaging uninstall_codex_staging\n",
+        "",
+      ),
+      source.replace(
+        "Section Uninstall",
+        'Section Uninstall\n  Delete "$INSTDIR\\cache\\*"',
+      ),
+    ];
+
+    for (const [index, mutation] of mutations.entries()) {
+      expect(mutation, `staging cleanup mutation ${index}`).not.toBe(source);
+      expect(
+        () => verifyTemplate(mutation),
+        `staging cleanup mutation ${index}`,
+      ).toThrow(
+        /staging|canonical|direct-child|handle-relative|branch|early exit|best-effort|installer must not use \$INSTDIR/u,
+      );
+    }
+  });
+
+  it("pins the full parent-handle chain and same-handle dispositions", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const unicodeString = "System::Call '*(&i2 R2, &i2 R5, p r6, &l.R3) p .r7'";
+    const objectAttributes =
+      "System::Call '*(&l4, p ${ParentSystemRegister}, p r7, i ${FYAGENT_OBJ_CASE_INSENSITIVE}|${FYAGENT_OBJ_DONT_REPARSE}, p 0, p 0, &l.R3) p .r4'";
+    const ioStatusBlock = "System::Call '*(p 0, p 0, &l.R3) p .r0'";
+    const directoryOpen =
+      "System::Call 'ntdll::NtCreateFile(*p .r8, i ${FYAGENT_DELETE}|${FYAGENT_FILE_READ_ATTRIBUTES}, p r4, p r0, p 0, i 0, i ${FYAGENT_FILE_SHARE_READ}, i ${FYAGENT_FILE_OPEN}, i ${FYAGENT_FILE_DIRECTORY_FILE}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0, i 0) i .r2'";
+    const leafOpen =
+      "System::Call 'ntdll::NtCreateFile(*p .r8, i ${FYAGENT_DELETE}|${FYAGENT_FILE_READ_ATTRIBUTES}, p r4, p r0, p 0, i 0, i ${FYAGENT_FILE_SHARE_READ}, i ${FYAGENT_FILE_OPEN}, i ${FYAGENT_FILE_NON_DIRECTORY_FILE}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0, i 0) i .r2'";
+    expect(source).toContain(unicodeString);
+    expect(source).toContain(objectAttributes);
+    expect(source).toContain(ioStatusBlock);
+    expect(source).toContain(directoryOpen);
+    expect(source).toContain(leafOpen);
+
+    const mutations = [
+      source.replace(
+        '!insertmacro FyAgentDeleteRegularFileRelativeToHandle r1 $1 "installer.msix" ${Label}_staging_msix',
+        'Delete "$INSTDIR\\cache\\codex-installer\\$R1\\installer.msix"',
+      ),
+      source.replace(
+        '!insertmacro FyAgentDeleteRegularFileRelativeToHandle r1 $1 "installer.msix.part" ${Label}_staging_part',
+        'Delete "$INSTDIR\\cache\\codex-installer\\$R1\\installer.msix.part"',
+      ),
+      source.replace(
+        objectAttributes,
+        objectAttributes.replace(
+          "p ${ParentSystemRegister}, p r7",
+          "p r3, p r7",
+        ),
+      ),
+      source.replace(
+        objectAttributes,
+        objectAttributes.replace(
+          "p ${ParentSystemRegister}, p r7",
+          "p 0, p r7",
+        ),
+      ),
+      source.replace(
+        objectAttributes,
+        objectAttributes.replace(
+          "${FYAGENT_OBJ_CASE_INSENSITIVE}|${FYAGENT_OBJ_DONT_REPARSE}",
+          "${FYAGENT_OBJ_CASE_INSENSITIVE}",
+        ),
+      ),
+      source.replace(unicodeString, unicodeString.replace("&i2 R2", "&i2 r2")),
+      source.replace(
+        "${If} $R7 != ${ParentHandle}",
+        "${If} $R7 == ${ParentHandle}",
+      ),
+      source.replace(
+        "!define FYAGENT_NSIS_SYSTEM_POINTER_SIZE 4",
+        "!define FYAGENT_NSIS_SYSTEM_POINTER_SIZE 8",
+      ),
+      source.replace(
+        "!define FYAGENT_UNICODE_STRING_SIZE 8",
+        "!define FYAGENT_UNICODE_STRING_SIZE 16",
+      ),
+      source.replace(
+        "!define FYAGENT_UNICODE_STRING_BUFFER_OFFSET 4",
+        "!define FYAGENT_UNICODE_STRING_BUFFER_OFFSET 8",
+      ),
+      source.replace(
+        "!define FYAGENT_OBJECT_ATTRIBUTES_SIZE 24",
+        "!define FYAGENT_OBJECT_ATTRIBUTES_SIZE 48",
+      ),
+      source.replace(
+        "!define FYAGENT_OBJECT_ATTRIBUTES_ROOT_DIRECTORY_OFFSET 4",
+        "!define FYAGENT_OBJECT_ATTRIBUTES_ROOT_DIRECTORY_OFFSET 8",
+      ),
+      source.replace(
+        "!define FYAGENT_IO_STATUS_BLOCK_SIZE 8",
+        "!define FYAGENT_IO_STATUS_BLOCK_SIZE 16",
+      ),
+      source.replace(unicodeString, unicodeString.replace("p r6", "P r6")),
+      source.replace(
+        ioStatusBlock,
+        ioStatusBlock.replace("*(p 0, p 0", "*(P 0, P 0"),
+      ),
+      source.replace(
+        leafOpen,
+        leafOpen.replace(
+          "${FYAGENT_DELETE}|${FYAGENT_FILE_READ_ATTRIBUTES}",
+          "${FYAGENT_FILE_READ_ATTRIBUTES}",
+        ),
+      ),
+      source.replace(
+        directoryOpen,
+        directoryOpen.replace(
+          "${FYAGENT_FILE_DIRECTORY_FILE}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}",
+          "${FYAGENT_FILE_DIRECTORY_FILE}",
+        ),
+      ),
+      source.replace(
+        leafOpen,
+        leafOpen.replace(
+          "${FYAGENT_FILE_NON_DIRECTORY_FILE}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}",
+          "${FYAGENT_FILE_NON_DIRECTORY_FILE}",
+        ),
+      ),
+      source.replace(
+        leafOpen,
+        "System::Call 'kernel32::CreateFileW(w \"$INSTDIR\\cache\\codex-installer\\$R1\\${LeafName}\", i ${FYAGENT_DELETE}|${FYAGENT_FILE_READ_ATTRIBUTES}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8'",
+      ),
+      source.replace(
+        "IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_DIRECTORY}\n  ${If} $4 <> 0\n    Goto fyagent_${Label}_leaf_close\n  ${EndIf}",
+        "IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_DIRECTORY}",
+      ),
+      source.replace(
+        "IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT}\n  ${If} $4 <> 0\n    Goto fyagent_${Label}_leaf_close\n  ${EndIf}",
+        "IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT}",
+      ),
+      source.replace(
+        "SetFileInformationByHandle(p r8, i ${FYAGENT_FILE_DISPOSITION_INFO_CLASS}",
+        "SetFileInformationByHandle(p r1, i ${FYAGENT_FILE_DISPOSITION_INFO_CLASS}",
+      ),
+      source.replace(
+        "System::Call 'kernel32::SetFileInformationByHandle(p r8, i ${FYAGENT_FILE_DISPOSITION_INFO_CLASS}, p r6, i ${FYAGENT_FILE_DISPOSITION_INFO_SIZE}) i .r7'",
+        "System::Call 'kernel32::DeleteFileW(w \"$INSTDIR\\cache\\codex-installer\\$R1\\${LeafName}\") i .r7'",
+      ),
+      source.replace(
+        "System::Call 'kernel32::SetFileInformationByHandle(p ${HandleSystemRegister}, i ${FYAGENT_FILE_DISPOSITION_INFO_CLASS}, p r6, i ${FYAGENT_FILE_DISPOSITION_INFO_SIZE}) i .r7'",
+        "System::Call 'kernel32::SetFileInformationByHandle(p r8, i ${FYAGENT_FILE_DISPOSITION_INFO_CLASS}, p r6, i ${FYAGENT_FILE_DISPOSITION_INFO_SIZE}) i .r7'",
+      ),
+      source.replace(
+        "${If} $4 <> 0\n      System::Free $4\n    ${EndIf}",
+        "${If} $4 <> 0\n    ${EndIf}",
+      ),
+    ];
+
+    for (const [index, mutation] of mutations.entries()) {
+      expect(mutation, `cleanup primitive mutation ${index}`).not.toBe(source);
+      expect(
+        () => verifyTemplate(mutation),
+        `cleanup primitive mutation ${index}`,
+      ).toThrow(
+        /staging (?:leaf deletion|cleanup)|cleanup leaf deletion|relative cleanup|handle-relative|same-handle|path delete|full path|cleanup anchor|installer must not use \$INSTDIR/u,
+      );
+    }
+  });
+
+  it("packages and uninstalls the fixed helper with the other known owned surfaces", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    for (const mutation of [
+      source.replace('    File /a "/oname={{this}}" "{{no-escape @key}}"', ""),
+      source.replace('    Delete "$INSTDIR\\\\{{this}}"', ""),
+      source.replace('  Delete "$INSTDIR\\${MAINBINARYNAME}.exe"', ""),
+      source.replace('      Delete "$DESKTOP\\${PRODUCTNAME}.lnk"', ""),
+      source.replace(
+        '      DeleteRegKey SHCTX "Software\\Classes\\\\{{protocol}}"',
+        "",
+      ),
+    ]) {
+      expect(mutation).not.toBe(source);
+      expect(() => verifyTemplate(mutation)).toThrow(
+        /package and remove the configured helper|known owned payload\/registration cleanup|staging cleanup|legacy cleanup|uninstall process gate/u,
+      );
+    }
+  });
+
+  it("fails closed while the main or fixed helper process is running without force termination", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const installGates = [
+      '!insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" install_main',
+      '!insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" install_helper',
+    ].join("\n  ");
+    const earlyGates = [
+      '!insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" early_main',
+      '!insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" early_helper',
+    ].join("\n  ");
+    const uninstallGates = [
+      '!insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" uninstall_main',
+      '!insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" uninstall_helper',
+    ].join("\n  ");
+    const maintenanceGates = [
+      '!insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" maintenance_main',
+      '!insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" maintenance_helper',
+    ].join("\n    ");
+
+    for (const forbidden of [
+      "CheckIfAppIsRunning",
+      "KillProcess",
+      "KillProcessCurrentUser",
+      "TerminateProcess",
+      "taskkill",
+    ]) {
+      expect(source).not.toContain(forbidden);
+    }
+
+    const mutations = [
+      source.replace(
+        'nsis_tauri_utils::FindProcess "${ExecutableName}"',
+        'nsis_tauri_utils::KillProcess "${ExecutableName}"',
+      ),
+      source.replace(
+        "IfSilent fyagent_${Label}_process_silent fyagent_${Label}_process_interactive",
+        "IfSilent fyagent_${Label}_process_interactive fyagent_${Label}_process_interactive",
+      ),
+      source.replace(
+        'Abort "${DisplayName} is running. Close it normally, then run setup again."',
+        "Goto fyagent_${Label}_process_retry",
+      ),
+      source.replace(
+        'Abort "${DisplayName} is still running. No installer changes were made."',
+        "ClearErrors",
+      ),
+      source.replace(
+        '!insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" install_helper',
+        "",
+      ),
+      source.replace(
+        '!insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" early_helper',
+        "",
+      ),
+      source.replace(
+        '!insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" uninstall_helper',
+        "",
+      ),
+      source.replace(
+        '!insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" maintenance_main',
+        "",
+      ),
+      source.replace(
+        'FyAgentRequireProcessStopped "fyagent-user-helper.exe"',
+        'FyAgentRequireProcessStopped "unknown-helper.exe"',
+      ),
+      source
+        .replace(`${installGates}\n\n  SetOutPath`, "SetOutPath")
+        .replace(
+          "  SetOutPath $INSTDIR\n",
+          `  SetOutPath $INSTDIR\n  ${installGates}\n`,
+        ),
+      source
+        .replace(`${earlyGates}\n\n  ; Abort`, "; Abort")
+        .replace(
+          "  Call FyAgentMigrateLegacyWixInstall\n",
+          `  Call FyAgentMigrateLegacyWixInstall\n  ${earlyGates}\n`,
+        ),
+      source
+        .replace(
+          `${uninstallGates}\n\n  !ifmacrodef NSIS_HOOK_PREUNINSTALL`,
+          "!ifmacrodef NSIS_HOOK_PREUNINSTALL",
+        )
+        .replace(
+          "  !insertmacro FyAgentCleanupLegacyMachineRuntime uninstall_legacy_runtime",
+          `  !insertmacro FyAgentCleanupLegacyMachineRuntime uninstall_legacy_runtime\n  ${uninstallGates}`,
+        ),
+      source.replace(
+        `${maintenanceGates}\n    HideWindow`,
+        `HideWindow\n    ${maintenanceGates}`,
+      ),
+      source.replace(
+        "Section Install",
+        "Section Install\n  System::Call 'kernel32::TerminateProcess(p 0, i 1)' i .r0",
+      ),
+      source.replace(
+        "Section Install",
+        "Section Install\n  nsExec::Exec 'taskkill /f /im fyagent.exe'",
+      ),
+    ];
+
+    for (const [index, mutation] of mutations.entries()) {
+      expect(mutation, `process gate mutation ${index}`).not.toBe(source);
+      expect(
+        () => verifyTemplate(mutation),
+        `process gate mutation ${index}`,
+      ).toThrow(
+        /process stop gate|process gates|force-terminate|maintenance uninstall|before MSI migration|process recheck|before hooks/u,
+      );
+    }
+  });
+
+  it("pins the only MSI migration to the frozen v0.3.0 products and fails closed", () => {
+    const source = fs.readFileSync(TEMPLATE, "utf8");
+    const fixedCommand =
+      "ExecWait '\"$SYSDIR\\msiexec.exe\" /x ${FYAGENT_LEGACY_WIX_PRODUCT_CODE} /qn /norestart' $0";
+    expect(source).toContain(fixedCommand);
+
+    const mutations = [
+      source.replace(
+        "{D50D8CE2-B49A-41DE-839D-6574FB69ADC1}",
+        "{00000000-0000-0000-0000-000000000001}",
+      ),
+      source.replace(
+        "{78F69296-A73D-40CA-A2BA-11D117AA2C9B}",
+        "{00000000-0000-0000-0000-000000000002}",
+      ),
+      source.replace(
+        '!define FYAGENT_LEGACY_WIX_REGISTRY_KEY "Software\\fyagent\\FyAgent"',
+        '!define FYAGENT_LEGACY_WIX_REGISTRY_KEY "Software\\fyagent"',
+      ),
+      source.replace(
+        'ReadRegStr $LegacyWixInstallDir HKLM "${FYAGENT_LEGACY_WIX_REGISTRY_KEY}" "InstallDir"',
+        'ReadRegStr $LegacyWixInstallDir HKLM "${FYAGENT_LEGACY_WIX_REGISTRY_KEY}" "UninstallString"',
+      ),
+      source.replace(
+        'MsiQueryProductStateW(w "${FYAGENT_LEGACY_WIX_PRODUCT_CODE}")',
+        'MsiQueryProductStateW(w "$R1")',
+      ),
+      source.replace(
+        '"$SYSDIR\\msi.dll"::MsiQueryProductStateW',
+        "msi::MsiQueryProductStateW",
+      ),
+      source.replace(
+        "Goto fyagent_legacy_wix_migration_accepted\n  ${EndIf}\n\n  ClearErrors",
+        "Goto +1\n  ${EndIf}\n\n  ClearErrors",
+      ),
+      source.replace(fixedCommand, fixedCommand.replace(" /x ", " /i ")),
+      source.replace(fixedCommand, fixedCommand.replace(" /qn /norestart", "")),
+      source.replace(
+        "${OrIf} $0 == ${FYAGENT_MSI_PRODUCT_UNINSTALLED}\n    Goto fyagent_legacy_wix_migration_accepted",
+        "${OrIf} $0 == ${FYAGENT_MSI_PRODUCT_UNINSTALLED}\n  ${OrIf} $0 == ${FYAGENT_MSI_REBOOT_REQUIRED}\n    Goto fyagent_legacy_wix_migration_accepted",
+      ),
+      source.replace(
+        "${If} ${Errors}\n    MessageBox MB_ICONSTOP|MB_OK",
+        "${If} ${Errors}\n    Goto fyagent_legacy_wix_migration_accepted\n    MessageBox MB_ICONSTOP|MB_OK",
+      ),
+      source.replace(
+        'Abort "Restart Windows before installing FyAgent."',
+        "Goto fyagent_legacy_wix_migration_accepted",
+      ),
+      source.replace(
+        'DeleteRegValue HKLM "${FYAGENT_LEGACY_WIX_REGISTRY_KEY}" "InstallDir"',
+        "ClearErrors",
+      ),
+      source
+        .replace(
+          "  Call FyAgentMigrateLegacyWixInstall\n\nSectionEnd",
+          "SectionEnd",
+        )
+        .replace(
+          "  SetOutPath $INSTDIR\n",
+          "  SetOutPath $INSTDIR\n  Call FyAgentMigrateLegacyWixInstall\n",
+        ),
+      source.replace(
         "Section EarlyChecks",
         "Section EarlyChecks\n  ExecWait 'msiexec /x legacy.msi' $0",
-      );
-    expect(() => verifyTemplate(source)).toThrow(
-      /retired MSI\/WiX migration logic remains executable/u,
-    );
+      ),
+    ];
+
+    for (const [index, mutation] of mutations.entries()) {
+      expect(mutation, `v0.3.0 migration mutation ${index}`).not.toBe(source);
+      expect(
+        () => verifyTemplate(mutation),
+        `v0.3.0 migration mutation ${index}`,
+      ).toThrow(/v0\.3\.0 MSI|frozen ProductCode|migration|msiexec/u);
+    }
   });
 
   it("rejects recursive deletion of a caller-selected install directory", () => {
@@ -1736,5 +2190,30 @@ describe("Windows NSIS installer contract", () => {
         templatePath: TEMPLATE,
       }),
     ).toThrow(/installMode must be perMachine/u);
+  });
+
+  it("rejects a Windows config that omits or renames the fixed helper binary", () => {
+    const original = JSON.parse(fs.readFileSync(WINDOWS_CONFIG, "utf8")) as {
+      bundle: { externalBin: string[] };
+    };
+    for (const externalBin of [
+      [],
+      ["binaries/renamed-helper"],
+      ["binaries/fyagent-user-helper", "binaries/unknown-helper"],
+    ]) {
+      const config = structuredClone(original);
+      config.bundle.externalBin = externalBin;
+      const configPath = temporaryFile(
+        "tauri.windows.conf.json",
+        `${JSON.stringify(config, null, 2)}\n`,
+      );
+      expect(() =>
+        verifyWindowsNsisContract({
+          baseConfigPath: BASE_CONFIG,
+          windowsConfigPath: configPath,
+          templatePath: TEMPLATE,
+        }),
+      ).toThrow(/fixed current-user helper binary/u);
+    }
   });
 });

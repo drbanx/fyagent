@@ -84,6 +84,15 @@ const INSTALLER_NAME_TEMPLATES = expectedInstallerNames("1.2.3").map((name) =>
   name.replace("1.2.3", "X.Y.Z"),
 );
 
+const WINDOWS_CODEX_DESKTOP_DOC =
+  "docs/fyagent/development/windows/codex-desktop.md";
+const WINDOWS_INSTALLER_DOC = "docs/fyagent/development/windows/installer.md";
+const VALIDATION_DOC = "docs/fyagent/development/validation.md";
+const V031_RELEASE_NOTES = "docs/release-notes/v0.3.1-en.md";
+const CODEX_INSTALLER_SPEC = ".trellis/spec/backend/codex-desktop-installer.md";
+const PACKAGE_BRIDGE_ROOT =
+  "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
+
 function read(relative: string): string {
   return fs
     .readFileSync(path.join(ROOT, relative), "utf8")
@@ -240,11 +249,152 @@ describe("current FyAgent development documentation", () => {
     }
   });
 
+  it("documents the protected ProgramData A1 package bridge without an HTTP or NSIS fallback", () => {
+    const codexDesktop = read(WINDOWS_CODEX_DESKTOP_DOC);
+    const installer = read(WINDOWS_INSTALLER_DOC);
+    const installerSpec = read(CODEX_INSTALLER_SPEC);
+    const bridgeAuthority = `${codexDesktop}\n${installerSpec}`;
+
+    for (const fixedBoundary of [
+      "FOLDERID_ProgramData",
+      PACKAGE_BRIDGE_ROOT,
+      "installer.msix",
+      "FYABRIDG",
+      "UrlCreateFromPathW",
+      "PathCreateFromUrlW",
+      "AddPackageByUriAsync",
+    ]) {
+      expect(bridgeAuthority, fixedBoundary).toContain(fixedBoundary);
+    }
+
+    expect(bridgeAuthority).toMatch(
+      /Hello[\s\S]+?bridge control[\s\S]+?Started[\s\S]+?admission[\s\S]+?progress[\s\S]+?(?:success|error)/iu,
+    );
+    expect(bridgeAuthority).toMatch(/protected(?:[- ]DACL|[^.\n]{0,24}ACL)/iu);
+    expect(bridgeAuthority).toMatch(
+      /(?:no|without)[^\n.]{0,100}HTTP[^\n.]{0,100}fallback/iu,
+    );
+    expect(bridgeAuthority).toMatch(
+      /A1[\s\S]+?Windows 10[\s\S]+?Windows 11[\s\S]+?x64[\s\S]+?ARM64/iu,
+    );
+    expect(bridgeAuthority).toMatch(
+      /(?:minimum supported Windows version|Windows support floor)[^\n.]{0,120}(?:does not change|unchanged|not raised)/iu,
+    );
+    expect(bridgeAuthority).toMatch(
+      /A2[\s\S]+?future independent native validation[\s\S]+?explicit[\s\S]+?decision/iu,
+    );
+    expect(bridgeAuthority).toMatch(
+      /A2[\s\S]+?(?:never a runtime fallback|runtime[^.]{0,120}never selects A2)/iu,
+    );
+
+    for (const [file, source] of [
+      [WINDOWS_CODEX_DESKTOP_DOC, codexDesktop],
+      [CODEX_INSTALLER_SPEC, installerSpec],
+      [VALIDATION_DOC, read(VALIDATION_DOC)],
+      [V031_RELEASE_NOTES, read(V031_RELEASE_NOTES)],
+    ] as const) {
+      const normalized = source.replace(/\s+/gu, " ");
+      expect(normalized, file).toMatch(
+        /(?:does not run|runs no|do not run)[^.]{0,100}HIL[^.]{0,120}(?:local|locally)[^.]{0,120}(?:Actions|GitHub Actions)/iu,
+      );
+      expect(normalized, file).toMatch(
+        /static contract[^.]{0,160}Windows-target compilation checks[^.]{0,120}(?:code\/security )?review/iu,
+      );
+      expect(normalized, file).toMatch(
+        /Windows 10(?:\/11|[^.]{0,30}Windows 11)/iu,
+      );
+      expect(normalized, file).toMatch(/x64\/ARM64/iu);
+      expect(normalized, file).toMatch(
+        /(?:Bob-elevated\/Alice|elevated-Bob\/(?:standard-)?Alice)/iu,
+      );
+      for (const [label, pattern] of [
+        ["PackageManager", /PackageManager/iu],
+        ["file URI", /file[- ]URI/iu],
+        ["ACL", /ACL/iu],
+        ["cleanup", /cleanup/iu],
+      ] as const) {
+        expect(normalized, `${file} -> ${label}`).toMatch(pattern);
+      }
+      expect(normalized, file).toMatch(/explicit,? unverified residual risk/iu);
+      expect(normalized, file).toMatch(
+        /(?:must not|cannot|prohibit|Do not treat)[^.]{0,160}native[- ]compatibility[^.]{0,160}native[- ]runtime/iu,
+      );
+    }
+
+    for (const [file, source] of [
+      [WINDOWS_CODEX_DESKTOP_DOC, codexDesktop],
+      [CODEX_INSTALLER_SPEC, installerSpec],
+    ] as const) {
+      const normalized = source.replace(/\s+/gu, " ");
+      expect(normalized, file).toMatch(
+        /Before admission[^.]{0,320}structured error[^.]{0,120}PackageManager has not run/iu,
+      );
+      expect(normalized, file).toMatch(
+        /After admission[^.]{0,420}invalid progress[^.]{0,100}terminal[^.]{0,160}(?:duplicate|extra data)[^.]{0,160}protocol\/transport[^.]{0,160}timeout[^.]{0,160}unclean close[^.]{0,200}(?:best-effort cancellation|best-effort cancel)[^.]{0,200}permanent process-lifetime quarantine/iu,
+      );
+      expect(normalized, file).toContain("Job remains `Installing`");
+      expect(normalized, file).toMatch(
+        /no terminal result is published to the renderer/iu,
+      );
+      expect(normalized, file).toMatch(
+        /Only an authenticated valid terminal status[^.]{0,160}matching valid terminal frame[^.]{0,120}clean pipe close[^.]{0,80}(?:permit|cleanup)/iu,
+      );
+    }
+
+    for (const retiredPositiveContract of [
+      "FYAHHTTP",
+      "exclusive numeric-loopback source",
+      "one-operation HTTP source",
+      "HTTP/1.1 `HEAD`/`GET`",
+      "WinSock",
+      "SO_EXCLUSIVEADDRUSE",
+      "http://127.0.0.1",
+    ]) {
+      expect(bridgeAuthority, retiredPositiveContract).not.toContain(
+        retiredPositiveContract,
+      );
+    }
+
+    expect(installer).toContain(PACKAGE_BRIDGE_ROOT);
+    expect(installer).toMatch(
+      /NSIS[^\n.]{0,160}(?:does not|never)[^\n.]{0,120}(?:own|enumerate|repair|remove)[^\n.]{0,120}(?:PackageBridge|package bridge)/iu,
+    );
+    expect(installer).toMatch(
+      /(?:application|bridge module)[^\n.]{0,120}(?:owns|owns both)[^\n.]{0,120}(?:cleanup|orphan)/iu,
+    );
+    expect(installer).toMatch(/%ProgramData%\\FyAgent\\runtime/iu);
+    expect(installer).toMatch(
+      /(?:separate|distinct|independent)[^\n.]{0,120}(?:PackageBridge|package bridge)[^\n.]{0,160}(?:retired|legacy)[^\n.]{0,80}runtime/iu,
+    );
+  });
+
+  it("marks the v0.3.1 notes as an unpublished preflight candidate with a historical tag mismatch", () => {
+    const notes = read(V031_RELEASE_NOTES);
+    expect(notes).toContain("# FyAgent v0.3.1 candidate (unpublished)");
+    expect(notes).toMatch(
+      /existing annotated `v0\.3\.1` tag[^.]{0,120}(?:different historical SHA|historical SHA that differs)/iu,
+    );
+    expect(notes).toMatch(/must not move or reuse it/iu);
+    expect(notes).toMatch(
+      /(?:current work|current batch)[^.]{0,120}(?:not the formal source|cannot be its formal source)[^.]{0,120}cannot (?:formally )?publish/iu,
+    );
+    expect(notes).toMatch(
+      /future[^.]{0,80}independent version\/tag decision/iu,
+    );
+    expect(notes).toMatch(/same-SHA[^.]{0,80}non-publishing preflight/iu);
+    expect(notes).not.toContain("The formal source is the exact `v0.3.1`");
+    expect(notes).not.toMatch(/^\d+\. annotated `v0\.3\.1` tag equality/mu);
+  });
+
   it("keeps maintained knowledge free of old package and fixed-release routing", () => {
     for (const file of maintainedKnowledgeMarkdownFiles()) {
       const source = read(file);
       expect(source, file).not.toContain("docs/fyagent/dev/");
-      expect(source, file).not.toMatch(/\bv?0\.3\.0\b/);
+      if (file === "docs/fyagent/development/windows/installer.md") {
+        expect(source.match(/\bv?0\.3\.0\b/gu), file).toHaveLength(1);
+      } else {
+        expect(source, file).not.toMatch(/\bv?0\.3\.0\b/u);
+      }
       expect(source, file).not.toMatch(/\bv3\.16\.0\b/);
       expect(source, file).not.toContain("windows-release-boundary.md");
       expect(source, file).not.toContain("fyagent-v1-0-1-config-domains.md");

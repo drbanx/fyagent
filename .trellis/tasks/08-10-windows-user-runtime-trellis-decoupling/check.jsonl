@@ -5,7 +5,7 @@
 {"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Verify fail-closed Shell context, untrusted activation, and zero active machine-runtime authority."}
 {"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Verify helper protocol, same-user PackageManager behavior, staging, pin lifetime, and stable renderer surface."}
 {"file":".trellis/spec/backend/windows-installer.md","reason":"Verify NSIS manifests, helper packaging, lifecycle matrix, upgrade pin, and safe cleanup."}
-{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Verify native lifecycle jobs and unique Required result."}
-{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Verify immutable smoke consumption, permissions, trust separation, subject and attachment counts, and dispatch skips."}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Verify build/package jobs and the unique Required result without any lifecycle or HIL execution."}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Verify immutable preflight artifacts, permissions, trust separation, subject and attachment counts, dispatch skips, and no native lifecycle smoke."}
 {"file":".trellis/spec/backend/deeplink-import-security.md","reason":"Verify local plugin input cannot bypass deep-link validation or trigger privileged side effects."}
 {"file":".trellis/tasks/08-10-windows-user-runtime-trellis-decoupling/research/current-state-and-safety-boundaries.md","reason":"Compare implementation against recorded baseline, risk acceptance, and remote closure invariants."}

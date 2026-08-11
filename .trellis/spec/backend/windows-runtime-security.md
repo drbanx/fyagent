@@ -13,7 +13,13 @@ Windows release builds run elevated, so the account that approved UAC is not a
 safe source of the interactive user's identity or directories. The runtime
 therefore freezes the Explorer user's authority before any user state is read
 or written. `%ProgramData%\FyAgent\runtime`, the former state/lease files, and
-the authenticated activation pipe are retired and must not be recreated.
+the authenticated activation pipe are retired and must not be recreated. The
+one-operation
+`%ProgramData%\FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1`
+package bridge is a separate Codex installer object with no state, lease, HMAC,
+activation, or startup-admission role. Its application bridge module owns
+normal settlement and next-elevated-creation orphan cleanup; neither this
+runtime nor NSIS may reinterpret it as the former runtime tree.
 
 ## 2. Signatures
 
@@ -186,19 +192,20 @@ instance admission, and is best-effort; its failure must not block startup.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Shell window/process/token/session/SID is unavailable | Exit before panic logging, CLI parsing, Tauri, or user-path access with `WIN_INTERACTIVE_USER_UNAVAILABLE`. |
-| Shell Profile, LocalAppData, or RoamingAppData is unavailable/non-absolute | Exit with the matching stable path code; never use Bob, SYSTEM, cwd, environment, or a drive fallback. |
-| Alice environment block is unavailable, PATH is absent, or strict PATH filtering leaves no entry | Exit with `WIN_INTERACTIVE_ENVIRONMENT_UNAVAILABLE`; never read or merge Bob's process PATH. |
-| Process is Bob and Shell is Alice | Continue with Alice SID and all three Alice directory projections; report process/Shell mismatch only as telemetry. |
-| Frozen Shell session/SID drifts before a protected side effect | Stop that side effect; do not mutate the context or select another user. |
-| Alice Store/window-state JSON is missing, corrupt, or oversized | Use safe defaults at the same Alice path; do not consult or create Bob's app-data directories or allocate beyond the fixed read limit. |
-| Any fixed Alice HKU path component is a registry symbolic link | Reject that operation before reading, deleting, or writing a value; never reopen the key by an unverified full string path. |
-| Legacy Alice Run value is absent, inaccessible, or cleanup fails | Continue startup and emit only a bounded diagnostic after first-instance admission. |
-| Single-instance envelope is oversized, contains controls, or has an invalid deep link | Reject before lightweight/focus/event behavior; never log the raw payload. |
-| Valid envelope has no actionable deep link | Restore/focus the existing window only. |
-| Non-Windows platform | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior. |
+| Condition                                                                                        | Required result                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shell window/process/token/session/SID is unavailable                                            | Exit before panic logging, CLI parsing, Tauri, or user-path access with `WIN_INTERACTIVE_USER_UNAVAILABLE`.                                                                |
+| Shell Profile, LocalAppData, or RoamingAppData is unavailable/non-absolute                       | Exit with the matching stable path code; never use Bob, SYSTEM, cwd, environment, or a drive fallback.                                                                     |
+| Alice environment block is unavailable, PATH is absent, or strict PATH filtering leaves no entry | Exit with `WIN_INTERACTIVE_ENVIRONMENT_UNAVAILABLE`; never read or merge Bob's process PATH.                                                                               |
+| Process is Bob and Shell is Alice                                                                | Continue with Alice SID and all three Alice directory projections; report process/Shell mismatch only as telemetry.                                                        |
+| Frozen Shell session/SID drifts before a protected side effect                                   | Stop that side effect; do not mutate the context or select another user.                                                                                                   |
+| Alice Store/window-state JSON is missing, corrupt, or oversized                                  | Use safe defaults at the same Alice path; do not consult or create Bob's app-data directories or allocate beyond the fixed read limit.                                     |
+| Any fixed Alice HKU path component is a registry symbolic link                                   | Reject that operation before reading, deleting, or writing a value; never reopen the key by an unverified full string path.                                                |
+| Legacy Alice Run value is absent, inaccessible, or cleanup fails                                 | Continue startup and emit only a bounded diagnostic after first-instance admission.                                                                                        |
+| A protected Codex PackageBridge orphan exists                                                    | Do not use it for startup, activation, identity, or user-path selection; only the Codex application bridge module may inspect it during the next elevated bridge creation. |
+| Single-instance envelope is oversized, contains controls, or has an invalid deep link            | Reject before lightweight/focus/event behavior; never log the raw payload.                                                                                                 |
+| Valid envelope has no actionable deep link                                                       | Restore/focus the existing window only.                                                                                                                                    |
+| Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                              |
 
 ## 5. Good / Base / Bad Cases
 
@@ -212,9 +219,9 @@ instance admission, and is best-effort; its failure must not block startup.
   request, then focuses the existing window.
 - Bad: read `%APPDATA%`, `dirs::home_dir`, Tauri `app_data_dir`, `HKCU`, process
   `PATH`, or a user-tool home variable on Windows and call it Alice's state.
-- Bad: restore `%ProgramData%\FyAgent\runtime`, infer a user from an active WTS
-  session, or let a second-instance argument invoke helper/package/filesystem
-  side effects.
+- Bad: restore `%ProgramData%\FyAgent\runtime`, treat PackageBridge as runtime
+  state or an activation channel, infer a user from an active WTS session, or
+  let a second-instance argument invoke helper/package/filesystem side effects.
 
 ## 6. Tests Required
 
@@ -223,6 +230,7 @@ instance admission, and is best-effort; its failure must not block startup.
   redacted debug output, and stable error codes.
 - Contract tests assert initialization precedes panic/CLI/Tauri, the formal
   process/Shell equality gate and machine-runtime implementation are absent,
+  the fixed PackageBridge is referenced only from the Codex installer boundary,
   and Windows production paths do not consult ambient home/app-data/XDG or
   user-tool path environment variables.
 - Renderer tests prove directory defaults and resets use the backend Shell home
@@ -233,16 +241,20 @@ instance admission, and is best-effort; its failure must not block startup.
   and both initial/lightweight WebViews use Alice's explicit data path.
 - Registry tests cover regular/missing/link components, an intermediate link,
   a final link, newly created keys, and the required no-follow reopen after an
-  existing create result. A Windows HIL uses only disposable HKCU test keys to
-  prove intermediate and final links are rejected.
+  existing create result. This delivery runs no Windows HIL. Any future,
+  separately authorized runtime validation must use only disposable HKCU test
+  keys when checking intermediate and final link rejection.
 - Single-instance tests cover count, item, aggregate, control-character,
   malformed/unsupported deep-link, valid deep-link, no-link focus,
   renderer-readiness queuing/drain, and no privileged callback action. Never
   construct a test that treats callback validation as pre-decode peer
   authentication.
-- Matching x64 and ARM64 native Windows jobs own compile and elevated
-  Bob/Alice/startup/WebView evidence. Linux unit/static checks do not prove
-  Shell-token, HKU, WebView2, UAC, or plugin transport behavior.
+- Present evidence is limited to static contracts, scoped Windows-target
+  compilation checks, and review. No real Windows 10/11, x64/ARM64, elevated
+  Bob/Alice, startup, WebView, Shell-token, HKU, UAC, or plugin-transport HIL is
+  run locally or in Actions for this delivery. Those behaviors remain explicit
+  unverified residual risks and must not be described as native-compatible or
+  native-runtime-verified.
 
 ## 7. Wrong vs Correct
 

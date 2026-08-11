@@ -20,18 +20,25 @@ required-features = ["helper-runtime"]
 # A normal path dependency gets only the portable protocol/layout library.
 # Packaging the executable opts into its private native runtime explicitly.
 default = []
-helper-runtime = ["dep:url", "dep:windows", "dep:windows-future"]
+helper-runtime = ["dep:windows", "dep:windows-future"]
 
 [target.'cfg(target_os = "windows")'.dependencies]
-url = { version = "=2.5.8", optional = true }
 windows = { version = "=0.61.3", features = [
   "Foundation",
   "Management_Deployment",
+  "Wdk_Foundation",
+  "Wdk_Storage_FileSystem",
   "Win32_Foundation",
   "Win32_Security",
+  "Win32_Security_Authorization",
   "Win32_Storage_FileSystem",
+  "Win32_System_Com",
   "Win32_System_IO",
+  "Win32_System_SystemServices",
+  "Win32_System_Threading",
+  "Win32_System_WindowsProgramming",
   "Win32_System_WinRT",
+  "Win32_UI_Shell",
 ], optional = true }
 windows-future = { version = "=0.2.1", optional = true }
 

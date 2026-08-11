@@ -14,7 +14,7 @@ use tauri::AppHandle;
 use url::Url;
 
 #[cfg(target_os = "windows")]
-use fyagent_user_helper::{CanonicalJobId, PipeNonce};
+use fyagent_user_helper::{layout::USER_HELPER_EXECUTABLE_FILE_NAME, CanonicalJobId, PipeNonce};
 
 #[cfg(not(target_os = "windows"))]
 use tauri_plugin_opener::OpenerExt;
@@ -36,6 +36,18 @@ pub(crate) enum ProcessLaunchError {
     PlatformLaunchFailed,
     #[cfg(target_os = "windows")]
     WorkerFailed,
+}
+
+/// Result of the Explorer STA helper launch boundary. `MayHaveLaunched` means
+/// `ShellExecute` was attempted or the caller lost observability while the
+/// non-cancellable STA call still owned the request. Only `NotInvoked` proves
+/// failure happened before that side-effect boundary.
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UserHelperLaunchOutcome {
+    Confirmed,
+    MayHaveLaunched,
+    NotInvoked(ProcessLaunchError),
 }
 
 impl ProcessLaunchError {
@@ -80,6 +92,21 @@ pub(crate) trait InteractiveUserLauncher: Send + Sync {
         job_id: &CanonicalJobId,
         pipe_nonce: &PipeNonce,
     ) -> Result<(), ProcessLaunchError>;
+
+    /// Typed production boundary that preserves an in-flight STA timeout.
+    /// Test launchers implementing only the ordinary method are synchronous
+    /// and therefore default to a confirmed outcome.
+    #[cfg(target_os = "windows")]
+    fn begin_fyagent_user_helper_launch(
+        &self,
+        job_id: &CanonicalJobId,
+        pipe_nonce: &PipeNonce,
+    ) -> UserHelperLaunchOutcome {
+        match self.launch_fyagent_user_helper(job_id, pipe_nonce) {
+            Ok(()) => UserHelperLaunchOutcome::Confirmed,
+            Err(error) => UserHelperLaunchOutcome::NotInvoked(error),
+        }
+    }
 }
 
 /// Injectable business service used by the platform adapter and fake tests.
@@ -139,6 +166,16 @@ where
                 .launcher
                 .launch_fyagent_user_helper(&job_id, &pipe_nonce),
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn begin_fyagent_user_helper_launch(
+        &self,
+        job_id: &CanonicalJobId,
+        pipe_nonce: &PipeNonce,
+    ) -> UserHelperLaunchOutcome {
+        self.launcher
+            .begin_fyagent_user_helper_launch(job_id, pipe_nonce)
     }
 }
 
@@ -203,9 +240,6 @@ impl InteractiveUserLaunch {
     }
 }
 
-#[cfg(target_os = "windows")]
-const USER_HELPER_FILE_NAME: &str = "fyagent-user-helper.exe";
-
 /// Resolves the only helper image accepted by both the Explorer launcher and
 /// the parent pipe's post-connect process check. The helper must be a regular,
 /// non-reparse sibling of the running FyAgent executable.
@@ -218,7 +252,7 @@ pub(crate) fn fixed_user_helper_path() -> Result<PathBuf, ProcessLaunchError> {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .ok_or(ProcessLaunchError::InvalidUserHelper)?;
-    let helper = install_root.join(USER_HELPER_FILE_NAME);
+    let helper = install_root.join(USER_HELPER_EXECUTABLE_FILE_NAME);
     let metadata =
         std::fs::symlink_metadata(&helper).map_err(|_| ProcessLaunchError::InvalidUserHelper)?;
     if !metadata.is_file()
@@ -237,9 +271,11 @@ pub(crate) fn fixed_user_helper_path() -> Result<PathBuf, ProcessLaunchError> {
 pub(crate) fn launch_fyagent_user_helper_as_user(
     job_id: &CanonicalJobId,
     pipe_nonce: &PipeNonce,
-) -> Result<(), ProcessLaunchError> {
-    let request = InteractiveUserLaunch::fyagent_user_helper(job_id, pipe_nonce);
-    dispatch_sync_with_platform_launcher(request)
+) -> UserHelperLaunchOutcome {
+    ProcessLaunchService::new(
+        crate::platform::windows::interactive_user::ExplorerInteractiveUserLauncher,
+    )
+    .begin_fyagent_user_helper_launch(job_id, pipe_nonce)
 }
 
 /// Opens an HTTP(S) URL through the interactive user's shell.

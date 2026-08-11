@@ -6,21 +6,11 @@
 
 use std::{fmt, path::Path};
 
-#[cfg(test)]
-use std::sync::Arc;
-
-use url::Url;
-
 use crate::codex_desktop::{
     error::{InstallerError, InstallerErrorCode},
     types::{CpuArchitecture, PlatformVersion},
 };
 use crate::windows_runtime::InteractiveUserContext;
-
-/// Callback used by the PackageManager facade. Values are normalized into the
-/// inclusive `[0, 100]` range before leaving this module.
-#[cfg(test)]
-pub(crate) type WindowsDeploymentProgressSink = Arc<dyn Fn(u32) + Send + Sync>;
 
 /// Immutable, redacted proof that a package-manager result belongs to the
 /// exact interactive-user context supplied to the operation. The optional
@@ -189,17 +179,6 @@ pub(crate) trait WindowsPackageManager: Send + Sync {
         context: &InteractiveUserContext,
     ) -> Result<WindowsPackageInventory, WindowsNativeError>;
 
-    #[cfg(test)]
-    fn deploy_current_user(
-        &self,
-        context: &InteractiveUserContext,
-        package_file_uri: &str,
-        progress: WindowsDeploymentProgressSink,
-    ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
-        let _ = (context, package_file_uri, progress);
-        Err(WindowsNativeError::unavailable())
-    }
-
     /// Launches an already verified app identity. The system implementation
     /// delegates this to the interactive user's Explorer shell rather than
     /// activating the app from the elevated FyAgent process.
@@ -275,6 +254,7 @@ pub(crate) fn deployment_error(error: WindowsNativeError) -> InstallerError {
             "Windows rejected the package signature or certificate trust"
         }
         InstallerErrorCode::PackageParseFailed => "Windows rejected malformed MSIX package data",
+        InstallerErrorCode::MetadataChanged => "Windows rejected an older package version",
         _ => "Windows PackageManager deployment failed",
     });
     if let Some(hresult) = error.hresult() {
@@ -321,8 +301,11 @@ fn format_hresult(hresult: i32) -> String {
 
 fn map_deployment_hresult(hresult: i32) -> InstallerErrorCode {
     match hresult as u32 {
-        // ERROR_PACKAGES_IN_USE and its newer deployment equivalent.
-        0x8007_3D02 | 0x8007_3D06 => InstallerErrorCode::WindowsPackageInUse,
+        // ERROR_PACKAGES_IN_USE is retryable after closing the target app.
+        0x8007_3D02 => InstallerErrorCode::WindowsPackageInUse,
+        // ERROR_INSTALL_PACKAGE_DOWNGRADE requires fresh release metadata;
+        // retrying the same older package or closing the app cannot fix it.
+        0x8007_3D06 => InstallerErrorCode::MetadataChanged,
         // Deployment blocked by machine/profile/volume policy, or by the
         // legacy sideloading policy failure.
         0x8007_3CFF | 0x8007_3D01 | 0x8007_3D19 | 0x8007_3D21 | 0x8007_3D22 | 0x8007_3D23
@@ -341,34 +324,6 @@ fn map_deployment_hresult(hresult: i32) -> InstallerErrorCode {
         0x8008_0204..=0x8008_0207 => InstallerErrorCode::PackageParseFailed,
         _ => InstallerErrorCode::WindowsDeploymentFailed,
     }
-}
-
-/// Converts a validated, local artifact path into the only URI form accepted
-/// by the normal install path. A relative path, network URL, query, or
-/// fragment cannot cross this boundary.
-pub(crate) fn local_file_uri(package_path: &Path) -> Result<String, InstallerError> {
-    let metadata = std::fs::metadata(package_path).map_err(|_| {
-        InstallerError::new(InstallerErrorCode::PackageParseFailed)
-            .with_diagnostic_message("validated MSIX package is no longer available")
-    })?;
-    if !metadata.is_file() {
-        return Err(InstallerError::new(InstallerErrorCode::PackageParseFailed)
-            .with_diagnostic_message("validated MSIX package path is not a regular file"));
-    }
-
-    let uri = Url::from_file_path(package_path).map_err(|_| {
-        InstallerError::new(InstallerErrorCode::PackageParseFailed)
-            .with_diagnostic_message("validated MSIX package path cannot form a file URI")
-    })?;
-    if uri.scheme() != "file"
-        || uri.host().is_some()
-        || uri.query().is_some()
-        || uri.fragment().is_some()
-    {
-        return Err(InstallerError::new(InstallerErrorCode::PackageParseFailed)
-            .with_diagnostic_message("validated MSIX package URI is not a local file URI"));
-    }
-    Ok(uri.into())
 }
 
 #[cfg(target_os = "windows")]
@@ -739,8 +694,6 @@ mod native {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     #[test]
@@ -750,6 +703,7 @@ mod tests {
                 0x8007_3D02_u32 as i32,
                 InstallerErrorCode::WindowsPackageInUse,
             ),
+            (0x8007_3D06_u32 as i32, InstallerErrorCode::MetadataChanged),
             (
                 0x8007_3D01_u32 as i32,
                 InstallerErrorCode::WindowsDeploymentBlocked,
@@ -779,26 +733,6 @@ mod tests {
                 Some(format!("0x{:08X}", hresult as u32))
             );
         }
-    }
-
-    #[test]
-    fn file_uri_requires_an_existing_regular_absolute_file() {
-        let directory = tempfile::tempdir().unwrap();
-        let file = directory.path().join("installer.msix");
-        std::fs::write(&file, b"fixture").unwrap();
-        let uri = local_file_uri(&file).unwrap();
-        assert!(uri.starts_with("file:///"));
-        assert!(uri.ends_with("installer.msix"));
-
-        let missing = local_file_uri(&directory.path().join("missing.msix")).unwrap_err();
-        assert_eq!(missing.code(), InstallerErrorCode::PackageParseFailed);
-
-        let relative = PathBuf::from("installer.msix");
-        let relative_error = local_file_uri(&relative).unwrap_err();
-        assert_eq!(
-            relative_error.code(),
-            InstallerErrorCode::PackageParseFailed
-        );
     }
 
     #[cfg(target_os = "windows")]

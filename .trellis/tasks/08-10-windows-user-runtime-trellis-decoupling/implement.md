@@ -183,9 +183,9 @@ audit, and Rust fmt/check/test.
 Rollback: revert helper and deleted experimental surface together; no mixed
 all-user/current-user deployment path.
 
-## Commit 7 — install-root staging and pin
+## Commit 7 — install-root staging and protected package bridge
 
-Commit: `fix(codex): stage installers under the install root`
+Commit: `fix(codex): bridge verified installers to the shell user`
 
 - [ ] Move Windows staging to the fixed install-root cache hierarchy.
 - [ ] Query capacity on the resolved installation volume with no fallback.
@@ -193,15 +193,67 @@ Commit: `fix(codex): stage installers under the install root`
       and known-only cleanup.
 - [ ] Add the share-restricting read pin, handle identity capture/recheck, and
       lifetime binding through helper/PackageManager completion.
+- [ ] Copy only from the parent's verified handle into one create-new,
+      BA-owned, protected-DACL package bridge below `FOLDERID_ProgramData`;
+      require local NTFS and the fixed
+      `FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}/v1`
+      handle-relative/no-follow layout, exact size/SHA/identity/owner/group/DACL
+      verification, and enough free space on the actual ProgramData volume.
+- [ ] Implement the fixed root/`v1` ACL independently from operation ACLs: BA
+      owns/manages both stable roots, SYSTEM has required read/traverse, and
+      Authenticated Users (`AU`) has stable directory `FILE_GENERIC_EXECUTE`
+      semantics (traverse/read-attributes/`READ_CONTROL`/synchronize, never
+      list/create/write/delete/delete-child). Each create-new operation
+      directory/file instead names the exact frozen Alice SID for minimum
+      read/traverse. Prove Alice has no ancestor `DELETE_CHILD` or leaf/namespace
+      mutation route; reject rather than repair drift.
+- [ ] Replace the loopback source-control record with the fixed bridge control
+      containing no arbitrary path/URI. Enforce `Hello` -> parent authentication
+      -> control -> helper bridge/URI proof -> `Started { identity }` -> parent
+      revalidation/admission -> AddPackage. Round-trip a canonical DOS `file://`
+      URI and provide no HTTP/Temp/cwd/install-root fallback.
+- [ ] Hold the verified source, bridge ancestors, sealed bridge file, helper,
+      and control lifetime through authenticated WinRT terminal evidence.
+      The application bridge module performs normal cleanup only after a
+      non-`Started` WinRT terminal status, matching valid terminal frame, and
+      clean pipe close. Ambiguous completion retains an immutable orphan; the
+      next elevated bridge creation may perform held-handle, known-only cleanup
+      and never reuses the operation ID.
 - [ ] Make every post-`AddPackageByUriAsync` failure path cancel and observe the
       WinRT operation, or retain the MSIX pin under an independent owner until
       helper/PackageManager completion; a pipe timeout must never drop it.
-- [ ] Update upgrade/uninstall cleanup for main/helper/known staging while
-      preserving unknown data and tolerating legacy-cleanup failure.
+- [ ] Update upgrade/uninstall cleanup for main/helper/known install-root
+      staging while preserving unknown data and tolerating legacy-cleanup
+      failure. Assert NSIS never enumerates, repairs, or removes PackageBridge.
+- [ ] Preserve the current minimum Windows support boundary. Keep existing OS
+      and Codex package `MinVersion` preflight before helper launch; do not add a
+      compatibility fallback for unsupported hosts.
 
-Targeted validation: C/D path/capacity/unwritable/no-fallback cases, reparse and
-unknown cleanup, existing write handle, replace/rename/delete attempts, file
-identity drift, cancellation, and helper completion lifetime.
+Targeted validation: static/portable C/D install-root staging plus
+ProgramData-volume capacity, unsupported filesystem/unwritable/no-fallback
+cases, malicious bridge preimages, stable-root versus exact-Alice operation ACL
+drift, owner/group/effective-rights drift, reparse/hardlink/POSIX replace/
+rename/delete attempts, copy/hash/flush/identity drift, Unicode/space/%/# DOS
+file-URI round trip, `Hello`/control/`Started`/admission ordering, modeled
+current-user PackageManager A1 behavior, cancellation, helper termination,
+immutable orphan, application-owned known-only cleanup, NSIS non-ownership, and
+complete helper lifetime. Present evidence is limited to these static
+contracts, scoped Windows-target compilation checks, and code/security review.
+
+A1 evidence boundary for this delivery:
+
+- [ ] Pin the fixed bridge GUID
+      `{96F39D37-0F42-486F-8C86-3631C12171C5}` and verify the fixed-root
+      stable ACL separately from each Alice-specific operation ACL.
+- [ ] Record that no HIL is run locally or in GitHub Actions for this delivery.
+      Real Windows 10/11, x64/ARM64, Bob-elevated/Alice-standard-Explorer-Shell,
+      PackageManager/protected DOS file-URI, effective ACL/mutation denial, and
+      terminal/orphan/cleanup behavior remain explicit unverified residual
+      risks; do not claim native compatibility or native runtime verification.
+- [ ] Keep A2 absent from runtime. Only future independent native validation
+      plus an explicit, separately authorized design decision may enter a
+      separate A2 implementation/review. No runtime HRESULT, ACL, disk, timeout,
+      or missing-validation condition selects A2.
 
 Rollback: revert staging and pin together; do not leave the helper consuming a
 path whose verification continuity is weaker than documented.
@@ -225,24 +277,20 @@ harness unit fixtures. Local static results remain non-native evidence.
 Rollback: revert tests/contracts/baseline as one unit; do not retain a claimed
 gate that workflows cannot execute.
 
-## Commit 9 — native CI and release smoke
+## Removed scope — no Actions lifecycle or HIL
 
-Commit: `ci(release): run native Windows lifecycle acceptance`
+- [x] Do not add final setup/uninstaller, PackageBridge A1, Bob/Alice, or other
+      HIL execution to the x64/ARM64 CI or release matrices.
+- [x] Retain native build/package/manifest/icon/signing/sealing evidence and the
+      existing immutable artifact, permission, subject, attachment, and dispatch
+      invariants without treating them as runtime verification.
+- [x] Keep the lifecycle harness as an optional manual diagnostic that is not
+      scheduled or required by this task.
+- [x] Record Windows setup/uninstall, PackageManager/file-URI, ACL, cleanup, and
+      native compatibility as unverified residual risks.
 
-- [ ] Execute final setup/uninstaller lifecycle in CI x64/ARM64 native matrix.
-- [ ] Add secret-free release x64/ARM64 smoke jobs consuming immutable sealed
-      candidate IDs/digests without reupload or mutation.
-- [ ] Gate preflight and formal verification/attestation/publication on smoke.
-- [ ] Preserve exact eligibility, permission separation, signing/sealing,
-      thirteen subjects, fourteen attachments, and dispatch publish skip.
-- [ ] Update workflow/classifier/required/release fixtures and active owners.
-
-Targeted validation: YAML parse/workflow mutation tests, CI/release topology,
-permissions/action pins, immutable artifact flow, subject/attachment counts,
-dispatch/formal truth tables, and lifecycle wiring.
-
-Rollback: revert smoke topology and its contract as one unit; candidate
-acceptance remains blocked until an equivalent native gate exists.
+There is no commit or future implementation action for an Actions HIL/native
+lifecycle gate in this plan.
 
 ## Local integration gate
 
@@ -277,9 +325,10 @@ acceptance remains blocked until an equivalent native gate exists.
 - [ ] Record the release-run boundary, dispatch `release.yml` with
       `source_sha=H1`, resolve exactly one new matching run, and
       foreground-watch it without commentary.
-- [ ] Verify eligibility, five native targets, immutable pin, x64/ARM64
-      lifecycle smoke, unsigned proof, aggregate/verify/attest success, and
-      formal signer/sealer/publish skips.
+- [ ] Verify eligibility, five native build/package targets, immutable pin,
+      unsigned proof, aggregate/verify/attest success, and formal signer/sealer/
+      publish skips. Confirm no setup/uninstaller or A1 HIL job is scheduled and
+      do not report preflight as native runtime evidence.
 - [ ] Download `release-attachments` to a unique temporary directory, run
       `node scripts/release/verify-release-files.mjs attachments <dir> 0.3.1`,
       require fourteen nonempty consistent files, and remove the temporary
@@ -290,8 +339,9 @@ acceptance remains blocked until an equivalent native gate exists.
 
 ## Local closeout
 
-- [ ] Write H1, CI/preflight IDs and URLs, terminal results, native-smoke jobs,
-      and attachment verification into task evidence.
+- [ ] Write H1, CI/preflight IDs and URLs, build/package results, attachment
+      verification, and the explicit unverified native-runtime residual risks
+      into task evidence.
 - [ ] Confirm all product/test/docs changes were already in H1.
 - [ ] Use retained upstream `task.py` to validate and archive the task, then
       `add_session.py` to record the journal.

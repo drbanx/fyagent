@@ -17,7 +17,7 @@ use crate::codex_desktop::{
     platform::CodexDesktopPlatform,
     runtime::{InstallerMetadataFetcher, InstallerTransportPurpose, RuntimeInstallerTransport},
     source::{AgentsMirrorSource, ReleaseSource},
-    temp::JobTempDir,
+    temp::JobTempRoot,
     types::CpuArchitecture,
     verify::DiskSpaceProbe,
 };
@@ -57,7 +57,7 @@ pub(crate) fn production_service() -> CodexDesktopService {
         platform,
         download_transport,
         disk_space_probe,
-        JobTempDir::system_root(),
+        JobTempRoot::for_current_process(),
         crate::panic_hook::get_log_dir(),
     ))
 }

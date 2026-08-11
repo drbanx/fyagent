@@ -5,15 +5,10 @@ import { DatabaseUpgrade } from "@/components/DatabaseUpgrade";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
-  exit: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mocks.invoke,
-}));
-
-vi.mock("@tauri-apps/plugin-process", () => ({
-  exit: mocks.exit,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -34,7 +29,6 @@ vi.mock("react-i18next", () => ({
 describe("DatabaseUpgrade", () => {
   beforeEach(() => {
     mocks.invoke.mockReset();
-    mocks.exit.mockReset();
   });
 
   it("keeps a newer database blocked without checking or installing updates", () => {
@@ -67,6 +61,6 @@ describe("DatabaseUpgrade", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("open_app_config_folder");
 
     await user.click(screen.getByRole("button", { name: "退出" }));
-    expect(mocks.exit).toHaveBeenCalledWith(0);
+    expect(mocks.invoke).toHaveBeenCalledWith("exit_app");
   });
 });

@@ -359,6 +359,21 @@ impl VerifiedPackage {
         }
     }
 
+    /// Returns the final MSIX already opened through the downloader's retained
+    /// job-directory capability. The Windows pin factory must consume this
+    /// handle instead of reopening `artifact_path` from a mutable full path.
+    #[cfg(target_os = "windows")]
+    pub(crate) fn open_artifact_for_pinning(&self) -> Result<std::fs::File, InstallerError> {
+        self.artifact
+            .as_ref()
+            .ok_or_else(|| {
+                InstallerError::new(InstallerErrorCode::InternalError).with_diagnostic_message(
+                    "validated package is missing its retained artifact capability",
+                )
+            })?
+            .open_for_read()
+    }
+
     pub(crate) fn locked_release(&self) -> &ReleaseDescriptor {
         &self.locked_release
     }

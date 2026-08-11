@@ -9,15 +9,10 @@ mod deployment;
 #[cfg(target_os = "windows")]
 mod helper;
 mod manifest;
+#[cfg(target_os = "windows")]
+mod package_bridge;
 
-use std::{
-    fmt,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-
-#[cfg(test)]
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{fmt, path::Path, sync::Arc, time::Duration};
 
 use futures::future::BoxFuture;
 
@@ -30,9 +25,6 @@ use self::{
 };
 
 #[cfg(test)]
-use self::deployment::{local_file_uri, WindowsDeploymentProgressSink};
-
-#[cfg(test)]
 use self::deployment::{
     WindowsPackageInventory, WindowsUserContextEvidence, WindowsUserOperationReceipt,
 };
@@ -42,12 +34,11 @@ use self::deployment::WindowsNativeError;
 #[cfg(target_os = "windows")]
 mod runtime;
 use super::{
-    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, RestartCandidateInspection,
-    RestartInstallationScope, RuntimeInspection, TrustedInstallationCandidate,
-    TrustedRuntimeInstance, VerifiedPackage, WINDOWS_CODEX_STABLE_IDENTITY,
+    installed_application_matches_release, CodexDesktopPlatform, PlatformInstallPlan,
+    PlatformProgressSink, RestartCandidateInspection, RestartInstallationScope, RuntimeInspection,
+    TrustedInstallationCandidate, TrustedRuntimeInstance, VerifiedPackage,
+    WINDOWS_CODEX_STABLE_IDENTITY,
 };
-#[cfg(test)]
-use crate::codex_desktop::types::{JobProgress, ProgressPhase};
 use crate::codex_desktop::{
     download::DownloadedArtifact,
     error::{InstallerError, InstallerErrorCode},
@@ -63,6 +54,65 @@ use crate::windows_runtime::InteractiveUserContext;
 pub use deployment::SystemWindowsDiskSpaceProbe;
 #[cfg(target_os = "windows")]
 pub use deployment::SystemWindowsPackageManager;
+
+trait WindowsVerifiedFilePin: Send {
+    fn recheck(&self) -> Result<(), InstallerError>;
+    fn identity(&self) -> WindowsPackageFileIdentity;
+    fn expected_size(&self) -> u64;
+    fn expected_sha256(&self) -> &str;
+    fn duplicate_source_file(&self) -> Result<std::fs::File, InstallerError>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WindowsPackageFileIdentity {
+    volume_serial: u64,
+    file_index: u64,
+    size: u64,
+}
+
+trait WindowsFilePinFactory: Send + Sync {
+    fn open(
+        &self,
+        package: &VerifiedPackage,
+    ) -> Result<Box<dyn WindowsVerifiedFilePin>, InstallerError>;
+}
+
+trait WindowsUserHelperRunner: Send + Sync {
+    fn run(
+        &self,
+        context: &InteractiveUserContext,
+        job_id: &str,
+        pin: Box<dyn WindowsVerifiedFilePin>,
+        progress: PlatformProgressSink,
+        deadlines: WindowsHelperDeadlines,
+    ) -> Result<(), InstallerError>;
+}
+
+trait WindowsContextRevalidator: Send + Sync {
+    fn is_current(&self, context: &InteractiveUserContext) -> bool;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WindowsHelperDeadlines {
+    connect: Duration,
+    operation: Duration,
+    terminal_close: Duration,
+}
+
+impl WindowsHelperDeadlines {
+    const PRODUCTION: Self = Self {
+        connect: Duration::from_secs(30),
+        operation: Duration::from_secs(10 * 60),
+        terminal_close: Duration::from_secs(5),
+    };
+}
+
+struct WindowsInstallDependencies {
+    context_revalidator: Arc<dyn WindowsContextRevalidator>,
+    pin_factory: Arc<dyn WindowsFilePinFactory>,
+    helper_runner: Arc<dyn WindowsUserHelperRunner>,
+    deadlines: WindowsHelperDeadlines,
+}
 
 /// Exact Publisher allowlist from read-only local Windows evidence collected on
 /// 2026-07-29. The current-user Microsoft Store package was
@@ -124,26 +174,17 @@ pub(crate) fn current_official_publisher_evidence(
     })
 }
 
-/// Host facts are injected for fake-based tests. The deployment volume is a
-/// trusted system root used only for shared free-space preflight; it is never a
-/// user-selected install directory.
+/// Host facts are injected for fake-based tests. Free-space admission covers
+/// both the job staging volume and the ProgramData bridge volume discovered
+/// from the Windows known-folder API; no system-drive letter is guessed.
 #[derive(Debug, Clone)]
 pub struct WindowsHost {
     architecture: CpuArchitecture,
     os_version: PlatformVersion,
-    deployment_volume: PathBuf,
 }
 
 impl WindowsHost {
-    pub fn new(
-        architecture: CpuArchitecture,
-        os_version: &str,
-        deployment_volume: PathBuf,
-    ) -> Result<Self, InstallerError> {
-        if deployment_volume.as_os_str().is_empty() {
-            return Err(InstallerError::new(InstallerErrorCode::PlatformUnsupported)
-                .with_diagnostic_message("Windows deployment volume could not be determined"));
-        }
+    pub fn new(architecture: CpuArchitecture, os_version: &str) -> Result<Self, InstallerError> {
         let os_version = PlatformVersion::parse_windows_msix(os_version).map_err(|_| {
             InstallerError::new(InstallerErrorCode::OsVersionUnsupported)
                 .with_diagnostic_message("Windows version could not be parsed")
@@ -151,7 +192,6 @@ impl WindowsHost {
         Ok(Self {
             architecture,
             os_version,
-            deployment_volume,
         })
     }
 
@@ -163,11 +203,7 @@ impl WindowsHost {
             "{}.{}.{}.{}",
             version.major, version.minor, version.build, revision
         );
-        Self::new(
-            native_host::architecture(),
-            &version_text,
-            native_host::deployment_volume()?,
-        )
+        Self::new(native_host::architecture(), &version_text)
     }
 
     pub(crate) fn architecture(&self) -> CpuArchitecture {
@@ -176,10 +212,6 @@ impl WindowsHost {
 
     pub(crate) fn os_version(&self) -> &PlatformVersion {
         &self.os_version
-    }
-
-    pub(crate) fn deployment_volume(&self) -> &Path {
-        &self.deployment_volume
     }
 }
 
@@ -193,6 +225,7 @@ pub(crate) struct WindowsPlatformAdapter {
     user_context: Arc<InteractiveUserContext>,
     host: WindowsHost,
     publisher_evidence: VerifiedPublisherEvidence,
+    install_dependencies: WindowsInstallDependencies,
 }
 
 impl WindowsPlatformAdapter {
@@ -201,12 +234,14 @@ impl WindowsPlatformAdapter {
         user_context: Arc<InteractiveUserContext>,
         host: WindowsHost,
         publisher_evidence: VerifiedPublisherEvidence,
+        install_dependencies: WindowsInstallDependencies,
     ) -> Self {
         Self {
             package_manager,
             user_context,
             host,
             publisher_evidence,
+            install_dependencies,
         }
     }
 
@@ -222,6 +257,12 @@ impl WindowsPlatformAdapter {
             user_context,
             WindowsHost::for_current_host()?,
             publisher_evidence,
+            WindowsInstallDependencies {
+                context_revalidator: Arc::new(helper::SystemWindowsContextRevalidator),
+                pin_factory: Arc::new(helper::SystemWindowsFilePinFactory),
+                helper_runner: Arc::new(helper::SystemWindowsUserHelperRunner),
+                deadlines: WindowsHelperDeadlines::PRODUCTION,
+            },
         ))
     }
 
@@ -339,7 +380,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
             }
             run_blocking(move || {
                 artifact.revalidate_against(&release)?;
-                validate_package(&host, &publisher_evidence, &release, artifact.path())?;
+                validate_package(&host, &publisher_evidence, &release, &artifact)?;
                 VerifiedPackage::from_completed_validation(&release, artifact)
             })
             .await
@@ -351,42 +392,36 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         package: &'a VerifiedPackage,
         progress: PlatformProgressSink,
     ) -> BoxFuture<'a, Result<(), InstallerError>> {
-        #[cfg(test)]
-        {
-            let package_manager = self.package_manager.clone();
-            let user_context = self.user_context.clone();
-            let host = self.host.clone();
-            let package = package.clone();
-            let host_error = self.host_support_error();
-            Box::pin(async move {
-                if let Some(error) = host_error {
-                    return Err(error);
-                }
-                run_blocking(move || {
-                    install_current_user(
-                        package_manager.as_ref(),
-                        &user_context,
-                        &host,
-                        &package,
-                        progress,
-                    )
-                })
-                .await
-            })
-        }
-
-        #[cfg(not(test))]
-        {
-            let _ = (package, progress);
-            Box::pin(async {
-                Err(InstallerError::new(
-                    InstallerErrorCode::WindowsDeploymentFailed,
+        let package_manager = self.package_manager.clone();
+        let context_revalidator = self.install_dependencies.context_revalidator.clone();
+        let pin_factory = self.install_dependencies.pin_factory.clone();
+        let helper_runner = self.install_dependencies.helper_runner.clone();
+        let deadlines = self.install_dependencies.deadlines;
+        let user_context = self.user_context.clone();
+        let host = self.host.clone();
+        let publisher_evidence = self.publisher_evidence.clone();
+        let package = package.clone();
+        let host_error = self.host_support_error();
+        Box::pin(async move {
+            if let Some(error) = host_error {
+                return Err(error);
+            }
+            run_blocking(move || {
+                install_current_user(
+                    package_manager.as_ref(),
+                    context_revalidator.as_ref(),
+                    pin_factory.as_ref(),
+                    helper_runner.as_ref(),
+                    deadlines,
+                    &user_context,
+                    &host,
+                    &publisher_evidence,
+                    &package,
+                    progress,
                 )
-                .with_diagnostic_message(
-                    "the current-user helper remains disabled until verified package pinning is active",
-                ))
             })
-        }
+            .await
+        })
     }
 
     fn launch<'a>(
@@ -616,19 +651,25 @@ fn preflight(
         return Err(InstallerError::new(InstallerErrorCode::InternalError)
             .with_diagnostic_message("installer temporary root is not an available directory"));
     }
-    Ok(PlatformInstallPlan::new(vec![host
-        .deployment_volume()
-        .to_path_buf()]))
+    #[cfg(target_os = "windows")]
+    {
+        return Ok(PlatformInstallPlan::new(vec![
+            package_bridge::program_data_bridge_probe_path()?,
+        ]));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    Ok(PlatformInstallPlan::default())
 }
 
 fn validate_package(
     host: &WindowsHost,
     publisher_evidence: &VerifiedPublisherEvidence,
     release: &ReleaseDescriptor,
-    artifact_path: &Path,
+    artifact: &DownloadedArtifact,
 ) -> Result<(), InstallerError> {
     validate_release_for_host(host, release)?;
-    let manifest = parse_msix_manifest(artifact_path)?;
+    let manifest = parse_msix_manifest(artifact.open_for_read()?)?;
     validate_manifest_for_release(&manifest, host, publisher_evidence, release)?;
     // Structural ZIP/manifest checks and the exact Publisher evidence gate are
     // complete here. The unelevated helper performs Windows' signature and
@@ -636,11 +677,15 @@ fn validate_package(
     Ok(())
 }
 
-#[cfg(test)]
 fn install_current_user(
     package_manager: &dyn WindowsPackageManager,
+    context_revalidator: &dyn WindowsContextRevalidator,
+    pin_factory: &dyn WindowsFilePinFactory,
+    helper_runner: &dyn WindowsUserHelperRunner,
+    deadlines: WindowsHelperDeadlines,
     user_context: &InteractiveUserContext,
     host: &WindowsHost,
+    publisher_evidence: &VerifiedPublisherEvidence,
     package: &VerifiedPackage,
     progress: PlatformProgressSink,
 ) -> Result<(), InstallerError> {
@@ -652,42 +697,76 @@ fn install_current_user(
                 "non-Windows validation evidence reached the Windows installer",
             ));
     }
-    // Re-open the downloader-owned fixed artifact and bind its current bytes
-    // to the descriptor retained by `VerifiedPackage` immediately before the
-    // `file://` URI is handed to PackageManager.
+    let job_id = package.job_id().ok_or_else(|| {
+        InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+            .with_diagnostic_message("validated Windows package has no canonical job identity")
+    })?;
+    let parsed_job_id = uuid::Uuid::parse_str(job_id).map_err(|_| {
+        InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+            .with_diagnostic_message("validated Windows package job identity is invalid")
+    })?;
+    if parsed_job_id.hyphenated().to_string() != job_id {
+        return Err(
+            InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
+                .with_diagnostic_message("validated Windows package job identity is not canonical"),
+        );
+    }
+
+    require_current_context(context_revalidator, user_context)?;
     package.revalidate_artifact()?;
-    let package_file_uri = local_file_uri(package.artifact_path())?;
-    progress.report_progress(JobProgress::new(
-        ProgressPhase::Installation,
-        Some(0),
-        Some(100),
-    ));
-    let progress_for_native = progress.clone();
-    let native_reported_completion = Arc::new(AtomicBool::new(false));
-    let native_reported_completion_for_sink = native_reported_completion.clone();
-    let native_progress: WindowsDeploymentProgressSink = Arc::new(move |percentage| {
-        let percentage = percentage.min(100) as u64;
-        if percentage == 100 {
-            native_reported_completion_for_sink.store(true, Ordering::Release);
+    let pin = pin_factory.open(package)?;
+    pin.recheck()?;
+    require_current_context(context_revalidator, user_context)?;
+
+    let helper_result = helper_runner.run(user_context, job_id, pin, progress, deadlines);
+    require_current_context(context_revalidator, user_context)?;
+    helper_result?;
+
+    let records = inventory_records(package_manager, user_context)?;
+    require_current_context(context_revalidator, user_context)?;
+    let stable_records = records
+        .iter()
+        .filter(|record| record.identity_name == WINDOWS_CODEX_STABLE_IDENTITY)
+        .collect::<Vec<_>>();
+    let record = match stable_records.as_slice() {
+        [record] => *record,
+        [] => {
+            return Err(
+                InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+                    .with_diagnostic_message(
+                        "the helper completed without one Stable package for the interactive user",
+                    ),
+            );
         }
-        progress_for_native.report_progress(JobProgress::new(
-            ProgressPhase::Installation,
-            Some(percentage),
-            Some(100),
-        ));
-    });
-    let receipt = package_manager
-        .deploy_current_user(user_context, &package_file_uri, native_progress)
-        .map_err(deployment_error)?;
-    verify_context_evidence(user_context, receipt.context_evidence())?;
-    if !native_reported_completion.load(Ordering::Acquire) {
-        progress.report_progress(JobProgress::new(
-            ProgressPhase::Installation,
-            Some(100),
-            Some(100),
-        ));
+        _ => {
+            return Err(
+                InstallerError::new(InstallerErrorCode::MultipleInstallations)
+                    .with_diagnostic_message(
+                        "multiple Stable Windows packages prevent post-install verification",
+                    ),
+            );
+        }
+    };
+    let installed = installed_application_from_record(record, host, publisher_evidence)?;
+    if !installed_application_matches_release(&installed, package.locked_release())? {
+        return Err(
+            InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+                .with_diagnostic_message(
+                "the current-user package does not match the verified release after installation",
+            ),
+        );
     }
     Ok(())
+}
+
+fn require_current_context(
+    revalidator: &dyn WindowsContextRevalidator,
+    context: &InteractiveUserContext,
+) -> Result<(), InstallerError> {
+    revalidator
+        .is_current(context)
+        .then_some(())
+        .ok_or_else(deployment::interactive_context_error)
 }
 
 fn launch(
@@ -935,14 +1014,12 @@ async fn run_blocking<T: Send + 'static>(
 
 #[cfg(target_os = "windows")]
 mod native_host {
-    use std::{ffi::OsString, os::windows::ffi::OsStringExt, path::PathBuf};
-
     use windows::Win32::System::SystemInformation::{
-        GetNativeSystemInfo, GetWindowsDirectoryW, PROCESSOR_ARCHITECTURE_AMD64,
-        PROCESSOR_ARCHITECTURE_ARM64, SYSTEM_INFO,
+        GetNativeSystemInfo, PROCESSOR_ARCHITECTURE_AMD64, PROCESSOR_ARCHITECTURE_ARM64,
+        SYSTEM_INFO,
     };
 
-    use crate::codex_desktop::{error::InstallerError, types::CpuArchitecture};
+    use crate::codex_desktop::types::CpuArchitecture;
 
     pub(super) fn architecture() -> CpuArchitecture {
         let mut info = SYSTEM_INFO::default();
@@ -954,27 +1031,6 @@ mod native_host {
             _ => CpuArchitecture::Unsupported,
         }
     }
-
-    pub(super) fn deployment_volume() -> Result<PathBuf, InstallerError> {
-        let mut buffer = vec![0_u16; 32_768];
-        let length = unsafe { GetWindowsDirectoryW(Some(&mut buffer)) } as usize;
-        if length == 0 || length >= buffer.len() {
-            return Err(InstallerError::new(
-                crate::codex_desktop::error::InstallerErrorCode::PlatformUnsupported,
-            )
-            .with_diagnostic_message("Windows deployment volume could not be determined"));
-        }
-        let windows_directory = PathBuf::from(OsString::from_wide(&buffer[..length]));
-        windows_directory
-            .parent()
-            .map(PathBuf::from)
-            .ok_or_else(|| {
-                InstallerError::new(
-                    crate::codex_desktop::error::InstallerErrorCode::PlatformUnsupported,
-                )
-                .with_diagnostic_message("Windows deployment volume could not be determined")
-            })
-    }
 }
 
 #[cfg(test)]
@@ -983,9 +1039,8 @@ mod tests {
         collections::HashMap,
         fs::{self, File},
         io::Write,
-        path::PathBuf,
         sync::{
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
             Arc, Mutex,
         },
     };
@@ -995,7 +1050,7 @@ mod tests {
         download::DownloadedArtifact,
         error::{InstallerErrorCode, SuggestedAction},
         temp::JobTempDir,
-        types::{PlatformVersion, TrustedDownloadEndpoint},
+        types::{JobProgress, PlatformVersion, ProgressPhase, TrustedDownloadEndpoint},
         verify::{sha256_hex, ArtifactKind},
     };
     use uuid::Uuid;
@@ -1031,25 +1086,238 @@ mod tests {
         InventoryMain {
             canonical_sid: String,
         },
-        Deploy {
-            canonical_sid: String,
-            uri: String,
-        },
         Launch {
             canonical_sid: String,
             aumid: String,
         },
     }
 
+    #[derive(Default)]
+    struct FakeContextRevalidator {
+        current: AtomicBool,
+        calls: AtomicUsize,
+    }
+
+    impl FakeContextRevalidator {
+        fn current() -> Self {
+            Self {
+                current: AtomicBool::new(true),
+                calls: AtomicUsize::new(0),
+            }
+        }
+
+        fn set_current(&self, current: bool) {
+            self.current.store(current, Ordering::Release);
+        }
+    }
+
+    impl WindowsContextRevalidator for FakeContextRevalidator {
+        fn is_current(&self, _context: &InteractiveUserContext) -> bool {
+            self.calls.fetch_add(1, Ordering::AcqRel);
+            self.current.load(Ordering::Acquire)
+        }
+    }
+
+    #[derive(Default)]
+    struct FakePinState {
+        opened: AtomicUsize,
+        rechecked: AtomicUsize,
+        dropped: AtomicUsize,
+    }
+
+    struct FakePin {
+        state: Arc<FakePinState>,
+    }
+
+    impl WindowsVerifiedFilePin for FakePin {
+        fn recheck(&self) -> Result<(), InstallerError> {
+            self.state.rechecked.fetch_add(1, Ordering::AcqRel);
+            Ok(())
+        }
+
+        fn identity(&self) -> WindowsPackageFileIdentity {
+            WindowsPackageFileIdentity {
+                volume_serial: 7,
+                file_index: 11,
+                size: 13,
+            }
+        }
+
+        fn expected_size(&self) -> u64 {
+            13
+        }
+
+        fn expected_sha256(&self) -> &str {
+            "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+
+        fn duplicate_source_file(&self) -> Result<std::fs::File, InstallerError> {
+            Err(InstallerError::new(
+                InstallerErrorCode::PackageIdentityMismatch,
+            ))
+        }
+    }
+
+    impl Drop for FakePin {
+        fn drop(&mut self) {
+            self.state.dropped.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    struct FakePinFactory {
+        state: Arc<FakePinState>,
+    }
+
+    impl WindowsFilePinFactory for FakePinFactory {
+        fn open(
+            &self,
+            _package: &VerifiedPackage,
+        ) -> Result<Box<dyn WindowsVerifiedFilePin>, InstallerError> {
+            self.state.opened.fetch_add(1, Ordering::AcqRel);
+            Ok(Box::new(FakePin {
+                state: self.state.clone(),
+            }))
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeHelperState {
+        calls: AtomicUsize,
+        job_ids: Mutex<Vec<String>>,
+        deadlines: Mutex<Vec<WindowsHelperDeadlines>>,
+        error: Mutex<Option<InstallerErrorCode>>,
+        retain_pin: AtomicBool,
+        retained_pin: Mutex<Option<Box<dyn WindowsVerifiedFilePin>>>,
+    }
+
+    struct FakeHelperRunner {
+        state: Arc<FakeHelperState>,
+        pin_state: Arc<FakePinState>,
+        context: Arc<FakeContextRevalidator>,
+        drift_after_run: AtomicBool,
+    }
+
+    impl FakeHelperRunner {
+        fn set_error(&self, error: Option<InstallerErrorCode>) {
+            *self
+                .state
+                .error
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = error;
+        }
+
+        fn retain_pin(&self, retain: bool) {
+            self.state.retain_pin.store(retain, Ordering::Release);
+        }
+
+        fn drift_after_run(&self, drift: bool) {
+            self.drift_after_run.store(drift, Ordering::Release);
+        }
+    }
+
+    impl WindowsUserHelperRunner for FakeHelperRunner {
+        fn run(
+            &self,
+            _context: &InteractiveUserContext,
+            job_id: &str,
+            pin: Box<dyn WindowsVerifiedFilePin>,
+            progress: PlatformProgressSink,
+            deadlines: WindowsHelperDeadlines,
+        ) -> Result<(), InstallerError> {
+            assert_eq!(self.pin_state.rechecked.load(Ordering::Acquire), 1);
+            assert_eq!(self.pin_state.dropped.load(Ordering::Acquire), 0);
+            assert_eq!(pin.expected_size(), pin.identity().size);
+            assert_eq!(pin.expected_sha256().len(), 64);
+            assert!(pin
+                .expected_sha256()
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()));
+            self.state.calls.fetch_add(1, Ordering::AcqRel);
+            self.state
+                .job_ids
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(job_id.to_owned());
+            self.state
+                .deadlines
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(deadlines);
+            for completed in [0, 35, 80, 100] {
+                progress.report_progress(JobProgress::new(
+                    ProgressPhase::Installation,
+                    Some(completed),
+                    Some(100),
+                ));
+            }
+            if self.state.retain_pin.load(Ordering::Acquire) {
+                *self
+                    .state
+                    .retained_pin
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(pin);
+            } else {
+                drop(pin);
+            }
+            if self.drift_after_run.load(Ordering::Acquire) {
+                self.context.set_current(false);
+            }
+            match *self
+                .state
+                .error
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+            {
+                Some(code) => Err(InstallerError::new(code)
+                    .with_diagnostic_message("fake helper reported a bounded failure")),
+                None => Ok(()),
+            }
+        }
+    }
+
+    struct FakeInstallHarness {
+        context: Arc<FakeContextRevalidator>,
+        pin_state: Arc<FakePinState>,
+        helper_state: Arc<FakeHelperState>,
+        helper: Arc<FakeHelperRunner>,
+    }
+
+    impl FakeInstallHarness {
+        fn new() -> Self {
+            let context = Arc::new(FakeContextRevalidator::current());
+            let pin_state = Arc::new(FakePinState::default());
+            let helper_state = Arc::new(FakeHelperState::default());
+            let helper = Arc::new(FakeHelperRunner {
+                state: helper_state.clone(),
+                pin_state: pin_state.clone(),
+                context: context.clone(),
+                drift_after_run: AtomicBool::new(false),
+            });
+            Self {
+                context,
+                pin_state,
+                helper_state,
+                helper,
+            }
+        }
+
+        fn dependencies(&self) -> WindowsInstallDependencies {
+            WindowsInstallDependencies {
+                context_revalidator: self.context.clone(),
+                pin_factory: Arc::new(FakePinFactory {
+                    state: self.pin_state.clone(),
+                }),
+                helper_runner: self.helper.clone(),
+                deadlines: WindowsHelperDeadlines::PRODUCTION,
+            }
+        }
+    }
+
     struct FakePackageManager {
         records_by_sid: Mutex<HashMap<String, Vec<WindowsPackageRecord>>>,
         context_is_current: AtomicBool,
         inventory_evidence: Mutex<FakeEvidence>,
-        deployment_evidence: Mutex<FakeEvidence>,
         launch_evidence: Mutex<FakeEvidence>,
-        deployment_result: Mutex<Result<(), WindowsNativeError>>,
-        deployment_progress: Mutex<Vec<u32>>,
-        deployed_uris: Mutex<Vec<String>>,
         launched_aumids: Mutex<Vec<String>>,
         launch_result: Mutex<Result<(), WindowsNativeError>>,
         operations: Mutex<Vec<FakePackageOperation>>,
@@ -1072,11 +1340,7 @@ mod tests {
                 ),
                 context_is_current: AtomicBool::new(true),
                 inventory_evidence: Mutex::new(FakeEvidence::Bound),
-                deployment_evidence: Mutex::new(FakeEvidence::Bound),
                 launch_evidence: Mutex::new(FakeEvidence::Bound),
-                deployment_result: Mutex::new(Ok(())),
-                deployment_progress: Mutex::new(vec![35, 80]),
-                deployed_uris: Mutex::new(Vec::new()),
                 launched_aumids: Mutex::new(Vec::new()),
                 launch_result: Mutex::new(Ok(())),
                 operations: Mutex::new(Vec::new()),
@@ -1101,25 +1365,11 @@ mod tests {
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = evidence;
         }
 
-        fn set_deployment_evidence(&self, evidence: FakeEvidence) {
-            *self
-                .deployment_evidence
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = evidence;
-        }
-
         fn set_launch_evidence(&self, evidence: FakeEvidence) {
             *self
                 .launch_evidence
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = evidence;
-        }
-
-        fn set_deployment_result(&self, result: Result<(), WindowsNativeError>) {
-            *self
-                .deployment_result
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = result;
         }
 
         fn set_launch_result(&self, result: Result<(), WindowsNativeError>) {
@@ -1172,47 +1422,6 @@ mod tests {
             Ok(WindowsPackageInventory::for_test(evidence, records))
         }
 
-        fn deploy_current_user(
-            &self,
-            context: &InteractiveUserContext,
-            package_file_uri: &str,
-            progress: WindowsDeploymentProgressSink,
-        ) -> Result<WindowsUserOperationReceipt, WindowsNativeError> {
-            if !self.context_is_current.load(Ordering::Acquire) {
-                return Err(WindowsNativeError::context_mismatch());
-            }
-            self.deployed_uris
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .push(package_file_uri.to_owned());
-            self.operations
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .push(FakePackageOperation::Deploy {
-                    canonical_sid: context.canonical_sid().to_owned(),
-                    uri: package_file_uri.to_owned(),
-                });
-            for value in self
-                .deployment_progress
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .iter()
-                .copied()
-            {
-                progress(value);
-            }
-            (*self
-                .deployment_result
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()))?;
-            let evidence = self
-                .deployment_evidence
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .for_context(context);
-            Ok(WindowsUserOperationReceipt::for_test(evidence))
-        }
-
         fn launch_aumid(
             &self,
             context: &InteractiveUserContext,
@@ -1246,7 +1455,7 @@ mod tests {
     }
 
     fn host(architecture: CpuArchitecture, version: &str) -> WindowsHost {
-        WindowsHost::new(architecture, version, PathBuf::from("C:\\")).unwrap()
+        WindowsHost::new(architecture, version).unwrap()
     }
 
     fn user_context(sid: &str) -> Arc<InteractiveUserContext> {
@@ -1293,11 +1502,20 @@ mod tests {
     }
 
     fn adapter(manager: Arc<dyn WindowsPackageManager>) -> WindowsPlatformAdapter {
+        let harness = FakeInstallHarness::new();
+        adapter_with_harness(manager, &harness)
+    }
+
+    fn adapter_with_harness(
+        manager: Arc<dyn WindowsPackageManager>,
+        harness: &FakeInstallHarness,
+    ) -> WindowsPlatformAdapter {
         WindowsPlatformAdapter::new(
             manager,
             user_context(USER_SID),
             host(CpuArchitecture::X86_64, "10.0.22631.0"),
             VerifiedPublisherEvidence::for_test(PUBLISHER),
+            harness.dependencies(),
         )
     }
 
@@ -1582,7 +1800,16 @@ mod tests {
             .preflight(&release(CpuArchitecture::X86_64, None), temporary.path())
             .await
             .unwrap();
-        assert_eq!(plan.additional_disk_paths(), &[PathBuf::from("C:\\")]);
+        #[cfg(target_os = "windows")]
+        {
+            let bridge_probe = package_bridge::program_data_bridge_probe_path().unwrap();
+            assert_eq!(
+                plan.additional_disk_paths(),
+                std::slice::from_ref(&bridge_probe)
+            );
+        }
+        #[cfg(not(target_os = "windows"))]
+        assert!(plan.additional_disk_paths().is_empty());
 
         let architecture_error = adapter
             .preflight(&release(CpuArchitecture::Aarch64, None), temporary.path())
@@ -1705,13 +1932,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fake_current_user_deployment_reports_progress_uses_file_uri_and_maps_failures() {
-        let manager = Arc::new(FakePackageManager::default());
-        let adapter = adapter(manager.clone());
+    async fn common_install_orchestration_holds_pin_reports_progress_and_consumes_job_id() {
+        let manager = Arc::new(FakePackageManager::with_records(vec![record(
+            WINDOWS_CODEX_STABLE_IDENTITY,
+            PUBLISHER,
+            CpuArchitecture::X86_64,
+            vec!["CodexApp"],
+        )]));
+        let harness = FakeInstallHarness::new();
+        let adapter = adapter_with_harness(manager.clone(), &harness);
         let trusted_bytes = b"fixture";
         let release = release_for_artifact(trusted_bytes);
         let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
         let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
+        let expected_job_id = package.job_id().unwrap().to_owned();
         let reported = Arc::new(Mutex::new(Vec::<u64>::new()));
         let reported_for_sink = reported.clone();
         let progress: PlatformProgressSink = Arc::new(move |progress: JobProgress| {
@@ -1730,138 +1964,108 @@ mod tests {
                 .unwrap_or_else(|poisoned| poisoned.into_inner()),
             vec![0, 35, 80, 100]
         );
-        let deployed = manager
-            .deployed_uris
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        assert_eq!(deployed.len(), 1);
-        assert!(deployed[0].starts_with("file:///"));
-        assert!(!deployed[0].starts_with("https://"));
-        assert!(matches!(
-            manager.operations().first(),
-            Some(FakePackageOperation::Deploy { canonical_sid, .. })
-                if canonical_sid == USER_SID
-        ));
-
-        for (hresult, expected) in [
-            (
-                0x8007_3D02_u32 as i32,
-                InstallerErrorCode::WindowsPackageInUse,
-            ),
-            (
-                0x8007_3D01_u32 as i32,
-                InstallerErrorCode::WindowsDeploymentBlocked,
-            ),
-            (
-                0x8007_3CF3_u32 as i32,
-                InstallerErrorCode::WindowsDependencyMissing,
-            ),
-            (
-                0x800B_0100_u32 as i32,
-                InstallerErrorCode::PackageSignatureInvalid,
-            ),
-            (
-                0x8123_4567_u32 as i32,
-                InstallerErrorCode::WindowsDeploymentFailed,
-            ),
-        ] {
-            manager.set_deployment_result(Err(WindowsNativeError::from_hresult(hresult)));
-            let error = adapter
-                .install_current_user(&package, Arc::new(|_| {}))
-                .await
-                .unwrap_err();
-            assert_eq!(error.code(), expected);
-        }
-    }
-
-    #[tokio::test]
-    async fn deployment_requires_current_context_and_a_same_context_receipt() {
-        let trusted_bytes = b"fixture";
-        let release = release_for_artifact(trusted_bytes);
-        let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
-        let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
-
-        let drifted_before_deploy = Arc::new(FakePackageManager::default());
-        drifted_before_deploy.set_context_is_current(false);
-        let error = adapter(drifted_before_deploy.clone())
-            .install_current_user(&package, Arc::new(|_| {}))
-            .await
-            .unwrap_err();
-        assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
-        assert!(drifted_before_deploy
-            .deployed_uris
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .is_empty());
-
-        let wrong_receipt = Arc::new(FakePackageManager::default());
-        let other_context = InteractiveUserContext::for_test(OTHER_USER_SID, 1);
-        wrong_receipt.set_deployment_evidence(FakeEvidence::Override(
-            WindowsUserContextEvidence::for_test(&other_context),
-        ));
-        let error = adapter(wrong_receipt.clone())
-            .install_current_user(&package, Arc::new(|_| {}))
-            .await
-            .unwrap_err();
-        assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
+        assert_eq!(harness.pin_state.opened.load(Ordering::Acquire), 1);
+        assert_eq!(harness.pin_state.rechecked.load(Ordering::Acquire), 1);
+        assert_eq!(harness.pin_state.dropped.load(Ordering::Acquire), 1);
+        assert_eq!(harness.helper_state.calls.load(Ordering::Acquire), 1);
+        assert_eq!(harness.context.calls.load(Ordering::Acquire), 4);
         assert_eq!(
-            wrong_receipt
-                .deployed_uris
+            *harness
+                .helper_state
+                .job_ids
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .len(),
-            1
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+            vec![expected_job_id]
+        );
+        assert_eq!(
+            *harness
+                .helper_state
+                .deadlines
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+            vec![WindowsHelperDeadlines::PRODUCTION]
+        );
+        assert_eq!(
+            manager.operations(),
+            vec![FakePackageOperation::InventoryMain {
+                canonical_sid: USER_SID.to_owned(),
+            }]
         );
     }
 
     #[tokio::test]
-    async fn context_drift_after_deploy_blocks_the_same_context_post_query() {
+    async fn helper_failure_is_bounded_and_a_retained_pin_is_not_dropped() {
         let manager = Arc::new(FakePackageManager::with_records(vec![record(
             WINDOWS_CODEX_STABLE_IDENTITY,
             PUBLISHER,
             CpuArchitecture::X86_64,
             vec!["CodexApp"],
         )]));
-        let adapter = adapter(manager.clone());
+        let harness = FakeInstallHarness::new();
+        harness
+            .helper
+            .set_error(Some(InstallerErrorCode::WindowsPackageInUse));
+        harness.helper.retain_pin(true);
+        let adapter = adapter_with_harness(manager.clone(), &harness);
         let trusted_bytes = b"fixture";
         let release = release_for_artifact(trusted_bytes);
         let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
         let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
 
-        adapter
+        let error = adapter
             .install_current_user(&package, Arc::new(|_| {}))
             .await
-            .unwrap();
-        manager.set_context_is_current(false);
-        let error = adapter.inspect_local().await.unwrap_err();
+            .unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::WindowsPackageInUse);
+        assert_eq!(harness.pin_state.dropped.load(Ordering::Acquire), 0);
+        assert!(harness
+            .helper_state
+            .retained_pin
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_some());
+        assert!(manager.operations().is_empty());
+    }
+
+    #[tokio::test]
+    async fn install_revalidates_context_before_and_after_the_helper_side_effect() {
+        let trusted_bytes = b"fixture";
+        let release = release_for_artifact(trusted_bytes);
+        let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
+        let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
+
+        let manager = Arc::new(FakePackageManager::default());
+        let before = FakeInstallHarness::new();
+        before.context.set_current(false);
+        let error = adapter_with_harness(manager.clone(), &before)
+            .install_current_user(&package, Arc::new(|_| {}))
+            .await
+            .unwrap_err();
         assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
-        assert_eq!(
-            manager.operations()[0],
-            FakePackageOperation::Deploy {
-                canonical_sid: USER_SID.to_owned(),
-                uri: manager
-                    .deployed_uris
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())[0]
-                    .clone(),
-            }
-        );
-        assert!(matches!(
-            manager.operations().last(),
-            Some(FakePackageOperation::InventoryMain { canonical_sid })
-                if canonical_sid == USER_SID
-        ));
+        assert_eq!(before.pin_state.opened.load(Ordering::Acquire), 0);
+        assert_eq!(before.helper_state.calls.load(Ordering::Acquire), 0);
+
+        let after = FakeInstallHarness::new();
+        after.helper.drift_after_run(true);
+        let error = adapter_with_harness(manager.clone(), &after)
+            .install_current_user(&package, Arc::new(|_| {}))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
+        assert_eq!(after.helper_state.calls.load(Ordering::Acquire), 1);
+        assert!(manager.operations().is_empty());
     }
 
     #[tokio::test]
     async fn replacement_after_platform_verification_never_reaches_current_user_deployment() {
         let manager = Arc::new(FakePackageManager::default());
+        let harness = FakeInstallHarness::new();
         let adapter = WindowsPlatformAdapter::new(
             manager.clone(),
             user_context(USER_SID),
             host(CpuArchitecture::X86_64, "10.0.22631.0"),
             VerifiedPublisherEvidence::for_test(OFFICIAL_WINDOWS_CODEX_PUBLISHER),
+            harness.dependencies(),
         );
         let (_root, release, artifact) = verified_msix_artifact();
         let package = adapter.verify_package(&release, &artifact).await.unwrap();
@@ -1875,11 +2079,9 @@ mod tests {
             .expect_err("a post-verification replacement must not reach PackageManager");
 
         assert_eq!(error.code(), InstallerErrorCode::ChecksumMismatch);
-        assert!(manager
-            .deployed_uris
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .is_empty());
+        assert_eq!(harness.pin_state.opened.load(Ordering::Acquire), 0);
+        assert_eq!(harness.helper_state.calls.load(Ordering::Acquire), 0);
+        assert!(manager.operations().is_empty());
     }
 
     #[tokio::test]

@@ -5,6 +5,8 @@
 use std::process::ExitCode;
 
 use fyagent_user_helper::parse_cli_args;
+#[cfg(target_os = "windows")]
+use fyagent_user_helper::SETTLED_FAILURE_EXIT_CODE;
 
 #[cfg(target_os = "windows")]
 mod windows;
@@ -26,7 +28,7 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("fyagent-user-helper: {error}");
-                ExitCode::from(1)
+                ExitCode::from(SETTLED_FAILURE_EXIT_CODE)
             }
         }
     }

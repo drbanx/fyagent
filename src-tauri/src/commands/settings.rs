@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+
+use crate::codex_desktop::jobs::{ProcessLifecycleClaim, ProcessLifecycleTransition};
 
 fn merge_settings_for_save(
     mut incoming: crate::settings::AppSettings,
@@ -172,38 +174,49 @@ pub async fn restore_codex_unified_history() -> Result<CodexUnifyHistoryRestoreR
 /// 重启应用程序（当 app_config_dir 变更后使用）
 #[tauri::command]
 pub async fn restart_app(app: AppHandle) -> Result<bool, String> {
-    // restart claim 与 `start_install` 共用 JobStore mutex，必须先于任何清理
-    // 或延迟 re-exec 完成，避免下面的响应窗口出现新 worker。此后命令内没有
-    // 可返回的失败路径；新进程会随进程内存清空而释放该 claim。
-    {
-        let state = app
-            .try_state::<crate::store::AppState>()
-            .ok_or_else(|| "应用状态不可用，无法安全重启。".to_owned())?;
-        state
-            .codex_desktop_service
-            .claim_restart()
-            .map_err(|error| match error.code() {
-                crate::codex_desktop::error::InstallerErrorCode::JobAlreadyRunning => {
-                    "Codex Desktop 安装任务仍在运行或重启正在进行，暂时无法重启应用。".to_owned()
-                }
-                _ => "Codex Desktop 安装状态不可用，无法安全重启。".to_owned(),
-            })?;
+    // The lifecycle claim shares the JobStore mutex with `start_install` and
+    // remains held until this process re-execs. Only the first claim receives
+    // cleanup ownership; later requests reuse that worker without changing the
+    // first accepted exit/restart action.
+    let receipt = claim_process_lifecycle_transition(&app, ProcessLifecycleTransition::Restart)?;
+    if let ProcessLifecycleClaim::StartCleanup(_) = receipt.claim {
+        // Delay gives the command response time to return. The shared worker
+        // restores Live state before the old instance re-execs, which is
+        // required when app_config_dir changes to a different database.
+        crate::start_process_lifecycle_cleanup(app, receipt, std::time::Duration::from_millis(100));
     }
+    Ok(matches!(
+        receipt.claim,
+        ProcessLifecycleClaim::StartCleanup(ProcessLifecycleTransition::Restart)
+            | ProcessLifecycleClaim::CleanupInProgress(ProcessLifecycleTransition::Restart)
+    ))
+}
 
-    crate::save_window_state_before_exit(&app);
+/// Renderer-safe process exit without exposing an arbitrary Tauri exit code.
+///
+/// In particular, the renderer cannot forge `RESTART_EXIT_CODE`, whose Tauri
+/// path cannot be stopped by `prevent_exit`. This command starts the shared
+/// cleanup worker directly so its first claim cannot be mistaken for another
+/// cleanup permit by the resulting runtime event.
+#[tauri::command]
+pub fn exit_app(app: AppHandle) -> Result<(), String> {
+    let receipt = claim_process_lifecycle_transition(&app, ProcessLifecycleTransition::Exit)?;
+    if let ProcessLifecycleClaim::StartCleanup(_) = receipt.claim {
+        crate::start_process_lifecycle_cleanup(app, receipt, std::time::Duration::ZERO);
+    }
+    Ok(())
+}
 
-    // 在后台延迟重启，让函数有时间返回响应
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        // app.restart() 走 RESTART_EXIT_CODE 路径，ExitRequested 处理器会直接
-        // 放行给 Tauri 默认 re-exec，不执行代理/Live 清理。但本命令用于
-        // app_config_dir 变更后的重启：新实例会切到新数据库，拿不到旧库里的
-        // Live 备份，无法恢复被接管的 Live 配置。因此必须趁旧实例的事件循环
-        // 仍存活，在这里同步完成恢复（保留代理状态，新实例启动时自动重新接管）。
-        crate::cleanup_before_exit(&app).await;
-        app.restart();
-    });
-    Ok(true)
+fn claim_process_lifecycle_transition(
+    app: &AppHandle,
+    requested: ProcessLifecycleTransition,
+) -> Result<crate::ProcessLifecycleClaimReceipt, String> {
+    crate::claim_process_lifecycle_transition(app, requested).map_err(|error| match error.code() {
+        crate::codex_desktop::error::InstallerErrorCode::JobAlreadyRunning => {
+            "Codex Desktop 安装任务仍在运行，暂时无法退出或重启应用。".to_owned()
+        }
+        _ => "Codex Desktop 安装状态不可用，无法安全退出或重启。".to_owned(),
+    })
 }
 
 /// 获取 app_config_dir 覆盖配置 (从 Store)
@@ -542,38 +555,73 @@ mod tests {
     }
 
     #[test]
-    fn restart_app_claims_the_codex_job_slot_before_cleanup_and_reexec() {
+    fn restart_app_only_starts_cleanup_for_the_first_lifecycle_claim() {
         let source = include_str!("settings.rs").replace("\r\n", "\n");
         let restart_start = source
             .find(concat!("pub async fn ", "restart_app"))
             .expect("restart command remains present");
         let restart_end = source[restart_start..]
-            .find("\n/// 获取 app_config_dir")
+            .find("\n/// Renderer-safe process exit")
             .map(|offset| restart_start + offset)
             .expect("restart command remains bounded by the next command");
         let restart_body = &source[restart_start..restart_end];
 
         let claim = restart_body
-            .find(concat!("claim_", "restart()"))
-            .expect("restart must reserve the installer slot");
-        let save_window_state = restart_body
-            .find(concat!("save_window_state_before_", "exit(&app)"))
-            .expect("restart must preserve the existing window-state handoff");
+            .find(concat!("claim_process_", "lifecycle_transition("))
+            .expect("restart must reserve the process lifecycle slot");
+        let owner_branch = restart_body
+            .find("ProcessLifecycleClaim::StartCleanup(_)")
+            .expect("only the first claim owns cleanup");
         let cleanup = restart_body
-            .find(concat!("cleanup_before_", "exit(&app)"))
-            .expect("restart must retain the existing cleanup path");
-        let reexec = restart_body
-            .find(concat!("app.", "restart()"))
-            .expect("restart must retain the Tauri re-exec call");
+            .find("start_process_lifecycle_cleanup")
+            .expect("restart delegates to the shared cleanup worker");
 
-        assert!(claim < save_window_state);
-        assert!(claim < cleanup);
-        assert!(claim < reexec);
+        assert!(claim < owner_branch);
+        assert!(owner_branch < cleanup);
+        assert_eq!(
+            restart_body
+                .matches("start_process_lifecycle_cleanup")
+                .count(),
+            1
+        );
+        assert!(!restart_body.contains(concat!("cleanup_before_", "exit")));
+        assert!(!restart_body.contains(concat!("app.", "restart()")));
         assert!(!restart_body.contains(concat!("cancel_", "install")));
     }
 
     #[test]
-    fn renderer_capability_does_not_expose_uncoordinated_process_restart() {
+    fn coordinated_exit_only_starts_the_shared_cleanup_once() {
+        let source = include_str!("settings.rs").replace("\r\n", "\n");
+        let exit_start = source
+            .find(concat!("pub fn ", "exit_app"))
+            .expect("coordinated exit command remains present");
+        let exit_end = source[exit_start..]
+            .find("\nfn claim_process_lifecycle_transition")
+            .map(|offset| exit_start + offset)
+            .expect("exit command remains bounded by its claim helper");
+        let exit_body = &source[exit_start..exit_end];
+
+        let claim = exit_body
+            .find(concat!("claim_process_", "lifecycle_transition("))
+            .expect("exit must reserve the process lifecycle slot");
+        let owner_branch = exit_body
+            .find("ProcessLifecycleClaim::StartCleanup(_)")
+            .expect("only the first exit claim owns cleanup");
+        let cleanup = exit_body
+            .find("start_process_lifecycle_cleanup")
+            .expect("exit delegates to the shared cleanup worker");
+        assert!(claim < owner_branch);
+        assert!(owner_branch < cleanup);
+        assert_eq!(
+            exit_body.matches("start_process_lifecycle_cleanup").count(),
+            1
+        );
+        assert!(!exit_body.contains(concat!("app.", "exit(0)")));
+        assert!(!exit_body.contains("RESTART_EXIT_CODE"));
+    }
+
+    #[test]
+    fn renderer_capability_exposes_no_uncoordinated_process_lifecycle_api() {
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../../capabilities/default.json"))
                 .expect("default capability remains valid JSON");
@@ -585,7 +633,7 @@ mod tests {
             !permissions
                 .iter()
                 .any(|permission| permission.as_str() == Some("process:allow-restart")),
-            "renderer restart must use restart_app so claim_restart protects active installer jobs"
+            "renderer restart must use the lifecycle-claiming command"
         );
         assert!(
             !permissions
@@ -594,10 +642,10 @@ mod tests {
             "process:default would silently re-grant uncoordinated renderer restart"
         );
         assert!(
-            permissions
+            !permissions
                 .iter()
                 .any(|permission| permission.as_str() == Some("process:allow-exit")),
-            "existing renderer exit flows must retain the guarded exit capability"
+            "renderer exit must use the fixed-code lifecycle-claiming command"
         );
     }
 }

@@ -45,7 +45,10 @@ mod windows_runtime;
 #[cfg(any(target_os = "windows", test))]
 mod windows_window_state;
 
-use crate::codex_desktop::types::JobStage;
+use crate::codex_desktop::{
+    jobs::{ProcessLifecycleClaim, ProcessLifecycleCoordinator, ProcessLifecycleTransition},
+    types::JobStage,
+};
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
 pub use codex_config::{
     get_codex_auth_path, get_codex_config_path, read_codex_live_settings, write_codex_live_atomic,
@@ -1917,6 +1920,7 @@ pub fn run() {
             commands::get_log_config,
             commands::set_log_config,
             commands::restart_app,
+            commands::exit_app,
             commands::is_portable_mode,
             commands::copy_text_to_clipboard,
             commands::get_claude_plugin_status,
@@ -2297,7 +2301,14 @@ pub fn run() {
                     };
                     match state.codex_desktop_service.cancel_install(&job.job_id) {
                         Ok(snapshot) if snapshot.stage == JobStage::Cancelled => {
-                            exit_after_cleanup(app_handle.clone());
+                            match claim_process_lifecycle_transition_for_exit(app_handle) {
+                                Ok(claim) => {
+                                    start_claimed_exit_cleanup(app_handle.clone(), claim);
+                                }
+                                Err(_) => {
+                                    show_codex_desktop_installation_wait_dialog(app_handle);
+                                }
+                            }
                         }
                         Ok(snapshot)
                             if snapshot.stage.is_cancellable() && !snapshot.cancellable =>
@@ -2334,9 +2345,20 @@ pub fn run() {
                 }
             }
 
-            log::info!("收到用户主动退出请求 (code={code:?})，开始清理...");
+            let claim = match claim_process_lifecycle_transition_for_exit(app_handle) {
+                Ok(claim) => claim,
+                Err(error) => {
+                    log::warn!(
+                        "Process exit could not claim the installer lifecycle slot: {:?}",
+                        error.code()
+                    );
+                    api.prevent_exit();
+                    show_codex_desktop_installation_wait_dialog(app_handle);
+                    return;
+                }
+            };
             api.prevent_exit();
-            exit_after_cleanup(app_handle.clone());
+            start_claimed_exit_cleanup(app_handle.clone(), claim);
             return;
         }
 
@@ -2393,13 +2415,147 @@ pub fn run() {
     });
 }
 
-/// Completes the normal application cleanup and terminates without sending a
-/// second `ExitRequested` event. Callers must have already decided that no
-/// Codex desktop installer worker can still touch package or temporary state.
-fn exit_after_cleanup(app_handle: tauri::AppHandle) {
+static PRE_APP_PROCESS_LIFECYCLE: Mutex<ProcessLifecycleCoordinator> =
+    Mutex::new(ProcessLifecycleCoordinator::new());
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessLifecycleCoordinatorOrigin {
+    Service,
+    PreApp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProcessLifecycleClaimReceipt {
+    pub(crate) claim: ProcessLifecycleClaim,
+    origin: ProcessLifecycleCoordinatorOrigin,
+}
+
+pub(crate) fn claim_process_lifecycle_transition(
+    app_handle: &tauri::AppHandle,
+    requested: ProcessLifecycleTransition,
+) -> Result<ProcessLifecycleClaimReceipt, crate::codex_desktop::error::InstallerError> {
+    let Some(state) = app_handle.try_state::<store::AppState>() else {
+        // Recovery UI can be shown before AppState is managed. Without that
+        // state no installer worker can exist, but multiple recovery exit
+        // channels can still race. Keep them on the same typed single-flight
+        // coordinator instead of granting each one cleanup ownership.
+        return PRE_APP_PROCESS_LIFECYCLE
+            .lock()
+            .map(|mut coordinator| ProcessLifecycleClaimReceipt {
+                claim: coordinator.claim(requested),
+                origin: ProcessLifecycleCoordinatorOrigin::PreApp,
+            })
+            .map_err(|_| {
+                crate::codex_desktop::error::InstallerError::new(
+                    crate::codex_desktop::error::InstallerErrorCode::InternalError,
+                )
+                .with_diagnostic_message(
+                    "pre-application process lifecycle synchronization is unavailable",
+                )
+            });
+    };
+    state
+        .codex_desktop_service
+        .claim_process_lifecycle_transition(requested)
+        .map(|claim| ProcessLifecycleClaimReceipt {
+            claim,
+            origin: ProcessLifecycleCoordinatorOrigin::Service,
+        })
+}
+
+fn claim_process_lifecycle_transition_for_exit(
+    app_handle: &tauri::AppHandle,
+) -> Result<ProcessLifecycleClaimReceipt, crate::codex_desktop::error::InstallerError> {
+    claim_process_lifecycle_transition(app_handle, ProcessLifecycleTransition::Exit)
+}
+
+fn start_claimed_exit_cleanup(app_handle: tauri::AppHandle, receipt: ProcessLifecycleClaimReceipt) {
+    match receipt.claim {
+        ProcessLifecycleClaim::StartCleanup(_) => {
+            start_process_lifecycle_cleanup(app_handle, receipt, std::time::Duration::ZERO);
+        }
+        ProcessLifecycleClaim::CleanupInProgress(selected) => {
+            log::info!(
+                "Process lifecycle cleanup is already in progress; merged exit into {selected:?}"
+            );
+        }
+    }
+}
+
+/// Starts the one process-lifecycle cleanup worker authorized by
+/// `ProcessLifecycleClaim::StartCleanup`.
+///
+/// The first accepted action remains frozen through cleanup. Conflicting later
+/// requests join this worker without racing it with another cleanup/terminal
+/// task or reversing that first intent.
+pub(crate) fn start_process_lifecycle_cleanup(
+    app_handle: tauri::AppHandle,
+    receipt: ProcessLifecycleClaimReceipt,
+    response_delay: std::time::Duration,
+) {
+    if !matches!(receipt.claim, ProcessLifecycleClaim::StartCleanup(_)) {
+        log::warn!("Ignored process lifecycle cleanup start without ownership");
+        return;
+    }
     tauri::async_runtime::spawn(async move {
+        if !response_delay.is_zero() {
+            tokio::time::sleep(response_delay).await;
+        }
         save_window_state_before_exit(&app_handle);
         cleanup_before_exit(&app_handle).await;
+
+        let selected_transition = match receipt.origin {
+            ProcessLifecycleCoordinatorOrigin::Service => {
+                let Some(state) = app_handle.try_state::<store::AppState>() else {
+                    log::error!(
+                        "Installer lifecycle service disappeared before cleanup completion"
+                    );
+                    return;
+                };
+                match state
+                    .codex_desktop_service
+                    .finalize_process_lifecycle_transition()
+                {
+                    Ok(Some(selected)) => selected,
+                    Ok(None) => {
+                        log::warn!(
+                            "Ignored duplicate process lifecycle completion after shared cleanup"
+                        );
+                        return;
+                    }
+                    Err(error) => {
+                        log::error!(
+                            "Process lifecycle state could not be finalized after cleanup: {:?}",
+                            error.code()
+                        );
+                        return;
+                    }
+                }
+            }
+            ProcessLifecycleCoordinatorOrigin::PreApp => match PRE_APP_PROCESS_LIFECYCLE.lock() {
+                Ok(mut coordinator) => match coordinator.finalize() {
+                    Some(selected) => selected,
+                    None => {
+                        log::warn!(
+                            "Ignored duplicate pre-application process lifecycle completion"
+                        );
+                        return;
+                    }
+                },
+                Err(_) => {
+                    log::error!(
+                        "Pre-application process lifecycle state could not be finalized after cleanup"
+                    );
+                    return;
+                }
+            },
+        };
+
+        if selected_transition == ProcessLifecycleTransition::Restart {
+            log::info!("清理完成，重启应用");
+            app_handle.restart();
+        }
+
         // 先于 std::process::exit 显式移除托盘图标。
         // 进程直接退出时 Tauri 运行时不走正常 Drop 流程，
         // 不会向 Windows Shell 发送 NIM_DELETE，导致已退出的进程
@@ -2443,7 +2599,18 @@ fn exit_after_installer_cancellation(app_handle: tauri::AppHandle, job_id: Strin
                 Some(snapshot)
                     if snapshot.job_id == job_id && snapshot.stage == JobStage::Cancelled =>
                 {
-                    exit_after_cleanup(app_handle.clone());
+                    match claim_process_lifecycle_transition_for_exit(&app_handle) {
+                        Ok(claim) => {
+                            start_claimed_exit_cleanup(app_handle.clone(), claim);
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "Process exit lost the installer lifecycle claim race: {:?}",
+                                error.code()
+                            );
+                            show_codex_desktop_installation_wait_dialog(&app_handle);
+                        }
+                    }
                     return;
                 }
                 Some(snapshot)
@@ -3006,22 +3173,6 @@ pub fn destroy_single_instance_lock(app_handle: &tauri::AppHandle) {
     let _ = app_handle;
 }
 
-/// 清理托盘图标、释放 single-instance 锁后重启当前应用。
-///
-/// 直接走 `tauri::process::restart`（spawn 新进程 + `exit(0)`），不经过事件
-/// 循环退出，因此 Tauri 内部的 `cleanup_before_exit` 和各插件的
-/// `RunEvent::Exit` 钩子都不会执行。需要的清理由调用方与本函数显式补偿：
-/// 窗口状态、代理/Live 恢复（调用方）；托盘图标、single-instance 锁（本函数）。
-///
-/// 有意不调 `AppHandle::cleanup_before_exit()`：它会在调用线程上 Drop 托盘
-/// 图标，而 macOS 的 NSStatusItem 操作要求主线程；`set_visible(false)` 走
-/// `run_item_main_thread` 代理，跨线程安全（见 `remove_tray_icon_before_exit`）。
-pub fn restart_process(app_handle: &tauri::AppHandle) -> ! {
-    remove_tray_icon_before_exit(app_handle);
-    destroy_single_instance_lock(app_handle);
-    tauri::process::restart(&app_handle.env());
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -3385,6 +3536,61 @@ mod tests {
             classify_codex_desktop_exit_protection(Some((JobStage::Succeeded, false))),
             CodexDesktopExitProtection::AllowExit
         );
+    }
+
+    #[test]
+    fn every_normal_exit_cleanup_path_uses_the_single_lifecycle_cleanup_owner() {
+        let source = include_str!("lib.rs").replace("\r\n", "\n");
+        let handler_start = source
+            .find("if let RunEvent::ExitRequested")
+            .expect("the central exit handler remains present");
+        let handler_end = source[handler_start..]
+            .find("\n        #[cfg(target_os = \"macos\")]")
+            .map(|offset| handler_start + offset)
+            .expect("the central exit handler remains bounded");
+        let handler = &source[handler_start..handler_end];
+        let final_claim = handler
+            .rfind("claim_process_lifecycle_transition_for_exit(app_handle)")
+            .expect("the normal exit path claims the installer lifecycle slot");
+        let final_cleanup = handler
+            .rfind("start_claimed_exit_cleanup(app_handle.clone(), claim)")
+            .expect("the normal exit path delegates to the typed cleanup owner");
+        assert!(final_claim < final_cleanup);
+
+        let cancellation_start = source
+            .find("fn exit_after_installer_cancellation")
+            .expect("the cancellation waiter remains present");
+        let cancellation_end = source[cancellation_start..]
+            .find("\n// ============================================================\n// 应用退出清理")
+            .map(|offset| cancellation_start + offset)
+            .expect("the cancellation waiter remains bounded");
+        let cancellation = &source[cancellation_start..cancellation_end];
+        let cancellation_claim = cancellation
+            .find("claim_process_lifecycle_transition_for_exit(&app_handle)")
+            .expect("terminal cancellation claims before process cleanup");
+        let cancellation_cleanup = cancellation
+            .find("start_claimed_exit_cleanup(app_handle.clone(), claim)")
+            .expect("terminal cancellation delegates to the typed cleanup owner");
+        assert!(cancellation_claim < cancellation_cleanup);
+
+        let helper_start = source
+            .find("fn start_claimed_exit_cleanup")
+            .expect("the central typed cleanup owner helper remains present");
+        let helper_end = source[helper_start..]
+            .find("\n/// Starts the one process-lifecycle cleanup worker")
+            .map(|offset| helper_start + offset)
+            .expect("the cleanup owner helper remains bounded");
+        let helper = &source[helper_start..helper_end];
+        assert!(helper.contains("ProcessLifecycleClaim::StartCleanup(_)"));
+        assert!(helper.contains("ProcessLifecycleClaim::CleanupInProgress(selected)"));
+        assert_eq!(
+            helper.matches("start_process_lifecycle_cleanup").count(),
+            1,
+            "an in-flight restart or exit must not spawn another cleanup worker"
+        );
+
+        assert!(!source.contains(concat!("pub fn restart_", "process")));
+        assert!(!source.contains(concat!("tauri::process::", "restart")));
     }
 
     #[test]

@@ -30,6 +30,33 @@ const miscCommandsPath = path.resolve(
   "commands",
   "misc.rs",
 );
+const lifecycleJobsPath = path.resolve(
+  __dirname,
+  "..",
+  "src-tauri",
+  "src",
+  "codex_desktop",
+  "jobs.rs",
+);
+const settingsCommandsPath = path.resolve(
+  __dirname,
+  "..",
+  "src-tauri",
+  "src",
+  "commands",
+  "settings.rs",
+);
+const appLibraryPath = path.resolve(
+  __dirname,
+  "..",
+  "src-tauri",
+  "src",
+  "lib.rs",
+);
+const rendererLifecyclePaths = [
+  path.resolve(__dirname, "..", "src", "main.tsx"),
+  path.resolve(__dirname, "..", "src", "components", "DatabaseUpgrade.tsx"),
+];
 const activeWindowsInstallDocs = [
   path.resolve(__dirname, "..", "README.md"),
   path.resolve(__dirname, "..", "README_DE.md"),
@@ -74,12 +101,49 @@ describe("desktop IPC capability and CSP boundary", () => {
     expect(capability.windows).toEqual(["main"]);
     expect(capability.permissions).toContain("log:allow-log");
     expect(capability.permissions).toContain("dialog:allow-message");
-    expect(capability.permissions).toContain("process:allow-exit");
+    expect(capability.permissions).not.toContain("process:allow-exit");
     expect(capability.permissions).not.toContain("opener:default");
     expect(capability.permissions).not.toContain("dialog:default");
     expect(capability.permissions).not.toContain("log:default");
     expect(capability.permissions).not.toContain("process:default");
     expect(capability.permissions).not.toContain("process:allow-restart");
+  });
+
+  it("routes renderer exits through the fixed-code lifecycle command", () => {
+    for (const sourcePath of rendererLifecyclePaths) {
+      const source = fs.readFileSync(sourcePath, "utf8");
+      expect(source).not.toContain("@tauri-apps/plugin-process");
+      expect(source).not.toMatch(/\bexit\s*\(/u);
+      expect(source).toContain('invoke("exit_app")');
+    }
+  });
+
+  it("keeps exit and restart cleanup on one first-wins lifecycle owner", () => {
+    const jobs = fs.readFileSync(lifecycleJobsPath, "utf8");
+    const settings = fs.readFileSync(settingsCommandsPath, "utf8");
+    const library = fs.readFileSync(appLibraryPath, "utf8");
+
+    expect(jobs).toContain("enum ProcessLifecycleState");
+    expect(jobs).toContain("Idle,");
+    expect(jobs).toContain("Cleaning(ProcessLifecycleTransition)");
+    expect(jobs).toContain("Finalizing(ProcessLifecycleTransition)");
+    expect(jobs).toContain("ProcessLifecycleClaim::StartCleanup(requested)");
+    expect(jobs).toContain("ProcessLifecycleClaim::CleanupInProgress(current)");
+    expect(jobs).not.toContain("current.merge(requested)");
+
+    expect(settings).toContain(
+      "if let ProcessLifecycleClaim::StartCleanup(_) = receipt.claim",
+    );
+    expect(settings).not.toContain("app.exit(0)");
+    expect(settings).not.toContain("app.restart()");
+
+    expect(library).toContain("PRE_APP_PROCESS_LIFECYCLE");
+    expect(library).toContain("ProcessLifecycleClaimReceipt");
+    expect(library).toContain("ProcessLifecycleCoordinatorOrigin::PreApp");
+    expect(library).toContain("ProcessLifecycleCoordinatorOrigin::Service");
+    expect(library).toContain(
+      "if !matches!(receipt.claim, ProcessLifecycleClaim::StartCleanup(_))",
+    );
   });
 
   it("keeps the CSP explicit and asset protocol limited to an empty allowlist", () => {

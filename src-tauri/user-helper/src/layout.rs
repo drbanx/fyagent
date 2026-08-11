@@ -8,12 +8,26 @@ use crate::CanonicalJobId;
 pub const CACHE_DIRECTORY: &str = "cache";
 pub const CODEX_INSTALLER_DIRECTORY: &str = "codex-installer";
 pub const INSTALLER_FILE_NAME: &str = "installer.msix";
-pub const USER_HELPER_PIPE_PREFIX: &str = r"\\.\pipe\LOCAL\FyAgent.UserHelper.v1.";
-/// `FILE_WRITE_DATA | SYNCHRONIZE`; shared with the parent pipe DACL.
+pub const PACKAGE_BRIDGE_PART_FILE_NAME: &str = "installer.msix.part";
+pub const PACKAGE_BRIDGE_ROOT_DIRECTORY: &str =
+    "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
+pub const PACKAGE_BRIDGE_VERSION_DIRECTORY: &str = "v1";
+pub const FYAGENT_MAIN_EXECUTABLE_FILE_NAME: &str = "fyagent.exe";
+pub const USER_HELPER_EXECUTABLE_FILE_NAME: &str = "fyagent-user-helper.exe";
+pub const USER_HELPER_PIPE_PREFIX: &str = r"\\.\pipe\LOCAL\FyAgent.UserHelper.v2.";
+pub const USER_HELPER_ADMISSION_EVENT_PREFIX: &str = r"Local\FyAgent.UserHelper.Admit.v2.";
+pub const USER_HELPER_CANCEL_EVENT_PREFIX: &str = r"Local\FyAgent.UserHelper.Cancel.v2.";
+/// `READ_CONTROL | SYNCHRONIZE`; lets the helper wait and verify BA ownership
+/// without granting it `EVENT_MODIFY_STATE`.
+pub const USER_HELPER_CONTROL_EVENT_ACCESS_MASK: u32 = 0x0012_0000;
+/// `FILE_READ_DATA | FILE_WRITE_DATA | READ_CONTROL | SYNCHRONIZE`; shared
+/// with the parent pipe DACL. The fixed read direction carries only the
+/// parent-created package-bridge control, while `READ_CONTROL` lets the helper
+/// verify the server object's BA owner.
 ///
 /// `FILE_GENERIC_WRITE` is intentionally not used because its append-data bit
 /// aliases `FILE_CREATE_PIPE_INSTANCE` for named pipes.
-pub const USER_HELPER_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0010_0002;
+pub const USER_HELPER_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_0003;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstallLayout {
@@ -88,15 +102,27 @@ pub fn derive_install_layout(
 }
 
 pub fn pipe_name(nonce: &crate::PipeNonce) -> String {
-    let mut name = String::with_capacity(USER_HELPER_PIPE_PREFIX.len() + nonce.as_str().len());
-    name.push_str(USER_HELPER_PIPE_PREFIX);
+    nonce_scoped_name(USER_HELPER_PIPE_PREFIX, nonce)
+}
+
+pub fn admission_event_name(nonce: &crate::PipeNonce) -> String {
+    nonce_scoped_name(USER_HELPER_ADMISSION_EVENT_PREFIX, nonce)
+}
+
+pub fn cancel_event_name(nonce: &crate::PipeNonce) -> String {
+    nonce_scoped_name(USER_HELPER_CANCEL_EVENT_PREFIX, nonce)
+}
+
+fn nonce_scoped_name(prefix: &str, nonce: &crate::PipeNonce) -> String {
+    let mut name = String::with_capacity(prefix.len() + nonce.as_str().len());
+    name.push_str(prefix);
     name.push_str(nonce.as_str());
     name
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{ffi::OsStr, path::Path};
 
     use crate::{CanonicalJobId, PipeNonce};
 
@@ -109,18 +135,72 @@ mod tests {
         CanonicalJobId::parse(JOB_ID).expect("canonical UUID")
     }
 
+    fn assert_single_normal_component(value: &str) {
+        assert!(!value.contains('/'));
+        assert!(!value.contains('\\'));
+        assert_ne!(value, ".");
+        assert_ne!(value, "..");
+
+        let mut components = Path::new(value).components();
+        assert!(matches!(
+            components.next(),
+            Some(Component::Normal(component)) if component == OsStr::new(value)
+        ));
+        assert!(components.next().is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    const ABSOLUTE_HELPER: &str = r"C:\opt\FyAgent\fyagent-user-helper.exe";
+    #[cfg(not(target_os = "windows"))]
+    const ABSOLUTE_HELPER: &str = "/opt/FyAgent/fyagent-user-helper.exe";
+    #[cfg(target_os = "windows")]
+    const INSTALL_ROOT: &str = r"C:\opt\FyAgent";
+    #[cfg(not(target_os = "windows"))]
+    const INSTALL_ROOT: &str = "/opt/FyAgent";
+    #[cfg(target_os = "windows")]
+    const ROOT: &str = r"C:\";
+    #[cfg(not(target_os = "windows"))]
+    const ROOT: &str = "/";
+    #[cfg(target_os = "windows")]
+    const SPACED_HELPER: &str = r"C:\install root\FyAgent\fyagent-user-helper.exe";
+    #[cfg(not(target_os = "windows"))]
+    const SPACED_HELPER: &str = "/mnt/install root/FyAgent/fyagent-user-helper.exe";
+    #[cfg(target_os = "windows")]
+    const SPACED_ROOT: &str = r"C:\install root\FyAgent";
+    #[cfg(not(target_os = "windows"))]
+    const SPACED_ROOT: &str = "/mnt/install root/FyAgent";
+    #[cfg(target_os = "windows")]
+    const TRAVERSAL_HELPER: &str = r"C:\opt\FyAgent\..\other\fyagent-user-helper.exe";
+    #[cfg(not(target_os = "windows"))]
+    const TRAVERSAL_HELPER: &str = "/opt/FyAgent/../other/fyagent-user-helper.exe";
+
+    #[test]
+    fn package_bridge_components_are_exact_fixed_single_names() {
+        assert_eq!(
+            PACKAGE_BRIDGE_ROOT_DIRECTORY,
+            "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}"
+        );
+        assert_eq!(PACKAGE_BRIDGE_VERSION_DIRECTORY, "v1");
+        assert_eq!(PACKAGE_BRIDGE_PART_FILE_NAME, "installer.msix.part");
+        assert_single_normal_component(PACKAGE_BRIDGE_ROOT_DIRECTORY);
+        assert_single_normal_component(PACKAGE_BRIDGE_VERSION_DIRECTORY);
+        assert_single_normal_component(INSTALLER_FILE_NAME);
+        assert_single_normal_component(PACKAGE_BRIDGE_PART_FILE_NAME);
+    }
+
     #[test]
     fn derives_only_the_fixed_direct_child_installer_path() {
-        let layout =
-            derive_install_layout(Path::new("/opt/FyAgent/fyagent-user-helper.exe"), &job_id())
-                .expect("absolute helper path");
+        let layout = derive_install_layout(Path::new(ABSOLUTE_HELPER), &job_id())
+            .expect("absolute helper path");
 
-        assert_eq!(layout.install_root(), Path::new("/opt/FyAgent"));
+        assert_eq!(layout.install_root(), Path::new(INSTALL_ROOT));
         assert_eq!(
             layout.installer_path(),
-            Path::new(
-                "/opt/FyAgent/cache/codex-installer/123e4567-e89b-12d3-a456-426614174000/installer.msix"
-            )
+            Path::new(INSTALL_ROOT)
+                .join("cache")
+                .join("codex-installer")
+                .join(JOB_ID)
+                .join("installer.msix")
         );
         assert_eq!(
             layout
@@ -135,15 +215,9 @@ mod tests {
 
     #[test]
     fn preserves_install_roots_with_spaces_without_using_the_working_directory() {
-        let layout = derive_install_layout(
-            Path::new("/mnt/install root/FyAgent/fyagent-user-helper.exe"),
-            &job_id(),
-        )
-        .expect("absolute helper path");
-        assert_eq!(
-            layout.install_root(),
-            Path::new("/mnt/install root/FyAgent")
-        );
+        let layout = derive_install_layout(Path::new(SPACED_HELPER), &job_id())
+            .expect("absolute helper path");
+        assert_eq!(layout.install_root(), Path::new(SPACED_ROOT));
         assert!(layout.installer_path().ends_with(INSTALLER_FILE_NAME));
     }
 
@@ -154,7 +228,7 @@ mod tests {
             LayoutError::ExecutablePathNotAbsolute
         );
         assert_eq!(
-            derive_install_layout(Path::new("/"), &job_id()).unwrap_err(),
+            derive_install_layout(Path::new(ROOT), &job_id()).unwrap_err(),
             LayoutError::ExecutablePathHasNoFileName
         );
     }
@@ -162,17 +236,17 @@ mod tests {
     #[test]
     fn rejects_parent_traversal_in_the_executable_path() {
         assert_eq!(
-            derive_install_layout(
-                Path::new("/opt/FyAgent/../other/fyagent-user-helper.exe"),
-                &job_id()
-            )
-            .unwrap_err(),
+            derive_install_layout(Path::new(TRAVERSAL_HELPER), &job_id()).unwrap_err(),
             LayoutError::ExecutablePathNotNormalized
         );
     }
 
     #[test]
     fn pipe_name_is_exactly_the_fixed_local_prefix_and_nonce() {
+        assert_eq!(
+            USER_HELPER_PIPE_PREFIX,
+            r"\\.\pipe\LOCAL\FyAgent.UserHelper.v2."
+        );
         let nonce = PipeNonce::parse(NONCE).expect("valid nonce");
         let name = pipe_name(&nonce);
         assert_eq!(name, format!("{USER_HELPER_PIPE_PREFIX}{NONCE}"));
@@ -181,17 +255,59 @@ mod tests {
     }
 
     #[test]
-    fn pipe_client_access_is_write_data_plus_synchronize_only() {
+    fn admission_and_cancel_events_are_distinct_fixed_nonce_scoped_names() {
+        assert_eq!(
+            USER_HELPER_ADMISSION_EVENT_PREFIX,
+            r"Local\FyAgent.UserHelper.Admit.v2."
+        );
+        assert_eq!(
+            USER_HELPER_CANCEL_EVENT_PREFIX,
+            r"Local\FyAgent.UserHelper.Cancel.v2."
+        );
+        let nonce = PipeNonce::parse(NONCE).expect("valid nonce");
+        let admission = admission_event_name(&nonce);
+        let cancel = cancel_event_name(&nonce);
+
+        assert_eq!(
+            admission,
+            format!("{USER_HELPER_ADMISSION_EVENT_PREFIX}{NONCE}")
+        );
+        assert_eq!(cancel, format!("{USER_HELPER_CANCEL_EVENT_PREFIX}{NONCE}"));
+        assert_ne!(admission, cancel);
+        assert!(!admission.contains(JOB_ID));
+        assert!(!cancel.contains(JOB_ID));
+    }
+
+    #[test]
+    fn pipe_client_access_is_exact_read_write_data_plus_control_and_synchronize() {
+        const FILE_READ_DATA: u32 = 0x0000_0001;
         const FILE_WRITE_DATA: u32 = 0x0000_0002;
         const FILE_APPEND_DATA_OR_CREATE_PIPE_INSTANCE: u32 = 0x0000_0004;
+        const READ_CONTROL: u32 = 0x0002_0000;
         const SYNCHRONIZE: u32 = 0x0010_0000;
 
         assert_eq!(
             USER_HELPER_PIPE_CLIENT_ACCESS_MASK,
-            FILE_WRITE_DATA | SYNCHRONIZE
+            FILE_READ_DATA | FILE_WRITE_DATA | READ_CONTROL | SYNCHRONIZE
         );
         assert_eq!(
             USER_HELPER_PIPE_CLIENT_ACCESS_MASK & FILE_APPEND_DATA_OR_CREATE_PIPE_INSTANCE,
+            0
+        );
+    }
+
+    #[test]
+    fn control_event_access_is_read_control_plus_synchronize_only() {
+        const READ_CONTROL: u32 = 0x0002_0000;
+        const SYNCHRONIZE: u32 = 0x0010_0000;
+        const EVENT_MODIFY_STATE: u32 = 0x0000_0002;
+
+        assert_eq!(
+            USER_HELPER_CONTROL_EVENT_ACCESS_MASK,
+            READ_CONTROL | SYNCHRONIZE
+        );
+        assert_eq!(
+            USER_HELPER_CONTROL_EVENT_ACCESS_MASK & EVENT_MODIFY_STATE,
             0
         );
     }

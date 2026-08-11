@@ -2,8 +2,9 @@
 ; Upstream: tauri-apps/tauri tauri-cli-v2.8.1
 ; Commit: 662b39adb33d1d26f0de213e5a04fc4116fd0683
 ; Upstream SHA-256: fe22026f68bdb3292fab376756035496ce0a35e3d580e06ebaa6a28295916eb3
-; The reviewed delta is limited to unified FyAgent installer branding, removal
-; of WiX migration and user-data deletion, and bounded legacy cleanup.
+; The reviewed delta is limited to unified FyAgent installer branding, one
+; frozen v0.3.0 MSI migration, removal of user-data deletion, and bounded
+; known-only cleanup.
 
 Unicode true
 ; An unknown shell-variable token is ignored after warning 6000, which can
@@ -70,6 +71,7 @@ ManifestDPIAwareness PerMonitorV2
 !define STARTMENUFOLDER "{{start_menu_folder}}"
 !define FYAGENT_FILE_ATTRIBUTE_DIRECTORY 0x10
 !define FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT 0x400
+!define FYAGENT_DELETE 0x00010000
 !define FYAGENT_FILE_READ_ATTRIBUTES 0x80
 !define FYAGENT_FILE_SHARE_READ 0x1
 !define FYAGENT_FILE_SHARE_WRITE 0x2
@@ -78,11 +80,38 @@ ManifestDPIAwareness PerMonitorV2
 !define FYAGENT_FILE_FLAG_BACKUP_SEMANTICS 0x02000000
 !define FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT 0x00200000
 !define FYAGENT_BY_HANDLE_FILE_INFORMATION_SIZE 52
+!define FYAGENT_FILE_DISPOSITION_INFO_CLASS 4
+!define FYAGENT_FILE_DISPOSITION_INFO_SIZE 1
+!define FYAGENT_OBJ_CASE_INSENSITIVE 0x40
+!define FYAGENT_OBJ_DONT_REPARSE 0x1000
+!define FYAGENT_FILE_OPEN 0x1
+!define FYAGENT_FILE_DIRECTORY_FILE 0x1
+!define FYAGENT_FILE_NON_DIRECTORY_FILE 0x40
+!define FYAGENT_NSIS_SYSTEM_POINTER_SIZE 4
+!define FYAGENT_UNICODE_STRING_SIZE 8
+!define FYAGENT_UNICODE_STRING_BUFFER_OFFSET 4
+!define FYAGENT_OBJECT_ATTRIBUTES_SIZE 24
+!define FYAGENT_OBJECT_ATTRIBUTES_ROOT_DIRECTORY_OFFSET 4
+!define FYAGENT_IO_STATUS_BLOCK_SIZE 8
+!define FYAGENT_LEGACY_WIX_REGISTRY_KEY "Software\fyagent\FyAgent"
+!define FYAGENT_INSTALLSTATE_UNKNOWN -1
+!define FYAGENT_MSI_SUCCESS 0
+!define FYAGENT_MSI_UNKNOWN_PRODUCT 1605
+!define FYAGENT_MSI_PRODUCT_UNINSTALLED 1614
+!define FYAGENT_MSI_REBOOT_REQUIRED 3010
+!if "${ARCH}" == "x64"
+  !define FYAGENT_LEGACY_WIX_PRODUCT_CODE "{D50D8CE2-B49A-41DE-839D-6574FB69ADC1}"
+!else if "${ARCH}" == "arm64"
+  !define FYAGENT_LEGACY_WIX_PRODUCT_CODE "{78F69296-A73D-40CA-A2BA-11D117AA2C9B}"
+!else
+  !error "FyAgent's frozen v0.3.0 MSI migration supports only x64 and arm64"
+!endif
 
 Var PassiveMode
 Var UpdateMode
 Var NoShortcutMode
 Var OldMainBinaryName
+Var LegacyWixInstallDir
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -300,6 +329,8 @@ Function PageLeaveReinstall
   ${EndIf}
 
   reinst_uninstall:
+    !insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" maintenance_main
+    !insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" maintenance_helper
     HideWindow
     ClearErrors
 
@@ -407,6 +438,12 @@ Function .onInit
 
   !insertmacro SetContext
 
+  ; Capture the fixed v0.3.0 MSI marker before its uninstaller can remove it.
+  ; An explicit /D= value has already replaced the placeholder and stays first.
+  StrCpy $LegacyWixInstallDir ""
+  ReadRegStr $LegacyWixInstallDir HKLM "${FYAGENT_LEGACY_WIX_REGISTRY_KEY}" "InstallDir"
+  ClearErrors
+
   ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
     ; Set default install location
     !if "${INSTALLMODE}" == "perMachine"
@@ -434,15 +471,76 @@ Function .onInit
   !endif
 FunctionEnd
 
-; Legacy runtime cleanup is deliberately not a provisioning or admission
-; boundary. It opens only the two fixed directories without following reparse
-; points and without WRITE or DELETE sharing, then removes only the two retired filename
-; patterns. Missing, inaccessible, malformed, reparse, nonempty, or concurrently
-; changing objects are preserved and never abort install or uninstall.
-!macro FyAgentOpenLegacyRuntimeDirectory Path Label OutputHandle ValidFlag
+; Never force-terminate a process that may own an admitted installer job or its
+; verified package handle. Interactive users may close it normally and retry;
+; passive/silent callers fail before any migration, cleanup, or payload write.
+!macro FyAgentRequireProcessStopped ExecutableName DisplayName Label
+  fyagent_${Label}_process_retry:
+    !if "${INSTALLMODE}" == "currentUser"
+      nsis_tauri_utils::FindProcessCurrentUser "${ExecutableName}"
+    !else
+      nsis_tauri_utils::FindProcess "${ExecutableName}"
+    !endif
+    Pop $R0
+    ${If} $R0 = 0
+      IfSilent fyagent_${Label}_process_silent fyagent_${Label}_process_interactive
+
+      fyagent_${Label}_process_interactive:
+        ${If} $PassiveMode = 1
+          Goto fyagent_${Label}_process_silent
+        ${EndIf}
+        MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL "Close ${DisplayName} normally before continuing. Choose Retry after it has exited." IDRETRY fyagent_${Label}_process_retry IDCANCEL fyagent_${Label}_process_cancel
+
+      fyagent_${Label}_process_cancel:
+        Abort "${DisplayName} is still running. No installer changes were made."
+
+      fyagent_${Label}_process_silent:
+        Abort "${DisplayName} is running. Close it normally, then run setup again."
+    ${EndIf}
+!macroend
+
+; The public v0.3.0 MSI is the only retired package migrated here. Querying the
+; frozen architecture-specific ProductCode avoids starting Windows Installer on
+; fresh or same-version NSIS installs. A registered MSI must be synchronously
+; removed before this installer creates or overwrites any payload path.
+Function FyAgentMigrateLegacyWixInstall
+  System::Call '"$SYSDIR\msi.dll"::MsiQueryProductStateW(w "${FYAGENT_LEGACY_WIX_PRODUCT_CODE}") i .r0'
+  ${If} $0 == ${FYAGENT_INSTALLSTATE_UNKNOWN}
+    Goto fyagent_legacy_wix_migration_accepted
+  ${EndIf}
+
+  ClearErrors
+  ExecWait '"$SYSDIR\msiexec.exe" /x ${FYAGENT_LEGACY_WIX_PRODUCT_CODE} /qn /norestart' $0
+  ${If} ${Errors}
+    MessageBox MB_ICONSTOP|MB_OK "FyAgent Setup could not start Windows Installer to remove the previous FyAgent version. No files were changed."
+    Abort "Close other installers and run FyAgent Setup again."
+  ${EndIf}
+
+  ${If} $0 == ${FYAGENT_MSI_SUCCESS}
+  ${OrIf} $0 == ${FYAGENT_MSI_UNKNOWN_PRODUCT}
+  ${OrIf} $0 == ${FYAGENT_MSI_PRODUCT_UNINSTALLED}
+    Goto fyagent_legacy_wix_migration_accepted
+  ${EndIf}
+
+  ${If} $0 == ${FYAGENT_MSI_REBOOT_REQUIRED}
+    MessageBox MB_ICONSTOP|MB_OK "The previous FyAgent version requires a Windows restart to finish uninstalling. Restart Windows, then run FyAgent Setup again. No new files were installed."
+    Abort "Restart Windows before installing FyAgent."
+  ${EndIf}
+
+  MessageBox MB_ICONSTOP|MB_OK "FyAgent Setup could not remove the previous FyAgent version (Windows Installer code $0). No new files were installed."
+  Abort "Resolve the previous uninstall error, then run FyAgent Setup again."
+
+  fyagent_legacy_wix_migration_accepted:
+    DeleteRegValue HKLM "${FYAGENT_LEGACY_WIX_REGISTRY_KEY}" "InstallDir"
+    ClearErrors
+FunctionEnd
+
+; A fixed top-level cleanup directory is the only full-path capability lookup.
+; Every descendant is opened relative to this held, validated anchor handle.
+!macro FyAgentOpenCleanupAnchorDirectory Path Label OutputHandle ValidFlag
   StrCpy ${OutputHandle} 0
   StrCpy ${ValidFlag} 0
-  System::Call 'kernel32::CreateFileW(w "${Path}", i ${FYAGENT_FILE_READ_ATTRIBUTES}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8'
+  System::Call 'kernel32::CreateFileW(w "${Path}", i ${FYAGENT_DELETE}|${FYAGENT_FILE_READ_ATTRIBUTES}, i ${FYAGENT_FILE_SHARE_READ}, p 0, i ${FYAGENT_OPEN_EXISTING}, i ${FYAGENT_FILE_FLAG_BACKUP_SEMANTICS}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0) p .r8'
   ${If} $8 == ${FYAGENT_INVALID_HANDLE_VALUE}
   ${OrIf} $8 == 0
     Goto fyagent_${Label}_done
@@ -479,31 +577,441 @@ FunctionEnd
   fyagent_${Label}_done:
 !macroend
 
+; Tauri's NSIS control process and x86-unicode System plug-in remain PE32 for
+; x64 and ARM64 payloads. Lowercase System fields are packed, so measure their
+; 32-bit sizes and verify both pointer offsets before crossing the native ABI.
+!macro FyAgentOpenDirectoryRelativeToHandle ParentSystemRegister ParentHandle RelativeName Label OutputHandle ValidFlag
+  StrCpy ${OutputHandle} 0
+  StrCpy ${ValidFlag} 0
+  StrCpy $8 0
+  StrCpy $6 0
+  StrCpy $7 0
+  StrCpy $4 0
+  StrCpy $0 0
+  StrCpy $2 -1
+
+  StrLen $R2 "${RelativeName}"
+  ${If} $R2 == 0
+    Goto fyagent_${Label}_directory_done
+  ${EndIf}
+  IntOp $R2 $R2 * 2
+  IntOp $R5 $R2 + 2
+  System::Call '*(&w${NSIS_MAX_STRLEN} "${RelativeName}") p .r6'
+  ${If} $6 == 0
+    Goto fyagent_${Label}_directory_native_buffers_done
+  ${EndIf}
+  System::Call '*(&i2 R2, &i2 R5, p r6, &l.R3) p .r7'
+  ${If} $7 == 0
+  ${OrIf} $R3 <> ${FYAGENT_UNICODE_STRING_SIZE}
+    Goto fyagent_${Label}_directory_native_buffers_done
+  ${EndIf}
+  IntOp $R4 $7 + ${FYAGENT_UNICODE_STRING_BUFFER_OFFSET}
+  System::Call '*$R4(p .R7)'
+  ${If} $R7 != $6
+    Goto fyagent_${Label}_directory_native_buffers_done
+  ${EndIf}
+  System::Call '*(&l4, p ${ParentSystemRegister}, p r7, i ${FYAGENT_OBJ_CASE_INSENSITIVE}|${FYAGENT_OBJ_DONT_REPARSE}, p 0, p 0, &l.R3) p .r4'
+  ${If} $4 == 0
+  ${OrIf} $R3 <> ${FYAGENT_OBJECT_ATTRIBUTES_SIZE}
+    Goto fyagent_${Label}_directory_native_buffers_done
+  ${EndIf}
+  IntOp $R4 $4 + ${FYAGENT_OBJECT_ATTRIBUTES_ROOT_DIRECTORY_OFFSET}
+  System::Call '*$R4(p .R7)'
+  ${If} $R7 != ${ParentHandle}
+    Goto fyagent_${Label}_directory_native_buffers_done
+  ${EndIf}
+  System::Call '*(p 0, p 0, &l.R3) p .r0'
+  ${If} $0 == 0
+  ${OrIf} $R3 <> ${FYAGENT_IO_STATUS_BLOCK_SIZE}
+    Goto fyagent_${Label}_directory_native_buffers_done
+  ${EndIf}
+  System::Call 'ntdll::NtCreateFile(*p .r8, i ${FYAGENT_DELETE}|${FYAGENT_FILE_READ_ATTRIBUTES}, p r4, p r0, p 0, i 0, i ${FYAGENT_FILE_SHARE_READ}, i ${FYAGENT_FILE_OPEN}, i ${FYAGENT_FILE_DIRECTORY_FILE}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0, i 0) i .r2'
+
+  fyagent_${Label}_directory_native_buffers_done:
+    ${If} $0 <> 0
+      System::Free $0
+    ${EndIf}
+    ${If} $4 <> 0
+      System::Free $4
+    ${EndIf}
+    ${If} $7 <> 0
+      System::Free $7
+    ${EndIf}
+    ${If} $6 <> 0
+      System::Free $6
+    ${EndIf}
+
+  ${If} $2 <> 0
+    Goto fyagent_${Label}_directory_done
+  ${EndIf}
+  ${If} $8 == ${FYAGENT_INVALID_HANDLE_VALUE}
+  ${OrIf} $8 == 0
+    Goto fyagent_${Label}_directory_done
+  ${EndIf}
+
+  System::Alloc ${FYAGENT_BY_HANDLE_FILE_INFORMATION_SIZE}
+  Pop $6
+  ${If} $6 == 0
+    Goto fyagent_${Label}_directory_close
+  ${EndIf}
+  System::Call 'kernel32::GetFileInformationByHandle(p r8, p r6) i .r7'
+  ${If} $7 == 0
+    System::Free $6
+    Goto fyagent_${Label}_directory_close
+  ${EndIf}
+  System::Call '*$6(i .r0)'
+  System::Free $6
+  IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_DIRECTORY}
+  ${If} $4 == 0
+    Goto fyagent_${Label}_directory_close
+  ${EndIf}
+  IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT}
+  ${If} $4 <> 0
+    Goto fyagent_${Label}_directory_close
+  ${EndIf}
+
+  StrCpy ${OutputHandle} $8
+  StrCpy ${ValidFlag} 1
+  Goto fyagent_${Label}_directory_done
+
+  fyagent_${Label}_directory_close:
+    System::Call 'kernel32::CloseHandle(p r8) i .r4'
+
+  fyagent_${Label}_directory_done:
+!macroend
+
+; A candidate name becomes deletable only after it is opened relative to its
+; held parent directory, proven to be a regular non-reparse leaf, and marked
+; through that same handle. Enumeration text is never used as a full path.
+!macro FyAgentDeleteRegularFileRelativeToHandle ParentSystemRegister ParentHandle LeafName Label
+  StrCpy $8 0
+  StrCpy $6 0
+  StrCpy $7 0
+  StrCpy $4 0
+  StrCpy $0 0
+  StrCpy $2 -1
+
+  StrLen $R2 "${LeafName}"
+  ${If} $R2 == 0
+    Goto fyagent_${Label}_leaf_done
+  ${EndIf}
+  IntOp $R2 $R2 * 2
+  IntOp $R5 $R2 + 2
+  System::Call '*(&w${NSIS_MAX_STRLEN} "${LeafName}") p .r6'
+  ${If} $6 == 0
+    Goto fyagent_${Label}_leaf_native_buffers_done
+  ${EndIf}
+  System::Call '*(&i2 R2, &i2 R5, p r6, &l.R3) p .r7'
+  ${If} $7 == 0
+  ${OrIf} $R3 <> ${FYAGENT_UNICODE_STRING_SIZE}
+    Goto fyagent_${Label}_leaf_native_buffers_done
+  ${EndIf}
+  IntOp $R4 $7 + ${FYAGENT_UNICODE_STRING_BUFFER_OFFSET}
+  System::Call '*$R4(p .R7)'
+  ${If} $R7 != $6
+    Goto fyagent_${Label}_leaf_native_buffers_done
+  ${EndIf}
+  System::Call '*(&l4, p ${ParentSystemRegister}, p r7, i ${FYAGENT_OBJ_CASE_INSENSITIVE}|${FYAGENT_OBJ_DONT_REPARSE}, p 0, p 0, &l.R3) p .r4'
+  ${If} $4 == 0
+  ${OrIf} $R3 <> ${FYAGENT_OBJECT_ATTRIBUTES_SIZE}
+    Goto fyagent_${Label}_leaf_native_buffers_done
+  ${EndIf}
+  IntOp $R4 $4 + ${FYAGENT_OBJECT_ATTRIBUTES_ROOT_DIRECTORY_OFFSET}
+  System::Call '*$R4(p .R7)'
+  ${If} $R7 != ${ParentHandle}
+    Goto fyagent_${Label}_leaf_native_buffers_done
+  ${EndIf}
+  System::Call '*(p 0, p 0, &l.R3) p .r0'
+  ${If} $0 == 0
+  ${OrIf} $R3 <> ${FYAGENT_IO_STATUS_BLOCK_SIZE}
+    Goto fyagent_${Label}_leaf_native_buffers_done
+  ${EndIf}
+  System::Call 'ntdll::NtCreateFile(*p .r8, i ${FYAGENT_DELETE}|${FYAGENT_FILE_READ_ATTRIBUTES}, p r4, p r0, p 0, i 0, i ${FYAGENT_FILE_SHARE_READ}, i ${FYAGENT_FILE_OPEN}, i ${FYAGENT_FILE_NON_DIRECTORY_FILE}|${FYAGENT_FILE_FLAG_OPEN_REPARSE_POINT}, p 0, i 0) i .r2'
+
+  fyagent_${Label}_leaf_native_buffers_done:
+    ${If} $0 <> 0
+      System::Free $0
+    ${EndIf}
+    ${If} $4 <> 0
+      System::Free $4
+    ${EndIf}
+    ${If} $7 <> 0
+      System::Free $7
+    ${EndIf}
+    ${If} $6 <> 0
+      System::Free $6
+    ${EndIf}
+
+  ${If} $2 <> 0
+    Goto fyagent_${Label}_leaf_done
+  ${EndIf}
+  ${If} $8 == ${FYAGENT_INVALID_HANDLE_VALUE}
+  ${OrIf} $8 == 0
+    Goto fyagent_${Label}_leaf_done
+  ${EndIf}
+
+  System::Alloc ${FYAGENT_BY_HANDLE_FILE_INFORMATION_SIZE}
+  Pop $6
+  ${If} $6 == 0
+    Goto fyagent_${Label}_leaf_close
+  ${EndIf}
+  System::Call 'kernel32::GetFileInformationByHandle(p r8, p r6) i .r7'
+  ${If} $7 == 0
+    System::Free $6
+    Goto fyagent_${Label}_leaf_close
+  ${EndIf}
+  System::Call '*$6(i .r0)'
+  System::Free $6
+  IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_DIRECTORY}
+  ${If} $4 <> 0
+    Goto fyagent_${Label}_leaf_close
+  ${EndIf}
+  IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT}
+  ${If} $4 <> 0
+    Goto fyagent_${Label}_leaf_close
+  ${EndIf}
+
+  System::Alloc ${FYAGENT_FILE_DISPOSITION_INFO_SIZE}
+  Pop $6
+  ${If} $6 == 0
+    Goto fyagent_${Label}_leaf_close
+  ${EndIf}
+  System::Call '*$6(&i1 1)'
+  System::Call 'kernel32::SetFileInformationByHandle(p r8, i ${FYAGENT_FILE_DISPOSITION_INFO_CLASS}, p r6, i ${FYAGENT_FILE_DISPOSITION_INFO_SIZE}) i .r7'
+  System::Free $6
+
+  fyagent_${Label}_leaf_close:
+    System::Call 'kernel32::CloseHandle(p r8) i .r4'
+
+  fyagent_${Label}_leaf_done:
+!macroend
+
+; Empty owned directories are retired only through the already-held directory
+; handle. Nonempty, reparse, access-denied, or concurrently changing objects
+; simply fail disposition and remain for a later best-effort cleanup.
+!macro FyAgentMarkEmptyDirectoryForDeletion HandleSystemRegister Label
+  System::Alloc ${FYAGENT_BY_HANDLE_FILE_INFORMATION_SIZE}
+  Pop $6
+  ${If} $6 == 0
+    Goto fyagent_${Label}_directory_disposition_done
+  ${EndIf}
+  System::Call 'kernel32::GetFileInformationByHandle(p ${HandleSystemRegister}, p r6) i .r7'
+  ${If} $7 == 0
+    System::Free $6
+    Goto fyagent_${Label}_directory_disposition_done
+  ${EndIf}
+  System::Call '*$6(i .r0)'
+  System::Free $6
+  IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_DIRECTORY}
+  ${If} $4 == 0
+    Goto fyagent_${Label}_directory_disposition_done
+  ${EndIf}
+  IntOp $4 $0 & ${FYAGENT_FILE_ATTRIBUTE_REPARSE_POINT}
+  ${If} $4 <> 0
+    Goto fyagent_${Label}_directory_disposition_done
+  ${EndIf}
+
+  System::Alloc ${FYAGENT_FILE_DISPOSITION_INFO_SIZE}
+  Pop $6
+  ${If} $6 == 0
+    Goto fyagent_${Label}_directory_disposition_done
+  ${EndIf}
+  System::Call '*$6(&i1 1)'
+  System::Call 'kernel32::SetFileInformationByHandle(p ${HandleSystemRegister}, i ${FYAGENT_FILE_DISPOSITION_INFO_CLASS}, p r6, i ${FYAGENT_FILE_DISPOSITION_INFO_SIZE}) i .r7'
+  System::Free $6
+
+  fyagent_${Label}_directory_disposition_done:
+!macroend
+
+; A staging job directory is eligible only when its entire direct-child name is
+; the lowercase hyphenated UUID form produced by the installer job service.
+!macro FyAgentValidateCanonicalUuid Value Label ValidFlag
+  StrCpy ${ValidFlag} 0
+  StrLen $R3 "${Value}"
+  StrCmp $R3 36 0 fyagent_${Label}_uuid_done
+
+  StrCpy $R4 "${Value}" 1 8
+  StrCmp $R4 "-" 0 fyagent_${Label}_uuid_done
+  StrCpy $R4 "${Value}" 1 13
+  StrCmp $R4 "-" 0 fyagent_${Label}_uuid_done
+  StrCpy $R4 "${Value}" 1 18
+  StrCmp $R4 "-" 0 fyagent_${Label}_uuid_done
+  StrCpy $R4 "${Value}" 1 23
+  StrCmp $R4 "-" 0 fyagent_${Label}_uuid_done
+
+  StrCpy $R2 0
+  fyagent_${Label}_uuid_loop:
+    ${If} $R2 == 36
+      StrCpy ${ValidFlag} 1
+      Goto fyagent_${Label}_uuid_done
+    ${EndIf}
+    ${If} $R2 == 8
+    ${OrIf} $R2 == 13
+    ${OrIf} $R2 == 18
+    ${OrIf} $R2 == 23
+      Goto fyagent_${Label}_uuid_next
+    ${EndIf}
+
+    StrCpy $R4 "${Value}" 1 $R2
+    StrCmp $R4 "0" fyagent_${Label}_uuid_next
+    StrCmp $R4 "1" fyagent_${Label}_uuid_next
+    StrCmp $R4 "2" fyagent_${Label}_uuid_next
+    StrCmp $R4 "3" fyagent_${Label}_uuid_next
+    StrCmp $R4 "4" fyagent_${Label}_uuid_next
+    StrCmp $R4 "5" fyagent_${Label}_uuid_next
+    StrCmp $R4 "6" fyagent_${Label}_uuid_next
+    StrCmp $R4 "7" fyagent_${Label}_uuid_next
+    StrCmp $R4 "8" fyagent_${Label}_uuid_next
+    StrCmp $R4 "9" fyagent_${Label}_uuid_next
+    StrCmp $R4 "a" fyagent_${Label}_uuid_next
+    StrCmp $R4 "b" fyagent_${Label}_uuid_next
+    StrCmp $R4 "c" fyagent_${Label}_uuid_next
+    StrCmp $R4 "d" fyagent_${Label}_uuid_next
+    StrCmp $R4 "e" fyagent_${Label}_uuid_next
+    StrCmp $R4 "f" fyagent_${Label}_uuid_next
+    Goto fyagent_${Label}_uuid_done
+
+  fyagent_${Label}_uuid_next:
+    IntOp $R2 $R2 + 1
+    Goto fyagent_${Label}_uuid_loop
+
+  fyagent_${Label}_uuid_done:
+!macroend
+
+; Retired runtime names keep their historical wildcard-compatible middle but
+; must be a complete direct-child business-*.state or business-*.lock name.
+!macro FyAgentValidateLegacyRuntimeName Value Label ValidFlag
+  StrCpy ${ValidFlag} 0
+  StrLen $R3 "${Value}"
+  ${If} $R3 < 14
+    Goto fyagent_${Label}_legacy_name_done
+  ${EndIf}
+  StrCpy $R4 "${Value}" 9
+  StrCmp $R4 "business-" 0 fyagent_${Label}_legacy_name_done
+  StrCpy $R4 "${Value}" 5 -5
+  StrCmp $R4 ".lock" fyagent_${Label}_legacy_name_valid
+  ${If} $R3 < 15
+    Goto fyagent_${Label}_legacy_name_done
+  ${EndIf}
+  StrCpy $R4 "${Value}" 6 -6
+  StrCmp $R4 ".state" 0 fyagent_${Label}_legacy_name_done
+
+  fyagent_${Label}_legacy_name_valid:
+    StrCpy ${ValidFlag} 1
+
+  fyagent_${Label}_legacy_name_done:
+!macroend
+
+; Install and uninstall may retire only exact staging artifacts below canonical
+; direct-child UUID directories. Unknown names/content and every reparse point
+; survive; only now-empty owned ancestors are removed, without recursion.
+!macro FyAgentCleanupKnownCodexInstallerStaging Label
+  ClearErrors
+  !insertmacro FyAgentOpenCleanupAnchorDirectory "$INSTDIR\cache" ${Label}_cache $5 $9
+  ${If} $9 <> 1
+    Goto fyagent_${Label}_staging_done
+  ${EndIf}
+
+  !insertmacro FyAgentOpenDirectoryRelativeToHandle r5 $5 "codex-installer" ${Label}_staging $3 $2
+  ${If} $2 <> 1
+    Goto fyagent_${Label}_staging_close_cache
+  ${EndIf}
+
+  ClearErrors
+  FindFirst $R0 $R1 "$INSTDIR\cache\codex-installer\*"
+  IfErrors fyagent_${Label}_staging_close_root
+
+  fyagent_${Label}_staging_entry:
+    StrCmp $R1 "." fyagent_${Label}_staging_next
+    StrCmp $R1 ".." fyagent_${Label}_staging_next
+    !insertmacro FyAgentValidateCanonicalUuid "$R1" ${Label}_staging_entry $R5
+    ${If} $R5 == 1
+      !insertmacro FyAgentOpenDirectoryRelativeToHandle r3 $3 "$R1" ${Label}_staging_child $1 $R6
+      ${If} $R6 == 1
+        !insertmacro FyAgentDeleteRegularFileRelativeToHandle r1 $1 "installer.msix" ${Label}_staging_msix
+        !insertmacro FyAgentDeleteRegularFileRelativeToHandle r1 $1 "installer.msix.part" ${Label}_staging_part
+        !insertmacro FyAgentMarkEmptyDirectoryForDeletion r1 ${Label}_staging_child
+        System::Call 'kernel32::CloseHandle(p r1) i .r4'
+      ${EndIf}
+    ${EndIf}
+
+  fyagent_${Label}_staging_next:
+    ClearErrors
+    FindNext $R0 $R1
+    IfErrors fyagent_${Label}_staging_close_find
+    Goto fyagent_${Label}_staging_entry
+
+  fyagent_${Label}_staging_close_find:
+    FindClose $R0
+
+  fyagent_${Label}_staging_close_root:
+    !insertmacro FyAgentMarkEmptyDirectoryForDeletion r3 ${Label}_staging_root
+    System::Call 'kernel32::CloseHandle(p r3) i .r4'
+
+  fyagent_${Label}_staging_close_cache:
+    !insertmacro FyAgentMarkEmptyDirectoryForDeletion r5 ${Label}_staging_cache
+    System::Call 'kernel32::CloseHandle(p r5) i .r4'
+
+  fyagent_${Label}_staging_done:
+    ; Cleanup is observational only; do not leak a failed enumeration,
+    ; native disposition, or enumeration flag into later payload operations.
+    ClearErrors
+!macroend
+
+; Legacy runtime cleanup is deliberately not a provisioning or admission
+; boundary. It removes only the two retired filename patterns from fixed,
+; no-follow directories and never aborts install or uninstall.
 !macro FyAgentCleanupLegacyMachineRuntime Label
   ClearErrors
-  !insertmacro FyAgentOpenLegacyRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent" ${Label}_parent $5 $9
+  !insertmacro FyAgentOpenCleanupAnchorDirectory "$COMMONPROGRAMDATA\FyAgent" ${Label}_parent $5 $9
   ${If} $9 <> 1
     Goto fyagent_${Label}_done
   ${EndIf}
 
-  !insertmacro FyAgentOpenLegacyRuntimeDirectory "$COMMONPROGRAMDATA\FyAgent\runtime" ${Label}_leaf $3 $2
-  ${If} $2 == 1
-    Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.state"
-    Delete "$COMMONPROGRAMDATA\FyAgent\runtime\business-*.lock"
-    System::Call 'kernel32::CloseHandle(p r3) i .r4'
-    RMDir "$COMMONPROGRAMDATA\FyAgent\runtime"
+  !insertmacro FyAgentOpenDirectoryRelativeToHandle r5 $5 "runtime" ${Label}_runtime $3 $2
+  ${If} $2 <> 1
+    Goto fyagent_${Label}_close_parent
   ${EndIf}
 
-  System::Call 'kernel32::CloseHandle(p r5) i .r4'
-  RMDir "$COMMONPROGRAMDATA\FyAgent"
+  ClearErrors
+  FindFirst $R0 $R1 "$COMMONPROGRAMDATA\FyAgent\runtime\*"
+  IfErrors fyagent_${Label}_close_runtime
+
+  fyagent_${Label}_legacy_entry:
+    StrCmp $R1 "." fyagent_${Label}_legacy_next
+    StrCmp $R1 ".." fyagent_${Label}_legacy_next
+    !insertmacro FyAgentValidateLegacyRuntimeName "$R1" ${Label}_legacy_entry $R5
+    ${If} $R5 == 1
+      !insertmacro FyAgentDeleteRegularFileRelativeToHandle r3 $3 "$R1" ${Label}_legacy_file
+    ${EndIf}
+
+  fyagent_${Label}_legacy_next:
+    ClearErrors
+    FindNext $R0 $R1
+    IfErrors fyagent_${Label}_legacy_close_find
+    Goto fyagent_${Label}_legacy_entry
+
+  fyagent_${Label}_legacy_close_find:
+    FindClose $R0
+
+  fyagent_${Label}_close_runtime:
+    !insertmacro FyAgentMarkEmptyDirectoryForDeletion r3 ${Label}_legacy_runtime
+    System::Call 'kernel32::CloseHandle(p r3) i .r4'
+
+  fyagent_${Label}_close_parent:
+    !insertmacro FyAgentMarkEmptyDirectoryForDeletion r5 ${Label}_legacy_parent
+    System::Call 'kernel32::CloseHandle(p r5) i .r4'
 
   fyagent_${Label}_done:
-    ; Cleanup is observational only; do not leak a failed Delete/RMDir flag
-    ; into later installer hooks or payload operations.
+    ; Cleanup is observational only; do not leak a failed enumeration or
+    ; native disposition flag into later installer hooks or payload operations.
     ClearErrors
 !macroend
 
 Section EarlyChecks
+  !insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" early_main
+  !insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" early_helper
+
   ; Abort silent installer if downgrades is disabled
   !if "${ALLOWDOWNGRADES}" == "false"
   ${If} ${Silent}
@@ -519,6 +1027,10 @@ Section EarlyChecks
     ${EndIf}
   ${EndIf}
   !endif
+
+  ; The frozen MSI bridge must finish before WebView2 or any new NSIS payload
+  ; section can mutate the machine.
+  Call FyAgentMigrateLegacyWixInstall
 
 SectionEnd
 
@@ -600,17 +1112,22 @@ Section WebView2
 SectionEnd
 
 Section Install
+  !insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" install_main
+  !insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" install_helper
+
   SetOutPath $INSTDIR
 
   !ifmacrodef NSIS_HOOK_PREINSTALL
     !insertmacro NSIS_HOOK_PREINSTALL
   !endif
 
-  !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
-
   ; Retire only known files from the obsolete machine runtime. Cleanup is
   ; intentionally best-effort and never becomes an install admission gate.
   !insertmacro FyAgentCleanupLegacyMachineRuntime install_legacy_runtime
+
+  ; Retire only canonical completed/incomplete Codex staging artifacts left by
+  ; an older installation. Unknown cache content survives an upgrade.
+  !insertmacro FyAgentCleanupKnownCodexInstallerStaging install_codex_staging
 
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
@@ -744,15 +1261,17 @@ FunctionEnd
 
 Section Uninstall
 
+  !insertmacro FyAgentRequireProcessStopped "${MAINBINARYNAME}.exe" "${PRODUCTNAME}" uninstall_main
+  !insertmacro FyAgentRequireProcessStopped "fyagent-user-helper.exe" "${PRODUCTNAME} user helper" uninstall_helper
+
   !ifmacrodef NSIS_HOOK_PREUNINSTALL
     !insertmacro NSIS_HOOK_PREUNINSTALL
   !endif
 
-  !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
-
   ; The same fixed, no-follow, known-name cleanup is safe to retry during
   ; uninstall. Unknown content and cleanup failures are preserved.
   !insertmacro FyAgentCleanupLegacyMachineRuntime uninstall_legacy_runtime
+  !insertmacro FyAgentCleanupKnownCodexInstallerStaging uninstall_codex_staging
 
   ; Delete the app directory and its content from disk
   ; Copy main executable
@@ -859,8 +1378,11 @@ SectionEnd
 
 Function RestorePreviousInstallLocation
   ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
-  StrCmp $4 "" +2 0
+  ${If} $4 != ""
     StrCpy $INSTDIR $4
+  ${ElseIf} $LegacyWixInstallDir != ""
+    StrCpy $INSTDIR $LegacyWixInstallDir
+  ${EndIf}
 FunctionEnd
 
 Function Skip

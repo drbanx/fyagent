@@ -17,7 +17,21 @@ const deployment = read(
   "src-tauri/src/codex_desktop/platform/windows/deployment.rs",
 );
 const adapter = read("src-tauri/src/codex_desktop/platform/windows/mod.rs");
+const helper = read("src-tauri/src/codex_desktop/platform/windows/helper.rs");
+const packageBridge = read(
+  "src-tauri/src/codex_desktop/platform/windows/package_bridge.rs",
+).split("#[cfg(test)]", 1)[0];
 const runtime = read("src-tauri/src/codex_desktop/platform/windows/runtime.rs");
+const userHelperRuntime = read("src-tauri/user-helper/src/windows.rs").split(
+  "#[cfg(test)]",
+  1,
+)[0];
+const userHelperLayout = read("src-tauri/user-helper/src/layout.rs").split(
+  "#[cfg(test)]",
+  1,
+)[0];
+const tempRoot = read("src-tauri/src/codex_desktop/temp.rs");
+const desktopRuntime = read("src-tauri/src/codex_desktop_runtime.rs");
 const hostConfig = read("src-tauri/src/config.rs");
 const hermesConfig = read("src-tauri/src/hermes_config.rs");
 const opencodeConfig = read("src-tauri/src/opencode_config.rs");
@@ -31,6 +45,26 @@ const skillService = read("src-tauri/src/services/skill.rs");
 const domainTest = read("src-tauri/tests/codex_desktop_domain.rs");
 const ci = read(".github/workflows/ci.yml");
 const releaseCheck = read("scripts/tasks/release-check.mjs");
+
+function rustFilesUnder(relativeDirectory: string): string[] {
+  const files: string[] = [];
+  const pending = [relativeDirectory];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined) break;
+    for (const entry of fs.readdirSync(path.join(ROOT, current), {
+      withFileTypes: true,
+    })) {
+      const relative = path.posix.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "target") pending.push(relative);
+      } else if (entry.isFile() && relative.endsWith(".rs")) {
+        files.push(relative);
+      }
+    }
+  }
+  return files.sort();
+}
 
 describe("Codex Windows interactive-user contract", () => {
   it("uses the Shell process as the sole ordinary startup identity proof", () => {
@@ -76,6 +110,9 @@ describe("Codex Windows interactive-user contract", () => {
     expect(deployment).not.toContain("FindPackagesWithPackageTypes");
     expect(deployment).not.toContain("StagePackageByUriAsync");
     expect(deployment).not.toContain("ProvisionPackageForAllUsersAsync");
+    expect(deployment).not.toContain("AddPackageByUriAsync");
+    expect(adapter).not.toContain("AddPackageByUriAsync");
+    expect(deployment).not.toMatch(/deploy_current_user\s*\(/);
 
     const ordinaryFacade = deployment.match(
       /trait WindowsPackageManager[\s\S]*?\n}/,
@@ -84,12 +121,56 @@ describe("Codex Windows interactive-user contract", () => {
     expect(ordinaryFacade).not.toMatch(/all[_-]?users|FindPackages/);
   });
 
-  it("threads the frozen context through inventory, deployment, runtime, and launch", () => {
+  it("isolates CommonApplicationData to the one-shot Codex package bridge", () => {
+    const programDataOwners = [
+      ...rustFilesUnder("src-tauri/src"),
+      ...rustFilesUnder("src-tauri/user-helper/src"),
+    ].filter((file) => read(file).includes("FOLDERID_ProgramData"));
+
+    expect(programDataOwners).toEqual([
+      "src-tauri/src/codex_desktop/platform/windows/package_bridge.rs",
+      "src-tauri/user-helper/src/windows.rs",
+    ]);
+    expect(startup).not.toContain("FOLDERID_ProgramData");
+
+    const packageBridgeRoot =
+      "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
+    const bridgeSources = `${packageBridge}\n${userHelperRuntime}\n${userHelperLayout}`;
+    expect(bridgeSources.split(packageBridgeRoot)).toHaveLength(2);
+    for (const source of [packageBridge, userHelperRuntime]) {
+      expect(source).toContain("SHGetKnownFolderPath");
+      expect(source).toContain("FOLDERID_ProgramData");
+      expect(source).not.toMatch(
+        /std::env::(?:var|var_os|current_dir|temp_dir)|C:\\+ProgramData/iu,
+      );
+      expect(source).not.toMatch(
+        /FyAgent[\\/]runtime|business-[*.]|HMAC|capability pipe|runtime lease/iu,
+      );
+    }
+
+    for (const forbiddenScopeApi of [
+      "StagePackageByUriAsync",
+      "StagePackageAsync",
+      "RegisterPackagesByFullNameAsync",
+      "ProvisionPackageForAllUsersAsync",
+      "FindPackages()",
+    ]) {
+      expect(
+        `${adapter}\n${deployment}\n${helper}\n${packageBridge}\n${userHelperRuntime}`,
+      ).not.toContain(forbiddenScopeApi);
+    }
+  });
+
+  it("threads the frozen context through helper orchestration, inventory, runtime, and launch", () => {
     expect(adapter).toContain("Arc<InteractiveUserContext>");
     expect(deployment).toContain("InteractiveUserContext");
     expect(deployment).toMatch(/packages_for_user\s*\(/);
-    expect(deployment).toMatch(/deploy_current_user\s*\(/);
     expect(deployment).toMatch(/launch_aumid\s*\(/);
+    expect(adapter).toContain("WindowsContextRevalidator");
+    expect(adapter).toContain("WindowsUserHelperRunner");
+    expect(adapter).toContain("require_current_context");
+    expect(helper).toContain("SystemWindowsContextRevalidator");
+    expect(helper).toContain("revalidate_interactive_user_context(context)");
     expect(deployment).toContain(
       "revalidate_interactive_user_context(context)",
     );
@@ -107,6 +188,39 @@ describe("Codex Windows interactive-user contract", () => {
       startup.indexOf("pub(super) fn runtime_privilege_status"),
     );
     expect(revalidation).not.toContain("shell_command_paths");
+  });
+
+  it("stages Windows jobs only below the frozen executable install root", () => {
+    expect(desktopRuntime).toContain("JobTempRoot::for_current_process()");
+    expect(tempRoot).toContain("CURRENT_EXECUTABLE_INSTALL_ROOT");
+    expect(tempRoot).toContain("CurrentExecutableInstallRoot");
+    expect(tempRoot).toMatch(
+      /#\[cfg\(target_os = "windows"\)\]\s+\{\s+Self::CurrentExecutableInstallRoot\s+\}/u,
+    );
+    expect(tempRoot).toMatch(
+      /#\[cfg\(not\(target_os = "windows"\)\)\]\s+\{\s+Self::Explicit\(JobTempDir::system_root\(\)\)\s+\}/u,
+    );
+    expect(tempRoot).toMatch(
+      /#\[cfg\(any\(not\(target_os = "windows"\), test\)\)\]\s+pub\(crate\) fn system_root\(\)[\s\S]+?std::env::temp_dir\(\)/u,
+    );
+
+    const windowsJob = tempRoot.slice(
+      tempRoot.indexOf("fn create_current_executable_job"),
+      tempRoot.indexOf("\nfn trusted_ancestors_for_existing_root"),
+    );
+    for (const invariant of [
+      "CanonicalJobId::parse(job_id)",
+      "frozen.revalidate()",
+      "derive_install_layout",
+      "ensure_current_executable_staging_root()",
+      "ArtifactPolicy::WindowsMsixOnly",
+      "relative_installer != helper_relative",
+      "Some(INSTALLER_FILE_NAME)",
+    ]) {
+      expect(windowsJob).toContain(invariant);
+    }
+    expect(desktopRuntime).not.toContain("std::env::temp_dir");
+    expect(adapter).not.toContain('PathBuf::from("C:\\\\")');
   });
 
   it("initializes Shell paths before user state and bounds plugin activation", () => {

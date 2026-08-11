@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc,
+        mpsc::{self, RecvTimeoutError},
     },
     time::Duration,
 };
@@ -31,7 +31,9 @@ use windows::{
     },
 };
 
-use crate::platform::process_launch::{InteractiveUserLauncher, ProcessLaunchError};
+use crate::platform::process_launch::{
+    InteractiveUserLauncher, ProcessLaunchError, UserHelperLaunchOutcome,
+};
 use fyagent_user_helper::{CanonicalJobId, PipeNonce, INSTALL_ACTION};
 
 const USER_HELPER_LAUNCH_TIMEOUT: Duration = Duration::from_secs(30);
@@ -64,7 +66,24 @@ impl InteractiveUserLauncher for ExplorerInteractiveUserLauncher {
         job_id: &CanonicalJobId,
         pipe_nonce: &PipeNonce,
     ) -> Result<(), ProcessLaunchError> {
-        let helper = crate::platform::process_launch::fixed_user_helper_path()?;
+        match self.begin_fyagent_user_helper_launch(job_id, pipe_nonce) {
+            UserHelperLaunchOutcome::Confirmed => Ok(()),
+            UserHelperLaunchOutcome::MayHaveLaunched => {
+                Err(ProcessLaunchError::InteractiveUserUnavailable)
+            }
+            UserHelperLaunchOutcome::NotInvoked(error) => Err(error),
+        }
+    }
+
+    fn begin_fyagent_user_helper_launch(
+        &self,
+        job_id: &CanonicalJobId,
+        pipe_nonce: &PipeNonce,
+    ) -> UserHelperLaunchOutcome {
+        let helper = match crate::platform::process_launch::fixed_user_helper_path() {
+            Ok(helper) => helper,
+            Err(error) => return UserHelperLaunchOutcome::NotInvoked(error),
+        };
         let arguments = format!(
             "{INSTALL_ACTION} --job-id {job_id} --pipe {}",
             pipe_nonce.as_str()
@@ -83,21 +102,31 @@ fn launch_from_explorer(target: String) -> Result<(), ProcessLaunchError> {
 fn launch_path_from_explorer_with_arguments(
     target: PathBuf,
     arguments: String,
-) -> Result<(), ProcessLaunchError> {
-    let launch_slot = UserHelperLaunchSlot::acquire()?;
+) -> UserHelperLaunchOutcome {
+    let launch_slot = match UserHelperLaunchSlot::acquire() {
+        Ok(slot) => slot,
+        Err(error) => return UserHelperLaunchOutcome::NotInvoked(error),
+    };
     let (sender, receiver) = mpsc::sync_channel(1);
-    std::thread::Builder::new()
+    if std::thread::Builder::new()
         .name("fyagent-user-helper-launch".to_owned())
         .spawn(move || {
             let _launch_slot = launch_slot;
             let result = launch_path_from_explorer_sta(&target, &arguments);
             let _ = sender.send(result);
         })
-        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+        .is_err()
+    {
+        return UserHelperLaunchOutcome::NotInvoked(ProcessLaunchError::InteractiveUserUnavailable);
+    }
 
-    receiver
-        .recv_timeout(USER_HELPER_LAUNCH_TIMEOUT)
-        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?
+    match receiver.recv_timeout(USER_HELPER_LAUNCH_TIMEOUT) {
+        Ok(UserHelperStaOutcome::NotInvoked(error)) => UserHelperLaunchOutcome::NotInvoked(error),
+        Ok(UserHelperStaOutcome::Invoked(Ok(()))) => UserHelperLaunchOutcome::Confirmed,
+        Ok(UserHelperStaOutcome::Invoked(Err(_)))
+        | Err(RecvTimeoutError::Timeout)
+        | Err(RecvTimeoutError::Disconnected) => UserHelperLaunchOutcome::MayHaveLaunched,
+    }
 }
 
 struct UserHelperLaunchSlot;
@@ -136,9 +165,62 @@ fn launch_from_explorer_sta(
     launch_from_explorer_sta_bstr(BSTR::from(target), arguments)
 }
 
-fn launch_path_from_explorer_sta(target: &Path, arguments: &str) -> Result<(), ProcessLaunchError> {
+fn launch_path_from_explorer_sta(target: &Path, arguments: &str) -> UserHelperStaOutcome {
     let target = target.as_os_str().encode_wide().collect::<Vec<_>>();
-    launch_from_explorer_sta_bstr(BSTR::from_wide(&target), Some(arguments))
+    launch_user_helper_from_explorer_sta_bstr(BSTR::from_wide(&target), arguments)
+}
+
+enum UserHelperStaOutcome {
+    NotInvoked(ProcessLaunchError),
+    Invoked(Result<(), ProcessLaunchError>),
+}
+
+fn launch_user_helper_from_explorer_sta_bstr(
+    target: BSTR,
+    arguments: &str,
+) -> UserHelperStaOutcome {
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if initialized.is_err() {
+        return UserHelperStaOutcome::NotInvoked(ProcessLaunchError::InteractiveUserUnavailable);
+    }
+
+    let dispatch = (|| {
+        let shell_windows: IShellWindows =
+            unsafe { CoCreateInstance(&ShellWindows, None, CLSCTX_LOCAL_SERVER) }
+                .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+        let empty = VARIANT::default();
+        let mut explorer_window = 0;
+        let explorer_dispatch = unsafe {
+            shell_windows.FindWindowSW(
+                &empty,
+                &empty,
+                SWC_EXPLORER,
+                &mut explorer_window,
+                SWFO_NEEDDISPATCH,
+            )
+        }
+        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+        explorer_dispatch
+            .cast::<IShellDispatch2>()
+            .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)
+    })();
+
+    let outcome = match dispatch {
+        Err(error) => UserHelperStaOutcome::NotInvoked(error),
+        Ok(shell_dispatch) => {
+            let empty = VARIANT::default();
+            let arguments = VARIANT::from(arguments);
+            // From this instruction onward, an HRESULT failure cannot prove
+            // the helper was not started: Explorer/Alice can perform the side
+            // effect before reporting an error.
+            let result =
+                unsafe { shell_dispatch.ShellExecute(&target, &arguments, &empty, &empty, &empty) }
+                    .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable);
+            UserHelperStaOutcome::Invoked(result)
+        }
+    };
+    unsafe { CoUninitialize() };
+    outcome
 }
 
 fn launch_from_explorer_sta_bstr(

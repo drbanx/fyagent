@@ -1968,12 +1968,23 @@ describe("FyAgent Windows NSIS, elevation, signing, and manual diagnostics", () 
 
   it("preserves user state while removing bounded installer-owned runtime state", () => {
     expect(template).toContain(
-      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.state"',
+      "!macro FyAgentCleanupLegacyMachineRuntime Label",
     );
     expect(template).toContain(
-      'Delete "$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-*.lock"',
+      '!insertmacro FyAgentValidateLegacyRuntimeName "$R1" ${Label}_legacy_entry $R5',
     );
-    expect(template).toContain('RMDir "$COMMONPROGRAMDATA\\FyAgent\\runtime"');
+    expect(template).toContain(
+      '!insertmacro FyAgentDeleteRegularFileRelativeToHandle r3 $3 "$R1" ${Label}_legacy_file',
+    );
+    expect(template).toContain(
+      "!insertmacro FyAgentMarkEmptyDirectoryForDeletion r3 ${Label}_legacy_runtime",
+    );
+    expect(template).not.toMatch(
+      /Delete\s+"\$COMMONPROGRAMDATA\\FyAgent\\runtime\\business-\*\.(?:state|lock)"/u,
+    );
+    expect(template).not.toContain(
+      'RMDir "$COMMONPROGRAMDATA\\FyAgent\\runtime"',
+    );
     expect(template).toContain("~/.fyagent data");
     expect(template).not.toMatch(
       /RMDir\s+\/r[^\n]*(?:APPDATA|LOCALAPPDATA|\.fyagent)/i,

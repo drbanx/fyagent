@@ -20,8 +20,11 @@ process start
   -> initialize WebView/config/log/database/state on those paths
   -> explicit-SID Codex package discovery
   -> verify the fixed install-root MSIX and hold its file identity open
+  -> parent seals one protected ProgramData PackageBridge copy from that handle
   -> launch the fixed current-user helper through Explorer
-  -> authenticated one-shot progress/result pipe
+  -> `Hello`, authenticate helper, send bridge control, verify `Started`, admit
+  -> observe true WinRT terminal state and clean pipe close
+  -> application-owned normal cleanup or immutable known-only orphan retention
   -> post-verification and launch for the same frozen context
 ```
 
@@ -63,68 +66,158 @@ fixed command shape:
 fyagent-user-helper.exe codex-msix-install --job-id <canonical-lowercase-uuid> --pipe <64-lowercase-hex>
 ```
 
-The helper derives both its install root and
-`cache\codex-installer\<job-id>\installer.msix` from `current_exe()`. It does
-not accept an executable, command, URI, package path, installer scope, or
-validation bypass. Its only deployment operation is current-user
-`PackageManager.AddPackageByUriAsync`; the retired headless/runas control and
-job files, all-users DTOs, Stage, and Provision operations have no replacement.
+The helper derives its install root from `current_exe()` only to bind its own
+installed image. It does not derive the package source from that tree and does
+not accept an executable, command, URI, package path, bridge root, operation ID,
+installer scope, or validation bypass. After authenticated `Hello`, the parent
+sends one fixed bridge control and the helper independently resolves the fixed
+CommonApplicationData hierarchy. Its only A1 deployment operation is
+current-user `PackageManager.AddPackageByUriAsync`; the retired headless/runas
+control and job files, all-users DTOs, Stage, and Provision operations have no
+replacement in the shipped path.
 
-The elevated parent creates one local first-instance pipe before asking
-Explorer to launch the fixed sibling helper as Alice. The pipe name uses the
-session-local `LOCAL\` namespace and combines a versioned fixed prefix with a
-random 256-bit nonce. Its descriptor gives Alice
-only write-data plus synchronize access. SYSTEM and Administrators have only
-`READ_CONTROL`, not pipe data, synchronize, DACL-write, or owner-write access, so a helper
-running under either broad principal cannot connect and start PackageManager.
-The parent reads one bounded raw frame only to make pipe impersonation
-available, then verifies the connected PID's process and impersonated-token
-SID/session plus the pinned helper image before decoding that frame. The server
-accepts one connection and is destroyed on identity failure, timeout, early
-exit, or completion. Explorer COM launch waiting is itself bounded and admits
-only one in-flight helper launch, so a late launch finds no server and exits
-before PackageManager.
+The elevated parent creates one local first-instance duplex pipe before asking
+Explorer to launch the fixed sibling helper as Alice. Its session-local
+`LOCAL\` name combines a fixed versioned prefix with a random 256-bit nonce.
+The BA-owned descriptor gives Alice exactly read-data, write-data,
+`READ_CONTROL`, and synchronize rights; SYSTEM and Administrators retain only
+`READ_CONTROL`. No generic-write alias grants pipe-instance creation.
 
-Messages are versioned and length-prefixed under a small absolute cap. The
-only states are `started`, strictly increasing bounded `progress`, one
-`success`, or one structured bounded `error`. Unknown/trailing/oversized data,
-invalid UTF-8, progress regression, a missing start, or a duplicate terminal
-message fails the installation.
+The parent also first-creates BA-owned admission and cancellation events. Alice
+can synchronize and inspect their owner but cannot signal them. The helper
+opens, never creates, the two events and pipe once and verifies the actual
+owner of all three handles is Builtin Administrators. A late helper therefore
+rejects absent objects or Alice-created replacements before `Hello` or
+AddPackage; the nonce is not treated as sufficient authority. Cancellation is
+checked before admission when both are signaled.
 
-## Safe activation sequence
+The parent reads one bounded raw fieldless `Hello` only to enable pipe
+impersonation. It gets PID/session from the pipe, opens that process only for
+exact pinned-image/synchronization proof, and gets SID/session from the
+impersonated pipe-client token; it never opens a separate process token. After
+explicitly reverting impersonation and authenticating Alice's helper, the
+parent writes one exact 80-byte `FYABRIDG` version-2 control. It contains only
+the expected volume serial/file index/size and a parent-generated 256-bit bridge
+operation ID—never a host, URI, filename, path, SID, or mode.
 
-The helper/protocol/Explorer/pipe batch deliberately lands as unreachable
-scaffolding while the production Windows installer path fails closed. It must
-not make an interim copy from the old system-temp staging path into the
-helper's fixed location: that would break the byte identity proven by the
-elevated verifier.
+The ordering is fixed: `Hello` → peer authentication → bridge control → helper
+bridge/URI proof → `Started { package identity }` → parent context/pin recheck →
+admission → progress → one terminal result. The helper independently resolves
+the fixed bridge and compares its no-follow pin with the control before
+`Started`; the parent compares `Started` with its own pin before signaling
+admission. The helper cannot call PackageManager before admission.
 
-The following staging-and-pin batch activates the helper atomically with the
-install-root cache and an open `GENERIC_READ + FILE_SHARE_READ` handle whose
-volume serial, file index, and size have been rechecked. The parent holds that
-handle until PackageManager and the helper reach a terminal result, preventing
-write, delete, or rename between verification and Alice's consumption. This
-ordering is also the rollback boundary: helper activation and the file pin
-must not be separated. A parent-side pipe timeout alone is not a safe release
-condition; progress-write failure, handler-registration failure, timeout, and
-early disconnect must cancel and observe the WinRT operation, or transfer the
-pin to an owner that retains it until helper/PackageManager completion.
+Messages are versioned and length-prefixed under a small absolute cap. The only
+helper frames are `Hello`, `Started { package identity }`, strictly increasing
+bounded `progress`, one `success`, or one structured bounded `error`. Before
+admission, unknown/trailing/oversized data, invalid UTF-8, a missing or
+out-of-order step, timeout, transport failure, or early exit may terminate with
+a structured error because PackageManager has not run. After admission, any
+invalid progress or terminal, duplicate/extra data, protocol/transport error,
+timeout, early exit, or unclean close causes best-effort cancellation followed
+by permanent process-lifetime quarantine. The Job remains `Installing`, no
+terminal result is published to the renderer, and the operation is not cleaned.
+Only an authenticated valid terminal status, its matching valid terminal frame,
+and a clean pipe close permit cleanup.
+
+## Protected package bridge and process lifetime
+
+The production path stages only under the install-root cache and opens the
+validated MSIX with `GENERIC_READ + FILE_SHARE_READ`. After rechecking SHA-256,
+volume serial, file index, and size, the elevated application bridge module
+copies only from that handle into:
+
+```text
+<FOLDERID_ProgramData>\FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1\<64-lowercase-hex-operation-id>\installer.msix
+```
+
+The fixed root and `v1` use one stable BA-owned/grouped protected ACL independent
+of Alice: BA manages it, SYSTEM has required read/traverse, and Authenticated
+Users (`AU`) has stable directory `FILE_GENERIC_EXECUTE` semantics—traverse,
+read attributes, `READ_CONTROL`, and synchronize—never list/create/write/delete/
+delete-child. Every create-new operation directory and `.part`/final file has a
+separate protected ACL granting only BA management, minimum SYSTEM read/traverse,
+and minimum read/traverse for the exact frozen Alice SID. ProgramData-parent
+effective access is checked so Alice cannot invalidate the root through
+`DELETE_CHILD`. Incompatible existing objects are rejected, not repaired.
+
+The ProgramData volume must be local fixed NTFS and have enough space for the
+accepted extra full copy. The parent handles short reads/writes while hashing,
+flushes `.part`, renames without replacement, reopens the final leaf no-follow,
+and proves exact SHA/size/source-object, file-ID, link/reparse/placeholder,
+owner/group, and DACL continuity. Parent preflight already owns release
+SHA/size and bounded ZIP/manifest publisher/name/version/architecture/OS checks;
+PackageManager remains the native MSIX signature-chain authority.
+
+The helper converts only the protected ordinary DOS path with
+`UrlCreateFromPathW`, round-trips it through `PathCreateFromUrlW`, rejects
+UNC/host, query/fragment, extended/overlong, or encoding ambiguity, and reopens
+no-follow to prove the same identity. There is no HTTP fallback and no proxy,
+network, Temp, cwd, or install-root package fallback.
+
+The parent keeps the source pin, bridge ancestors/file, helper-image pin,
+control events, duplex pipe, and admitted process in one lifetime. Normal
+cleanup occurs only after the helper observes a non-`Started` WinRT terminal
+status, sends the matching valid terminal result, and closes the pipe cleanly.
+Timeout, protocol loss, progress-write failure, handler-registration failure,
+an ambiguous synchronous AddPackage error, crash, or termination leaves an
+immutable operation orphan. A helper exit code is never sufficient terminal
+proof. The next elevated bridge creation may perform bounded known-only cleanup
+through held handles; unknown, reparse, ACL-drifted, inaccessible, nonempty, or
+changing objects survive, and operation IDs are never reused. NSIS never owns,
+repairs, enumerates, or removes PackageBridge, which is strictly separate from
+the retired `%ProgramData%\FyAgent\runtime` tree.
+
+Normal renderer exit/restart paths use the fixed `exit_app`/`restart_app`
+commands. Their process-lifetime claim shares one mutex with installer start,
+so exactly one wins and a running, cancellation-pending, admitted, or
+quarantined job blocks normal termination. The default renderer capability
+contains no `process:allow-exit`, `process:allow-restart`, or `process:default`.
+
+Three process limits remain explicit. The Alice helper is not protected from
+same-SID code injection, memory writes, or handle manipulation; resisting that
+attacker would require the excluded trusted broker/service model, and Alice
+already owns current-user PackageManager authority. Administrator force-kill,
+process crash, and OS shutdown can destroy in-process source/pin ownership and
+are not durable terminal evidence; the protected orphan remains fail-closed.
+Finally, NSIS asks a running FyAgent/helper to close normally and never
+force-terminates it, but the last process lookup is only a point-in-time check
+rather than an atomic launch interlock.
+
+This delivery intentionally does not run HIL, locally or in GitHub Actions. Its
+present A1 evidence is limited to static contract tests, scoped Windows-target
+compilation checks, and code/security review. Real Windows 10/11, x64/ARM64,
+Bob-elevated/Alice-standard-Explorer-Shell, protected DOS file-URI/
+PackageManager, effective ACL/mutation-denial, and terminal/orphan/cleanup
+behaviors therefore remain explicit, unverified residual risks. The present
+evidence must not be described as proof of native compatibility or native
+runtime verification.
+The minimum supported Windows version does not change, and existing OS/package
+`MinVersion` preflight still rejects unsupported cases before helper launch. A2
+requires future independent native validation plus an explicit, separately
+authorized design decision; it is never a runtime fallback.
 
 ## Testing boundary
 
 Portable Rust and frontend fixtures cover same-user and Bob/Alice identity,
 missing Shell/folder failures, immutable context propagation, backend-owned
 directory defaults, single-instance input limits, and context-bound package
-inventory. Helper tests cover the exact CLI/layout, protocol bounds and order,
-minimal pipe access, AddPackage-only runtime, independent `asInvoker` manifest,
-and the fail-closed activation gate. Static contracts ensure Windows
-production paths do not derive user state from ambient profile/app-data/
-tool-home variables or `HKCU`.
+inventory. Helper/source tests cover the exact CLI/layout, duplex protocol and
+80-byte bridge control, `Hello`/control/`Started`/admit ordering, stable-root and
+exact-Alice operation ACLs, copy/URI/object continuity, mutation denial,
+application-owned cleanup/orphans, NSIS non-ownership, AddPackage-only runtime,
+independent `asInvoker` manifest, terminal/quarantine paths, and the atomic
+lifecycle claim. Static
+contracts ensure Windows production paths do not derive user state from ambient
+profile/app-data/tool-home variables or `HKCU`.
 
-Matching x64 and ARM64 native Actions jobs own evidence for the Explorer token,
-UAC, WebView2 path, Windows registry, package manager, and final setup behavior.
-Linux compilation, portable fixtures, and static contracts are useful local
-evidence but do not substitute for those native Windows results.
+This delivery runs no Windows runtime HIL in Actions or on a local machine.
+Static contracts, portable fixtures, scoped Windows-target compilation checks,
+and review are the available evidence; they do not verify Explorer tokens, UAC,
+WebView2 paths, Windows registry behavior, the protected bridge/ACL/file URI,
+PackageManager terminal behavior, cleanup, or setup/uninstall lifecycle on real
+Windows 10/11, x64/ARM64, or Bob/Alice systems. Those are explicit residual
+risks and prohibit a native-compatibility or native-runtime-verified claim.
 
 The repository also intentionally accepts the official Trellis `0.6.14`
 Codex hooks without FyAgent's former path-containment, exact-import,

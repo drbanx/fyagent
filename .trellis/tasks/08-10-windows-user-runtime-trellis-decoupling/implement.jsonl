@@ -6,8 +6,8 @@
 {"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Own the machine-runtime to immutable Shell-user context replacement."}
 {"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Own current-user helper, staging, validation continuity, and renderer compatibility."}
 {"file":".trellis/spec/backend/windows-installer.md","reason":"Own NSIS packaging, helper payload, lifecycle, upgrade, and bounded cleanup."}
-{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Own x64 and ARM64 native lifecycle execution and Required aggregation."}
-{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Own immutable candidate smoke, preflight/formal dependencies, permissions, and attachment invariants."}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Preserve x64 and ARM64 build/package evidence and Required aggregation without adding lifecycle or HIL execution."}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Preserve immutable preflight artifacts, permissions, and attachment invariants without adding native lifecycle smoke."}
 {"file":".trellis/spec/backend/deeplink-import-security.md","reason":"Preserve strict validation for untrusted single-instance deep-link input."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Protect the unchanged renderer DTO boundary while backend installer internals change."}
 {"file":".trellis/tasks/08-10-windows-user-runtime-trellis-decoupling/research/current-state-and-safety-boundaries.md","reason":"Task-local baseline, accepted risks, superseded contracts, and verified platform facts."}

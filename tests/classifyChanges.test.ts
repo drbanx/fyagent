@@ -248,6 +248,54 @@ describe("repository change classifier", () => {
     });
   });
 
+  it("keeps deleted and renamed legacy documentation paths owned", () => {
+    const root = temporaryRepository();
+    write(root, "README_DE.md", "retired locale readme\n");
+    write(root, "session-manager.md", "session manager history\n");
+    const base = commit(root, "base");
+
+    fs.rmSync(path.join(root, "README_DE.md"));
+    write(
+      root,
+      "docs/fyagent/history/session-manager-prd.md",
+      "session manager history\n",
+    );
+    fs.rmSync(path.join(root, "session-manager.md"));
+    const head = commit(root, "restructure documentation");
+
+    const changedPaths = changedPathsBetweenCommits(base, head, root);
+    expect(changedPaths).toHaveLength(3);
+    expect(changedPaths).toEqual(
+      expect.arrayContaining([
+        "README_DE.md",
+        "session-manager.md",
+        "docs/fyagent/history/session-manager-prd.md",
+      ]),
+    );
+
+    const result = runClassifier(root, [
+      "--base",
+      base,
+      "--head",
+      head,
+      "--json",
+    ]);
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout) as ChangeClassification).toEqual({
+      domains: domains("contracts", "docsSpec"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it("does not broadly classify an arbitrary root Markdown file", () => {
+    expect(classifyChangedPaths(["UNOWNED_ROOT_DOC.md"])).toEqual({
+      domains: domains(),
+      unknownPaths: ["UNOWNED_ROOT_DOC.md"],
+      forceFull: false,
+    });
+  });
+
   it("emits JSON and exits nonzero for an unclassified Git path", () => {
     const root = temporaryRepository();
     write(root, "README.md", "base\n");

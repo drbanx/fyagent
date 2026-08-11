@@ -86,13 +86,20 @@ const DOCUMENTATION_ROOT_FILES = new Set([
   "CONTRIBUTING.md",
   "LICENSE",
   "LICENSING.md",
+  "MEMORY.md",
   "README.md",
-  "README_DE.md",
   "README_JA.md",
   "README_ZH.md",
   "SECURITY.md",
   "SUPPORT.md",
   "THIRD_PARTY_NOTICES.md",
+  "docs/fyagent/history/session-manager-prd.md",
+]);
+
+// Name-status diffs include deleted paths and the old side of renames. Keep
+// retired root-document names owned so history comparisons remain classifiable.
+const LEGACY_DOCUMENTATION_ROOT_FILES = new Set([
+  "README_DE.md",
   "session-manager.md",
 ]);
 
@@ -239,12 +246,20 @@ function classifyPath(path, domains) {
     return { matched: true, forceFull: false };
   }
 
-  if (path.startsWith("docs/") || path.startsWith("LICENSES/")) {
+  if (
+    path.startsWith("docs/") ||
+    path.startsWith("LICENSES/") ||
+    path.startsWith("memory/") ||
+    path.startsWith(".omo/")
+  ) {
     addDomains(domains, ["contracts", "docsSpec"]);
     return { matched: true, forceFull: false };
   }
 
-  if (DOCUMENTATION_ROOT_FILES.has(path)) {
+  if (
+    DOCUMENTATION_ROOT_FILES.has(path) ||
+    LEGACY_DOCUMENTATION_ROOT_FILES.has(path)
+  ) {
     addDomains(domains, ["contracts", "docsSpec"]);
     return { matched: true, forceFull: false };
   }
