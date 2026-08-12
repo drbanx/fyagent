@@ -320,8 +320,7 @@ portable, fail-closed repository regression gate.
 **Focused validation**
 
 ```powershell
-node scripts/tasks/supported-platform-check.mjs --exclude-active-task .trellis/tasks/08-12-remove-linux-support
-mise run check:contracts
+mise run check:contracts:prearchive -- --exclude-active-task .trellis/tasks/08-12-remove-linux-support
 mise run tasks:validate
 git diff --check
 ```
@@ -350,7 +349,7 @@ approved exclusion and rejected bypass, and the canonical contract gate passes.
 pnpm install --frozen-lockfile
 mise run env:check -- --json
 mise run system:check -- --json
-mise run check
+mise run check:prearchive -- --exclude-active-task .trellis/tasks/08-12-remove-linux-support
 mise run lint:v2
 mise run typecheck:v2
 mise run test:v2

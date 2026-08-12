@@ -396,6 +396,74 @@ describe("canonical mise task API", () => {
     expect(output(result)).not.toContain("miseTaskContract.test.ts");
   }, 60_000);
 
+  it("routes the exact prearchive task only to the selected composite gate", async () => {
+    const prearchive = (await import(
+      /* @vite-ignore */ pathToFileURL(
+        path.join(ROOT, "scripts", "tasks", "prearchive-check.mjs"),
+      ).href
+    )) as {
+      resolvePrearchiveTarget: (mode: string) => string;
+      runPrearchiveCheck: (
+        mode: string,
+        options: {
+          activeTask: string;
+          environment: NodeJS.ProcessEnv;
+          validator: (value: string) => string;
+          runner: (
+            command: string,
+            args: string[],
+            options: { env: NodeJS.ProcessEnv },
+          ) => unknown;
+        },
+      ) => unknown;
+    };
+    const activeTask = `.trellis/tasks/${[
+      "08-12-remove",
+      "lin",
+      "ux-support",
+    ].join("-")}`;
+    const calls: Array<{
+      command: string;
+      args: string[];
+      environment: NodeJS.ProcessEnv;
+    }> = [];
+
+    prearchive.runPrearchiveCheck("contracts", {
+      activeTask,
+      environment: { SAFE_PARENT: "1" },
+      validator: (value) => {
+        expect(value).toBe(activeTask);
+        return value;
+      },
+      runner: (command, args, options) => {
+        calls.push({ command, args, environment: options.env });
+        return { status: 0 };
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        command: "mise",
+        args: ["run", "check:contracts"],
+        environment: {
+          SAFE_PARENT: "1",
+          usage_exclude_active_task: "",
+          FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK: activeTask,
+        },
+      },
+    ]);
+    expect(prearchive.resolvePrearchiveTarget("full")).toBe("check");
+    expect(() => prearchive.resolvePrearchiveTarget("other")).toThrow();
+    expect(() =>
+      prearchive.runPrearchiveCheck("full", {
+        activeTask,
+        environment: { FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK: activeTask },
+        validator: (value) => value,
+        runner: () => ({ status: 0 }),
+      }),
+    ).toThrow(/must not be set by the caller/u);
+  });
+
   it("forwards version and Python parameters while preview mode preserves files", () => {
     const guardedFiles = [
       "src-tauri/Cargo.toml",

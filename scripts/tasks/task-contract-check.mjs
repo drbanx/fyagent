@@ -16,7 +16,9 @@ export const REQUIRED_TASKS = Object.freeze([
   "check",
   "check:backend",
   "check:contracts",
+  "check:contracts:prearchive",
   "check:frontend",
+  "check:prearchive",
   "clean:all",
   "clean:artifacts",
   "clean:frontend",
@@ -83,6 +85,8 @@ export const REQUIRED_TASKS = Object.freeze([
 
 export const PARAMETERIZED_TASKS = Object.freeze([
   "assets:icons",
+  "check:contracts:prearchive",
+  "check:prearchive",
   "clean:all",
   "clean:artifacts",
   "clean:frontend",

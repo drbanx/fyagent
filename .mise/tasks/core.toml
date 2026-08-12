@@ -66,6 +66,14 @@ run = [
   { task = "check:contracts" },
 ]
 
+["check:prearchive"]
+description = "Run the complete check with one exact current Trellis task excluded before archival"
+usage = '''
+flag "--exclude-active-task <path>" help="Exclude the exact current in-progress task; required before archival"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/prearchive-check.mjs full"
+
 ["check:frontend"]
 description = "Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
@@ -96,6 +104,14 @@ run = [
   { task = "version:check" },
   { task = "release:check" },
 ]
+
+["check:contracts:prearchive"]
+description = "Run contract checks with one exact current Trellis task excluded before archival"
+usage = '''
+flag "--exclude-active-task <path>" help="Exclude the exact current in-progress task; required before archival"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/prearchive-check.mjs contracts"
 
 ["clean:frontend"]
 description = "Preview or remove repository-local frontend generated state"

@@ -103,6 +103,51 @@ read those values, parse variadic shell-escaped lists into argv arrays, validate
 SemVer/package/tag/enum/path inputs, and spawn a command without a shell.
 Arguments must never be concatenated into a command string.
 
+### Prearchive exact-task verification
+
+**Scope / trigger.** Use this path only when a tracked, in-progress Trellis
+task must describe markers that the canonical repository contract rejects.
+Ordinary local checks, CI, and post-archive verification use the canonical
+tasks without an exclusion.
+
+**Signatures.** `check:prearchive` and `check:contracts:prearchive` each require
+`--exclude-active-task <path>`. They delegate to
+`scripts/tasks/prearchive-check.mjs`, which selects only `check` or
+`check:contracts` and never forwards the usage argument to unrelated leaves.
+
+**Contracts.** The wrapper validates the exact repository-relative task path
+through the supported-platform checker before spawning nested mise. Validation
+must bind the path to Trellis's non-stale current-session pointer, require the
+canonical in-progress task metadata, reject symlink or realpath escape, and
+transport the validated path through the internal
+`FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK` environment entry. The leaf accepts
+that entry only as the same strict single exclusion it would accept from its
+direct CLI. Caller-preseeded, conflicting, duplicate, wildcard, archived, or
+non-current values fail closed. Default `check`, `check:contracts`, and
+`supported-platform:check` never infer or apply an active-task exclusion.
+
+**Error matrix.** Missing usage, unknown wrapper mode, missing/stale/wrong
+session pointer, metadata mismatch, caller-preseeded internal state, invalid
+path, or nested nonzero status must stop the wrapper. No failure may retry with
+a broader path or omit the platform check.
+
+**Examples.** A positive fixture binds
+`.trellis/tasks/<month-day>-<slug>` to the current session and reaches exactly
+one selected composite. The base case runs canonical `check` with no internal
+entry. Negative fixtures cover a different task, a child path, archive path,
+symlink, stale pointer, dual CLI/environment sources, and an unrelated mode.
+
+**Tests required.** Pure tests freeze target selection, owned environment, and
+caller-preseed rejection. Executable tests run both prearchive composites with
+the exact current task, prove canonical no-argument checks remain strict, and
+prove another path cannot receive the exclusion.
+
+**Wrong vs correct.** Wrong: broadcast the raw flag through every task, add an
+active-task glob, or teach canonical checks to skip `.trellis/tasks/**`.
+Correct: validate one session-bound task, transport it privately to one leaf,
+run the selected complete composite, archive, then rerun canonical checks with
+no exclusion.
+
 `format:files` accepts one or more reviewed files and first validates every
 operand. It routes validated `.jsonl` names
 case-insensitively through record formatting: before any write or Prettier
@@ -245,7 +290,7 @@ does not turn them into contribution, build, CI, or release prerequisites.
   preserve direct non-Windows commands, bind both native Windows pnpm lock
   assets and checksums, and prove the DEP0040 checker uses the shared resolver
   without a `pnpm.cmd` fallback.
-- Pure tests for all six supported process-host mappings, strict absolute
+- Pure tests for all four supported process-host mappings, strict absolute
   rustc/rustdoc identity, case-insensitive caller compiler/wrapper/runner/linker/
   target and target-bearing flag rejection, plus fixed current-host
   Tauri/Cargo argv and owned child environment.
