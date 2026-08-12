@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { deflateSync } from "node:zlib";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(__dirname, "..");
@@ -59,22 +60,52 @@ type CheckerModule = {
   EXPECTED_ACTIVE_TASK: string;
   MACOS_POSIX_CONTRACT: readonly SourceContract[];
   RUST_ALLOWANCE_CONTRACT: readonly RustAllowance[];
+  RASTER_ASSET_CONTRACT: readonly { path: string; digest: string }[];
+  STRUCTURE_ASSET_CONTRACT: readonly { path: string; digest: string }[];
   SURFACE_MARKERS: SurfaceMarkers;
   inspectRepository(options?: Record<string, unknown>): {
     findings: Finding[];
     inspectedFiles: number;
   };
+  inspectKnownImage(relativePath: string, buffer: Buffer): string | undefined;
+  loadRasterAssetManifest(
+    manifestPath?: string,
+    io?: unknown,
+  ): readonly {
+    path: string;
+    digest: string;
+  }[];
+  loadStructureAssetManifest(
+    manifestPath?: string,
+    io?: unknown,
+  ): readonly {
+    path: string;
+    digest: string;
+  }[];
   isExcludedPath(relativePath: string, activeTask?: string): boolean;
   isTextExcludedPath(relativePath: string): boolean;
   listCurrentFiles(
     root?: string,
     runner?: (...args: unknown[]) => unknown,
   ): string[];
+  listArchiveIndexModes(
+    root?: string,
+    runner?: (...args: unknown[]) => unknown,
+  ): Map<string, string>;
+  listCurrentIndexModes(
+    root?: string,
+    runner?: (...args: unknown[]) => unknown,
+  ): Map<string, string>;
   parseArguments(
     argv: string[],
     environment?: Record<string, string>,
   ): string | undefined;
-  readCurrentEntry(root: string, relativePath: string, io?: unknown): unknown;
+  readCurrentEntry(
+    root: string,
+    relativePath: string,
+    io?: unknown,
+    indexMode?: string,
+  ): unknown;
   resolveAuthoritativeActiveTask(
     root?: string,
     runner?: (...args: unknown[]) => unknown,
@@ -83,6 +114,12 @@ type CheckerModule = {
     entries: Array<{ path: string; source: string }>,
   ): Finding[];
   scanMacosPosixContract(
+    entries: Array<{ path: string; source: string }>,
+  ): Finding[];
+  scanDirectoryConventionContract(
+    entries: Array<{ path: string; source: string }>,
+  ): Finding[];
+  scanCargoImplicitPredicates(
     entries: Array<{ path: string; source: string }>,
   ): Finding[];
   scanPath(relativePath: string): Finding[];
@@ -98,7 +135,17 @@ type CheckerModule = {
     root: string,
     relativePath: string,
     io?: unknown,
+    indexMode?: string,
   ): Finding[];
+  validateRasterAssetInventory(
+    currentPaths: string[],
+    activeTask?: string,
+  ): Finding[];
+  validateStructureAssetInventory(
+    currentPaths: string[],
+    indexModes: Map<string, string>,
+    options?: Record<string, unknown>,
+  ): string[];
 };
 
 let checker: CheckerModule;
@@ -123,9 +170,22 @@ function activeTaskFixture() {
 }
 
 function permittedRustEntries() {
-  return [
-    ...new Set(checker.RUST_ALLOWANCE_CONTRACT.map(({ file }) => file)),
-  ].map((relativePath) => ({
+  const files: string[] = [];
+  const visit = (relativeDirectory: string) => {
+    const absoluteDirectory = path.join(ROOT, relativeDirectory);
+    for (const entry of fs.readdirSync(absoluteDirectory, {
+      withFileTypes: true,
+    })) {
+      const relativePath = path.posix.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) visit(relativePath);
+      if (entry.isFile() && relativePath.endsWith(".rs")) {
+        files.push(relativePath);
+      }
+    }
+  };
+  visit("src-tauri/src");
+  files.push("src-tauri/build.rs", "src-tauri/user-helper/build.rs");
+  return files.map((relativePath) => ({
     path: relativePath,
     source: fs.readFileSync(path.join(ROOT, relativePath), "utf8"),
   }));
@@ -140,6 +200,42 @@ function macosPosixEntries() {
   );
 }
 
+function pngCrc32(buffer: Buffer) {
+  let crc = 0xffffffff;
+  for (const value of buffer) {
+    crc ^= value;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 1) !== 0 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, payload: Buffer) {
+  const typeBytes = Buffer.from(type, "ascii");
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(payload.length, 0);
+  typeBytes.copy(header, 4);
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE(pngCrc32(Buffer.concat([typeBytes, payload])), 0);
+  return Buffer.concat([header, payload, checksum]);
+}
+
+function pngWithMetadata(chunks: Buffer[]) {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1, 0);
+  header.writeUInt32BE(1, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", header),
+    ...chunks,
+    pngChunk("IDAT", Buffer.from([0])),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
 describe("durable supported-platform surface contract", () => {
   it("constructs every retired marker without making the checker or test self-match", () => {
     for (const relativePath of [
@@ -149,6 +245,33 @@ describe("durable supported-platform surface contract", () => {
       const source = fs.readFileSync(path.join(ROOT, relativePath), "utf8");
       expect(checker.scanText(relativePath, source), relativePath).toEqual([]);
       expect(checker.scanPath(relativePath), relativePath).toEqual([]);
+    }
+  });
+
+  it("keeps the always-run checker import closure on Node builtins only", () => {
+    const source = fs.readFileSync(CHECKER, "utf8");
+    const imports = Array.from(
+      source.matchAll(/^import\s+[^;]+?\s+from\s+["']([^"']+)["'];?$/gmu),
+      (match) => match[1],
+    );
+    expect(imports.length).toBeGreaterThan(0);
+    expect(imports.every((specifier) => specifier.startsWith("node:"))).toBe(
+      true,
+    );
+    expect(source).not.toContain('from "./lib.mjs"');
+  });
+
+  it("rejects directory-convention markers in source and asset paths", () => {
+    const marker = checker.SURFACE_MARKERS.directoryConvention;
+    for (const relativePath of [
+      `src/${marker}-helper.ts`,
+      `assets/${marker}-icon.png`,
+    ]) {
+      expect(checker.scanPath(relativePath)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ rule: "path:directory-convention" }),
+        ]),
+      );
     }
   });
 
@@ -199,7 +322,16 @@ describe("durable supported-platform surface contract", () => {
     const terminology = `${checker.SURFACE_MARKERS.directoryConvention.toUpperCase()}_DATA_HOME`;
     expect(checker.scanText("notes/posix.txt", terminology)).toEqual([]);
 
-    const entries = macosPosixEntries();
+    const entries = [
+      ...macosPosixEntries(),
+      {
+        path: "tests/codexWindowsUserScopeContract.test.ts",
+        source: fs.readFileSync(
+          path.join(ROOT, "tests/codexWindowsUserScopeContract.test.ts"),
+          "utf8",
+        ),
+      },
+    ];
     expect(checker.scanMacosPosixContract(entries)).toEqual([]);
     const first = checker.MACOS_POSIX_CONTRACT[0];
     const drifted = entries.map((entry) =>
@@ -210,6 +342,101 @@ describe("durable supported-platform surface contract", () => {
     expect(checker.scanMacosPosixContract(drifted)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ rule: "macos-posix:contract-drift" }),
+      ]),
+    );
+
+    expect(checker.scanDirectoryConventionContract(entries)).toEqual([]);
+    const unexpectedVariable = [
+      checker.SURFACE_MARKERS.directoryConvention.toUpperCase(),
+      "_CACHE_HOME",
+    ].join("");
+    expect(
+      checker.scanDirectoryConventionContract([
+        ...entries,
+        { path: "src/cache.ts", source: `process.env.${unexpectedVariable}` },
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "macos-posix:unexpected-variable" }),
+      ]),
+    );
+    const dataEntry = entries.find(
+      ({ path: entryPath }) => entryPath === "src-tauri/src/opencode_config.rs",
+    );
+    const dataHomeIdentifier = ["OPENCODE_DATA_", "HOME_ENV"].join("");
+    expect(dataEntry).toBeDefined();
+    expect(
+      checker.scanDirectoryConventionContract(
+        entries.map((entry) =>
+          entry === dataEntry
+            ? {
+                ...entry,
+                source: `${entry.source}\n#[cfg(target_os = "windows")]\nfn leaked() { std::env::var_os(${dataHomeIdentifier}); }`,
+              }
+            : entry,
+        ),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "macos-posix:unexpected-variable" }),
+      ]),
+    );
+
+    const convention = checker.SURFACE_MARKERS.directoryConvention;
+    const swapped = entries.map((entry) =>
+      entry.path === "src-tauri/src/opencode_config.rs"
+        ? {
+            ...entry,
+            source: `${entry.source.replace(
+              `/// macOS 优先级: OPENCODE_DB 环境变量 > ${terminology} > ~/.local/share/opencode/opencode.db。`,
+              "",
+            )}\n#[cfg(target_os = "windows")]\nfn leaked() { std::env::var_os("${terminology}"); }`,
+          }
+        : entry,
+    );
+    expect(checker.scanDirectoryConventionContract(swapped)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "macos-posix:contract-drift" }),
+        expect.objectContaining({ rule: "macos-posix:unexpected-variable" }),
+      ]),
+    );
+    const cliRead = checker.MACOS_POSIX_CONTRACT.find(
+      (contract) => contract.id === "cli-bin-macos-read",
+    );
+    expect(cliRead).toBeDefined();
+    expect(
+      checker.scanDirectoryConventionContract(
+        entries.map((entry) =>
+          entry.path === cliRead?.file
+            ? {
+                ...entry,
+                source: entry.source.replace(
+                  cliRead.snippet,
+                  cliRead.snippet.replace(
+                    'target_os = "macos"',
+                    'target_os = "windows"',
+                  ),
+                ),
+              }
+            : entry,
+        ),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "macos-posix:contract-drift" }),
+      ]),
+    );
+    expect(
+      checker.scanDirectoryConventionContract([
+        ...entries,
+        {
+          path: "src/open-command.ts",
+          source: [convention, "-open"].join(""),
+        },
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "macos-posix:unexpected-variable" }),
       ]),
     );
   });
@@ -400,6 +627,196 @@ describe("durable supported-platform surface contract", () => {
         }),
       ]),
     );
+
+    for (const [name, source] of Object.entries({
+      family: '#[cfg(not(target_family = "windows"))]\nfn fallback() {}',
+      macro: 'fn fallback() { if cfg!(not(target_os = "windows")) {} }',
+      multilineMacro:
+        'fn fallback() { if cfg!(\n  not(target_os = "windows")\n) { generic(); } }',
+      unary: 'fn fallback() { if !cfg!(target_os = "macos") {} }',
+      positive:
+        'fn fallback() { if cfg!(target_os = "windows") { windows() } else { generic() } }',
+      nested:
+        '#[cfg(not(all(target_os = "windows", target_arch = "x86_64")))]\nfn fallback() {}',
+      thirdOs: `#[cfg(target_os = "${["hai", "ku"].join("")}")]\nfn fallback() {}`,
+      broadFamily: `#[cfg(target_family = "${["w", "asm"].join("")}")]\nfn fallback() {}`,
+      architecture: '#[cfg(target_arch = "x86_64")]\nfn fallback() {}',
+      manual: `fn fallback() { let target_os = std::env::var("${[
+        "CARGO_CFG_TARGET_",
+        "OS",
+      ].join("")}").unwrap(); if target_os != "windows" { generic(); } }`,
+      runtimeOs: `fn fallback() { if std::env::consts::${["O", "S"].join(
+        "",
+      )} != "macos" { generic(); } }`,
+    })) {
+      expect(
+        checker.scanRustImplicitPredicates([
+          ...entries,
+          { path: `src-tauri/tests/${name}.rs`, source },
+        ]),
+        name,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: `src-tauri/tests/${name}.rs`,
+            rule:
+              name === "manual" || name === "runtimeOs"
+                ? "rust:manual-target"
+                : "rust:implicit-target",
+          }),
+        ]),
+      );
+    }
+
+    const movedMacro = entries.map((entry) =>
+      entry.path === "src-tauri/src/lib.rs"
+        ? {
+            ...entry,
+            source: `${entry.source.replace(
+              'focus_main_window: cfg!(target_os = "macos"),',
+              "focus_main_window: false,",
+            )}\nfn generic_host_fallback() { let _ = cfg!(target_os = "macos"); }`,
+          }
+        : entry,
+    );
+    expect(checker.scanRustImplicitPredicates(movedMacro)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "rust:cfg-macro-drift" }),
+      ]),
+    );
+
+    const movedArchitecture = entries.map((entry) =>
+      entry.path === "src-tauri/src/codex_desktop_runtime.rs"
+        ? {
+            ...entry,
+            source: `${entry.source.replace(
+              '#[cfg(target_arch = "x86_64")]\n    {\n        CpuArchitecture::X86_64\n    }',
+              "{ CpuArchitecture::X86_64 }",
+            )}\n#[cfg(target_arch = "x86_64")]\nfn generic_architecture() {}`,
+          }
+        : entry,
+    );
+    expect(checker.scanRustImplicitPredicates(movedArchitecture)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rule: "rust:architecture-contract-drift",
+        }),
+      ]),
+    );
+
+    expect(
+      checker.scanRustImplicitPredicates([
+        ...entries,
+        {
+          path: "src-tauri/tests/reordered.rs",
+          source:
+            '#[cfg(all(not(feature = "x"), target_os = "windows"))]\nfn supported_only() {}',
+        },
+      ]),
+    ).toEqual([]);
+
+    expect(
+      checker.scanCargoImplicitPredicates([
+        {
+          path: "src-tauri/Cargo.toml",
+          source:
+            '[target.\'cfg(not(target_os = "windows"))\'.dependencies]\nexample = "1"',
+        },
+        {
+          path: "src-tauri/Cargo.toml",
+          source: `[target.'cfg(any(target_os = "windows", target_os = "${[
+            "hai",
+            "ku",
+          ].join("")}"))'.dependencies]\nexample = "1"`,
+        },
+        {
+          path: "src-tauri/Cargo.toml",
+          source:
+            '[target.\'cfg(all(target_os = "macos", target_vendor = "wide"))\'.dependencies]\nexample = "1"',
+        },
+        {
+          path: "src-tauri/Cargo.toml",
+          source:
+            '[target.\'cfg(not(any(feature = "x", not(any(target_os = "windows", target_os = "macos")))))\'.dependencies]\nexample = "1"',
+        },
+        ...[
+          'target_arch = "x86_64"',
+          'target_env = "msvc"',
+          'feature = "x"',
+        ].map((predicate) => ({
+          path: "src-tauri/Cargo.toml",
+          source: `[target.'cfg(any(target_os = "windows", ${predicate}))'.dependencies]\nexample = "1"`,
+        })),
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "cargo:implicit-target" }),
+      ]),
+    );
+
+    expect(
+      checker.scanCargoImplicitPredicates([
+        {
+          path: "src-tauri/Cargo.toml",
+          source:
+            '[target.\'cfg(all(target_os = "windows", target_arch = "x86_64"))\'.dependencies]\nexample = "1"',
+        },
+        {
+          path: "src-tauri/Cargo.toml",
+          source:
+            '[target."cfg(target_os = \\"macos\\")".dependencies]\nexample = "1"',
+        },
+        {
+          path: "src-tauri/Cargo.toml",
+          source: "['target'.'cfg(windows)'.'dependencies']\nexample = \"1\"",
+        },
+        {
+          path: "src-tauri/Cargo.toml",
+          source: '["target"."cfg(macos)"."dependencies"]\nexample = "1"',
+        },
+      ]),
+    ).toEqual([]);
+
+    for (const source of [
+      "['target'.'cfg(not(target_os = \"windows\"))'.dependencies]\nexample = \"1\"",
+      '["tar\\u0067et"."cfg(not(target_os = \\"windows\\"))".dependencies]\nexample = "1"',
+      '[target]\n\'cfg(not(target_os = "windows"))\'.dependencies.example = "1"',
+      'target.\'cfg(not(target_os = "windows"))\'.dependencies.example = "1"',
+      'target = { \'cfg(not(target_os = "windows"))\' = { dependencies = { example = "1" } } }',
+    ]) {
+      expect(
+        checker.scanCargoImplicitPredicates([
+          { path: "src-tauri/Cargo.toml", source },
+        ]),
+        source,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ rule: "cargo:implicit-target" }),
+        ]),
+      );
+    }
+
+    const bareTriple = [
+      "x86_64",
+      "unknown",
+      checker.SURFACE_MARKERS.kernel,
+      "gnu",
+    ].join("-");
+    for (const selector of [bareTriple, `'${bareTriple}'`]) {
+      expect(
+        checker.scanCargoImplicitPredicates([
+          {
+            path: "src-tauri/Cargo.toml",
+            source: `[target.${selector}.dependencies]\nexample = "1"`,
+          },
+        ]),
+        selector,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ rule: "cargo:implicit-target" }),
+        ]),
+      );
+    }
   });
 
   it("rejects equivalent JavaScript generic-host fallbacks", () => {
@@ -414,6 +831,113 @@ describe("durable supported-platform surface contract", () => {
         source:
           'switch (process.platform) {\ncase "win32": return windows();\ndefault: return generic();\n}',
       },
+      {
+        path: "src/full-chain.ts",
+        source:
+          'if (process.platform === "win32") { return windows(); } else if (process.platform === "darwin") { return mac(); } else { return generic(); }',
+      },
+      {
+        path: "src/full-switch.ts",
+        source:
+          'switch (process.platform) {\ncase "win32": { return windows(); }\ncase "darwin": { return mac(); }\ndefault: { return generic(); }\n}',
+      },
+      {
+        path: "src/ternary.ts",
+        source:
+          'const selected = process.platform === "win32" ? windows() : generic();',
+      },
+      {
+        path: "src/template-ternary.ts",
+        source:
+          'const selected = `${process.platform === "win32" ? windows() : generic()}`;',
+      },
+      {
+        path: "src/unrelated.ts",
+        source:
+          'if (process.platform === "darwin") { logMac(); }\nif (process.platform === "win32") { return windows(); }\nreturn generic();',
+      },
+      {
+        path: "src/sequential.ts",
+        source:
+          'if (process.platform === "win32") { return windows(); }\nif (process.platform === "darwin") { return mac(); }\nreturn generic();',
+      },
+      {
+        path: "src/unbraced.ts",
+        source:
+          'if (process.platform === "win32") return windows();\nreturn generic();',
+      },
+      {
+        path: "src/switch-hidden-throw.ts",
+        source:
+          'switch (process.platform) {\ncase "win32": return windows();\ncase "darwin": return mac();\ndefault: { return generic(); }\n}\nthrow new Error("unrelated");',
+      },
+      {
+        path: "src/helper-chain.ts",
+        source:
+          "if (isWindows()) return windows();\nelse if (isMac()) return mac();\nelse return generic();",
+      },
+      {
+        path: "src/macos-only.ts",
+        source: "if (isMac()) return mac();\nreturn generic();",
+      },
+      {
+        path: "src/reversed-negative.mts",
+        source:
+          'if ("win32" !== process?.platform) return generic();\nreturn windows();',
+      },
+      {
+        path: "src/bracket-platform.cts",
+        source:
+          'if (process?.["platform"] === "darwin") return mac();\nreturn generic();',
+      },
+      {
+        path: "src/negative-helper.ts",
+        source:
+          "if (host?.isMacOS?.() === false) return generic();\nreturn mac();",
+      },
+      {
+        path: "src/reversed-helper.ts",
+        source: "if (false === isMac()) return generic();\nreturn mac();",
+      },
+      {
+        path: "src/member-helper.ts",
+        source:
+          "if (host.isWindows(options)) return windows();\nreturn generic();",
+      },
+      {
+        path: "src/optional-platform.ts",
+        source:
+          'if (process?.platform === "win32") return windows();\nreturn generic();',
+      },
+      {
+        path: "src/null-or.ts",
+        source:
+          'if (process.platform === "win32") return windows();\nif (process.platform === "darwin") return mac();\nreturn null || generic();',
+      },
+      {
+        path: "src/false-or-switch.ts",
+        source:
+          'switch (process.platform) {\ncase "win32": return windows();\ncase "darwin": return mac();\ndefault: return false || generic();\n}',
+      },
+      {
+        path: "src/multiline-ternary.ts",
+        source:
+          'const selected = process.platform === "win32"\n  ? windows()\n  : generic();',
+      },
+      {
+        path: "src/throw-then-generic.ts",
+        source:
+          'switch (process.platform) {\ncase "win32": return windows();\ncase "darwin": return mac();\ndefault: { throw new Error("unsupported"); generic(); }\n}',
+      },
+      ...Object.entries({
+        blockComment: "/*😀😀*/ ",
+        lineComment: "// 😀😀\n",
+        quotedData: 'const data = "😀😀";\n',
+        templateData: "const data = `😀😀`;\n",
+      }).map(([name, prefix]) => ({
+        path: `src/astral-${name}.ts`,
+        source: `${prefix}if (process.platform === "win32") win(); else generic();`,
+      })),
     ];
     expect(checker.scanJavaScriptImplicitPredicates(entries)).toEqual(
       expect.arrayContaining([
@@ -425,8 +949,105 @@ describe("durable supported-platform surface contract", () => {
           path: "src/switch.ts",
           rule: "js:implicit-target",
         }),
+        expect.objectContaining({ path: "src/full-chain.ts" }),
+        expect.objectContaining({ path: "src/full-switch.ts" }),
+        expect.objectContaining({ path: "src/ternary.ts" }),
+        expect.objectContaining({ path: "src/template-ternary.ts" }),
+        expect.objectContaining({ path: "src/unrelated.ts" }),
+        expect.objectContaining({ path: "src/sequential.ts" }),
+        expect.objectContaining({ path: "src/unbraced.ts" }),
+        expect.objectContaining({ path: "src/switch-hidden-throw.ts" }),
+        expect.objectContaining({ path: "src/helper-chain.ts" }),
+        expect.objectContaining({ path: "src/macos-only.ts" }),
+        expect.objectContaining({ path: "src/reversed-negative.mts" }),
+        expect.objectContaining({ path: "src/bracket-platform.cts" }),
+        expect.objectContaining({ path: "src/negative-helper.ts" }),
+        expect.objectContaining({ path: "src/reversed-helper.ts" }),
+        expect.objectContaining({ path: "src/member-helper.ts" }),
+        expect.objectContaining({ path: "src/optional-platform.ts" }),
+        expect.objectContaining({ path: "src/null-or.ts" }),
+        expect.objectContaining({ path: "src/false-or-switch.ts" }),
+        expect.objectContaining({ path: "src/multiline-ternary.ts" }),
+        expect.objectContaining({ path: "src/throw-then-generic.ts" }),
+        expect.objectContaining({ path: "src/astral-blockComment.ts" }),
+        expect.objectContaining({ path: "src/astral-lineComment.ts" }),
+        expect.objectContaining({ path: "src/astral-quotedData.ts" }),
+        expect.objectContaining({ path: "src/astral-templateData.ts" }),
       ]),
     );
+
+    expect(
+      checker.scanJavaScriptImplicitPredicates([
+        {
+          path: "src/closed.ts",
+          source:
+            'if (process.platform === "win32") return windows();\nif (process.platform === "darwin") return mac();\nthrow new Error("unsupported");',
+        },
+      ]),
+    ).toEqual([]);
+
+    expect(
+      checker.scanJavaScriptImplicitPredicates([
+        {
+          path: "src/fixture-data.ts",
+          source:
+            'const fixture = `if (process.platform === "win32") return generic();`;',
+        },
+        {
+          path: "src/template-closed.ts",
+          source:
+            'const value = `${process.platform === "win32" ? windows() : null}`;',
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("runs every production scanner against the current repository snapshot", () => {
+    const indexModes = checker.listCurrentIndexModes(ROOT);
+    for (const manifestPath of [
+      "scripts/tasks/supported-platform-raster-assets.json",
+      "scripts/tasks/supported-platform-structure-assets.json",
+    ]) {
+      if (!indexModes.has(manifestPath)) indexModes.set(manifestPath, "100644");
+    }
+    const runner = (
+      _command: unknown,
+      arguments_: unknown,
+      _options: unknown,
+    ) => {
+      if (
+        Array.isArray(arguments_) &&
+        arguments_.includes("--stage") &&
+        !arguments_.includes(".trellis/tasks/archive/")
+      ) {
+        return {
+          status: 0,
+          stdout: Buffer.from(
+            Array.from(
+              indexModes,
+              ([relativePath, mode]) =>
+                `${mode} 0123456789abcdef0123456789abcdef01234567 0\t${relativePath}\0`,
+            ).join(""),
+          ),
+        };
+      }
+      return checker.listCurrentFiles(ROOT).length > 0
+        ? {
+            status: 0,
+            stdout: Buffer.from(
+              `${checker.listCurrentFiles(ROOT).join("\0")}\0`,
+            ),
+          }
+        : { status: 1, stdout: Buffer.alloc(0) };
+    };
+    const report = checker.inspectRepository({
+      root: ROOT,
+      activeTask: checker.EXPECTED_ACTIVE_TASK,
+      sessionResolver: () => checker.EXPECTED_ACTIVE_TASK,
+      runner,
+    });
+    expect(report.findings).toEqual([]);
+    expect(report.inspectedFiles).toBeGreaterThan(1_000);
   });
 
   it("fails closed when Git enumeration or file reads fail", () => {
@@ -475,9 +1096,368 @@ describe("durable supported-platform surface contract", () => {
       expect(() => checker.readCurrentEntry(fixture, "unknown.bin")).toThrow(
         /NUL-containing/,
       );
+
+      const reviewedImage = "src-tauri/icons/32x32.png";
+      const validPng = fs.readFileSync(path.join(ROOT, reviewedImage));
+      fs.mkdirSync(path.dirname(path.join(fixture, reviewedImage)), {
+        recursive: true,
+      });
+      fs.writeFileSync(path.join(fixture, reviewedImage), validPng);
+      expect(
+        checker.readCurrentEntry(fixture, reviewedImage, fs, "100644"),
+      ).toEqual({
+        path: reviewedImage,
+        source: undefined,
+      });
+
+      fs.writeFileSync(
+        path.join(fixture, reviewedImage),
+        Buffer.concat([
+          validPng,
+          Buffer.from(checker.SURFACE_MARKERS.kernel, "utf8"),
+        ]),
+      );
+      expect(() =>
+        checker.readCurrentEntry(fixture, reviewedImage, fs, "100644"),
+      ).toThrow(/identity is not reviewed/iu);
+
+      fs.writeFileSync(
+        path.join(fixture, reviewedImage),
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      );
+      expect(() =>
+        checker.readCurrentEntry(fixture, reviewedImage, fs, "100644"),
+      ).toThrow(/identity is not reviewed/iu);
     } finally {
       fs.rmSync(fixture, { recursive: true, force: true });
     }
+  });
+
+  it("freezes the decoded and visually reviewed raster inventory by path and digest", () => {
+    const currentPaths = checker.listCurrentFiles(ROOT);
+    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(146);
+    expect(checker.validateRasterAssetInventory(currentPaths)).toEqual([]);
+
+    const first = checker.RASTER_ASSET_CONTRACT[0];
+    expect(
+      checker.validateRasterAssetInventory(
+        currentPaths.filter((candidate) => candidate !== first.path),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "raster:inventory-drift" }),
+      ]),
+    );
+    expect(
+      checker.validateRasterAssetInventory([
+        ...currentPaths,
+        "assets/unreviewed.png",
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "raster:inventory-drift" }),
+      ]),
+    );
+  });
+
+  it("seals every platform-sensitive source by path, mode, and digest", () => {
+    const currentPaths = checker.listCurrentFiles(ROOT);
+    const indexModes = checker.listCurrentIndexModes(ROOT);
+    for (const manifestPath of [
+      "scripts/tasks/supported-platform-raster-assets.json",
+      "scripts/tasks/supported-platform-structure-assets.json",
+    ]) {
+      indexModes.set(manifestPath, "100644");
+    }
+    const validate = (
+      relativePath?: string,
+      mutate?: (source: string) => string,
+    ) => {
+      const io = {
+        lstatSync: fs.lstatSync,
+        readFileSync(absolutePath: fs.PathOrFileDescriptor, options?: unknown) {
+          const buffer = fs.readFileSync(absolutePath);
+          const relative = path
+            .relative(ROOT, String(absolutePath))
+            .split(path.sep)
+            .join("/");
+          const result =
+            relativePath === relative && mutate
+              ? Buffer.from(mutate(buffer.toString("utf8")), "utf8")
+              : buffer;
+          return typeof options === "string"
+            ? result.toString(options as BufferEncoding)
+            : result;
+        },
+      };
+      return checker.validateStructureAssetInventory(currentPaths, indexModes, {
+        root: ROOT,
+        io,
+        activeTask: checker.EXPECTED_ACTIVE_TASK,
+      });
+    };
+
+    expect(checker.STRUCTURE_ASSET_CONTRACT.length).toBeGreaterThan(50);
+    expect(validate()).toEqual(
+      checker.STRUCTURE_ASSET_CONTRACT.map(({ path: assetPath }) => assetPath),
+    );
+
+    const append = (snippet: string) => (source: string) =>
+      `${source}\n${snippet}\n`;
+    const mutations: Array<[string, (source: string) => string]> = [
+      [
+        "src-tauri/Cargo.toml",
+        append("['target'.'cfg(not(target_os = \"windows\"))'.dependencies]"),
+      ],
+      [
+        "src-tauri/Cargo.toml",
+        append(
+          'target.\'cfg(any(target_os = "windows", target_arch = "x86_64"))\'.dependencies.example = "1"',
+        ),
+      ],
+      [
+        "src-tauri/src/lib.rs",
+        append(
+          '#[cfg(any(target_os = "windows", feature = "portable"))]\nfn generic_target() {}',
+        ),
+      ],
+      [
+        "src-tauri/src/commands/misc.rs",
+        (source) =>
+          source.replace(
+            '#[cfg(target_os = "macos")]\n        let ambient_paths',
+            '#[cfg(target_os = "windows")]\n        let ambient_paths',
+          ),
+      ],
+      ...["TARGET", "HOST", "FAMILY"].map(
+        (selector): [string, (source: string) => string] => [
+          "src-tauri/build.rs",
+          append(
+            `fn generic_${selector.toLowerCase()}() { let _ = std::env::var("${selector}"); }`,
+          ),
+        ],
+      ),
+      ...[
+        'if ((process.platform) === "win32") windows(); else generic();',
+        "if (isMac() !== true) generic();",
+        'if (process.platform === "win32") windows(); else throw generic();',
+      ].map((snippet): [string, (source: string) => string] => [
+        "src/lib/platform.ts",
+        append(snippet),
+      ]),
+    ];
+    for (const [relativePath, mutate] of mutations) {
+      expect(() => validate(relativePath, mutate), relativePath).toThrow(
+        /structure identity drifted/iu,
+      );
+    }
+
+    const first = checker.STRUCTURE_ASSET_CONTRACT[0].path;
+    const wrongModes = new Map(indexModes);
+    wrongModes.set(first, "100755");
+    expect(() =>
+      checker.validateStructureAssetInventory(currentPaths, wrongModes, {
+        root: ROOT,
+        activeTask: checker.EXPECTED_ACTIVE_TASK,
+      }),
+    ).toThrow(/mode 100644/iu);
+
+    const added = "src/new-platform-probe.ts";
+    const addedAbsolute = path.join(ROOT, ...added.split("/"));
+    const addedModes = new Map(indexModes).set(added, "100644");
+    expect(() =>
+      checker.validateStructureAssetInventory(
+        [...currentPaths, added].sort((left, right) =>
+          left.localeCompare(right, "en"),
+        ),
+        addedModes,
+        {
+          root: ROOT,
+          activeTask: checker.EXPECTED_ACTIVE_TASK,
+          io: {
+            lstatSync(absolutePath: fs.PathLike) {
+              return absolutePath === addedAbsolute
+                ? { isFile: () => true, isSymbolicLink: () => false }
+                : fs.lstatSync(absolutePath);
+            },
+            readFileSync(absolutePath: fs.PathOrFileDescriptor) {
+              return absolutePath === addedAbsolute
+                ? Buffer.from('process.platform === "win32"', "utf8")
+                : fs.readFileSync(absolutePath);
+            },
+          },
+        },
+      ),
+    ).toThrow(/candidate inventory drifted/iu);
+  });
+
+  it("loads only an exact regular structure manifest", () => {
+    const fixture = fs.mkdtempSync(
+      path.join(os.tmpdir(), "fyagent-structure-"),
+    );
+    const manifestPath = path.join(fixture, "structure.json");
+    try {
+      const current = JSON.parse(
+        fs.readFileSync(
+          path.join(
+            ROOT,
+            "scripts",
+            "tasks",
+            "supported-platform-structure-assets.json",
+          ),
+          "utf8",
+        ),
+      );
+      fs.writeFileSync(manifestPath, JSON.stringify(current));
+      expect(checker.loadStructureAssetManifest(manifestPath)).toHaveLength(
+        checker.STRUCTURE_ASSET_CONTRACT.length,
+      );
+      fs.writeFileSync(
+        manifestPath,
+        JSON.stringify({ ...current, unexpected: true }),
+      );
+      expect(() => checker.loadStructureAssetManifest(manifestPath)).toThrow(
+        /manifest schema/iu,
+      );
+      expect(() =>
+        checker.loadStructureAssetManifest(manifestPath, {
+          lstatSync() {
+            return { isFile: () => true, isSymbolicLink: () => true };
+          },
+          readFileSync() {
+            throw new Error("structure manifest symlink was read");
+          },
+        }),
+      ).toThrow(/regular non-symlink/iu);
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("loads only an exact regular raster manifest", () => {
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-manifest-"));
+    const manifestPath = path.join(fixture, "raster.json");
+    try {
+      const current = JSON.parse(
+        fs.readFileSync(
+          path.join(
+            ROOT,
+            "scripts",
+            "tasks",
+            "supported-platform-raster-assets.json",
+          ),
+          "utf8",
+        ),
+      );
+      fs.writeFileSync(manifestPath, JSON.stringify(current));
+      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(146);
+
+      fs.writeFileSync(
+        manifestPath,
+        JSON.stringify({ ...current, unexpected: true }),
+      );
+      expect(() => checker.loadRasterAssetManifest(manifestPath)).toThrow(
+        /manifest schema/iu,
+      );
+
+      expect(() =>
+        checker.loadRasterAssetManifest(manifestPath, {
+          lstatSync() {
+            return { isFile: () => true, isSymbolicLink: () => true };
+          },
+          readFileSync() {
+            throw new Error("manifest symlink was read");
+          },
+        }),
+      ).toThrow(/regular non-symlink/iu);
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects raster symlinks and every non-regular Git index mode", () => {
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-mode-"));
+    const reviewedImage = "src-tauri/icons/32x32.png";
+    try {
+      fs.mkdirSync(path.dirname(path.join(fixture, reviewedImage)), {
+        recursive: true,
+      });
+      fs.copyFileSync(
+        path.join(ROOT, reviewedImage),
+        path.join(fixture, reviewedImage),
+      );
+      for (const mode of [undefined, "100755", "120000"]) {
+        expect(() =>
+          checker.readCurrentEntry(fixture, reviewedImage, fs, mode),
+        ).toThrow(/regular 100644 Git file/iu);
+      }
+      expect(() =>
+        checker.readCurrentEntry(
+          fixture,
+          reviewedImage,
+          {
+            lstatSync() {
+              return { isFile: () => true, isSymbolicLink: () => true };
+            },
+            readFileSync() {
+              throw new Error("raster symlink was read");
+            },
+          },
+          "100644",
+        ),
+      ).toThrow(/regular 100644 Git file/iu);
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("caps aggregate raster metadata before decoding or inflation", () => {
+    const compressed = deflateSync(Buffer.alloc(400_000, 0x41));
+    const metadata = Buffer.concat([
+      Buffer.from("key\0\0", "latin1"),
+      compressed,
+    ]);
+    const aggregate = pngWithMetadata([
+      pngChunk("zTXt", metadata),
+      pngChunk("zTXt", metadata),
+      pngChunk("zTXt", metadata),
+    ]);
+    expect(() => checker.inspectKnownImage("aggregate.png", aggregate)).toThrow(
+      /metadata budget/iu,
+    );
+
+    const oversized = pngWithMetadata([
+      pngChunk("tEXt", Buffer.alloc(1024 * 1024 + 1, 0x41)),
+    ]);
+    expect(() => checker.inspectKnownImage("oversized.png", oversized)).toThrow(
+      /metadata budget/iu,
+    );
+
+    for (const [flag, method] of [
+      [2, 0],
+      [0, 1],
+    ]) {
+      const invalidInternationalText = pngWithMetadata([
+        pngChunk(
+          "iTXt",
+          Buffer.concat([
+            Buffer.from("key\0", "latin1"),
+            Buffer.from([flag, method]),
+            Buffer.from("\0\0text", "utf8"),
+          ]),
+        ),
+      ]);
+      expect(() =>
+        checker.inspectKnownImage("invalid-itxt.png", invalidInternationalText),
+      ).toThrow(/invalid PNG iTXt metadata/iu);
+    }
+
+    const emptyIcns = Buffer.alloc(8);
+    emptyIcns.write("icns", 0, "ascii");
+    emptyIcns.writeUInt32BE(8, 4);
+    expect(() => checker.inspectKnownImage("empty.icns", emptyIcns)).toThrow(
+      /no recognized image payload/iu,
+    );
   });
 
   it("keeps archive exclusions structural and rejects executable or manifest payloads", () => {
@@ -493,7 +1473,30 @@ describe("durable supported-platform surface contract", () => {
         path.join(root, document),
         checker.SURFACE_MARKERS.kernel,
       );
-      expect(checker.validateArchiveEntry(root, document)).toEqual([]);
+      expect(
+        checker.validateArchiveEntry(root, document, fs, "100644"),
+      ).toEqual([]);
+      expect(() =>
+        checker.validateArchiveEntry(root, document, fs, "100755"),
+      ).toThrow(/Git index mode/);
+      expect(() =>
+        checker.validateArchiveEntry(root, document, fs, "120000"),
+      ).toThrow(/Git index mode/);
+      const stagedMode = (mode: string) =>
+        checker
+          .listArchiveIndexModes(root, () => ({
+            status: 0,
+            stdout: Buffer.from(
+              `${mode} 0123456789abcdef0123456789abcdef01234567 0\t${document}\0`,
+            ),
+          }))
+          .get(document);
+      expect(stagedMode("100644")).toBe("100644");
+      for (const mode of ["100755", "120000"]) {
+        expect(() =>
+          checker.validateArchiveEntry(root, document, fs, stagedMode(mode)),
+        ).toThrow(/Git index mode/);
+      }
 
       const manifest = `${base}/package.json`;
       fs.writeFileSync(path.join(root, manifest), "{}");
@@ -501,26 +1504,36 @@ describe("durable supported-platform surface contract", () => {
         /standard task document/,
       );
       expect(() =>
-        checker.validateArchiveEntry(root, document, {
-          lstatSync() {
-            return {
-              isFile: () => true,
-              isSymbolicLink: () => false,
-              mode: 0o100755,
-            };
+        checker.validateArchiveEntry(
+          root,
+          document,
+          {
+            lstatSync() {
+              return {
+                isFile: () => true,
+                isSymbolicLink: () => false,
+                mode: 0o100755,
+              };
+            },
           },
-        }),
+          "100644",
+        ),
       ).toThrow(/executable/);
       expect(() =>
-        checker.validateArchiveEntry(root, document, {
-          lstatSync() {
-            return {
-              isFile: () => true,
-              isSymbolicLink: () => true,
-              mode: 0o100644,
-            };
+        checker.validateArchiveEntry(
+          root,
+          document,
+          {
+            lstatSync() {
+              return {
+                isFile: () => true,
+                isSymbolicLink: () => true,
+                mode: 0o100644,
+              };
+            },
           },
-        }),
+          "100644",
+        ),
       ).toThrow(/regular file/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
