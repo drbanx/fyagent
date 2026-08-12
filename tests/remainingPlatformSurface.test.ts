@@ -1002,14 +1002,8 @@ describe("durable supported-platform surface contract", () => {
     ).toEqual([]);
   });
 
-  it("runs every production scanner against the current repository snapshot", () => {
+  it("runs every production scanner against the current repository snapshot without lifecycle exclusions", () => {
     const indexModes = checker.listCurrentIndexModes(ROOT);
-    for (const manifestPath of [
-      "scripts/tasks/supported-platform-raster-assets.json",
-      "scripts/tasks/supported-platform-structure-assets.json",
-    ]) {
-      if (!indexModes.has(manifestPath)) indexModes.set(manifestPath, "100644");
-    }
     const runner = (
       _command: unknown,
       arguments_: unknown,
@@ -1042,9 +1036,10 @@ describe("durable supported-platform surface contract", () => {
     };
     const report = checker.inspectRepository({
       root: ROOT,
-      activeTask: checker.EXPECTED_ACTIVE_TASK,
-      sessionResolver: () => checker.EXPECTED_ACTIVE_TASK,
       runner,
+      sessionResolver: () => {
+        throw new Error("The archived snapshot must not query task authority");
+      },
     });
     expect(report.findings).toEqual([]);
     expect(report.inspectedFiles).toBeGreaterThan(1_000);
