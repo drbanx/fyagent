@@ -442,3 +442,30 @@ Added the isolated light V2 renderer shell, hash routing, platform adapters, V2-
 ### Next Steps
 
 - Human acceptance remains for the complete native window checklist, 150% DPI, full legacy startup semantics, and Release preflight.
+
+
+## Session 14: Archive unarchived pythonrust Trellis task
+
+**Date**: 2026-08-12
+**Task**: Archive unarchived pythonrust Trellis task
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Archived the remaining unarchived Trellis task assigned to pythonrust at the user's request; no source files were changed.
+
+### Main Changes
+
+- Archived 08-10-windows-user-runtime-trellis-decoupling under the 2026-08 archive.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] Verified no active tasks remain and the Git working tree is clean.
+
+### Status
+
+[OK] **Completed**
