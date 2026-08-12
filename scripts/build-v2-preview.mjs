@@ -345,6 +345,14 @@ function assertSelfContainedDirectEntry(content, source) {
   }
 }
 
+function assertNoResidualImportMetaUrl(content, source) {
+  if (/\bimport\s*\.\s*meta\s*\.\s*url\b/.test(content)) {
+    throw new Error(
+      `Module ${source} retains import.meta.url after asset inlining; the standalone builder cannot preserve that runtime reference.`,
+    );
+  }
+}
+
 async function inlineCssAssets(content, stylesheetPath, distributionDirectory) {
   return replaceAsync(
     content,
@@ -408,48 +416,71 @@ function renderInlineEntry(kind, content) {
   )}</script>`;
 }
 
+async function inlineKnownViteBootstrap(
+  bootstrap,
+  distributionDirectory,
+  relativeToDirectory,
+) {
+  const styles = [];
+  for (const stylesheetSource of bootstrap.stylesheetSources) {
+    const stylesheetPath = await resolveDistributionAsset(
+      distributionDirectory,
+      stylesheetSource,
+      relativeToDirectory,
+    );
+    styles.push(
+      renderInlineEntry(
+        "stylesheet",
+        await inlineCssAssets(
+          await readFile(stylesheetPath, "utf8"),
+          stylesheetPath,
+          distributionDirectory,
+        ),
+      ),
+    );
+  }
+
+  const scriptPath = await resolveDistributionAsset(
+    distributionDirectory,
+    bootstrap.scriptSource,
+    relativeToDirectory,
+  );
+  const scriptContent = await readFile(scriptPath, "utf8");
+  assertSelfContainedDirectEntry(scriptContent, bootstrap.scriptSource);
+  const inlinedScriptContent = await inlineJavaScriptAssets(
+    scriptContent,
+    scriptPath,
+    distributionDirectory,
+  );
+  assertNoResidualImportMetaUrl(
+    inlinedScriptContent,
+    bootstrap.scriptSource,
+  );
+  const script = renderInlineEntry(
+    "script",
+    inlinedScriptContent,
+  );
+
+  return [...styles, script].join("\n");
+}
+
 async function inlineEntriesForStandalone(
   indexHtml,
   entries,
   distributionDirectory,
 ) {
   const replacements = [];
+  let externalViteStylesheetEntryCount = 0;
 
   for (const entry of entries) {
     if (entry.kind === "vite-bootstrap") {
-      const styles = [];
-      for (const stylesheetSource of entry.stylesheetSources) {
-        const stylesheetPath = await resolveDistributionAsset(
+      replacements.push(
+        await inlineKnownViteBootstrap(
+          entry,
           distributionDirectory,
-          stylesheetSource,
-        );
-        styles.push(
-          renderInlineEntry(
-            "stylesheet",
-            await inlineCssAssets(
-              await readFile(stylesheetPath, "utf8"),
-              stylesheetPath,
-              distributionDirectory,
-            ),
-          ),
-        );
-      }
-
-      const scriptPath = await resolveDistributionAsset(
-        distributionDirectory,
-        entry.scriptSource,
-      );
-      const scriptContent = await readFile(scriptPath, "utf8");
-      assertSelfContainedDirectEntry(scriptContent, entry.scriptSource);
-      const script = renderInlineEntry(
-        "script",
-        await inlineJavaScriptAssets(
-          scriptContent,
-          scriptPath,
           distributionDirectory,
         ),
       );
-      replacements.push([...styles, script].join("\n"));
       continue;
     }
 
@@ -473,6 +504,30 @@ async function inlineEntriesForStandalone(
       continue;
     }
 
+    const externalViteBootstrap = parseViteBootstrapEntries(content);
+    if (externalViteBootstrap) {
+      const executableEntryCount = entries.filter(
+        (candidate) =>
+          candidate.kind === "script" ||
+          candidate.kind === "vite-bootstrap",
+      ).length;
+      if (executableEntryCount !== 1) {
+        throw new Error(
+          "External Vite bootstrap must be the only executable module entry in dist/index.html.",
+        );
+      }
+      externalViteStylesheetEntryCount +=
+        externalViteBootstrap.stylesheetSources.length;
+      replacements.push(
+        await inlineKnownViteBootstrap(
+          externalViteBootstrap,
+          distributionDirectory,
+          path.dirname(assetPath),
+        ),
+      );
+      continue;
+    }
+
     assertSelfContainedDirectEntry(content, entry.source);
     replacements.push(
       renderInlineEntry(
@@ -486,7 +541,10 @@ async function inlineEntriesForStandalone(
     );
   }
 
-  return replaceEntryTags(indexHtml, entries, replacements);
+  return {
+    html: replaceEntryTags(indexHtml, entries, replacements),
+    externalViteStylesheetEntryCount,
+  };
 }
 
 function stripDistributionFileRedirect(indexHtml) {
@@ -547,11 +605,12 @@ export async function buildV2Preview({
   const distributionIndex = await readFile(distributionIndexPath, "utf8");
   const entries = parseDistributionEntryAssets(distributionIndex);
 
-  let standaloneHtml = await inlineEntriesForStandalone(
+  const inlineResult = await inlineEntriesForStandalone(
     distributionIndex,
     entries,
     distributionDirectory,
   );
+  let standaloneHtml = inlineResult.html;
   standaloneHtml = stripDistributionFileRedirect(standaloneHtml);
   standaloneHtml = addStandaloneBootstrap(standaloneHtml);
   standaloneHtml = await inlineHtmlImageLinks(
@@ -575,7 +634,7 @@ export async function buildV2Preview({
           : entry.kind === "vite-bootstrap"
             ? entry.stylesheetSources.length
             : 0),
-      0,
+      inlineResult.externalViteStylesheetEntryCount,
     ),
   };
 }

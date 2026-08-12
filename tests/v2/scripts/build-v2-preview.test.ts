@@ -10,11 +10,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
+// @ts-expect-error The standalone builder intentionally remains runtime JavaScript.
+import * as previewBuilder from "../../../scripts/build-v2-preview.mjs";
+
+const {
   buildV2Preview,
   parseDistributionEntryAssets,
   resolveDistributionAsset,
-} from "../../../scripts/build-v2-preview.mjs";
+} = previewBuilder;
 
 const temporaryRoots: string[] = [];
 
@@ -234,6 +237,128 @@ describe("V2 standalone preview builder", () => {
         await readFile(path.join(fixture.distributionDirectory, fileName)),
       ).toEqual(distributionBefore.get(fileName));
     }
+  });
+
+  it("inlines the known external Vite bootstrap as CSS then its single leaf module", async () => {
+    const fixture = await createDistributionFixture(
+      `<!doctype html><html><head>
+  <script type="module" src="./assets/index.js"></script>
+</head><body><div id="root"></div></body></html>`,
+      {
+        "index.js":
+          'const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main.js","./main.css"])))=>i.map(i=>d[i]); window.location.protocol!=="file:"&&preload(()=>import("./main.js"),__vite__mapDeps([0,1]),import.meta.url);',
+        "main.js":
+          'window.externalViteLeafMarker = new URL("./logo.png", import.meta.url).href;',
+        "main.css":
+          '.external-vite-css-marker { background-image: url("./logo.png"); }',
+        "logo.png": "external-vite-fixture-image",
+      },
+    );
+    const distributionFiles = [
+      "index.html",
+      "assets/index.js",
+      "assets/main.js",
+      "assets/main.css",
+      "assets/logo.png",
+    ];
+    const distributionBefore = new Map(
+      await Promise.all(
+        distributionFiles.map(
+          async (fileName) =>
+            [
+              fileName,
+              await readFile(
+                path.join(fixture.distributionDirectory, fileName),
+              ),
+            ] as const,
+        ),
+      ),
+    );
+
+    const result = await buildV2Preview(fixture);
+    const standalone = await readFile(fixture.outputPath, "utf8");
+
+    expect(result).toMatchObject({
+      scriptEntryCount: 1,
+      stylesheetEntryCount: 1,
+    });
+    expect(standalone).toContain("external-vite-css-marker");
+    expect(standalone).toContain("externalViteLeafMarker");
+    expect(standalone).toContain("data:image/png;base64,");
+    expect(standalone.indexOf("external-vite-css-marker")).toBeLessThan(
+      standalone.indexOf("externalViteLeafMarker"),
+    );
+    expect(standalone).not.toContain("__vite__mapDeps");
+    expect(standalone).not.toContain("./assets/index.js");
+    expect(standalone).not.toContain("./main.js");
+    expect(standalone).not.toContain("./main.css");
+    expect(standalone).not.toContain("./logo.png");
+    expect(standalone).not.toMatch(/<script\b[^>]*\bsrc\s*=/i);
+    for (const fileName of distributionFiles) {
+      expect(
+        await readFile(path.join(fixture.distributionDirectory, fileName)),
+      ).toEqual(distributionBefore.get(fileName));
+    }
+  });
+
+  it("fails fast when the known external Vite entry points to a chunked leaf graph", async () => {
+    const fixture = await createDistributionFixture(
+      `<!doctype html><html><head>
+  <script type="module" src="./assets/index.js"></script>
+</head><body></body></html>`,
+      {
+        "index.js":
+          'const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main.js","./main.css"])))=>i.map(i=>d[i]); preload(()=>import("./main.js"),__vite__mapDeps([0,1]),import.meta.url);',
+        "main.js": 'import "./chunk.js"; window.mainLoaded = true;',
+        "main.css": "body { color: black; }",
+        "chunk.js": "window.chunkLoaded = true;",
+      },
+    );
+
+    await expect(buildV2Preview(fixture)).rejects.toThrow(
+      /chunked module graphs are unsupported/i,
+    );
+    await expect(readFile(fixture.outputPath)).rejects.toThrow();
+  });
+
+  it("fails fast when an external Vite bootstrap is not the only executable module entry", async () => {
+    const fixture = await createDistributionFixture(
+      `<!doctype html><html><head>
+  <script type="module" src="./assets/index.js"></script>
+  <script type="module" src="./assets/second.js"></script>
+</head><body></body></html>`,
+      {
+        "index.js":
+          'const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main.js","./main.css"])))=>i.map(i=>d[i]); preload(()=>import("./main.js"),__vite__mapDeps([0,1]),import.meta.url);',
+        "main.js": "window.mainLoaded = true;",
+        "main.css": "body { color: black; }",
+        "second.js": "window.secondLoaded = true;",
+      },
+    );
+
+    await expect(buildV2Preview(fixture)).rejects.toThrow(
+      /only executable module entry/i,
+    );
+    await expect(readFile(fixture.outputPath)).rejects.toThrow();
+  });
+
+  it("fails fast when the external Vite leaf retains import.meta.url", async () => {
+    const fixture = await createDistributionFixture(
+      `<!doctype html><html><head>
+  <script type="module" src="./assets/index.js"></script>
+</head><body></body></html>`,
+      {
+        "index.js":
+          'const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main.js","./main.css"])))=>i.map(i=>d[i]); preload(()=>import("./main.js"),__vite__mapDeps([0,1]),import.meta.url);',
+        "main.js": "window.moduleUrl = import.meta.url;",
+        "main.css": "body { color: black; }",
+      },
+    );
+
+    await expect(buildV2Preview(fixture)).rejects.toThrow(
+      /retains import\.meta\.url/i,
+    );
+    await expect(readFile(fixture.outputPath)).rejects.toThrow();
   });
 
   it("fails fast for an unknown inline module graph", async () => {
