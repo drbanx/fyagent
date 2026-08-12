@@ -67,6 +67,23 @@ describe("V2 standalone preview builder", () => {
     );
   });
 
+  it("removes whitespace-only indentation lines from the generated HTML", async () => {
+    const fixture = await createDistributionFixture(
+      `<!doctype html>
+<html><head>
+  ${"  "}
+  <script type="module" src="./assets/entry.js"></script>
+</head><body><div id="root"></div></body></html>`,
+      { "entry.js": "window.entryLoaded = true;" },
+    );
+
+    await buildV2Preview(fixture);
+
+    expect(await readFile(fixture.outputPath, "utf8")).not.toMatch(
+      /^[\t ]+$/m,
+    );
+  });
+
   it("inlines every direct module script and stylesheet in HTML order", async () => {
     const fixture = await createDistributionFixture(
       `<!doctype html>

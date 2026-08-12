@@ -617,6 +617,7 @@ export async function buildV2Preview({
     standaloneHtml,
     distributionDirectory,
   );
+  standaloneHtml = standaloneHtml.replace(/^[\t ]+(?=\r?$)/gm, "");
 
   await writeFile(outputPath, standaloneHtml, "utf8");
 
