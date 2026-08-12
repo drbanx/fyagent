@@ -469,3 +469,39 @@ Archived the remaining unarchived Trellis task assigned to pythonrust at the use
 ### Status
 
 [OK] **Completed**
+
+
+## Session 15: FyAgent V2 native liquid glass shell
+
+**Date**: 2026-08-12
+**Task**: FyAgent V2 native liquid glass shell
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Restored system-owned native chrome and delivered the Blue Ambient clear-glass V2 shell with one bounded selected-navigation lens; closed only directly blocking pre-existing full-gate contract gaps and archived the task after all local gates passed.
+
+### Main Changes
+
+- Removed V2 custom window controls, drag regions, WindowFrame ports, factories, implementations, and obsolete platform tests while preserving the lifecycle-ready bridge.
+- Added @samasante/liquid-glass 0.1.1 behind an internal active-navigation adapter, Blue Ambient four-tier glass tokens, responsive shell styling, and DEV-only UI Lab coverage.
+- Updated V2 and quality specs plus narrow fail-closed baseline gate regressions required by the full local acceptance gate.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f4d3dca5` | (see git log) |
+| `80b7ed9a38e1fbd1924f75e37ec6e15e2cf9c411` | (see git log) |
+
+### Testing
+
+- [OK] Passed env:check, lint:v2, typecheck:v2, test:v2 (24/24), test:v2:browser (16/16 across four viewports), build:renderer (143 modules), format:check, git diff --check, and full mise run check.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Native/manual evidence remains intentionally deferred: Windows title bar, WebView2 SVG/backdrop performance and fallback, 125%/150% DPI, and subjective visual similarity.
