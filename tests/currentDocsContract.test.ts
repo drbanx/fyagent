@@ -479,7 +479,12 @@ describe("current FyAgent documentation authority", () => {
     const english = read("README_EN.md");
     const japanese = read("README_JA.md");
 
-    expect(chinese).toContain("帮你拥有属于自己的 AI。");
+    expect(chinese).toContain(
+      "<strong>For You Agent</strong>——AI 时代的个人随身数字人格。",
+    );
+    expect(chinese).toContain(
+      "把你的模型、供应商、技能、提示词和工作方式，带到每一个 AI 工具里。",
+    );
     expect(chinese).toContain('href="README_EN.md">English</a>');
     expect(english).toContain('href="README.md">简体中文</a>');
     expect(japanese).toContain('href="README_EN.md">English</a>');
