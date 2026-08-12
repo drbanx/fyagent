@@ -265,6 +265,16 @@ describe("current FyAgent documentation authority", () => {
     }
   });
 
+  it("keeps private local evidence paths out of public audits", () => {
+    const localUserRoot = ["C:", "Users", ""].join("\\");
+    for (const file of [
+      "docs/fyagent/audits/vibekey-to-fyagent-capability-gap.md",
+      "docs/fyagent/marketing/vibekey-reference-audit.md",
+    ]) {
+      expect(read(file), file).not.toContain(localUserRoot);
+    }
+  });
+
   it("documents the protected ProgramData A1 package bridge without an HTTP or NSIS fallback", () => {
     const codexDesktop = read(WINDOWS_CODEX_DESKTOP_DOC);
     const installer = read(WINDOWS_INSTALLER_DOC);

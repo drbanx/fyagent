@@ -33,13 +33,13 @@ VibeKey 当年最值得保留的不是硬件键盘，而是三项产品要求：
 
 | 证据 | 发现 | 证据等级 |
 |---|---|---|
-| `VibeKey-路演PPT-25页 (完整版)(1).pdf` | 实际为 23 页，创建于 2026-01-28；SHA-256 `07D7D573F49BD99BA26AEA021BEA7C58398143B8631E030FF72FA8A6E034CEF6` | `local_artifact_audit + visual_inspection` |
-| `C:\Users\wq241\Desktop\submission\drafts\VibeKey-商业计划书-正式版.md` | 记录产品、商业和路线图假设；正文最终明确“软件开发、用户验证、众筹上线”为待完成项 | `local_artifact_audit` |
-| `C:\Users\wq241\Downloads\vibekey-project.tar.gz` | 包含早期市场、产品、硬件、软件、UI/UX 文档和驱动脚手架；SHA-256 `9C54280EB1EB700800AB2022CEF32C392690ECB301D21DC7BBCB07A2BDE9F0C1` | `local_artifact_audit` |
-| `C:\Users\wq241\Downloads\vibekey-driver` | 无 `.git`；缺少 `index.html`、TypeScript/Vite/Tailwind 配置和锁文件；存在试用激活、密钥持久化等 TODO | `code_audit` |
-| 本机 Git / GitHub 账户搜索 | FyAgent 历史只在后来的设计边界中提到 VibeKey；未找到独立 VibeKey 仓库或代码结果 | `git_history_audit + remote_git_audit` |
+| 私有路演材料（证据编号 `VK-PITCH`） | 实际为 23 页，创建于 2026-01-28 | `private_artifact_audit + visual_inspection` |
+| 私有产品计划（证据编号 `VK-PLAN`） | 记录产品、商业和路线图假设；正文最终明确“软件开发、用户验证、众筹上线”为待完成项 | `private_artifact_audit` |
+| 私有设计归档（证据编号 `VK-ARCHIVE`） | 包含早期市场、产品、硬件、软件、UI/UX 文档和驱动脚手架 | `private_artifact_audit` |
+| 原型代码检出（证据编号 `VK-PROTOTYPE`） | 无 `.git`；缺少 `index.html`、TypeScript/Vite/Tailwind 配置和锁文件；存在试用激活、密钥持久化等 TODO | `private_code_audit` |
+| 仓库来源核验 | FyAgent 历史只在后来的设计边界中提到 VibeKey；未找到可验证的独立 VibeKey 仓库或代码结果 | `git_history_audit + repository_provenance_review` |
 
-PPT 和商业计划中的“Mac mini 购买证明控制焦虑”“高置信度”“数千 Stars”、成本、毛利、合作、试用额度和付费意愿，没有原始样本、访谈记录、订单或第三方来源。它们只能作为待验证假设，不能成为 FyAgent 的功能优先级证据。
+这些私有材料中的“Mac mini 购买证明控制焦虑”“高置信度”“数千 Stars”、成本、毛利、合作、试用额度和付费意愿，没有原始样本、访谈记录、订单或第三方来源。它们只能作为待验证假设，不能成为 FyAgent 的功能优先级证据。具体路径、文件名和校验值只保存在非公开证据记录中。
 
 ### 1.2 FyAgent 当前基线
 
