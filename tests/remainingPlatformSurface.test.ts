@@ -52,8 +52,12 @@ type RustAllowance = {
   nextPrefix?: boolean;
 };
 
+type SourceContract = { id: string; file: string; snippet: string };
+
 type CheckerModule = {
+  ACTIVE_TASK_ENV: string;
   EXPECTED_ACTIVE_TASK: string;
+  MACOS_POSIX_CONTRACT: readonly SourceContract[];
   RUST_ALLOWANCE_CONTRACT: readonly RustAllowance[];
   SURFACE_MARKERS: SurfaceMarkers;
   inspectRepository(options?: Record<string, unknown>): {
@@ -71,6 +75,16 @@ type CheckerModule = {
     environment?: Record<string, string>,
   ): string | undefined;
   readCurrentEntry(root: string, relativePath: string, io?: unknown): unknown;
+  resolveAuthoritativeActiveTask(
+    root?: string,
+    runner?: (...args: unknown[]) => unknown,
+  ): string;
+  scanJavaScriptImplicitPredicates(
+    entries: Array<{ path: string; source: string }>,
+  ): Finding[];
+  scanMacosPosixContract(
+    entries: Array<{ path: string; source: string }>,
+  ): Finding[];
   scanPath(relativePath: string): Finding[];
   scanRustImplicitPredicates(
     entries: Array<{ path: string; source: string }>,
@@ -80,6 +94,11 @@ type CheckerModule = {
     value: string,
     options?: Record<string, unknown>,
   ): string;
+  validateArchiveEntry(
+    root: string,
+    relativePath: string,
+    io?: unknown,
+  ): Finding[];
 };
 
 let checker: CheckerModule;
@@ -112,6 +131,15 @@ function permittedRustEntries() {
   }));
 }
 
+function macosPosixEntries() {
+  return [...new Set(checker.MACOS_POSIX_CONTRACT.map(({ file }) => file))].map(
+    (relativePath) => ({
+      path: relativePath,
+      source: fs.readFileSync(path.join(ROOT, relativePath), "utf8"),
+    }),
+  );
+}
+
 describe("durable supported-platform surface contract", () => {
   it("constructs every retired marker without making the checker or test self-match", () => {
     for (const relativePath of [
@@ -141,7 +169,6 @@ describe("durable supported-platform surface contract", () => {
       markers.embeddedToolkit,
       markers.windowProtocol,
       markers.compositorProtocol,
-      `${markers.directoryConvention.toUpperCase()}_DATA_HOME`,
       markers.objectFormat,
       markers.serviceManager,
       markers.messageBus,
@@ -153,6 +180,7 @@ describe("durable supported-platform surface contract", () => {
       ["[Desktop", " Entry]"].join(""),
       ['{ "tar', 'gets": "all" }'].join(""),
       ["platform ", '!== "win32"'].join(""),
+      ['"win32" !== ', "process.platform"].join(""),
       ["!is", "Windows()"].join(""),
       ...markers.packageCommands,
       `${markers.packageAddCommand} add package`,
@@ -165,6 +193,25 @@ describe("durable supported-platform surface contract", () => {
         sample,
       ).not.toEqual([]);
     }
+  });
+
+  it("allows only the exact tested macOS POSIX contracts", () => {
+    const terminology = `${checker.SURFACE_MARKERS.directoryConvention.toUpperCase()}_DATA_HOME`;
+    expect(checker.scanText("notes/posix.txt", terminology)).toEqual([]);
+
+    const entries = macosPosixEntries();
+    expect(checker.scanMacosPosixContract(entries)).toEqual([]);
+    const first = checker.MACOS_POSIX_CONTRACT[0];
+    const drifted = entries.map((entry) =>
+      entry.path === first.file
+        ? { ...entry, source: entry.source.replace(first.snippet, "") }
+        : entry,
+    );
+    expect(checker.scanMacosPosixContract(drifted)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "macos-posix:contract-drift" }),
+      ]),
+    );
   });
 
   it("audits filenames and strips only encoded SVG payload bytes", () => {
@@ -195,10 +242,12 @@ describe("durable supported-platform surface contract", () => {
     expect(checker.isTextExcludedPath("mise.lock")).toBe(false);
 
     const fixture = activeTaskFixture();
+    const directSession = () => fixture.relative;
     try {
       expect(
         checker.validateActiveTaskExclusion(fixture.relative, {
           root: fixture.root,
+          sessionResolver: directSession,
         }),
       ).toBe(fixture.relative);
       expect(
@@ -214,7 +263,10 @@ describe("durable supported-platform surface contract", () => {
         `.trellis/tasks/archive/${path.basename(fixture.relative)}`,
       ]) {
         expect(() =>
-          checker.validateActiveTaskExclusion(invalid, { root: fixture.root }),
+          checker.validateActiveTaskExclusion(invalid, {
+            root: fixture.root,
+            sessionResolver: directSession,
+          }),
         ).toThrow();
       }
 
@@ -229,6 +281,7 @@ describe("durable supported-platform surface contract", () => {
       expect(() =>
         checker.validateActiveTaskExclusion(fixture.relative, {
           root: fixture.root,
+          sessionResolver: directSession,
         }),
       ).toThrow(/exact active task/);
     } finally {
@@ -244,13 +297,59 @@ describe("durable supported-platform surface contract", () => {
     expect(
       checker.parseArguments([], { usage_exclude_active_task: expected }),
     ).toBe(expected);
+    expect(
+      checker.parseArguments([], { [checker.ACTIVE_TASK_ENV]: expected }),
+    ).toBe(expected);
     expect(checker.parseArguments([], {})).toBeUndefined();
     expect(() =>
       checker.parseArguments(["--exclude-active-task", expected], {
         usage_exclude_active_task: expected,
       }),
-    ).toThrow(/two inputs/);
+    ).toThrow(/multiple inputs/);
+    expect(() =>
+      checker.parseArguments([], {
+        usage_exclude_active_task: expected,
+        [checker.ACTIVE_TASK_ENV]: expected,
+      }),
+    ).toThrow(/multiple inputs/);
     expect(() => checker.parseArguments(["--unknown"], {})).toThrow(/Usage/);
+  });
+
+  it("requires a direct current-session pointer for the active task", () => {
+    const expected = checker.EXPECTED_ACTIVE_TASK;
+    const run =
+      (payload: unknown, status = 0) =>
+      () => ({
+        error: undefined,
+        status,
+        stdout: JSON.stringify(payload),
+      });
+    expect(
+      checker.resolveAuthoritativeActiveTask(
+        ROOT,
+        run({
+          current_task: { dir: expected },
+          source: "session:codex_expected",
+          stale: false,
+        }),
+      ),
+    ).toBe(expected);
+    expect(() =>
+      checker.resolveAuthoritativeActiveTask(
+        ROOT,
+        run({ current_task: null, source: "none", stale: false }, 1),
+      ),
+    ).toThrow(/no active-task pointer/);
+    expect(() =>
+      checker.resolveAuthoritativeActiveTask(
+        ROOT,
+        run({
+          current_task: { dir: expected },
+          source: "session-fallback:codex_other",
+          stale: false,
+        }),
+      ),
+    ).toThrow(/not directly active/);
   });
 
   it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
@@ -286,6 +385,48 @@ describe("durable supported-platform surface contract", () => {
         }),
       ]),
     );
+
+    const invertedMac = {
+      path: "src-tauri/tests/inverted.rs",
+      source: '#[cfg(not(target_os = "macos"))]\nfn fallback() {}',
+    };
+    expect(
+      checker.scanRustImplicitPredicates([...entries, invertedMac]),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: invertedMac.path,
+          rule: "rust:implicit-target",
+        }),
+      ]),
+    );
+  });
+
+  it("rejects equivalent JavaScript generic-host fallbacks", () => {
+    const entries = [
+      {
+        path: "src/fallback.ts",
+        source:
+          'if ("win32" === process.platform) { return windows(); }\nreturn generic();',
+      },
+      {
+        path: "src/switch.ts",
+        source:
+          'switch (process.platform) {\ncase "win32": return windows();\ndefault: return generic();\n}',
+      },
+    ];
+    expect(checker.scanJavaScriptImplicitPredicates(entries)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "src/fallback.ts",
+          rule: "js:implicit-target",
+        }),
+        expect.objectContaining({
+          path: "src/switch.ts",
+          rule: "js:implicit-target",
+        }),
+      ]),
+    );
   });
 
   it("fails closed when Git enumeration or file reads fail", () => {
@@ -313,8 +454,76 @@ describe("durable supported-platform surface contract", () => {
         Buffer.from([0xc3, 0x28]),
       );
       expect(() => checker.readCurrentEntry(fixture, "invalid.txt")).toThrow();
+
+      const script = `Write-Output "${checker.SURFACE_MARKERS.kernel}"`;
+      fs.writeFileSync(
+        path.join(fixture, "encoded.ps1"),
+        Buffer.concat([
+          Buffer.from([0xff, 0xfe]),
+          Buffer.from(script, "utf16le"),
+        ]),
+      );
+      const entry = checker.readCurrentEntry(fixture, "encoded.ps1") as {
+        source: string;
+      };
+      expect(checker.scanText("encoded.ps1", entry.source)).not.toEqual([]);
+
+      fs.writeFileSync(
+        path.join(fixture, "unknown.bin"),
+        Buffer.from([0, 1, 2, 3]),
+      );
+      expect(() => checker.readCurrentEntry(fixture, "unknown.bin")).toThrow(
+        /NUL-containing/,
+      );
     } finally {
       fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps archive exclusions structural and rejects executable or manifest payloads", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-archive-"));
+    const historicalTask = ["08-12-remove", "lin", "ux-support"].join("-");
+    const base = `.trellis/tasks/archive/2026-08/${historicalTask}`;
+    try {
+      const document = `${base}/prd.md`;
+      fs.mkdirSync(path.dirname(path.join(root, document)), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(root, document),
+        checker.SURFACE_MARKERS.kernel,
+      );
+      expect(checker.validateArchiveEntry(root, document)).toEqual([]);
+
+      const manifest = `${base}/package.json`;
+      fs.writeFileSync(path.join(root, manifest), "{}");
+      expect(() => checker.validateArchiveEntry(root, manifest)).toThrow(
+        /standard task document/,
+      );
+      expect(() =>
+        checker.validateArchiveEntry(root, document, {
+          lstatSync() {
+            return {
+              isFile: () => true,
+              isSymbolicLink: () => false,
+              mode: 0o100755,
+            };
+          },
+        }),
+      ).toThrow(/executable/);
+      expect(() =>
+        checker.validateArchiveEntry(root, document, {
+          lstatSync() {
+            return {
+              isFile: () => true,
+              isSymbolicLink: () => true,
+              mode: 0o100644,
+            };
+          },
+        }),
+      ).toThrow(/regular file/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 

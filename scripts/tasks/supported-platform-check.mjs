@@ -112,10 +112,6 @@ const CONTENT_RULES = Object.freeze([
     pattern: contains(SURFACE_MARKERS.compositorProtocol),
   },
   {
-    id: "directory-convention",
-    pattern: contains(SURFACE_MARKERS.directoryConvention),
-  },
-  {
     id: "native-object-format",
     pattern: whole(SURFACE_MARKERS.objectFormat),
   },
@@ -166,8 +162,17 @@ const CONTENT_RULES = Object.freeze([
     pattern: /(?:process\.)?platform\s*!==?\s*["']win32["']/u,
   },
   {
+    id: "reversed-negative-host-branch",
+    pattern: /["']win32["']\s*!==?\s*(?:process\.)?platform/u,
+  },
+  {
     id: "negative-host-helper",
     pattern: /!\s*isWindows\s*\(/u,
+  },
+  {
+    id: "negative-host-helper",
+    pattern:
+      /(?:isWindows\s*\([^)]*\)\s*={2,3}\s*false|false\s*={2,3}\s*isWindows\s*\([^)]*\))/u,
   },
   ...SURFACE_MARKERS.packageCommands.map((value) => ({
     id: "package-command",
@@ -195,6 +200,7 @@ const PATH_RULES = Object.freeze(
         "desktop-entry-shape",
         "open-bundle-target",
         "negative-host-branch",
+        "reversed-negative-host-branch",
         "negative-host-helper",
         "package-command",
       ].includes(id),
@@ -203,6 +209,7 @@ const PATH_RULES = Object.freeze(
 
 const ARCHIVE_PREFIX = ".trellis/tasks/archive/";
 const TEXT_EXCLUSIONS = new Set(["pnpm-lock.yaml", "src-tauri/Cargo.lock"]);
+export const ACTIVE_TASK_ENV = "FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK";
 
 export const EXPECTED_ACTIVE_TASK = [
   ".trellis",
@@ -274,6 +281,59 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
   }),
 ]);
 
+const DATA_HOME_VARIABLE = `${SURFACE_MARKERS.directoryConvention.toUpperCase()}_DATA_HOME`;
+const BIN_DIRECTORY_VARIABLE = `${SURFACE_MARKERS.directoryConvention.toUpperCase()}_BIN_DIR`;
+export const MACOS_POSIX_CONTRACT = Object.freeze([
+  Object.freeze({
+    id: "data-home-declaration",
+    file: "src-tauri/src/opencode_config.rs",
+    snippet: `#[cfg(any(target_os = "macos", test))]\npub(crate) const OPENCODE_DATA_HOME_ENV: &str = "${DATA_HOME_VARIABLE}";`,
+  }),
+  Object.freeze({
+    id: "data-home-macos-read",
+    file: "src-tauri/src/opencode_config.rs",
+    snippet:
+      '#[cfg(target_os = "macos")]\npub(crate) fn get_opencode_data_dir() -> PathBuf {\n    resolve_opencode_data_dir(\n        &crate::config::get_home_dir(),\n        std::env::var_os(OPENCODE_DATA_HOME_ENV).as_deref(),',
+  }),
+  Object.freeze({
+    id: "data-home-windows-ignore",
+    file: "src-tauri/src/opencode_config.rs",
+    snippet:
+      '#[cfg(target_os = "windows")]\npub(crate) fn get_opencode_data_dir() -> PathBuf {\n    resolve_opencode_data_dir(&crate::config::get_home_dir(), None)',
+  }),
+  Object.freeze({
+    id: "session-data-resolver",
+    file: "src-tauri/src/session_manager/providers/opencode.rs",
+    snippet: "crate::opencode_config::get_opencode_data_dir()",
+  }),
+  Object.freeze({
+    id: "session-scan-db-resolver",
+    file: "src-tauri/src/session_manager/providers/opencode.rs",
+    snippet: "let db_path = crate::opencode_config::get_opencode_db_path();",
+  }),
+  Object.freeze({
+    id: "session-delete-db-resolver",
+    file: "src-tauri/src/session_manager/providers/opencode.rs",
+    snippet: "&crate::opencode_config::get_opencode_db_path(),",
+  }),
+  Object.freeze({
+    id: "usage-db-resolver",
+    file: "src-tauri/src/services/session_usage_opencode.rs",
+    snippet: "use crate::opencode_config::get_opencode_db_path;",
+  }),
+  Object.freeze({
+    id: "cli-bin-macos-read",
+    file: "src-tauri/src/commands/misc.rs",
+    snippet: `#[cfg(target_os = "macos")]\n        let ambient_paths = (\n            std::env::var_os("OPENCODE_INSTALL_DIR"),\n            std::env::var_os("${BIN_DIRECTORY_VARIABLE}"),\n            std::env::var_os("GOPATH"),\n        );`,
+  }),
+  Object.freeze({
+    id: "cli-bin-windows-ignore",
+    file: "src-tauri/src/commands/misc.rs",
+    snippet:
+      '#[cfg(target_os = "windows")]\n        let ambient_paths = (None, None, None);',
+  }),
+]);
+
 function normalizeRepositoryPath(value) {
   if (
     typeof value !== "string" ||
@@ -302,7 +362,12 @@ function isArchivePath(relativePath) {
 
 export function validateActiveTaskExclusion(
   value,
-  { root = ROOT, io = fs } = {},
+  {
+    root = ROOT,
+    io = fs,
+    sessionResolver = resolveAuthoritativeActiveTask,
+    runner = spawnSync,
+  } = {},
 ) {
   if (value !== EXPECTED_ACTIVE_TASK) {
     throw new Error(
@@ -343,7 +408,51 @@ export function validateActiveTaskExclusion(
   ) {
     throw new Error("The temporary exclusion is not the exact active task");
   }
+  const authoritative = sessionResolver(root, runner);
+  if (authoritative !== value) {
+    throw new Error(
+      "The temporary exclusion does not match the current session task",
+    );
+  }
   return value;
+}
+
+export function resolveAuthoritativeActiveTask(
+  root = ROOT,
+  runner = spawnSync,
+) {
+  const result = runner(
+    "python",
+    [".trellis/scripts/task.py", "current", "--source", "--json"],
+    { cwd: root, encoding: "utf8", windowsHide: true },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0 || typeof result.stdout !== "string") {
+    throw new Error("The current session has no active-task pointer");
+  }
+  let payload;
+  try {
+    payload = JSON.parse(result.stdout);
+  } catch {
+    throw new Error("The active-task command returned invalid JSON");
+  }
+  if (
+    payload === null ||
+    typeof payload !== "object" ||
+    Array.isArray(payload) ||
+    payload.stale !== false ||
+    payload.current_task === null ||
+    typeof payload.current_task !== "object" ||
+    Array.isArray(payload.current_task) ||
+    typeof payload.current_task.dir !== "string" ||
+    typeof payload.source !== "string" ||
+    !/^session:[A-Za-z0-9._-]+$/u.test(payload.source)
+  ) {
+    throw new Error(
+      "The temporary exclusion is not directly active in the current session",
+    );
+  }
+  return payload.current_task.dir;
 }
 
 export function parseArguments(argv, environment = process.env) {
@@ -357,11 +466,25 @@ export function parseArguments(argv, environment = process.env) {
     direct = argv[1];
   }
 
-  const fromTask = environment.usage_exclude_active_task || undefined;
-  if (direct && fromTask) {
-    throw new Error("The temporary exclusion was provided through two inputs");
+  const optionalEnvironmentValue = (name) => {
+    if (!Object.hasOwn(environment, name)) return undefined;
+    const value = environment[name];
+    if (typeof value !== "string" || value === "") {
+      throw new Error(`${name} must be a non-empty string when provided`);
+    }
+    return value;
+  };
+  const fromTask = optionalEnvironmentValue("usage_exclude_active_task");
+  const fromLeaf = optionalEnvironmentValue(ACTIVE_TASK_ENV);
+  const provided = [direct, fromTask, fromLeaf].filter(
+    (value) => value !== undefined,
+  );
+  if (provided.length > 1) {
+    throw new Error(
+      "The temporary exclusion was provided through multiple inputs",
+    );
   }
-  return direct ?? fromTask;
+  return direct ?? fromTask ?? fromLeaf;
 }
 
 export function isExcludedPath(relativePath, activeTask) {
@@ -386,9 +509,55 @@ function stripOpaqueSvgPayload(source) {
   );
 }
 
-function textFromBuffer(buffer) {
-  if (buffer.includes(0)) return undefined;
-  return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+const OPAQUE_BINARY_EXTENSIONS = new Set([
+  ".icns",
+  ".ico",
+  ".jpg",
+  ".png",
+  ".webp",
+]);
+
+function isKnownOpaqueBinary(relativePath, buffer) {
+  const extension = path.posix.extname(relativePath).toLowerCase();
+  if (!OPAQUE_BINARY_EXTENSIONS.has(extension)) return false;
+  const startsWith = (...bytes) =>
+    bytes.every((value, index) => buffer[index] === value);
+  return (
+    startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a) ||
+    startsWith(0xff, 0xd8, 0xff) ||
+    (buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+      buffer.subarray(8, 12).toString("ascii") === "WEBP") ||
+    startsWith(0x00, 0x00, 0x01, 0x00) ||
+    buffer.subarray(0, 4).toString("ascii") === "icns"
+  );
+}
+
+function textFromBuffer(buffer, relativePath) {
+  let source;
+  if (buffer[0] === 0xff && buffer[1] === 0xfe) {
+    source = new TextDecoder("utf-16le", { fatal: true }).decode(
+      buffer.subarray(2),
+    );
+  } else if (buffer[0] === 0xfe && buffer[1] === 0xff) {
+    source = new TextDecoder("utf-16be", { fatal: true }).decode(
+      buffer.subarray(2),
+    );
+  } else {
+    const payload =
+      buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf
+        ? buffer.subarray(3)
+        : buffer;
+    if (payload.includes(0)) {
+      throw new Error(
+        `NUL-containing text requires a supported byte-order mark: ${relativePath}`,
+      );
+    }
+    source = new TextDecoder("utf-8", { fatal: true }).decode(payload);
+  }
+  if (source.includes("\0")) {
+    throw new Error(`Decoded text contains NUL: ${relativePath}`);
+  }
+  return source;
 }
 
 function finding(relativePath, line, rule, excerpt) {
@@ -409,6 +578,46 @@ export function scanPath(relativePath) {
     }
   }
   return findings;
+}
+
+export function validateArchiveEntry(root, relativePath, io = fs) {
+  normalizeRepositoryPath(relativePath);
+  if (!isArchivePath(relativePath)) {
+    throw new Error("Archive validation requires an archive path");
+  }
+  const remainder = relativePath.slice(ARCHIVE_PREFIX.length);
+  const parts = remainder.split("/");
+  const payload = parts.slice(2);
+  const fileName = payload.at(-1) ?? "";
+  const validLocation =
+    /^\d{4}-\d{2}$/u.test(parts[0] ?? "") &&
+    /^\d{2}(?:-\d{2})?-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(parts[1] ?? "") &&
+    (payload.length === 1 ||
+      (payload.length === 2 && payload[0] === "research"));
+  const extension = path.posix.extname(fileName).toLowerCase();
+  const validDocument =
+    extension === ".md" ||
+    (extension === ".json" && fileName === "task.json") ||
+    (extension === ".jsonl" &&
+      (fileName === "check.jsonl" || fileName === "implement.jsonl"));
+  if (!validLocation || !validDocument) {
+    throw new Error(
+      `Archive payload is not a standard task document: ${relativePath}`,
+    );
+  }
+  const absolute = path.join(root, ...relativePath.split("/"));
+  const stat = io.lstatSync(absolute);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`Archive payload must be a regular file: ${relativePath}`);
+  }
+  if ((stat.mode & 0o111) !== 0) {
+    throw new Error(`Archive payload must not be executable: ${relativePath}`);
+  }
+  // The canonical archive identity and historical document names are part of
+  // the user-approved historical exclusion. Structure, file type, symlink,
+  // and executable checks above keep the prefix from becoming an opaque
+  // runtime payload area without rewriting or rejecting historical names.
+  return [];
 }
 
 export function scanText(relativePath, source) {
@@ -440,6 +649,9 @@ function isImplicitRustCondition(attribute) {
   if (whole(SURFACE_MARKERS.broadRustFamily).test(attribute)) return true;
   const compact = attribute.replace(/\s+/gu, "");
   if (/not\((?:windows|target_os=["']windows["'])\)/u.test(compact)) {
+    return true;
+  }
+  if (/not\((?:macos|target_os=["']macos["'])\)/u.test(compact)) {
     return true;
   }
   return /not\(any\((?=[^)]*(?:windows|target_os=["']windows["']))(?=[^)]*(?:macos|target_os=["']macos["']))[^)]*\)\)/u.test(
@@ -502,6 +714,75 @@ export function scanRustImplicitPredicates(entries) {
   return findings;
 }
 
+export function scanMacosPosixContract(entries) {
+  const findings = [];
+  for (const contract of MACOS_POSIX_CONTRACT) {
+    const entry = entries.find(
+      ({ path: entryPath }) => entryPath === contract.file,
+    );
+    const count = entry ? entry.source.split(contract.snippet).length - 1 : 0;
+    if (count !== 1) {
+      findings.push(
+        finding(contract.file, 0, "macos-posix:contract-drift", contract.id),
+      );
+    }
+  }
+  return findings;
+}
+
+function javascriptSource(relativePath) {
+  return /\.(?:c|m)?js(?:x)?$|\.tsx?$/iu.test(relativePath);
+}
+
+export function scanJavaScriptImplicitPredicates(entries) {
+  const findings = [];
+  for (const entry of entries) {
+    if (!javascriptSource(entry.path)) continue;
+    const source = entry.source;
+    const positiveWindows =
+      /\bif\s*\(\s*(?:(?:process\.)?platform\s*={2,3}\s*["']win32["']|["']win32["']\s*={2,3}\s*(?:process\.)?platform|isWindows\s*\([^)]*\))\s*\)/gu;
+    for (const match of source.matchAll(positiveWindows)) {
+      const tail = source.slice(match.index, match.index + 1200);
+      const branchContext = source.slice(
+        Math.max(0, match.index - 1200),
+        match.index + 1200,
+      );
+      const hasMacBranch =
+        /(?:isMac\s*\(|(?:process\.)?platform\s*={2,3}\s*["']darwin["']|["']darwin["']\s*={2,3}\s*(?:process\.)?platform)/u.test(
+          branchContext,
+        );
+      if (
+        !hasMacBranch &&
+        /(?:\}\s*else\b|\}\s*(?:return|const|let|var)\b)/u.test(tail)
+      ) {
+        const line = source.slice(0, match.index).split(/\r?\n/u).length;
+        findings.push(
+          finding(entry.path, line, "js:implicit-target", match[0]),
+        );
+      }
+    }
+
+    const switches = source.matchAll(
+      /\bswitch\s*\([^)]*(?:process\.)?platform[^)]*\)\s*\{([\s\S]{0,3000}?)\n?\}/gu,
+    );
+    for (const match of switches) {
+      const body = match[1];
+      if (
+        /case\s+["']win32["']/u.test(body) &&
+        !/case\s+["']darwin["']/u.test(body) &&
+        /\bdefault\s*:/u.test(body) &&
+        !/\bdefault\s*:[\s\S]*?\bthrow\b/u.test(body)
+      ) {
+        const line = source.slice(0, match.index).split(/\r?\n/u).length;
+        findings.push(
+          finding(entry.path, line, "js:implicit-target", "switch default"),
+        );
+      }
+    }
+  }
+  return findings;
+}
+
 export function listCurrentFiles(root = ROOT, runner = spawnSync) {
   const result = runner(
     "git",
@@ -557,7 +838,9 @@ export function readCurrentEntry(root, relativePath, io = fs) {
     throw new Error(`Tracked path is not a regular file: ${relativePath}`);
   }
   const buffer = io.readFileSync(absolute);
-  const source = textFromBuffer(buffer);
+  const source = isKnownOpaqueBinary(relativePath, buffer)
+    ? undefined
+    : textFromBuffer(buffer, relativePath);
   return { path: relativePath, source };
 }
 
@@ -566,16 +849,28 @@ export function inspectRepository({
   activeTask,
   runner = spawnSync,
   io = fs,
+  sessionResolver = resolveAuthoritativeActiveTask,
 } = {}) {
   const excludedTask = activeTask
-    ? validateActiveTaskExclusion(activeTask, { root, io })
+    ? validateActiveTaskExclusion(activeTask, {
+        root,
+        io,
+        runner,
+        sessionResolver,
+      })
     : undefined;
   const currentPaths = listCurrentFiles(root, runner);
   const findings = [];
   const rustEntries = [];
+  const javascriptEntries = [];
   let inspectedFiles = 0;
 
   for (const relativePath of currentPaths) {
+    if (isArchivePath(relativePath)) {
+      inspectedFiles += 1;
+      findings.push(...validateArchiveEntry(root, relativePath, io));
+      continue;
+    }
     if (isExcludedPath(relativePath, excludedTask)) continue;
     const entry = readCurrentEntry(root, relativePath, io);
     if (!entry) continue;
@@ -586,8 +881,11 @@ export function inspectRepository({
     }
     findings.push(...scanText(relativePath, entry.source));
     if (relativePath.endsWith(".rs")) rustEntries.push(entry);
+    if (javascriptSource(relativePath)) javascriptEntries.push(entry);
   }
   findings.push(...scanRustImplicitPredicates(rustEntries));
+  findings.push(...scanMacosPosixContract(rustEntries));
+  findings.push(...scanJavaScriptImplicitPredicates(javascriptEntries));
   findings.sort(
     (left, right) =>
       left.path.localeCompare(right.path, "en") ||
