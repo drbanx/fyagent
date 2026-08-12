@@ -113,6 +113,29 @@ describe("PromptsPage local-agent prototype", () => {
     expect(screen.getByText("3 条已启用")).toBeVisible();
   });
 
+  it("keeps an unsaved new prompt while toggling a different saved rule", async () => {
+    const user = userEvent.setup();
+    renderPrompts();
+
+    await user.click(screen.getByRole("button", { name: "新建提示词" }));
+    const name = screen.getByRole("textbox", { name: "名称" });
+    await user.clear(name);
+    await user.type(name, "仍可保存的新规则");
+    await user.click(screen.getByRole("switch", { name: "启用代码审查" }));
+
+    expect(
+      screen.getByRole("button", { name: /^未命名提示词/, pressed: true }),
+    ).toBeVisible();
+    expect(name).toHaveValue("仍可保存的新规则");
+    await user.click(screen.getByRole("checkbox", { name: "注入到Codex全局" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(screen.getByRole("button", { name: /^仍可保存的新规则/ })).toBeVisible();
+    expect(
+      screen.getByRole("switch", { name: "启用仍可保存的新规则" }),
+    ).toBeVisible();
+  });
+
   it("saves target sets and reports canonical file and instance counts", async () => {
     const user = userEvent.setup();
     renderPrompts();

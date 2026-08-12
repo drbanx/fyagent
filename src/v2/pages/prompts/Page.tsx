@@ -173,11 +173,9 @@ export function PromptsPage() {
     }
 
     setItems((currentItems) =>
-      currentItems
-        .filter((item) => item.id !== transientNewId || item.id === id)
-        .map((item) =>
-          item.id === id ? copyPrompt({ ...item, enabled: nextEnabled }) : item,
-        ),
+      currentItems.map((item) =>
+        item.id === id ? copyPrompt({ ...item, enabled: nextEnabled }) : item,
+      ),
     );
     if (id === selectedId) {
       setDraft((currentDraft) => ({
