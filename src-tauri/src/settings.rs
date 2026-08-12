@@ -554,6 +554,71 @@ impl Default for AppSettings {
     }
 }
 
+const MACOS_PREFERRED_TERMINALS: &[&str] = &[
+    "terminal",
+    "iterm2",
+    "alacritty",
+    "kitty",
+    "ghostty",
+    "wezterm",
+    "kaku",
+    "warp",
+];
+const WINDOWS_PREFERRED_TERMINALS: &[&str] = &["cmd", "powershell", "wt"];
+
+#[derive(Clone, Copy)]
+struct PreferredTerminalConfiguration {
+    supported: &'static [&'static str],
+    default: &'static str,
+}
+
+const MACOS_PREFERRED_TERMINAL_CONFIGURATION: PreferredTerminalConfiguration =
+    PreferredTerminalConfiguration {
+        supported: MACOS_PREFERRED_TERMINALS,
+        default: "terminal",
+    };
+const WINDOWS_PREFERRED_TERMINAL_CONFIGURATION: PreferredTerminalConfiguration =
+    PreferredTerminalConfiguration {
+        supported: WINDOWS_PREFERRED_TERMINALS,
+        default: "cmd",
+    };
+
+fn preferred_terminal_configuration() -> Option<PreferredTerminalConfiguration> {
+    if cfg!(target_os = "macos") {
+        Some(MACOS_PREFERRED_TERMINAL_CONFIGURATION)
+    } else if cfg!(target_os = "windows") {
+        Some(WINDOWS_PREFERRED_TERMINAL_CONFIGURATION)
+    } else {
+        None
+    }
+}
+
+fn normalize_preferred_terminal_for_configuration(
+    value: Option<&str>,
+    configuration: PreferredTerminalConfiguration,
+) -> Option<String> {
+    // Absence remains absence in persisted settings. Consumers that need an
+    // executable choice obtain the platform default through the effective getter.
+    value.map(|value| {
+        let value = value.trim();
+        if configuration.supported.contains(&value) {
+            value.to_string()
+        } else {
+            configuration.default.to_string()
+        }
+    })
+}
+
+fn normalize_preferred_terminal(value: Option<&str>) -> Option<String> {
+    normalize_preferred_terminal_for_configuration(value, preferred_terminal_configuration()?)
+}
+
+fn effective_preferred_terminal(value: Option<&str>) -> Option<String> {
+    normalize_preferred_terminal(value).or_else(|| {
+        preferred_terminal_configuration().map(|configuration| configuration.default.to_string())
+    })
+}
+
 impl AppSettings {
     fn settings_path() -> Option<PathBuf> {
         // settings.json 保留用于旧版本迁移和无数据库场景
@@ -634,6 +699,14 @@ impl AppSettings {
                 self.s3_sync = None;
             }
         }
+
+        self.preferred_terminal = normalize_preferred_terminal(self.preferred_terminal.as_deref());
+    }
+
+    fn from_json(content: &str) -> Result<Self, serde_json::Error> {
+        let mut settings = serde_json::from_str::<Self>(content)?;
+        settings.normalize_paths();
+        Ok(settings)
     }
 
     fn load_from_file() -> Self {
@@ -641,11 +714,8 @@ impl AppSettings {
             return Self::default();
         };
         if let Ok(content) = fs::read_to_string(&path) {
-            match serde_json::from_str::<AppSettings>(&content) {
-                Ok(mut settings) => {
-                    settings.normalize_paths();
-                    settings
-                }
+            match Self::from_json(&content) {
+                Ok(settings) => settings,
                 Err(err) => {
                     log::warn!(
                         "解析设置文件失败，将使用默认设置。路径: {}, 错误: {}",
@@ -718,13 +788,15 @@ fn resolve_override_path(raw: &str) -> PathBuf {
 }
 
 pub fn get_settings() -> AppSettings {
-    settings_store()
+    let mut settings = settings_store()
         .read()
         .unwrap_or_else(|e| {
             log::warn!("设置锁已毒化，使用恢复值: {e}");
             e.into_inner()
         })
-        .clone()
+        .clone();
+    settings.normalize_paths();
+    settings
 }
 
 pub fn get_settings_for_frontend() -> AppSettings {
@@ -1082,16 +1154,17 @@ pub fn effective_backup_retain_count() -> usize {
 
 // ===== 终端设置管理函数 =====
 
-/// 获取首选终端应用
+/// 获取当前主机可用的首选终端；未显式设置时返回平台默认值。
 pub fn get_preferred_terminal() -> Option<String> {
-    settings_store()
+    let preferred_terminal = settings_store()
         .read()
         .unwrap_or_else(|e| {
             log::warn!("设置锁已毒化，使用恢复值: {e}");
             e.into_inner()
         })
         .preferred_terminal
-        .clone()
+        .clone();
+    effective_preferred_terminal(preferred_terminal.as_deref())
 }
 
 // ===== WebDAV 同步设置管理函数 =====
@@ -1158,6 +1231,84 @@ mod tests {
             .as_object()
             .expect("settings object")
             .contains_key(&retired_key));
+    }
+
+    #[test]
+    fn preferred_terminal_allowlist_keeps_only_current_host_values() {
+        let Some(configuration) = preferred_terminal_configuration() else {
+            assert_eq!(normalize_preferred_terminal(Some("terminal")), None);
+            assert_eq!(effective_preferred_terminal(None), None);
+            return;
+        };
+
+        for supported in configuration.supported {
+            let padded = format!("  {supported}  ");
+            assert_eq!(
+                normalize_preferred_terminal(Some(&padded)).as_deref(),
+                Some(*supported)
+            );
+        }
+
+        assert_eq!(normalize_preferred_terminal(None), None);
+        assert_eq!(
+            effective_preferred_terminal(None).as_deref(),
+            Some(configuration.default)
+        );
+    }
+
+    #[test]
+    fn persisted_retired_terminal_normalizes_to_supported_host_default() {
+        let Some(configuration) = preferred_terminal_configuration() else {
+            return;
+        };
+        let retired_terminal = ["retired", "-terminal"].concat();
+        let mut value = serde_json::to_value(AppSettings::default()).expect("default settings");
+        value.as_object_mut().expect("settings object").insert(
+            "preferredTerminal".to_string(),
+            serde_json::Value::String(retired_terminal.clone()),
+        );
+
+        let settings = AppSettings::from_json(&value.to_string()).expect("legacy settings");
+        let effective = effective_preferred_terminal(settings.preferred_terminal.as_deref())
+            .expect("supported host terminal");
+        let serialized = serde_json::to_value(&settings).expect("normalized settings");
+
+        assert_eq!(
+            settings.preferred_terminal.as_deref(),
+            Some(configuration.default)
+        );
+        assert_eq!(effective, configuration.default);
+        assert_eq!(
+            serialized
+                .get("preferredTerminal")
+                .and_then(serde_json::Value::as_str),
+            Some(configuration.default)
+        );
+        assert_ne!(effective, retired_terminal);
+
+        if cfg!(target_os = "macos") {
+            assert!(crate::session_manager::terminal::is_supported_terminal_target(&effective));
+        }
+    }
+
+    #[test]
+    fn persisted_retired_macos_terminal_becomes_a_supported_resume_target() {
+        let retired_terminal = ["retired", "-terminal"].concat();
+        let mut value = serde_json::to_value(AppSettings::default()).expect("default settings");
+        value.as_object_mut().expect("settings object").insert(
+            "preferredTerminal".to_string(),
+            serde_json::Value::String(retired_terminal),
+        );
+        let settings: AppSettings = serde_json::from_value(value).expect("legacy settings");
+
+        let effective = normalize_preferred_terminal_for_configuration(
+            settings.preferred_terminal.as_deref(),
+            MACOS_PREFERRED_TERMINAL_CONFIGURATION,
+        )
+        .expect("macOS terminal target");
+
+        assert_eq!(effective, "terminal");
+        assert!(crate::session_manager::terminal::is_supported_terminal_target(&effective));
     }
 
     #[test]

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Select,
@@ -47,6 +48,26 @@ export interface TerminalSettingsProps {
 export function TerminalSettings({ value, onChange }: TerminalSettingsProps) {
   const { t } = useTranslation();
   const configuration = getTerminalConfiguration();
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const isSupportedValue =
+    configuration?.options.some((terminal) => terminal.value === value) ??
+    false;
+  const currentValue = isSupportedValue
+    ? value
+    : configuration?.defaultTerminal;
+  const defaultTerminal = configuration?.defaultTerminal;
+
+  useEffect(() => {
+    if (
+      value !== undefined &&
+      defaultTerminal !== undefined &&
+      !isSupportedValue
+    ) {
+      onChangeRef.current(defaultTerminal);
+    }
+  }, [defaultTerminal, isSupportedValue, value]);
 
   if (!configuration) {
     return (
@@ -65,12 +86,6 @@ export function TerminalSettings({ value, onChange }: TerminalSettingsProps) {
       </section>
     );
   }
-
-  const currentValue = configuration.options.some(
-    (terminal) => terminal.value === value,
-  )
-    ? value
-    : configuration.defaultTerminal;
 
   return (
     <section className="space-y-2">

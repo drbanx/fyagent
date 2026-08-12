@@ -27,7 +27,7 @@ describe("TerminalSettings", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("ignores a retired persisted value and shows the Windows default", () => {
+  it("normalizes a retired persisted value to the Windows default", () => {
     platform.value = "windows";
     const onChange = vi.fn();
 
@@ -35,6 +35,31 @@ describe("TerminalSettings", () => {
 
     expect(screen.getByRole("combobox")).toHaveTextContent(
       "settings.terminal.options.windows.cmd",
+    );
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith("cmd");
+  });
+
+  it("does not persist a default when no preference has been stored", () => {
+    platform.value = "windows";
+    const onChange = vi.fn();
+
+    render(<TerminalSettings onChange={onChange} />);
+
+    expect(screen.getByRole("combobox")).toHaveTextContent(
+      "settings.terminal.options.windows.cmd",
+    );
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps a supported macOS preference without rewriting it", () => {
+    platform.value = "macos";
+    const onChange = vi.fn();
+
+    render(<TerminalSettings value="iterm2" onChange={onChange} />);
+
+    expect(screen.getByRole("combobox")).toHaveTextContent(
+      "settings.terminal.options.macos.iterm2",
     );
     expect(onChange).not.toHaveBeenCalled();
   });
