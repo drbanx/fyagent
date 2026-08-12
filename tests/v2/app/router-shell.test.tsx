@@ -73,6 +73,26 @@ describe("FyAgent V2 routing", () => {
     },
   );
 
+  it("renders the local-Agent Prompt workspace at the prompts route", async () => {
+    const router = renderRoute("/prompts");
+
+    await expectPath(router, "/prompts");
+    expect(screen.getByTestId("prompts-page")).toBeVisible();
+    expect(screen.getByTestId("prompt-library")).toBeVisible();
+    expect(screen.getByTestId("prompt-editor")).toBeVisible();
+    expect(screen.getByTestId("prompt-inspector")).toBeVisible();
+  });
+
+  it("renders the local-Agent Memory workspace at the memory route", async () => {
+    const router = renderRoute("/memory");
+
+    await expectPath(router, "/memory");
+    expect(screen.getByTestId("memory-page")).toBeVisible();
+    expect(screen.getByTestId("memory-library")).toBeVisible();
+    expect(screen.getByTestId("memory-editor")).toBeVisible();
+    expect(screen.getByTestId("memory-inspector")).toBeVisible();
+  });
+
   it("keeps the frameless shell available when a child route fails", async () => {
     const [rootRoute] = appRoutes;
     const [contentBoundary] = rootRoute.children ?? [];
