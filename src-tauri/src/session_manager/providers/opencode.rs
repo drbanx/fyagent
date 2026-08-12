@@ -13,15 +13,9 @@ const PROVIDER_ID: &str = "opencode";
 
 /// Return the OpenCode base directory.
 ///
-/// Non-Windows hosts honor `$XDG_DATA_HOME`. Windows deliberately resolves the
-/// frozen Shell user's home instead of trusting the elevated process environment.
+/// Windows deliberately resolves the frozen Shell user's home instead of
+/// trusting the elevated process environment.
 pub(crate) fn get_opencode_base_dir() -> PathBuf {
-    #[cfg(not(target_os = "windows"))]
-    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        if !xdg.is_empty() {
-            return PathBuf::from(xdg).join("opencode");
-        }
-    }
     crate::config::get_home_dir().join(".local/share/opencode")
 }
 
@@ -879,34 +873,7 @@ fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use rusqlite::Connection;
-    #[cfg(not(target_os = "windows"))]
-    use std::ffi::OsString;
     use tempfile::tempdir;
-
-    #[cfg(not(target_os = "windows"))]
-    struct EnvVarGuard {
-        key: &'static str,
-        previous: Option<OsString>,
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    impl EnvVarGuard {
-        fn set(key: &'static str, value: &Path) -> Self {
-            let previous = std::env::var_os(key);
-            std::env::set_var(key, value);
-            Self { key, previous }
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    impl Drop for EnvVarGuard {
-        fn drop(&mut self) {
-            match self.previous.take() {
-                Some(value) => std::env::set_var(self.key, value),
-                None => std::env::remove_var(self.key),
-            }
-        }
-    }
 
     fn create_sqlite_schema(conn: &Connection) {
         conn.execute_batch(
@@ -1076,7 +1043,7 @@ mod tests {
         assert!(message_dir.exists());
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn delete_session_rejects_symlink_part_target_before_any_deletion() {
         use std::os::unix::fs::symlink;
@@ -1107,7 +1074,7 @@ mod tests {
         assert!(message_dir.exists());
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn delete_session_rejects_symlink_part_root_before_any_deletion() {
         use std::os::unix::fs::symlink;
@@ -1289,7 +1256,7 @@ mod tests {
         assert!(!error.contains("must-not-leak"));
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn load_messages_rejects_symlink_part_directory() {
         use std::os::unix::fs::symlink;
@@ -1336,11 +1303,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(target_os = "windows"), serial_test::serial)]
     fn scan_sessions_sqlite_reads_temp_database() {
         let temp = tempdir().expect("tempdir");
-        #[cfg(not(target_os = "windows"))]
-        let _xdg_guard = EnvVarGuard::set("XDG_DATA_HOME", temp.path());
         let base_dir = temp.path().join("opencode");
         std::fs::create_dir_all(&base_dir).expect("create base dir");
         let db_path = base_dir.join("opencode.db");
@@ -1359,9 +1323,6 @@ mod tests {
         .expect("insert session 2");
         drop(conn);
 
-        #[cfg(not(target_os = "windows"))]
-        let sessions = scan_sessions_sqlite();
-        #[cfg(target_os = "windows")]
         let sessions = scan_sessions_sqlite_at(&db_path);
 
         assert_eq!(sessions.len(), 2);
@@ -1382,11 +1343,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(target_os = "windows"), serial_test::serial)]
     fn scan_sessions_sqlite_suppresses_unsafe_resume_commands() {
         let temp = tempdir().expect("tempdir");
-        #[cfg(not(target_os = "windows"))]
-        let _xdg_guard = EnvVarGuard::set("XDG_DATA_HOME", temp.path());
         let base_dir = temp.path().join("opencode");
         std::fs::create_dir_all(&base_dir).expect("create base dir");
         let db_path = base_dir.join("opencode.db");
@@ -1408,9 +1366,6 @@ mod tests {
         }
         drop(conn);
 
-        #[cfg(not(target_os = "windows"))]
-        let sessions = scan_sessions_sqlite();
-        #[cfg(target_os = "windows")]
         let sessions = scan_sessions_sqlite_at(&db_path);
 
         assert_eq!(sessions.len(), 3);
@@ -1519,11 +1474,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(target_os = "windows"), serial_test::serial)]
     fn delete_session_sqlite_removes_session() {
         let temp = tempdir().expect("tempdir");
-        #[cfg(not(target_os = "windows"))]
-        let _xdg_guard = EnvVarGuard::set("XDG_DATA_HOME", temp.path());
         let base_dir = temp.path().join("opencode");
         std::fs::create_dir_all(&base_dir).expect("create base dir");
         let db_path = base_dir.join("opencode.db");
@@ -1548,9 +1500,6 @@ mod tests {
         drop(conn);
 
         let source = format!("sqlite:{}:ses_1", db_path.display());
-        #[cfg(not(target_os = "windows"))]
-        let deleted = delete_session_sqlite("ses_1", &source).expect("delete sqlite session");
-        #[cfg(target_os = "windows")]
         let deleted =
             delete_session_sqlite_at("ses_1", &source, &db_path).expect("delete sqlite session");
         assert!(deleted);
@@ -1584,11 +1533,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(target_os = "windows"), serial_test::serial)]
     fn delete_session_sqlite_rejects_foreign_db_path() {
         let temp = tempdir().expect("tempdir");
-        #[cfg(not(target_os = "windows"))]
-        let _xdg_guard = EnvVarGuard::set("XDG_DATA_HOME", temp.path());
         let expected_base_dir = temp.path().join("opencode");
         std::fs::create_dir_all(&expected_base_dir).expect("create expected base dir");
         let expected_db_path = expected_base_dir.join("opencode.db");
@@ -1605,9 +1551,6 @@ mod tests {
         drop(conn);
 
         let source = format!("sqlite:{}:ses_1", db_path.display());
-        #[cfg(not(target_os = "windows"))]
-        let err = delete_session_sqlite("ses_1", &source).expect_err("should reject foreign db");
-        #[cfg(target_os = "windows")]
         let err = delete_session_sqlite_at("ses_1", &source, &expected_db_path)
             .expect_err("should reject foreign db");
         assert!(err.contains("expected OpenCode database"));

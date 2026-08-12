@@ -60,11 +60,11 @@ pub fn get_opencode_config_path() -> PathBuf {
 }
 
 /// 获取 OpenCode SQLite 数据库路径
-/// 非 Windows 优先级: OPENCODE_DB 环境变量 > XDG_DATA_HOME > ~/.local/share/opencode。
+/// macOS 优先级: OPENCODE_DB 环境变量 > ~/.local/share/opencode/opencode.db。
 /// Windows 不读取提升进程环境，默认始终基于冻结的 Shell 用户目录。
 pub fn get_opencode_db_path() -> PathBuf {
     // 支持 OPENCODE_DB 环境变量覆盖（忽略空字符串）
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     if let Ok(custom_path) = std::env::var("OPENCODE_DB") {
         if !custom_path.is_empty() {
             let path = PathBuf::from(&custom_path);
@@ -80,16 +80,8 @@ pub fn get_opencode_db_path() -> PathBuf {
 }
 
 fn get_opencode_data_dir() -> PathBuf {
-    // 尊重 XDG_DATA_HOME（按 XDG 规范，空字符串视为未设置）
-    #[cfg(not(target_os = "windows"))]
-    if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
-        if !xdg_data.is_empty() {
-            return PathBuf::from(xdg_data).join("opencode");
-        }
-    }
-
-    // OpenCode 使用 xdg-basedir，不遵守 macOS/Windows 平台约定，
-    // 所有平台默认都落在 ~/.local/share/opencode
+    // OpenCode 在两个受支持平台上的数据库默认目录均为
+    // ~/.local/share/opencode；Windows 的 home 来自冻结的 Shell 用户。
     crate::config::get_home_dir()
         .join(".local")
         .join("share")
@@ -377,6 +369,22 @@ mod tests {
         let dir = home.join(".config").join("opencode");
         std::fs::create_dir_all(&dir).expect("create config dir");
         std::fs::write(dir.join("opencode.json"), content).expect("write config");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn database_default_uses_the_explicit_home_data_directory() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+
+        assert_eq!(
+            get_opencode_db_path(),
+            temp.path()
+                .join(".local")
+                .join("share")
+                .join("opencode")
+                .join("opencode.db")
+        );
     }
 
     #[test]
