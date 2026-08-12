@@ -284,8 +284,10 @@ describe("Codex Windows interactive-user contract", () => {
     expect(opencodeConfig).toMatch(
       /#\[cfg\(target_os = "macos"\)\]\s+if let Ok\(custom_path\) = std::env::var\("OPENCODE_DB"\)/,
     );
+    const retiredDataHomeVariable = ["X", "DG_DATA_HOME"].join("");
+    expect(opencodeConfig).not.toContain(retiredDataHomeVariable);
     expect(opencodeConfig).toMatch(
-      /#\[cfg\(target_os = "macos"\)\]\s+if let Ok\(xdg_data\) = std::env::var\("XDG_DATA_HOME"\)/,
+      /fn get_opencode_data_dir\(\) -> PathBuf \{[\s\S]*?\.join\("\.local"\)[\s\S]*?\.join\("share"\)[\s\S]*?\.join\("opencode"\)/,
     );
     expect(codexStateDb).toMatch(
       /#\[cfg\(target_os = "windows"\)\]\s+fn sqlite_home_from_env\(\) -> Option<PathBuf> \{[\s\S]*?None\s+\}/,

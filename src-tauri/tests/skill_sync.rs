@@ -17,7 +17,7 @@ fn write_skill(dir: &std::path::Path, name: &str) {
     .expect("write SKILL.md");
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn symlink_dir(src: &std::path::Path, dest: &std::path::Path) {
     std::os::unix::fs::symlink(src, dest).expect("create symlink");
 }
