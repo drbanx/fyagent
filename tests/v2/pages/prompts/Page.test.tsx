@@ -90,6 +90,29 @@ describe("PromptsPage local-agent prototype", () => {
     expect(screen.getByText("3 条已启用")).toBeVisible();
   });
 
+  it("toggles a different saved rule without disturbing the current dirty editor", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPrompts();
+
+    const content = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "内容",
+    });
+    await user.type(content, "\n未保存的当前规则补充");
+    await user.click(screen.getByRole("switch", { name: "启用代码审查" }));
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByRole("switch", { name: "停用代码审查" })).toBeChecked();
+    expect(content.value).toContain("未保存的当前规则补充");
+    expect(
+      screen.getByRole("button", {
+        name: /^中文与回复风格/,
+        pressed: true,
+      }),
+    ).toBeVisible();
+    expect(screen.getByText("3 条已启用")).toBeVisible();
+  });
+
   it("saves target sets and reports canonical file and instance counts", async () => {
     const user = userEvent.setup();
     renderPrompts();

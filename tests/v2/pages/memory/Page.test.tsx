@@ -189,6 +189,27 @@ describe("MemoryPage local-agent prototype", () => {
     expect(screen.getByTestId("memory-preview-tasks")).toBeVisible();
   });
 
+  it("ignores title-only surrounding whitespace without creating a revision", async () => {
+    const user = userEvent.setup();
+    renderMemoryPage();
+    await selectClaudeLongTerm(user);
+
+    await user.click(
+      screen.getByRole("button", { name: "生成 1 个同步预览任务" }),
+    );
+    const tasks = screen.getByTestId("memory-preview-tasks");
+    const title = screen.getByRole("textbox", { name: "记忆标题" });
+    const saveButton = screen.getByRole("button", { name: "保存" });
+
+    await user.clear(title);
+    await user.type(title, "  Claude Code · 长期记忆  ");
+
+    expect(saveButton).toBeDisabled();
+    expect(screen.getByText("r1")).toBeVisible();
+    expect(tasks).toBeVisible();
+    expect(within(tasks).getByText("基于修订 r1")).toBeVisible();
+  });
+
   it("keeps daily sources read-only and promotes an unsaved draft with full provenance", async () => {
     const user = userEvent.setup();
     renderMemoryPage();

@@ -166,21 +166,12 @@ export function PromptsPage() {
       return;
     }
 
-    if (id !== selectedId && !confirmDiscard()) {
-      return;
-    }
-
     const nextEnabled = !target.enabled;
     if (nextEnabled && target.targetIds.length === 0) {
-      if (id !== selectedId) {
-        removeTransientItem();
-        loadSavedPrompt(target);
-      }
       setFeedback("请先选择并保存至少一个注入目标");
       return;
     }
 
-    const nextTarget = copyPrompt({ ...target, enabled: nextEnabled });
     setItems((currentItems) =>
       currentItems
         .filter((item) => item.id !== transientNewId || item.id === id)
@@ -197,9 +188,6 @@ export function PromptsPage() {
             ? null
             : { ...currentDraft.baseline, enabled: nextEnabled },
       }));
-    } else {
-      removeTransientItem();
-      loadSavedPrompt(nextTarget);
     }
     setFeedback(nextEnabled ? "已加入前端组合" : "已移出前端组合");
   };

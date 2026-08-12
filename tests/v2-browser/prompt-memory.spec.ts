@@ -202,6 +202,32 @@ test("promotes a read-only Daily source with complete visible provenance", async
     page.getByRole("button", { name: "生成 0 个同步预览任务" }),
   ).toBeDisabled();
 
+  await page
+    .getByRole("checkbox", { name: "同步到Claude Code全局" })
+    .click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText("r1")).toBeVisible();
+  await page
+    .getByRole("button", { name: "生成 1 个同步预览任务" })
+    .click();
+  const tasks = page.getByTestId("memory-preview-tasks");
+  await expect(tasks.getByRole("listitem")).toHaveCount(1);
+  await expect(tasks.getByRole("listitem")).toHaveAttribute(
+    "data-preview-state",
+    "pending",
+  );
+  await expect(tasks.getByRole("listitem")).toHaveAttribute(
+    "data-durable-state",
+    "not-run",
+  );
+  await expect(tasks).toContainText("基于修订 r1");
+
+  await page.getByRole("tab", { name: "会话记录" }).click();
+  await expect(page.getByRole("textbox", { name: "记忆内容" })).toHaveAttribute(
+    "readonly",
+  );
+  await expect(page.getByRole("button", { name: "只读来源" })).toBeDisabled();
+
   await expectHealthyPage(page, health);
 });
 

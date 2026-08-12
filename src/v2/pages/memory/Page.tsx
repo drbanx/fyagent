@@ -157,7 +157,7 @@ export function MemoryPage() {
   const isDirty =
     !editorReadOnly &&
     (baseline === null ||
-      draftTitle !== baseline.title ||
+      draftTitle.trim() !== baseline.title ||
       draftContent !== baseline.content ||
       !sameTargetSet(draftTargetIds, baseline.syncTargetIds));
 
