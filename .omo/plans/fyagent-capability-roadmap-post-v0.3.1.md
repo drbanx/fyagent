@@ -107,7 +107,7 @@ source: docs/fyagent/audits/vibekey-to-fyagent-capability-gap.md
 
 ### CAP-101 Windows 普通用户 Worker
 
-**目标**：在不削弱现有安全边界的前提下，让正式 Windows 构建能够检查和管理用户自己的 CLI、PATH 与 WSL。
+**目标**：在不削弱现有安全边界的前提下，让正式 Windows 构建能够检查和管理用户自己的 CLI 与 PATH。
 
 **推荐设计**：提权宿主只保留机器级职责；用户 CLI 操作交给有身份绑定、命令白名单、长度限制、超时、结构化回执和重放保护的普通用户 worker。
 
@@ -121,7 +121,7 @@ source: docs/fyagent/audits/vibekey-to-fyagent-capability-gap.md
 **验收**：
 
 - 正式 Windows x64/ARM64 包在普通用户上下文完成探测、安装、升级和失败回执；
-- PATH 注入、WSL 伪装、陈旧 worker、重放、超时和进程所有者漂移均 fail closed；
+- PATH 注入、陈旧 worker、重放、超时和进程所有者漂移均 fail closed；
 - Codex CLI 是否开放写生命周期另立产品/安全决策，不因 worker 上线自动放开。
 
 ### CAP-102 Secret Vault v1
@@ -148,7 +148,7 @@ export / sync        → 默认只携带 definition，不携带 secret
 **验收**：
 
 - 数据库、SQL 导出、同步 artifact、日志和诊断包的秘密 fixture 扫描为 0；
-- macOS、Windows、Linux 各有真实 keychain round-trip；
+- macOS、Windows 各有真实 keychain round-trip；
 - 迁移中断、密钥存储不可用、旧版本回退和跨设备缺 secret 均有明确结果；
 - 文档不得只写“AES-256”，必须记录算法、KDF、nonce、版本、完整性和轮换合同。
 
@@ -159,7 +159,7 @@ export / sync        → 默认只携带 definition，不携带 secret
 **向导步骤**：
 
 1. 选择目标工具；
-2. 检查 FyAgent、目标 CLI、运行时、PATH/WSL 与冲突安装；
+2. 检查 FyAgent、目标 CLI、运行时、PATH 与冲突安装；
 3. 安装、升级或给出平台正确的人工动作；
 4. 选择登录方式或 Provider，写入 Secret Vault；
 5. 预览将修改的配置；
@@ -172,7 +172,7 @@ export / sync        → 默认只携带 definition，不携带 secret
 
 - 每个步骤可重试、跳过、返回，重启应用后能继续；
 - “端点可用”和“目标工具成功请求”不得合并为一个绿灯；
-- Windows、macOS、Linux 至少各一条 `native_runtime` happy path；
+- Windows、macOS 至少各一条 `native_runtime` happy path；
 - 封闭 Beta 达到本计划的首次成功门槛。
 
 ### CAP-104 Change Plan、Undo 与活动记录

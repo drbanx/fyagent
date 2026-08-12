@@ -181,8 +181,9 @@ unless its real behavior and deprecation evidence justify a new decision.
   exists.
 - Assert schema `16`, FyAgent test-home isolation, database/export-header
   behavior, proxy error mapping, package identity, and Tauri identity.
-- Record native/platform/Release evidence separately; a successful Linux host
-  merge check does not prove Windows, macOS, ARM, or formal release artifacts.
+- Record native/platform/Release evidence separately; a successful local-host
+  merge check does not prove another supported platform, architecture, or
+  formal release artifact.
 
 ## 7. Wrong vs Correct
 

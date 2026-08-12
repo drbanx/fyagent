@@ -79,7 +79,7 @@ Cargo config `[env]` keys regardless of case or string/table value. Cargo test
 receives its native direct runner through a
 CLI TOML argv array built from the current Node process and same wrapper; no
 shell quoting is involved. The runner validates target/path/file/native format
-and exact ELF/PE/Mach-O machine identity, then directly spawns the test binary
+and exact PE/Mach-O machine identity, then directly spawns the test binary
 with `shell: false`; filters remain argv and never enter a shell.
 `rust:check`, `rust:clippy`, and `rust:test` use the same guard; rustfmt does not need a target. `rust:test` accepts at most one test-name
 filter, passes it after Cargo's `--`, and rejects every option-like value; in

@@ -133,7 +133,6 @@ changes
   ├─ contracts
   ├─ frontend
   ├─ desktop-acceptance-contract
-  ├─ backend-linux
   ├─ backend-windows
   ├─ windows-native-contracts (X64, ARM64)
   └─ backend-macos
@@ -148,7 +147,6 @@ The requested job mapping is exact:
 | `contracts`                   | `contracts \|\| docsSpec`    |
 | `frontend`                    | `frontend`                   |
 | `desktop-acceptance-contract` | `desktop`                    |
-| `backend-linux`               | `backend`                    |
 | `backend-windows`             | `backend \|\| windowsNative` |
 | `windows-native-contracts`    | `windowsNative`              |
 | `backend-macos`               | `backend`                    |
@@ -164,7 +162,7 @@ require Trellis task state, overlay reconciliation, or hook execution.
 `scripts/ci/required-gate.mjs` is the pure evaluator for the stable aggregate.
 It receives:
 
-1. exact `toJSON(needs)` results for `changes` plus the seven domain job IDs;
+1. exact `toJSON(needs)` results for `changes` plus the six domain job IDs;
 2. the exact classifier/event plan emitted by `changes`;
 3. the current workflow run-attempt Jobs REST response.
 
@@ -225,9 +223,9 @@ frozen lockfile. The frontend full unit suite excludes only the five
 host-mise integration suites; the contracts job owns their pure/static
 contracts, and the local canonical check owns the real mise boundary.
 
-Backend jobs run locked Cargo check, clippy with warnings denied, and tests on
-Linux, Windows, and macOS. Linux additionally owns `cargo fmt --check` and the
-reviewed system dependency set. The Windows backend uses the test manifest and
+Backend jobs run locked Cargo check, Clippy with warnings denied, and tests on
+Windows and macOS. macOS additionally owns `cargo fmt --check`. The Windows
+backend uses the test manifest and
 the native x64 `windows-2025` runner. Before any Windows backend Cargo command
 can compile the desktop crate, the job invokes the repository-owned
 `scripts/prepare-windows-user-helper.mjs` with the exact x64 target and debug

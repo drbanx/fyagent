@@ -3,9 +3,9 @@
 ## 1. Scope / Trigger
 
 Read this reference before changing repository tool versions, `mise.toml`, any
-lockfile, Python execution, local onboarding commands, WSL behavior, or
-the canonical task API, or any local compile, package, test, or verification
-path. It applies to native development on Linux, macOS, Windows, and WSL.
+lockfile, Python execution, local onboarding commands, the canonical task API,
+or any local compile, package, test, or verification path. It applies to native
+development on macOS and Windows.
 GitHub Actions deliberately installs tools with native setup actions instead
 of installing mise.
 
@@ -44,10 +44,10 @@ empty file through the aliases selects `pnpm-win-arm64.exe` and
 `uv-aarch64-pc-windows-msvc.zip`; `lockfile-check.mjs` rejects a platform key
 whose URL names another architecture.
 
-`mise.lock` targets `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`,
-`windows-x64`, and `windows-arm64`. Node, pnpm, and uv have a generated HTTPS
+`mise.lock` targets `macos-x64`, `macos-arm64`, `windows-x64`, and
+`windows-arm64`. Node, pnpm, and uv have a generated HTTPS
 URL and SHA-256 checksum for every platform. The `core:rust` backend currently
-emits no platform artifact records: mise reports those six entries as skipped,
+emits no platform artifact records: mise reports those four entries as skipped,
 so the lock stores exact Rust version/options and native jobs must additionally
 prove the selected rustup toolchain. Do not fabricate Rust checksums or present
 the platform list alone as artifact evidence.
@@ -95,7 +95,7 @@ validation. It must not install system packages, change trust, change Git
 remotes, refresh locks, build, tag, sign, upload, or publish.
 
 `env:check` is strict and read-only. It verifies the standard sources, actual
-versions, executable ownership, WSL path isolation, generated lock structure,
+versions, executable ownership, generated lock structure,
 uv-managed Python, `.venv`, offline locked Python execution, Rust components
 and sysroot, and mise task metadata. `--json` emits one machine-readable report
 and any failed check exits nonzero.
@@ -119,7 +119,7 @@ task contract.
 
 Every canonical local development, build, test, package, and verification
 entrypoint is restricted to the OS and architecture of the process actually
-running it. The shared Node wrapper maps only the six supported
+running it. The shared Node wrapper maps only the four supported
 `process.platform`/`process.arch` pairs, resolves `rustc` and `rustdoc` from
 PATH to absolute executable paths, parses both `-vV` identities, and requires
 their host/release/commit to match the process host and each other. Before
@@ -129,7 +129,7 @@ compiler wrappers, or any `CARGO_TARGET_*_RUNNER`/`*_LINKER`. A `--target` token
 rejected in ordinary, build-wide, encoded, or target-specific Rust/rustdoc flag
 environment variables; every target-specific Rust/rustdoc flag variable is
 rejected even without that token because it can select a linker. Loader/runtime
-injection variables such as `LD_PRELOAD`, `DYLD_*` search/insertion paths, and
+injection variables such as `DYLD_*` search/insertion paths and
 `NODE_OPTIONS`/`NODE_PATH` are likewise rejected before the first probe and
 cleared in toolchain children.
 
@@ -147,8 +147,8 @@ whose fixed argv is the current absolute Node executable plus the same
 `host-native.mjs`; paths containing whitespace remain separate argv. Cargo
 appends only the test binary and filter argv. The runner validates the process
 host/target, repository target-directory boundary, regular non-symlink file,
-native format, and exact ELF `e_machine`, PE `Machine`, or thin Mach-O
-`cputype` before direct `spawnSync(..., shell: false)`. No shell, emulator,
+native format, and exact PE `Machine` or thin Mach-O `cputype` before direct
+`spawnSync(..., shell: false)`. No shell, emulator,
 subsystem bridge, user runner, or user linker participates. The wrapper also passes an explicit
 `--target <verified-current-host>` to Tauri and Cargo check/Clippy/test. Caller
 safe flags are intentionally not preserved by canonical tasks; reviewed
@@ -162,8 +162,8 @@ preparer exactly once after caller, Cargo-config, runner, and absolute
 rustc/rustdoc current-host validation, but before the main workspace Cargo
 command. The wrapper supplies its canonical current-host target as
 `TAURI_ENV_TARGET_TRIPLE` and fixes `TAURI_ENV_DEBUG=true`; a preparation
-failure stops before workspace Cargo. Linux and macOS Rust tasks do not run
-this Windows resource step. This preserves the Tauri `externalBin` resource
+failure stops before workspace Cargo. macOS Rust tasks do not run this Windows
+resource step. This preserves the Tauri `externalBin` resource
 fail-closed contract for local Windows Rust compilation without turning a
 local compile or test into PackageManager, ACL, setup, or other native-runtime
 evidence.
@@ -194,12 +194,11 @@ portable test may exercise platform-neutral policy, but it does not become
 native evidence for another OS or architecture.
 
 Matching native GitHub Actions runners are the only project path for non-host
-compilation, packaging, and verification. On a Linux x64 workstation this
-means that Windows, macOS, Linux ARM64, and every Windows/macOS architecture
-gate remain remote. Local WSL-to-Windows process bridging, Windows
-installer execution, and locally copied or staged Windows artifacts are
-diagnostic experiments at most and never acceptance evidence. The current
-native setup contract is owned by [Windows Installer](./windows-installer.md).
+compilation, packaging, and verification. Every supported non-host OS or
+architecture gate remains remote. Windows installer execution and locally
+copied or staged Windows artifacts are diagnostic experiments at most and
+never acceptance evidence. The current native setup contract is owned by
+[Windows Installer](./windows-installer.md).
 
 Repository tasks do not install non-host Rust targets or provision a
 cross-compilation environment. Adding a new supported platform therefore
@@ -212,7 +211,7 @@ Normal bootstrap/install consumes existing locks and never bumps them. An
 intentional full lock regeneration is:
 
 ```bash
-mise lock --platform linux-x64,linux-arm64,macos-x64,macos-arm64,windows-x64,windows-arm64
+mise lock --platform macos-x64,macos-arm64,windows-x64,windows-arm64
 mise run tasks:validate
 ```
 
@@ -234,7 +233,6 @@ the standard version file and `mise.lock` captured before the attempt.
 | A standard version differs from the actual executable                 | `env:check` fails                                                                       |
 | `mise.toml` repeats Node/pnpm/Rust/Python                             | Lock and environment contracts fail                                                     |
 | Python resolves outside uv management or `.venv` is absent            | Python/environment checks fail                                                          |
-| WSL resolves a managed executable below `/mnt/<drive>`                | Fail and repair PATH; never invoke the Windows shim                                     |
 | Lock platform URL names another architecture                          | Fail, even when checksum and URL are otherwise valid                                    |
 | Rust lock has no platform assets                                      | Record exact version/options plus native rustup evidence; never invent an asset claim   |
 | A script changes mise trust or private mise/Cargo/rustup homes        | Reject the change                                                                       |
@@ -254,7 +252,7 @@ the standard version file and `mise.lock` captured before the attempt.
 
 - Parse every standard source and assert Node 24.19.0, pnpm 10.12.3, Rust
   1.97.1, and Python 3.14.7 without duplicate mise declarations.
-- Regenerate `mise.lock` from no prior lock, target all six platforms, and
+- Regenerate `mise.lock` from no prior lock, target all four platforms, and
   require an identical second generation.
 - Structurally validate backend identity, URLs, SHA-256 checksums, platform
   architecture, native Windows ARM64 pnpm/uv assets, Rust options, and absence
@@ -269,15 +267,14 @@ the standard version file and `mise.lock` captured before the attempt.
   `mise which rustc`, the exact rustup active toolchain, components, and sysroot.
 - Exercise a parameter plus flag through real `mise run`, and prove filters
   cannot smuggle `--target` into Rust tests.
-- Unit-test the exact six-entry process-host mapping, absolute rustc/rustdoc
+- Unit-test the exact four-entry process-host mapping, absolute rustc/rustdoc
   resolution and matching `-vV` identities, case-insensitive compiler/wrapper/
   runner/target rejection, target-bearing flag rejection, and fixed
   Tauri/Cargo argv plus owned child environment.
 - Unit-test Windows Rust task ordering and environment: one helper preparation
   after all current-host validations and before workspace Cargo, the exact
   canonical target, `TAURI_ENV_DEBUG=true`, and no workspace Cargo after
-  preparation failure. Prove Linux/macOS Rust tasks never invoke the helper
-  preparer.
+  preparation failure. Prove macOS Rust tasks never invoke the helper preparer.
 - Smoke the real `pnpm dev`/`pnpm build` and canonical mise wrappers with
   rejected arguments/environment, proving the error occurs before rustc,
   rustdoc, Cargo, Tauri, or a frontend build command can start. Fake native
@@ -298,9 +295,9 @@ the standard version file and `mise.lock` captured before the attempt.
   cross-build scripts, foreign build tools, subsystem bridges, and emulators;
   exclude GitHub workflow definitions from that negative scan because they own
   the required native platform targets.
-- Obtain native Windows ARM64, Linux ARM64, Windows x64, macOS, and Linux x64
-  runner evidence before claiming all supported platforms verified. Local
-  Linux success is not substitute evidence for another OS/architecture.
+- Obtain native Windows ARM64, Windows x64, macOS x64, and macOS ARM64 runner
+  evidence before claiming all supported platforms verified. Local success is
+  not substitute evidence for another OS or architecture.
 
 ## 9. Wrong vs Correct
 

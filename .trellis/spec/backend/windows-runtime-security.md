@@ -101,8 +101,8 @@ expose the Shell SID or paths and does not decide which user owns state.
   override may retain its existing product meaning, but the override itself is
   loaded from Alice's store and an ambient Bob path is never a fallback.
 - Windows must not use `dirs::home_dir`, Tauri's ambient user path resolver,
-  `%HOME%`, `%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, XDG path variables,
-  or elevated-process user-tool variables to select per-user paths. User tool
+  `%HOME%`, `%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, alternate-platform
+  path variables, or elevated-process user-tool variables to select per-user paths. User tool
   discovery derives candidates from Alice's frozen directories plus
   OS-resolved system locations; it does not inherit Bob's `PATH`, NVM, pnpm,
   Volta, Scoop, Hermes, OpenCode, or Codex path variables.
@@ -182,8 +182,8 @@ environment and rebuilding a narrow environment from the frozen Alice paths
 and OS-resolved constants. The shared child-environment builder clears inherited
 variables and supplies Alice Profile/Local/Roaming/TEMP, frozen PATH (with only
 the selected entry directory optionally prepended), PATHEXT, and OS-resolved
-ComSpec/SystemRoot. Windows CLI, version, cmd-shim, and WSL execution all use
-that builder. Shared detected-tool execution helpers enforce the
+ComSpec/SystemRoot. Windows CLI, version, and cmd-shim execution all use that
+builder. Shared detected-tool execution helpers enforce the
 same formal-build gate themselves so internal callers cannot bypass a public
 command-level check.
 It no longer selects a machine runtime or requires the process SID to equal the
@@ -231,7 +231,7 @@ instance admission, and is best-effort; its failure must not block startup.
 - Contract tests assert initialization precedes panic/CLI/Tauri, the formal
   process/Shell equality gate and machine-runtime implementation are absent,
   the fixed PackageBridge is referenced only from the Codex installer boundary,
-  and Windows production paths do not consult ambient home/app-data/XDG or
+  and Windows production paths do not consult ambient home/app-data or
   user-tool path environment variables.
 - Renderer tests prove directory defaults and resets use the backend Shell home
   rather than the frontend Tauri path API.

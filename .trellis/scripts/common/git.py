@@ -18,7 +18,7 @@ def run_git(
     """Run a git command and return (returncode, stdout, stderr).
 
     Uses UTF-8 encoding with -c i18n.logOutputEncoding=UTF-8 to ensure
-    consistent output across all platforms (Windows, macOS, Linux). Callers
+    consistent output on supported platforms (Windows and macOS). Callers
     may provide a timeout for best-effort probes; normal Git operations remain
     unbounded by default.
     """

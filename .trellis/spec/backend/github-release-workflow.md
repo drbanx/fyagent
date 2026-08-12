@@ -31,7 +31,7 @@ The YAML tag filter is only routing. The repository-owned eligibility engine
 accepts exactly stable `vX.Y.Z` with no prerelease, build metadata, missing
 component, or leading zero.
 
-- `workflow_dispatch` is an optional full five-target diagnostic preflight for
+- `workflow_dispatch` is an optional full three-target diagnostic preflight for
   the current trusted `main` HEAD. It may build and package native targets,
   prove and seal Windows bytes, create workflow artifacts, and attest candidate
   bytes, but it can never create or update a GitHub Release and is not a
@@ -162,8 +162,7 @@ second application version.
 ```text
 eligibility
   ├─ build-windows (x64, ARM64) ─┐
-  ├─ build-linux   (x64, ARM64)  ├─ pin-release-build-inputs
-  └─ build-macos   (universal) ──┘              │
+  └─ build-macos   (universal) ──┴─ pin-release-build-inputs
                                                  ├─ preflight proof ──────┐
                                                  └─ formal transform      │
                                                      └─ fresh formal seal ┤
@@ -236,28 +235,13 @@ disabled.
 | --------------- | ------------------------------------------------------- | ---------------------------------- |
 | Windows x64     | `windows-2025`, native `X64`                            | x64 NSIS setup EXE                 |
 | Windows ARM64   | `windows-11-arm`, native `ARM64`                        | ARM64 NSIS setup EXE               |
-| Linux x64       | `ubuntu-24.04`, pinned Ubuntu 22.04 amd64 container     | AppImage, DEB, RPM                 |
-| Linux ARM64     | `ubuntu-24.04-arm`, pinned Ubuntu 22.04 arm64 container | AppImage, DEB, RPM                 |
 | macOS universal | `macos-15`, both Apple targets                          | DMG and ZIP from one universal app |
 
-Linux uses the reviewed multi-architecture Ubuntu image children:
-
-```text
-amd64 docker.io/library/ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
-arm64 docker.io/library/ubuntu:22.04@sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
-```
-
 Each target verifies documented `runner.os`/`runner.arch`, the requested
-runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. Linux
-also verifies configured digest, `/etc/os-release`, `uname -m`, and a single
-exact workspace `safe.directory`. There is no QEMU, binfmt impersonation,
+runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. There is
+no emulator, architecture impersonation,
 opposite-architecture toolchain, or reduced-target fallback. ARM runner
 unavailability blocks acceptance.
-
-The locked Tauri bundler requires Linux AppImage extraction mode for nested
-tool execution. That variable is limited to the package step; it does not
-grant mount, FUSE, privileged-container, or `SYS_ADMIN` capability and must be
-re-evaluated when the locked Tauri CLI/bundler changes.
 
 ## 6. Platform build, package, and security gates
 
@@ -312,45 +296,32 @@ re-evaluated when the locked Tauri CLI/bundler changes.
   original `hdiutil` status immediately. The workflow does not pipe `hdiutil`,
   force-detach images, or kill disk-image helpers.
 
-### Linux
-
-- each native container produces exactly one AppImage, DEB, and RPM;
-- ELF/package architecture and package version match the frozen target before
-  normalization;
-- AppImage extraction compatibility is step-scoped and package stderr remains
-  visible; no format is optional in preflight or formal mode.
-
 ## 7. Assets, metadata, signing disclosure, and attestation
 
-The installer allowlist contains exactly ten versioned files:
+The installer allowlist contains exactly four versioned files:
 
 ```text
 FyAgent-X.Y.Z-macOS.dmg
 FyAgent-X.Y.Z-macOS.zip
 FyAgent-X.Y.Z-Windows-x64-setup.exe
 FyAgent-X.Y.Z-Windows-arm64-setup.exe
-FyAgent-X.Y.Z-Linux-x86_64.AppImage
-FyAgent-X.Y.Z-Linux-x86_64.deb
-FyAgent-X.Y.Z-Linux-x86_64.rpm
-FyAgent-X.Y.Z-Linux-arm64.AppImage
-FyAgent-X.Y.Z-Linux-arm64.deb
-FyAgent-X.Y.Z-Linux-arm64.rpm
 ```
 
 Any Windows format other than the two NSIS setup executables, plus v-prefixed
 filenames, unversioned names, architecture aliases, missing files, extras,
 directories, symlinks, empty files, or overwrites is forbidden.
 
-`download-manifest.json` schema `fyagent-download-manifest/v2` binds each
+`download-manifest.json` schema `fyagent-download-manifest/v3` binds each
 installer's exact name, platform, architecture, format, size, SHA-256, URL,
 version, tag, source SHA, and publication instant. Its download URL uses the
 canonical `https://github.com/fy-agent/fyagent/releases/download/` prefix;
 redirecting pre-transfer URLs are not emitted as current metadata.
 
-Five `fyagent-platform-build/v1` records bind target/runner/container,
-toolchain, repository/workflow/run, source, release mode, and the same Required
-CI run/attempt in both modes. `build-metadata.json` schema
-`fyagent-build-metadata/v1` reconstructs those records through exact key
+Three `fyagent-platform-build/v2` records—`macos-universal.json`,
+`windows-x64.json`, and `windows-arm64.json`—bind target/runner, toolchain,
+repository/workflow/run, source, release mode, and the same Required CI
+run/attempt in both modes. `build-metadata.json` schema
+`fyagent-build-metadata/v2` reconstructs those records through exact key
 allowlists and emits non-null `requiredCi`.
 
 The two private Windows fragments are normalized into public
@@ -360,10 +331,10 @@ are not Authenticode signed and still list SHA-256, source SHA, and
 attestation. Signed mode reports the verified public certificate policy; no
 credential or adapter secret is included.
 
-Attestation subjects are the ten installers plus `download-manifest.json`,
-`build-metadata.json`, and `signing-status.json` (13 subjects). The Sigstore
-bundle is copied to `artifact-attestation.sigstore.json`; it is the fourteenth
-Release attachment and does not attest itself.
+Attestation subjects are the four installers plus `download-manifest.json`,
+`build-metadata.json`, and `signing-status.json` (seven subjects). The
+Sigstore bundle is copied to `artifact-attestation.sigstore.json`; it is the
+eighth Release attachment and does not attest itself.
 
 ## 8. Permissions and publication transaction
 
@@ -383,7 +354,7 @@ The publish job has an explicit formal tag-push condition; dispatch evaluates
 to false. It performs this transaction:
 
 1. re-evaluate live remote eligibility against the frozen identity;
-2. require the exact 14 attachments and dynamic English notes file
+2. require the exact eight attachments and dynamic English notes file
    `docs/release-notes/${RELEASE_TAG}-en.md`;
 3. generate the signing disclosure from verified metadata;
 4. list all Releases, including drafts, and refuse any existing release with
@@ -412,12 +383,12 @@ never called private or successful.
 | Formal tag is lightweight, points elsewhere, or changes                                                                     | Fail; never repair or move the tag.                          |
 | Exact-source main CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
 | Preflight reaches a publish path or provider secret                                                                         | Static/remote gate fails.                                    |
-| Native runner, architecture, toolchain, Linux digest/OS, or source drifts                                                   | Fail that target; no fallback.                               |
+| Native runner, architecture, toolchain, or source drifts                                                                   | Fail that target; no fallback.                               |
 | Pinned build input ID/digest/manifest/file set drifts                                                                       | Fail before provider or trusted consumption.                 |
 | Signer configuration is partial/invalid or fresh signature proof fails                                                      | Fail; do not downgrade to unsigned.                          |
-| Windows proof/sealed binding, macOS identity, or Linux package set fails                                                    | Stop aggregation and publication.                            |
+| Windows proof/sealed binding or macOS identity fails                                                                        | Stop aggregation and publication.                            |
 | An intentional producer skip propagates past successful asset verification                                                  | Attestation still runs; abnormal direct needs fail visibly.  |
-| Ten/thirteen/fourteen file allowlist or digest differs                                                                      | Stop verification, attestation, or publication.              |
+| Four/seven/eight file allowlist or digest differs                                                                           | Stop verification, attestation, or publication.              |
 | Live main/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.        |
 | A draft/published Release already exists                                                                                    | Refuse update, replacement, or deletion.                     |
 | Upload/re-download/pre-PATCH verification fails                                                                             | Leave draft untouched and report it.                         |
@@ -435,11 +406,10 @@ dispatch publication, both preflight/formal tail-job truth tables, mutation of
 explicit status conditions or direct-need assertions, asset loss/extra, signer
 policy, and transaction failure.
 
-Local Linux execution cannot establish Windows PowerShell/NSIS/Authenticode,
-native x64/ARM64 build/package output, macOS bundle, Linux non-host
-architecture, GitHub attestation, or public Release evidence. The manual
-Windows install lifecycle is diagnostic evidence outside this Release
-closure. Closure requires, in order:
+Local execution cannot establish another platform's PowerShell/NSIS/
+Authenticode, native build/package output, macOS bundle, GitHub attestation, or
+public Release evidence. The manual Windows install lifecycle is diagnostic
+evidence outside this Release closure. Closure requires, in order:
 
 1. the release change is merged to `main`, and that exact current remote HEAD
    completes `CI / Required` successfully;

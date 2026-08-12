@@ -7,8 +7,8 @@ Tauri icons, changing the About icon, or editing the macOS tray template. It
 does not apply to third-party provider, Claude, OpenAI, screenshot, or DMG
 background assets.
 
-The application icon crosses renderer, Tauri bundle, Flatpak, Windows shell,
-and macOS menu-bar boundaries. A valid change updates every consumer from one
+The application icon crosses renderer, Tauri bundle, Windows shell, and macOS
+menu-bar boundaries. A valid change updates every consumer from one
 approved source while preserving the established FyAgent application identity
 and unrelated artwork.
 
@@ -27,7 +27,6 @@ The direct consumers are:
 ```text
 src-tauri/tauri.conf.json                         Tauri bundle icon list
 src-tauri/tauri.windows.conf.json                 Windows setup/uninstaller ICO
-flatpak/com.fyagent.desktop.yml                  128x128 Flatpak icon
 src/assets/icons/app-icon.png                     renderer About icon
 src-tauri/src/lib.rs                              embedded macOS 3x tray template
 src-tauri/icons/tray/macos/statusTemplate.png     1x template
@@ -93,8 +92,8 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
   `icon.ico` frames, with no default, extra, or unreferenced icon resources.
   [Windows installer](./windows-installer.md#6-tests-required) owns the PE
   resource parser, adversarial layout limits, and final setup verifier details.
-- Assert the About file is byte-identical to `32x32.png`, all configured paths
-  resolve, and the Flatpak source points to the generated 128px icon.
+- Assert the About file is byte-identical to `32x32.png` and all configured
+  paths resolve.
 - Assert each tray template size, visible RGB, alpha range, and centered content
   bounds.
 - Compare the diff/inventory against the pre-change checkout and assert the

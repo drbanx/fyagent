@@ -86,7 +86,7 @@
 | 当前开发文档                                    |                                         12 | `docs/fyagent/development/`；`docs/fyagent/dev/` 在目标基线已删除                          |
 | v4 旧基线                                       |        75 个既有章节、40 张 PNG、84 处引用 | 仅适用于 `3adc72ae` 附近，不得当作目标基线事实                                             |
 | `docs/guides/` 文件                             |                                         22 | 其中 6 个旧名称命中均为上游来源说明                                                        |
-| `deplink.html` / `flatpak/README.md` 旧名称命中 |                                      0 / 0 | 评审时 `rg` 检查                                                                           |
+| `deplink.html` 旧名称命中                       |                                          0 | 评审时 `rg` 检查                                                                           |
 | 工具版本探测                                    |                                       7 个 | `TOOL_NAMES`                                                                               |
 | 可安装/升级工具                                 |                                       6 个 | `LIFECYCLE_TOOLS`，排除 Codex                                                              |
 | WorkBuddy 错误码                                |                                      22 个 | `WorkBuddyErrorCode`                                                                       |
@@ -137,7 +137,7 @@ Gate 0 已完成：
 - 精简 `docs/user-manual/README.md` 和三语索引，删除容易过期的“当前亮点”；版本事实只链接对应 GitHub Release，不在手册索引维护滚动版本号。
 - 审计 75 个既有章节中的仓库链接、Deep Link、数据路径和产品名；只修改仍把旧身份当作当前产品的内容，历史与上游来源进入白名单。
 - 新建 `docs/release-notes/README.md`，说明 FyAgent 与上游历史版本边界。
-- 审计 `docs/guides/`、`deplink.html`、`flatpak/README.md`，将结果写入 `docs/fyagent/audits/docs-restructure-v0.3.0.md`。
+- 审计 `docs/guides/`、`deplink.html`，将结果写入 `docs/fyagent/audits/docs-restructure-v0.3.0.md`。
 
 ### Wave 2 — README 三语瘦身
 
@@ -193,7 +193,7 @@ Gate 0 已完成：
 
 ### Must-NOT-Have
 
-- 不删除或改写 `docs/release-notes/v3.*.md`、`docs/upstream/**`、`CHANGELOG.md` 中的历史事实。
+- 不改写 `docs/upstream/**`、`CHANGELOG.md` 中的历史事实；移除版本化发布说明时整份删除，并以 Git 历史和已发布 Release 页面保留事实。
 - 不修改 `LICENSE`、`LICENSING.md`、`COMMERCIAL-LICENSE.md`、`THIRD_PARTY_NOTICES.md`。
 - 不修改 `CONTRIBUTING.md`、`CODE_OF_CONDUCT.md`、`SECURITY.md`、`SUPPORT.md`。
 - 不让仍然有效的工程合同因为 README 瘦身而失去唯一落点。
@@ -233,10 +233,7 @@ Gate 0 已完成：
 
 ### 4.2 删除德语 README 的闭包
 
-同一 Wave 内原子完成：根文件删除 → 三份语言切换器更新 → 合同脚本更新 → 两个测试清单更新 → 目标测试与合同检查。以下位置允许继续出现 `README_DE.md`，因为它们记录历史事实：
-
-- `docs/release-notes/v3.16.0-*.md`；
-- `.trellis/tasks/archive/**`。
+同一 Wave 内原子完成：根文件删除 → 三份语言切换器更新 → 合同脚本更新 → 两个测试清单更新 → 目标测试与合同检查。归档任务允许继续出现 `README_DE.md`，因为它们记录历史事实。
 
 ### 4.3 README 瘦身与唯一事实来源
 
@@ -304,7 +301,7 @@ docs/user-manual/{zh,en,ja}/
 - 入口：设置 → 关于 → 工具管理。
 - 7 个版本探测对象：Claude Code、Codex CLI、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes。
 - 6 个可安装/升级对象：除 Codex CLI 外的其余工具；明确说明 Codex 卡片只探测版本。
-- 一键命令复制、WSL shell/flag、安装后版本刷新与验证。
+- 一键命令复制、安装后版本刷新与验证。
 - 源码合同：`TOOL_NAMES`、`LIFECYCLE_TOOLS`、`ONE_CLICK_INSTALL_COMMANDS`、`handleCopyInstallCommands`、`refreshToolVersions`。
 
 #### `2.2-update-diagnose.md` — 升级与安装冲突诊断
@@ -450,7 +447,7 @@ VibeKey 迁移规则：
 3. 精简 4 个手册索引 README，删除会快速过期的亮点清单。
 4. 审计 75 个现行章节，只修正仍把旧身份当作当前产品的内容。
 5. 新建 Release Notes 索引。
-6. 写入 guides/deplink/flatpak 审计结果。
+6. 写入 guides/deplink 审计结果。
 
 ### Wave 2
 
@@ -631,7 +628,7 @@ rg -n "status: completed|Gate 0|vibekey-reference-audit|concept_candidate" .omo/
 `docs/fyagent/audits/docs-restructure-v0.3.0.md` 至少包含：
 
 1. 基线计数和执行日期。
-2. `docs/guides/`、`deplink.html`、`flatpak/README.md` 的每个旧名称命中、语境和处理结论。
+2. `docs/guides/`、`deplink.html` 的每个旧名称命中、语境和处理结论。
 3. 活动范围 `CC Switch` 白名单。
 4. 三份 README 被删开发段落到 current-state 文档/规范的责任映射。
 5. 主报告汇总截图结论，并链接独立的 40 行逐图审计表；表中记录文件名、84 处引用

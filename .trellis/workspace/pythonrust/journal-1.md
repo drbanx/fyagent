@@ -273,7 +273,7 @@ Merged upstream v3.19.1 while preserving FyAgent boundaries, resolved conflicts 
 
 ### Summary
 
-Fixed explicit release-manifest selection, test-only manifest linker scope, windows 0.61 API compatibility, and strict cross-target Rust lint failures. Verified fmt, host and Windows Clippy with warnings denied, the full Rust suite, Windows test-harness linking, release workflow regressions, and complete x64 plus ARM64 MSI cross-builds with Linux structural checks.
+Fixed explicit release-manifest selection, test-only manifest linker scope, windows 0.61 API compatibility, and strict cross-target Rust lint failures. Verified fmt, host and Windows Clippy with warnings denied, the full Rust suite, Windows test-harness linking, release workflow regressions, and complete x64 plus ARM64 MSI cross-builds with structural checks.
 
 ### Git Commits
 
