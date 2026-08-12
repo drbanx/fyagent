@@ -101,3 +101,9 @@
 5. 本轮结论为 `DETAILED_DESIGN_REVIEW=PASS`，可以参与整体 `DESIGN_REVIEW=PASS` 与设计冻结判定。
 
 整体设计冻结仍须同时满足产品设计复审已关闭原 P0/P1、`ARCHITECTURE_REVIEW=PASS`，以及入口文档对三份权威设计/计划没有旧 executable shape 残留。
+
+## 9. 实施后证据回读（2026-08-13）
+
+- 三个独占模块按 owner 分批完成；最终状态边界复核发现的 Prompt 跨条目开关、Memory trim-only revision 与 Daily/Session browser coverage 缺口均已修复。
+- exact Node 24.19.0 下 lint、typecheck、12 files / 82 unit tests、161 modules build、48 browser tests 全部通过。
+- 两张 1586×992 图片只作为 `runtime_screenshot`；未运行 `pixel_diff`。详细设计评审结论维持 `DETAILED_DESIGN_REVIEW=PASS`。

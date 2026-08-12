@@ -153,6 +153,9 @@ The navigation source contains exactly these entries in this order:
 - Every prompt owns an independent `enabled` state and zero or more
   `targetIds`. Multiple prompts may be enabled simultaneously. Toggling one
   prompt must never disable another.
+- Toggling a saved prompt that is not currently selected must not select it,
+  replace the current editor, or disturb the current dirty draft. The toggle
+  commits only that saved item's `enabled` field.
 - An enabled prompt must retain at least one target. A disabled draft may have
   no target. Saving or enabling an item without a target shows local validation
   feedback and does not mutate the saved state.
@@ -196,6 +199,9 @@ The navigation source contains exactly these entries in this order:
 - Category, item, rescan, and promotion actions protect dirty drafts with a
   discard confirmation. Read-only resources and sessions must never appear
   persistently editable.
+- Title normalization happens before dirty comparison. A title that differs
+  only by surrounding whitespace is a clean no-op and must not increment the
+  saved revision or invalidate existing preview tasks.
 - Future synchronization must retain provenance and expose per-target status;
   it must not silently treat a successful local save as successful Agent sync.
 
@@ -313,6 +319,9 @@ mise run build:renderer
   metadata, long-term save/sync-task preview, daily/session promotion,
   Prompt-owned and adapter-read-only behavior, required sync targets, and
   dirty-draft protection.
+- Browser acceptance carries a promoted Daily draft through save, target
+  selection, and per-target `pending / not-run` task generation, and separately
+  confirms Session sources remain read-only.
 - Platform tests assert browser no-ops, Windows decoration/action delegation,
   and one ready emission under repeated calls and StrictMode.
 - Architecture tests parse V2 imports and reject legacy dependencies, upward

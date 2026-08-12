@@ -2,7 +2,7 @@
 
 ## 1. 文档状态与设计锁
 
-- 阶段：设计冻结完成，等待实施验证
+- 阶段：设计冻结完成；实现与运行验收已通过
 - 上游：`prd.md`、`technical-design-overview.md`
 - 静态评审：`reviews/product-design-review.md`、`reviews/technical-architecture-review.md`
 - 证据等级：`code_audit`

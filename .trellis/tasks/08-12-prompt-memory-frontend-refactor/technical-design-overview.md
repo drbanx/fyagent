@@ -3,7 +3,7 @@
 ## 1. 文档状态
 
 - 任务：`prompt-memory-frontend-refactor`
-- 设计阶段：冻结完成，等待实施验证
+- 设计阶段：冻结完成；实现与运行验收已通过
 - 证据等级：`code_audit`
 - 基线：`origin/dev/laiyongjie` @ `e33d37dd6f9d58c11207f843b5c33750a79dbb4a`
 - 实施分支：`codex/prompt-memory-frontend-refactor`
@@ -390,11 +390,11 @@ interface MemoryDataSource {
 
 ## 16. 架构验收条件
 
-- [ ] 技术架构评审确认没有修改 CC Switch/FyAgent 框架、V2 Shell、导航或 Tauri 边界。
-- [ ] 目标资源、Memory 资格和 canonical 分组只有一个共享事实源。
-- [ ] Prompt 与 Memory 的 saved baseline、dirty 和路由离开语义明确。
-- [ ] Memory preview task 与 durable result 是不同类型和不同状态。
-- [ ] Daily/Session 只读，提炼保留 provenance。
-- [ ] 未来 backend port 仅停留在设计，没有创建假实现或 native 调用。
-- [ ] 并行分支冲突控制进入详细文件所有权和测试布局。
-- [ ] P0/P1 产品评审意见均能映射到本文或后续详细设计的明确关闭项。
+- [x] 技术架构评审确认没有修改 CC Switch/FyAgent 框架、V2 Shell、导航或 Tauri 边界。
+- [x] 目标资源、Memory 资格和 canonical 分组只有一个共享事实源。
+- [x] Prompt 与 Memory 的 saved baseline、dirty 和路由离开语义明确。
+- [x] Memory preview task 与 durable result 是不同类型和不同状态。
+- [x] Daily/Session 只读，提炼保留 provenance。
+- [x] 未来 backend port 仅停留在设计，没有创建假实现或 native 调用。
+- [x] 并行分支冲突控制进入详细文件所有权和测试布局。
+- [x] P0/P1 产品评审意见均能映射到本文或后续详细设计的明确关闭项。

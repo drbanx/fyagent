@@ -8,17 +8,17 @@
 - [x] 产品、架构、详细设计三次静态评审通过，严重意见关闭。
 - [x] 设计阶段零测试、零构建、零浏览器/截图。
 - [x] 任务状态从 `review` 准确切到 `in_progress`。
-- [ ] Prompt、Memory、共享合同/standalone 三线路并行实施且文件互斥。
-- [ ] 三线路分别取得自己的模块单测新鲜通过结果。
-- [ ] 主 Agent 核验三线路后才第一次运行完整集成。
-- [ ] lint、typecheck、完整 unit、browser、renderer build 全部通过。
-- [ ] standalone `file://` 与 Prompt/Memory 关键交互实际通过。
-- [ ] 四档 viewport 无关键不可达、横向溢出或遮挡。
-- [ ] 两张 1586×992 新截图标为 `runtime_screenshot`。
-- [ ] `src-tauri`、其他四个页面、导航、Shell、无关图片目录保持保护。
-- [ ] PRD、design、implement、spec、verification 与代码一致。
-- [ ] 任务回到 `review`，不归档。
-- [ ] 使用多个小提交并只推送 `codex/prompt-memory-frontend-refactor`。
+- [x] Prompt、Memory、共享合同/standalone 三线路并行实施且文件互斥。
+- [x] 三线路分别取得自己的模块单测新鲜通过结果。
+- [x] 主 Agent 核验三线路后才第一次运行完整集成。
+- [x] lint、typecheck、完整 unit、browser、renderer build 全部通过。
+- [x] standalone `file://` 与 Prompt/Memory 关键交互实际通过。
+- [x] 四档 viewport 无关键不可达、横向溢出或遮挡。
+- [x] 两张 1586×992 新截图标为 `runtime_screenshot`。
+- [x] `src-tauri`、其他四个页面、导航、Shell、无关图片目录保持保护。
+- [x] PRD、design、implement、spec、verification 与代码一致。
+- [x] 任务回到 `review`，不归档。
+- [x] 使用多个小提交并只推送 `codex/prompt-memory-frontend-refactor`。
 
 ## 2. 阶段门禁
 

@@ -8,13 +8,12 @@
 
 ## 2. 当前阶段
 
-- Trellis 状态：`in_progress`。
-- 当前阶段：`DESIGN_FREEZE=2026-08-12` 后的三线路并行实施。
-- 代码实施：等待 Prompt、Memory、shared/standalone 三个独占 owner 按冻结设计执行。
-- 本轮新鲜测试：0；符合设计评审阶段零测试门禁。
-- 下一门禁：三个模块分别完成且各自聚焦单测通过，主 Agent 核验后才能首次运行完整集成。
-
-冻结后才把任务切为 `in_progress`，同时派发三个执行 Agent。
+- Trellis 状态：`review`；实现与运行验收完成，未归档。
+- Prompt、Memory、shared/standalone 三个独占 owner 均已按冻结合同完成。
+- 模块验收：Prompt 12 tests、Memory 11 tests、shared target 13 tests、standalone builder 14 tests，均通过。
+- 完整集成：lint、typecheck、12 files / 82 unit tests、161 modules renderer build、48 browser tests 均通过。
+- 运行证据：standalone `file://`、四档 viewport 和两张 1586×992 `runtime_screenshot` 均完成；未运行 `pixel_diff`。
+- 最终 Trellis 复核未发现实现级 P0/P1；完整证据见 `research/verification.md`。
 
 ## 3. 实施线路
 
@@ -61,14 +60,14 @@ pnpm test:v2 -- tests/v2/shared/config/agentTargets.test.ts tests/v2/scripts/bui
 
 ## 4. 主 Agent 集成门禁
 
-必须同时满足：
+以下门禁均已满足：
 
 1. 三线路实现返回。
 2. 三个模块单测分别新鲜通过。
 3. 主 Agent 用命令核验关键文件与 owner 无越界。
 4. Prompt/Memory 已消费稳定 shared contract。
 
-此后才第一次运行：
+随后按顺序运行并通过：
 
 ```bash
 pnpm lint:v2
@@ -107,4 +106,4 @@ pnpm test:v2:browser
 
 ## 7. 最终状态
 
-所有新鲜验收通过并完成文档回写后，将 `task.json.status` 设回 `review`。不标 completed，不 archive。
+所有新鲜验收与文档回写已完成，`task.json.status` 已设回 `review`。任务未标 completed，未 archive。

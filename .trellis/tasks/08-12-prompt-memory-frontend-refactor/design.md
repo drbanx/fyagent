@@ -89,9 +89,10 @@ research 只提供事实依据；历史 `*-v4-implementation-notes.md` 不是当
 
 ## 7. 评审状态
 
-- 产品设计评审：`DESIGN_REVIEW=PASS`；初审 1 个 P0、5 个 P1 已在设计层关闭，等待实现验证。
+- 产品设计评审：`DESIGN_REVIEW=PASS`；初审 1 个 P0、5 个 P1 已在设计层关闭，并由本轮 unit/browser 运行验收验证。
 - 技术架构评审：`ARCHITECTURE_REVIEW=PASS`，P0/P1=0；P2/P3 已在详细设计锁定。
 - 详细设计评审：`DETAILED_DESIGN_REVIEW=PASS`；原 3 个 P1 已关闭，P2/P3 已进入模块与最终验收。
 - 设计冻结：`DESIGN_FREEZE=2026-08-12`。
+- 最终质量复核：`FINAL_TRELLIS_CHECK=PASS`；证据见 `research/verification.md`。
 
 评审阶段只做静态阅读；没有执行 lint、typecheck、unit/browser test、build、dev server 或截图。

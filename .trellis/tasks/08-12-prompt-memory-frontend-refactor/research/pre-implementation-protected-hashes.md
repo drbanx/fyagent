@@ -19,3 +19,11 @@
 | `tests/v2-browser/shell.spec.ts` | `24f35fb5500907d91eb73dfec79f7de99386a9e9` |
 
 这些 hash 只证明冻结时内容，不替代 baseline-to-HEAD、worktree、untracked 和逐提交文件清单审计。
+
+## 最终保护复核（2026-08-13）
+
+- `src/index.html`、`package.json`、Playwright 配置、四个 V2 style 文件和 `tests/v2/app/router-shell.test.tsx` 的最终 Git blob hash 与上表完全一致。
+- `tests/v2-browser/shell.spec.ts` 最终 hash 为 `58ef77759606dd412d82d292e96f26aced43f172`。相对冻结 hash 只有 8 行新增、3 行删除：补 Memory 新合同要求的保存步骤与“同步预览任务 / 待执行 / 未写入”断言，并把页面健康监控移到 `file://` 重定向完成后。该变更属于既有 Prompt/Memory 集成用例校正，没有改变 Shell、导航或其他页面实现。
+- 基线 `e33d37dd6f9d58c11207f843b5c33750a79dbb4a...HEAD` 对 `src-tauri/**`、Agent/models/skills/mcp 页面、`navigation.ts`、`router.tsx`、`widgets/app-shell/**` 和两个无关图片目录的累计 diff 均为空。
+- 最终 worktree 的上述保护实现路径无修改；`docs/images/视觉-1/` 与 `docs/images/视觉/` 仍是原有未跟踪目录，未 stage、未删除、未覆盖。
+- 逐提交 `git show --name-only` 已回读：Prompt、Memory、shared 三个独占提交只含各自 owner；后续提交按 builder、专属/既有集成测试、运行截图、继承 preview 配置/样式和生成 standalone 分离，没有纳入保护实现模块。

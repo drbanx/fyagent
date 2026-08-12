@@ -102,3 +102,9 @@
 - 每个模块使用独占文件并形成可独立回滚的小提交；集成修复由主 Agent 统一处理，不让并行执行者越权修改公共壳。
 
 满足以上边界并在详细设计中关闭 P2 后，可以冻结技术设计并进入按模块并行实施。
+
+## 6. 实施后证据回读（2026-08-13）
+
+- shared target、Prompt、Memory 与 standalone 均按冻结依赖方向落地；architecture tests、lint、typecheck 全部通过。
+- baseline-to-HEAD 与 worktree 双层审计确认 `src-tauri`、其他四页、navigation、router、AppShell 零改动。
+- 架构评审结论维持 `ARCHITECTURE_REVIEW=PASS`；最终保护和冻结 hash 证据见 `research/pre-implementation-protected-hashes.md`。
