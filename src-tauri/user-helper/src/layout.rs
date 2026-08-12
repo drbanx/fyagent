@@ -151,27 +151,27 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     const ABSOLUTE_HELPER: &str = r"C:\opt\FyAgent\fyagent-user-helper.exe";
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     const ABSOLUTE_HELPER: &str = "/opt/FyAgent/fyagent-user-helper.exe";
     #[cfg(target_os = "windows")]
     const INSTALL_ROOT: &str = r"C:\opt\FyAgent";
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     const INSTALL_ROOT: &str = "/opt/FyAgent";
     #[cfg(target_os = "windows")]
     const ROOT: &str = r"C:\";
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     const ROOT: &str = "/";
     #[cfg(target_os = "windows")]
     const SPACED_HELPER: &str = r"C:\install root\FyAgent\fyagent-user-helper.exe";
-    #[cfg(not(target_os = "windows"))]
-    const SPACED_HELPER: &str = "/mnt/install root/FyAgent/fyagent-user-helper.exe";
+    #[cfg(target_os = "macos")]
+    const SPACED_HELPER: &str = "/opt/install root/FyAgent/fyagent-user-helper.exe";
     #[cfg(target_os = "windows")]
     const SPACED_ROOT: &str = r"C:\install root\FyAgent";
-    #[cfg(not(target_os = "windows"))]
-    const SPACED_ROOT: &str = "/mnt/install root/FyAgent";
+    #[cfg(target_os = "macos")]
+    const SPACED_ROOT: &str = "/opt/install root/FyAgent";
     #[cfg(target_os = "windows")]
     const TRAVERSAL_HELPER: &str = r"C:\opt\FyAgent\..\other\fyagent-user-helper.exe";
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     const TRAVERSAL_HELPER: &str = "/opt/FyAgent/../other/fyagent-user-helper.exe";
 
     #[test]

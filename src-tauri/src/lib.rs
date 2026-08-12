@@ -1,3 +1,6 @@
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+compile_error!("FyAgent desktop supports only Windows and macOS.");
+
 mod app_config;
 mod app_store;
 mod auto_launch;
@@ -20,8 +23,6 @@ mod grok_config;
 pub mod hermes_config;
 mod init_status;
 mod lightweight;
-#[cfg(target_os = "linux")]
-mod linux_fix;
 mod mcp;
 mod model_capabilities;
 mod openclaw_config;
@@ -96,7 +97,7 @@ use tauri::image::Image;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::RunEvent;
 use tauri::{Emitter, Listener, Manager};
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
 #[cfg(target_os = "windows")]
@@ -374,7 +375,7 @@ fn restore_hidden_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Re
         log::warn!("Unable to restore Shell-user main-window state: {error}");
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     if let Err(error) = window.restore_state(window_state_flags()) {
         // A corrupt or unavailable persisted state must not block startup.
         log::warn!("Unable to restore saved main-window state; using current geometry: {error}");
@@ -576,10 +577,6 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
-        #[cfg(target_os = "linux")]
-        {
-            linux_fix::nudge_main_window(window.clone());
-        }
     }
 }
 
@@ -800,7 +797,7 @@ pub fn run() {
     // The plugin transport is only instance coordination, not authentication.
     // Validate its complete argv envelope before the existing lightweight,
     // deep-link, and focus-only behavior sees any local WM_COPYDATA content.
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             log::info!("=== Single Instance Callback Triggered ===");
             log::debug!("Args count: {}", args.len());
@@ -824,8 +821,7 @@ pub fn run() {
                         submit_activation(
                             app,
                             PendingActivation::InvalidDeepLink {
-                                // Preserve the historical macOS/Linux focus
-                                // behavior. Windows rejects protocol-looking
+                                // Preserve the macOS focus behavior. Windows rejects protocol-looking
                                 // local input without giving it focus effects.
                                 focus_main_window: !cfg!(target_os = "windows"),
                             },
@@ -858,7 +854,7 @@ pub fn run() {
                 mark_activation_renderer_unready();
             }
         })
-        // 注册 deep-link 插件（处理 macOS AppleEvent 和其他平台的深链接）
+        // 注册 deep-link 插件（处理 macOS AppleEvent 和 Windows URI 激活）
         .plugin(tauri_plugin_deep_link::init())
         // 拦截窗口关闭：根据设置决定是否最小化到托盘
         .on_window_event(|window, event| {
@@ -896,7 +892,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     let builder = builder
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(
@@ -1515,38 +1511,13 @@ pub fn run() {
             // 注册 deep-link URL 处理器（使用正确的 DeepLinkExt API）
             log::info!("=== Registering deep-link URL handler ===");
 
-            // Linux 和 Windows 调试模式需要显式注册
-            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+            // Windows 调试模式需要显式注册。
+            #[cfg(all(debug_assertions, windows))]
             {
-                #[cfg(target_os = "linux")]
-                {
-                    // Use Tauri's path API to get correct path (includes app identifier)
-                    // tauri-plugin-deep-link writes to: ~/.local/share/com.fyagent.desktop/applications/fyagent-handler.desktop
-                    // Only register if .desktop file doesn't exist to avoid overwriting user customizations
-                    let should_register = app
-                        .path()
-                        .data_dir()
-                        .map(|d| !d.join("applications/fyagent-handler.desktop").exists())
-                        .unwrap_or(true);
-
-                    if should_register {
-                        if let Err(e) = app.deep_link().register_all() {
-                            log::error!("✗ Failed to register deep link schemes: {}", e);
-                        } else {
-                            log::info!("✓ Deep link schemes registered (Linux)");
-                        }
-                    } else {
-                        log::info!("⊘ Deep link handler already exists, skipping registration");
-                    }
-                }
-
-                #[cfg(all(debug_assertions, windows))]
-                {
-                    if let Err(e) = app.deep_link().register_all() {
-                        log::error!("✗ Failed to register deep link schemes: {}", e);
-                    } else {
-                        log::info!("✓ Deep link schemes registered (Windows debug)");
-                    }
+                if let Err(e) = app.deep_link().register_all() {
+                    log::error!("✗ Failed to register deep link schemes: {}", e);
+                } else {
+                    log::info!("✓ Deep link schemes registered (Windows debug)");
                 }
             }
 
@@ -1612,7 +1583,7 @@ pub fn run() {
                 }
             }
 
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(target_os = "windows")]
             {
                 if let Some(icon) = app.default_window_icon() {
                     tray_builder = tray_builder.icon(icon.clone());
@@ -1811,21 +1782,6 @@ pub fn run() {
                 });
             });
 
-            // Linux: 禁用 WebKitGTK 硬件加速，防止 EGL 初始化失败导致白屏
-            #[cfg(target_os = "linux")]
-            {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.with_webview(|webview| {
-                        use webkit2gtk::{WebViewExt, SettingsExt, HardwareAccelerationPolicy};
-                        let wk_webview = webview.inner();
-                        if let Some(settings) = WebViewExt::settings(&wk_webview) {
-                            SettingsExt::set_hardware_acceleration_policy(&settings, HardwareAccelerationPolicy::Never);
-                            log::info!("已禁用 WebKitGTK 硬件加速");
-                        }
-                    });
-                }
-            }
-
             // 静默启动：根据设置决定是否显示主窗口
             let settings = crate::settings::get_settings();
             if let Some(window) = app.get_webview_window("main") {
@@ -1834,10 +1790,6 @@ pub fn run() {
                 // decides its visibility, avoiding off-screen/legacy flashes.
                 prepare_main_webview(&window);
 
-                // 在窗口首次显示前同步装饰状态，避免前端加载后再切换导致标题栏闪烁
-                // 仅 Linux 生效：解决 Wayland 下系统窗口按钮不可用的问题
-                #[cfg(target_os = "linux")]
-                let _ = window.set_decorations(!settings.use_app_window_controls);
                 if settings.silent_startup {
                     // 静默启动模式：保持窗口隐藏
                     let _ = window.hide();
@@ -1851,13 +1803,6 @@ pub fn run() {
                     let _ = window.show();
                     log::info!("正常启动模式：主窗口已显示");
 
-                    // Linux: 解决首次启动 UI 无响应问题（Tauri #10746 + wry #637）。
-                    // 启动时 webview 未获取焦点 + surface 尺寸协商失败，导致点击无效。
-                    // 这里做 set_focus + 伪 resize，等价于无视觉版本的"最大化-还原"。
-                    #[cfg(target_os = "linux")]
-                    {
-                        linux_fix::nudge_main_window(window.clone());
-                    }
                 }
             }
 
@@ -2408,7 +2353,7 @@ pub fn run() {
             }
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
         {
             let _ = (app_handle, event);
         }
@@ -3138,7 +3083,7 @@ fn classify_codex_desktop_exit_protection(
 // 在应用主动退出前显式持久化窗口状态
 // ============================================================
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn window_state_flags() -> StateFlags {
     StateFlags::POSITION | StateFlags::SIZE | StateFlags::MAXIMIZED
 }
@@ -3148,7 +3093,7 @@ fn window_state_flags() -> StateFlags {
 pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
     #[cfg(target_os = "windows")]
     let result = crate::windows_window_state::save(app_handle);
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     let result = app_handle
         .save_window_state(window_state_flags())
         .map_err(|error| error.to_string());
@@ -3165,12 +3110,9 @@ pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
 /// 所有桌面平台使用 single-instance 插件。我们有若干路径会直接
 /// `std::process::exit(0)`，不会触发插件挂在 `RunEvent::Exit` 上的清理钩子。
 /// 重启前主动释放可以避免新进程误连旧 listener 后自行退出。
-pub fn destroy_single_instance_lock(app_handle: &tauri::AppHandle) {
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-    tauri_plugin_single_instance::destroy(app_handle);
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    let _ = app_handle;
+pub fn destroy_single_instance_lock(_app_handle: &tauri::AppHandle) {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    tauri_plugin_single_instance::destroy(_app_handle);
 }
 
 #[cfg(test)]

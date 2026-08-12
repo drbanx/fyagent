@@ -72,7 +72,7 @@ pub(crate) enum TrustedRuntimeInstance {
     /// more than one top-level window is reported as ambiguous instead of
     /// being collapsed into a process-name-style group.
     #[cfg_attr(
-        not(any(target_os = "windows", test)),
+        all(target_os = "macos", not(test)),
         expect(
             dead_code,
             reason = "the Windows adapter constructs this evidence only on Windows"
@@ -89,7 +89,7 @@ pub(crate) enum TrustedRuntimeInstance {
     /// macOS represents an app instance by an NSRunningApplication PID plus
     /// the canonical bundle path verified against the installed bundle.
     #[cfg_attr(
-        not(any(target_os = "macos", test)),
+        all(target_os = "windows", not(test)),
         expect(
             dead_code,
             reason = "the macOS adapter constructs this evidence only on macOS"
@@ -147,13 +147,6 @@ impl TrustedRuntimeInstance {
 /// may report ambiguity instead of trying to disambiguate with an executable
 /// or display-name heuristic.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(
-    not(any(target_os = "windows", target_os = "macos", test)),
-    expect(
-        dead_code,
-        reason = "runtime inspection states are constructed only by supported platform adapters"
-    )
-)]
 pub(crate) enum RuntimeInspection {
     NotRunning,
     Running(Vec<TrustedRuntimeInstance>),
@@ -222,7 +215,7 @@ pub(crate) enum RestartCandidateInspection {
     // Only macOS currently constructs this cross-platform outcome. The common
     // service still matches it on every target so the public state remains
     // stable when another adapter gains equivalent fail-closed discovery.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     UntrustedTarget,
     Unsupported(UnsupportedReason),
 }
@@ -264,7 +257,6 @@ impl PlatformInstallPlan {
     /// Creates a plan containing target-volume paths in addition to the
     /// downloader's temporary directory.  Platform implementations should add
     /// only stable target roots required for free-space preflight.
-    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     pub(crate) fn new(additional_disk_paths: Vec<PathBuf>) -> Self {
         Self {
             additional_disk_paths,
@@ -295,7 +287,6 @@ impl fmt::Debug for PlatformInstallPlan {
 /// this module or one of its child adapters may create it through
 /// `from_completed_validation`; installers then receive a reference without
 /// accepting a caller-controlled path.
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 #[derive(Clone)]
 pub struct VerifiedPackage {
     // Windows production consumes the downloader-retained file capability.
@@ -309,7 +300,6 @@ pub struct VerifiedPackage {
     artifact: Option<DownloadedArtifact>,
 }
 
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 impl VerifiedPackage {
     fn from_completed_validation(
         release: &ReleaseDescriptor,
@@ -333,7 +323,7 @@ impl VerifiedPackage {
         &self.artifact_path
     }
 
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     fn job_id(&self) -> Option<&str> {
         self.artifact.as_ref().map(DownloadedArtifact::job_id)
     }
@@ -459,8 +449,8 @@ const fn installed_platform(version: &super::types::PlatformVersion) -> DesktopP
 /// Platform interface used by the common service.
 ///
 /// `BoxFuture` keeps this trait object-safe without adding `async-trait`.
-/// `platform` is optional because Linux and other unsupported hosts cannot be
-/// misrepresented by the V1 Windows/macOS enum.
+/// `platform` is optional because unsupported hosts cannot be misrepresented
+/// by the Windows/macOS enum.
 pub(crate) trait CodexDesktopPlatform: Send + Sync {
     fn platform(&self) -> Option<DesktopPlatform>;
 
@@ -669,7 +659,6 @@ impl CodexDesktopPlatform for UnsupportedPlatformAdapter {
 /// open the existing log directory, while every local inspection, download
 /// preflight, install, and launch operation still fails with that same stable
 /// error. It must never be used as a successful fallback for a supported host.
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 #[derive(Debug, Clone)]
 pub(crate) struct UnavailablePlatformAdapter {
     platform: DesktopPlatform,
@@ -677,7 +666,6 @@ pub(crate) struct UnavailablePlatformAdapter {
     error: InstallerError,
 }
 
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 impl UnavailablePlatformAdapter {
     pub(crate) fn new(
         platform: DesktopPlatform,
@@ -948,17 +936,18 @@ mod tests {
 
     #[test]
     fn unsupported_adapter_returns_structured_platform_and_architecture_failures() {
-        let linux = UnsupportedPlatformAdapter::platform_unsupported(CpuArchitecture::X86_64);
-        assert_eq!(linux.platform(), None);
-        assert_eq!(linux.architecture(), CpuArchitecture::X86_64);
+        let unsupported = UnsupportedPlatformAdapter::platform_unsupported(CpuArchitecture::X86_64);
+        assert_eq!(unsupported.platform(), None);
+        assert_eq!(unsupported.architecture(), CpuArchitecture::X86_64);
         assert!(matches!(
-            futures::executor::block_on(linux.inspect_local()).unwrap(),
+            futures::executor::block_on(unsupported.inspect_local()).unwrap(),
             LocalInstallStatus::Unsupported {
                 reason: UnsupportedReason::Platform
             }
         ));
-        let error = futures::executor::block_on(linux.preflight(&release(), Path::new("temp")))
-            .expect_err("unsupported hosts never preflight successfully");
+        let error =
+            futures::executor::block_on(unsupported.preflight(&release(), Path::new("temp")))
+                .expect_err("unsupported hosts never preflight successfully");
         assert_eq!(error.code(), InstallerErrorCode::PlatformUnsupported);
 
         let intel_macos = UnsupportedPlatformAdapter::architecture_unsupported(

@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 use std::fs::File;
 
 use hmac::{Hmac, Mac};
@@ -507,7 +507,7 @@ fn create_temp_file(
         let temp = parent.join(format!(".{file_name}.tmp.{}", Uuid::new_v4()));
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::OpenOptionsExt;
             options.mode(0o600);
@@ -522,7 +522,7 @@ fn create_temp_file(
             file.write_all(data)?;
             file.flush()?;
             file.sync_all()?;
-            #[cfg(unix)]
+            #[cfg(target_os = "macos")]
             {
                 use std::os::unix::fs::PermissionsExt;
                 fs::set_permissions(&temp, fs::Permissions::from_mode(0o600))?;
@@ -587,17 +587,17 @@ fn replace_file(temp: &Path, target: &Path) -> io::Result<()> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn replace_file(temp: &Path, target: &Path) -> io::Result<()> {
     fs::rename(temp, target)
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn sync_parent_directory(parent: &Path) -> io::Result<()> {
     File::open(parent)?.sync_all()
 }
 
-#[cfg(not(unix))]
+#[cfg(target_os = "windows")]
 fn sync_parent_directory(_parent: &Path) -> io::Result<()> {
     Ok(())
 }
@@ -1120,7 +1120,7 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn credential_files_are_created_with_user_only_permissions() {
         use std::os::unix::fs::PermissionsExt;

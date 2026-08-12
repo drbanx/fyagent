@@ -22,7 +22,7 @@ pub fn launch_terminal(
         "wezterm" => launch_wezterm(command, cwd),
         "kaku" => launch_kaku(command, cwd),
         "alacritty" => launch_alacritty(command, cwd),
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         "warp" => launch_warp(command, cwd),
         "custom" => launch_custom(command, cwd, custom_config),
         _ => Err(format!("Unsupported terminal target: {target}")),
@@ -203,7 +203,7 @@ fn build_wezterm_compatible_args_with_shell(
     args
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn launch_warp(command: &str, cwd: Option<&str>) -> Result<(), String> {
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;

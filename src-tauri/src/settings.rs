@@ -350,8 +350,6 @@ pub struct AppSettings {
     pub show_in_tray: bool,
     #[serde(default = "default_minimize_to_tray_on_close")]
     pub minimize_to_tray_on_close: bool,
-    #[serde(default)]
-    pub use_app_window_controls: bool,
     /// 是否启用 Claude 插件联动
     #[serde(default)]
     pub enable_claude_plugin_integration: bool,
@@ -485,7 +483,6 @@ pub struct AppSettings {
     /// 首选终端应用（可选，默认使用系统默认终端）
     /// - macOS: "terminal" | "iterm2" | "warp" | "alacritty" | "kitty" | "ghostty" | "wezterm" | "kaku"
     /// - Windows: "cmd" | "powershell" | "wt" (Windows Terminal)
-    /// - Linux: "gnome-terminal" | "konsole" | "xfce4-terminal" | "alacritty" | "kitty" | "ghostty"
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_terminal: Option<String>,
 
@@ -511,7 +508,6 @@ impl Default for AppSettings {
         Self {
             show_in_tray: true,
             minimize_to_tray_on_close: true,
-            use_app_window_controls: false,
             enable_claude_plugin_integration: false,
             skip_claude_onboarding: false,
             launch_on_startup: false,
@@ -678,7 +674,7 @@ fn save_settings_file(settings: &AppSettings) -> Result<(), AppError> {
 
     let json = serde_json::to_string_pretty(&normalized)
         .map_err(|e| AppError::JsonSerialize { source: e })?;
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     {
         use std::fs::OpenOptions;
         use std::io::Write;
@@ -695,7 +691,7 @@ fn save_settings_file(settings: &AppSettings) -> Result<(), AppError> {
             .map_err(|e| AppError::io(&path, e))?;
     }
 
-    #[cfg(not(unix))]
+    #[cfg(target_os = "windows")]
     {
         fs::write(&path, json).map_err(|e| AppError::io(&path, e))?;
     }
@@ -1145,6 +1141,24 @@ pub fn update_s3_sync_status(status: WebDavSyncStatus) -> Result<(), AppError> {
 mod tests {
     use super::*;
     use crate::app_config::AppType;
+
+    #[test]
+    fn retired_window_control_setting_is_ignored_and_not_serialized() {
+        let retired_key = ["useApp", "WindowControls"].concat();
+        let mut value = serde_json::to_value(AppSettings::default()).expect("default settings");
+        value
+            .as_object_mut()
+            .expect("settings object")
+            .insert(retired_key.clone(), serde_json::Value::Bool(true));
+
+        let settings: AppSettings = serde_json::from_value(value).expect("legacy settings");
+        let serialized = serde_json::to_value(settings).expect("serialized settings");
+
+        assert!(!serialized
+            .as_object()
+            .expect("settings object")
+            .contains_key(&retired_key));
+    }
 
     #[test]
     fn visible_apps_old_settings_default_claude_desktop_visible() {

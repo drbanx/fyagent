@@ -1842,7 +1842,6 @@ dependencies = [
  "tower-http 0.5.2",
  "url",
  "uuid",
- "webkit2gtk",
  "webpki-roots 0.26.11",
  "windows",
  "windows-future",

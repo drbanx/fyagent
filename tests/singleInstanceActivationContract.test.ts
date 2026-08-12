@@ -11,7 +11,7 @@ const cargo = read("src-tauri/Cargo.toml");
 const dialog = read("src/components/DeepLinkImportDialog.tsx");
 
 const desktopTargetCfg =
-  'any(target_os = "macos", target_os = "windows", target_os = "linux")';
+  'any(target_os = "macos", target_os = "windows")';
 
 describe("single-instance semantic activation contract", () => {
   it("applies the argv envelope bound only to Windows", () => {
@@ -31,10 +31,10 @@ describe("single-instance semantic activation contract", () => {
       `#[cfg(${desktopTargetCfg})]\n    let builder = builder.plugin(tauri_plugin_single_instance::init`,
     );
     expect(host).toContain(
-      `#[cfg(${desktopTargetCfg})]\n    tauri_plugin_single_instance::destroy(app_handle);`,
+      `#[cfg(${desktopTargetCfg})]\n    tauri_plugin_single_instance::destroy(_app_handle);`,
     );
-    expect(host).toContain(
-      `#[cfg(not(${desktopTargetCfg}))]\n    let _ = app_handle;`,
+    expect(host).not.toContain(
+      `#[cfg(not(${desktopTargetCfg}))]`,
     );
     expect(host).toContain(
       "let builder = tauri::Builder::default().plugin(activation_ready_plugin());",

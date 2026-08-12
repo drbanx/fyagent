@@ -16,7 +16,7 @@ use url::Url;
 #[cfg(target_os = "windows")]
 use fyagent_user_helper::{layout::USER_HELPER_EXECUTABLE_FILE_NAME, CanonicalJobId, PipeNonce};
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 use tauri_plugin_opener::OpenerExt;
 
 /// Stable, target-free launch failures safe to return across the IPC boundary.
@@ -32,7 +32,7 @@ pub(crate) enum ProcessLaunchError {
     #[cfg(target_os = "windows")]
     InvalidUserHelper,
     InteractiveUserUnavailable,
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     PlatformLaunchFailed,
     #[cfg(target_os = "windows")]
     WorkerFailed,
@@ -60,7 +60,7 @@ impl ProcessLaunchError {
             #[cfg(target_os = "windows")]
             Self::InvalidUserHelper => "fyagent_user_helper_invalid",
             Self::InteractiveUserUnavailable => "interactive_user_launcher_unavailable",
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
             Self::PlatformLaunchFailed => "external_launch_failed",
             #[cfg(target_os = "windows")]
             Self::WorkerFailed => "interactive_user_launcher_worker_failed",
@@ -264,7 +264,7 @@ pub(crate) fn launch_fyagent_user_helper_as_user(
 /// Opens an HTTP(S) URL through the interactive user's shell.
 ///
 /// On Windows this takes the Explorer COM route and deliberately fails when
-/// Explorer cannot supply the interactive shell. Other platforms retain the
+/// Explorer cannot supply the interactive shell. macOS retains the
 /// existing Tauri opener behavior.
 pub(crate) async fn open_http_url_as_user(app: AppHandle, raw_url: String) -> Result<(), String> {
     let request = InteractiveUserLaunch::http_url(&raw_url)
@@ -291,8 +291,8 @@ pub(crate) async fn open_directory_as_user(
 /// Opens a fixed, backend-generated terminal batch script through the
 /// interactive user's shell. This is deliberately synchronous because the
 /// existing terminal helpers already run on a blocking path. There is no
-/// non-Windows or elevated-process fallback.
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+/// macOS or elevated-process fallback.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub(crate) fn launch_terminal_script_as_user(script: &Path) -> Result<(), String> {
     let request = InteractiveUserLaunch::terminal_script(script)
         .map_err(|error| error.public_code().to_owned())?;
@@ -304,7 +304,7 @@ pub(crate) fn launch_terminal_script_as_user(script: &Path) -> Result<(), String
 /// identity; this boundary only validates the AUMID shape before turning it
 /// into an AppsFolder item. It is intentionally crate-private rather than an
 /// IPC command accepting a renderer-selected app identity.
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub(crate) fn launch_trusted_windows_app_aumid_as_user(aumid: &str) -> Result<(), String> {
     let request = InteractiveUserLaunch::trusted_windows_app_aumid(aumid)
         .map_err(|error| error.public_code().to_owned())?;
@@ -336,7 +336,7 @@ fn dispatch_sync_with_platform_launcher(
     .dispatch(request)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 #[allow(dead_code)]
 fn dispatch_sync_with_platform_launcher(
     _request: InteractiveUserLaunch,
@@ -344,7 +344,7 @@ fn dispatch_sync_with_platform_launcher(
     Err(ProcessLaunchError::InteractiveUserUnavailable)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 async fn dispatch_with_platform_launcher(
     app: AppHandle,
     request: InteractiveUserLaunch,
@@ -352,12 +352,12 @@ async fn dispatch_with_platform_launcher(
     ProcessLaunchService::new(TauriOpenerInteractiveUserLauncher { app }).dispatch(request)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 struct TauriOpenerInteractiveUserLauncher {
     app: AppHandle,
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 impl InteractiveUserLauncher for TauriOpenerInteractiveUserLauncher {
     fn open_http_url(&self, url: &str) -> Result<(), ProcessLaunchError> {
         self.app

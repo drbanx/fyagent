@@ -653,7 +653,7 @@ fn preflight(
         ]))
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     Ok(PlatformInstallPlan::default())
 }
 
@@ -1807,7 +1807,7 @@ mod tests {
                 std::slice::from_ref(&bridge_probe)
             );
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         assert!(plan.additional_disk_paths().is_empty());
 
         let architecture_error = adapter

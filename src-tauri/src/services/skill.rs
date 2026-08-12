@@ -1661,11 +1661,11 @@ impl SkillService {
 
     // ========== 文件同步方法 ==========
 
-    /// 创建符号链接（跨平台）
+    /// 创建符号链接（Windows/macOS）
     ///
-    /// - Unix: 使用 std::os::unix::fs::symlink
+    /// - macOS: 使用 std::os::unix::fs::symlink
     /// - Windows: 使用 std::os::windows::fs::symlink_dir
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     fn create_symlink(src: &Path, dest: &Path) -> Result<()> {
         std::os::unix::fs::symlink(src, dest)
             .with_context(|| format!("创建符号链接失败: {} -> {}", src.display(), dest.display()))
@@ -1771,7 +1771,7 @@ impl SkillService {
     fn remove_path(path: &Path) -> Result<()> {
         if Self::is_symlink(path) {
             // 符号链接：仅删除链接本身，不影响源文件
-            #[cfg(unix)]
+            #[cfg(target_os = "macos")]
             fs::remove_file(path)?;
             #[cfg(windows)]
             fs::remove_dir(path)?; // Windows 的目录 symlink 需要用 remove_dir
@@ -2223,7 +2223,7 @@ impl SkillService {
         }
 
         // 显式拒绝两种分隔符，不能依赖 components() 的平台语义：
-        // `\` 在 Linux/macOS 上不是分隔符，会被当成合法单段名放行，
+        // `\` 在 macOS 上不是分隔符，会被当成合法单段名放行，
         // 但同一个值同步/还原到 Windows 上就变成了嵌套路径。
         if trimmed.contains('/') || trimmed.contains('\\') {
             return None;
@@ -2722,7 +2722,7 @@ impl SkillService {
 
             // 第二道：enclosed_name() 的保证是相对**归档根**的，且它不规范化路径
             // ——`..` 会原样留在返回值里。上面剥掉 root_name 等于花掉一级深度预算，
-            // 于是 `repo-main/../evil` 这类条目仍能落到 dest 之外（Unix 逃一层；
+            // 于是 `repo-main/../evil` 这类条目仍能落到 dest 之外（macOS 逃一层；
             // Windows 上 root_name 可含反斜杠而被当作多段，逃逸深度随之放大）。
             // 因此 join 之前必须对**实际使用的相对路径**再验一次。
             if relative_path
@@ -4522,7 +4522,7 @@ mod tests {
     // EnvGuard 只负责恢复不提供互斥。
     #[serial_test::serial]
     fn get_app_skills_dir_honors_test_home_override() {
-        // 回归：曾直呼 dirs::home_dir() 绕过 FYAGENT_TEST_HOME——Unix 上碰巧跟 $HOME
+        // 回归：曾直呼 dirs::home_dir() 绕过 FYAGENT_TEST_HOME——macOS 上碰巧跟 $HOME
         // 一致所以测试能过，Windows 上 dirs 走 Known Folder API，测试隔离整体失效
         // （tests/skill_sync.rs 扫到 runner 真实用户目录）。
         struct EnvGuard(Option<std::ffi::OsString>);

@@ -6,7 +6,7 @@
 //! token once, before Tauri or any user data is initialized, and this module
 //! exposes only immutable projections of that result.
 
-#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#![cfg_attr(target_os = "macos", allow(dead_code))]
 
 use serde::Serialize;
 use std::{
@@ -56,7 +56,7 @@ pub enum InteractiveUserMatch {
 }
 
 impl RuntimePrivilegeStatus {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     const fn unsupported() -> Self {
         Self {
             platform: RuntimePrivilegePlatform::Other,
@@ -369,7 +369,7 @@ pub fn initialize_windows_user_context() -> Result<(), WindowsStartupErrorCode> 
     #[cfg(target_os = "windows")]
     let result = USER_CONTEXT.get_or_init(native::resolve_interactive_user_context);
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     let result =
         USER_CONTEXT.get_or_init(|| Err(WindowsStartupErrorCode::InteractiveUserUnavailable));
 
@@ -546,7 +546,7 @@ pub(crate) fn revalidate_interactive_user_context(
         native::revalidate_interactive_user_context(expected)
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         let _ = expected;
         false
@@ -559,7 +559,7 @@ pub fn runtime_privilege_status() -> RuntimePrivilegeStatus {
         native::runtime_privilege_status(interactive_user_context())
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         RuntimePrivilegeStatus::unsupported()
     }
@@ -573,7 +573,7 @@ pub(crate) const fn formal_windows_build() -> bool {
     cfg!(all(target_os = "windows", fyagent_windows_release))
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 pub(crate) const fn formal_windows_build() -> bool {
     false
 }
@@ -618,7 +618,7 @@ mod tests {
     fn observation(process_sid: &'static str) -> InteractiveUserObservation<'static> {
         #[cfg(target_os = "windows")]
         let test_profile = PathBuf::from(r"C:\Users\Alice");
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         let test_profile = PathBuf::from("/users/alice");
 
         InteractiveUserObservation {

@@ -268,7 +268,7 @@ pub struct ReleaseDescriptor {
     pub(crate) expected_sha256: String,
     pub(crate) expected_size: u64,
     pub(crate) download_endpoint: TrustedDownloadEndpoint,
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) minimum_os_version: Option<String>,
 }
 
@@ -476,7 +476,7 @@ pub struct InstalledApplication {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LaunchTarget {
     #[cfg_attr(
-        not(any(target_os = "windows", test)),
+        all(target_os = "macos", not(test)),
         expect(
             dead_code,
             reason = "the Windows adapter constructs this target only on Windows"
@@ -484,7 +484,7 @@ pub(crate) enum LaunchTarget {
     )]
     WindowsAumid(String),
     #[cfg_attr(
-        not(any(target_os = "macos", test)),
+        all(target_os = "windows", not(test)),
         expect(
             dead_code,
             reason = "the macOS adapter constructs this target only on macOS"

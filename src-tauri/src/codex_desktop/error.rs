@@ -306,9 +306,6 @@ static WINDOWS_USER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
 static MACOS_USER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"/Users/[^/\s]+").expect("installer macOS path redaction regex is valid")
 });
-static LINUX_USER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"/home/[^/\s]+").expect("installer Linux path redaction regex is valid")
-});
 static SECRET_VALUE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\b((?:proxy-)?authorization|cookie|(?:access[_-]?)?token|api[_-]?key|password)\s*[:=]\s*(?:(?:bearer|basic)\s+)?[^\s,;]+",
@@ -357,9 +354,6 @@ pub(crate) fn redact_diagnostic_text(value: &str) -> String {
         .replace_all(&normalized, "%USERPROFILE%")
         .into_owned();
     normalized = MACOS_USER_PATH_RE
-        .replace_all(&normalized, "~")
-        .into_owned();
-    normalized = LINUX_USER_PATH_RE
         .replace_all(&normalized, "~")
         .into_owned();
     SECRET_VALUE_RE

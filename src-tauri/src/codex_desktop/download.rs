@@ -323,19 +323,17 @@ impl fmt::Debug for DownloadedArtifact {
 }
 
 impl DownloadedArtifact {
-    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn job_id(&self) -> &str {
         &self.job_id
     }
 
     /// Reopens the fixed file through the retained directory capability and
     /// repeats the descriptor integrity gates immediately before consumption.
-    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     pub(crate) fn revalidate_against(
         &self,
         release: &ReleaseDescriptor,
@@ -362,7 +360,7 @@ impl DownloadedArtifact {
         verify::verify_reader(file, release.expected_size, &release.expected_sha256)
     }
 
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn open_for_read(&self) -> Result<std::fs::File, InstallerError> {
         if self.job_directory.final_path(self.artifact_kind) != self.path {
             return Err(
