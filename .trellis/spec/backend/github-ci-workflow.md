@@ -221,9 +221,19 @@ application versions. Rust setup disables its implicit cache. uv setup pins
 the resolved reviewed version and disables cache. pnpm installation uses the
 frozen lockfile. The frontend full unit suite excludes only the four
 host-mise integration suites (`developmentEnvironment`, `miseTaskContract`,
-`systemCheck`, and `taskAtomicWriter`); the contracts job owns their
+`systemCheck`, and `taskDocs`); the contracts job owns their
 pure/static contracts, and the local canonical check owns the real mise
 boundary.
+
+The always-running Changes job executes the durable supported-platform surface
+checker directly after checkout and Node setup, alongside the change plan and
+before diagnostic aggregation. This makes every Required CI plan scan the complete checked-out current
+tree rather than relying on conditional domain jobs or checker unit tests. CI
+never receives the task-specific prearchive exclusion; after the lifecycle
+task is archived, the canonical archive boundary applies and any new
+first-party support surface fails Required CI. The Repository Contracts plan
+also runs the same checker through `release-check.mjs --ci` as defense in
+depth when that domain is selected.
 
 Backend jobs run locked Cargo check, Clippy with warnings denied, and tests on
 Windows and macOS. macOS additionally owns `cargo fmt --check`. The Windows

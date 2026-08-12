@@ -115,10 +115,15 @@ jobs:
             printf 'docs_spec=%s\n' "$(jq -r '.domains.docsSpec' ci-plan.json)"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Verify supported platform surface
+        id: supported-platform
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: node scripts/tasks/supported-platform-check.mjs
+
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
-          CI_REQUIRED_STEPS: setup-node,plan
+          CI_REQUIRED_STEPS: setup-node,plan,supported-platform
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 

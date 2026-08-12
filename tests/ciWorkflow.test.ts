@@ -334,7 +334,11 @@ describe("automatic CI workflow", () => {
 
   it("collects every CI diagnostic before each job restores its failure", () => {
     const collectedSteps = {
-      changes: ["Setup Node.js", "Classify explicit base and head commits"],
+      changes: [
+        "Setup Node.js",
+        "Classify explicit base and head commits",
+        "Verify supported platform surface",
+      ],
       contracts: [
         "Setup pnpm",
         "Setup Node.js",
@@ -446,6 +450,22 @@ describe("automatic CI workflow", () => {
         "run: node scripts/ci/evaluate-step-outcomes.mjs",
       );
     }
+  });
+
+  it("runs the current-tree platform surface gate in every CI plan", () => {
+    const changes = jobBlock("changes");
+    const platformStep = namedStepBlock(
+      "changes",
+      "Verify supported platform surface",
+    );
+
+    expect(platformStep).toContain(
+      "run: node scripts/tasks/supported-platform-check.mjs",
+    );
+    expect(platformStep).not.toContain("exclude-active-task");
+    expect(changes.indexOf("Verify supported platform surface")).toBeLessThan(
+      changes.indexOf("Evaluate collected diagnostics"),
+    );
   });
 
   it("runs managed Python and the explicit-SID package smoke on native Windows x64 and ARM64", () => {

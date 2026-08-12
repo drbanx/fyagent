@@ -180,6 +180,153 @@ function expectExactLine(source: string, line: string) {
   ).toEqual([line]);
 }
 
+type WindowsReleaseMatrixRow = {
+  runner: string;
+  target_group: string;
+  architecture: string;
+  rust_target?: string;
+};
+
+type WindowsReleaseMatrixContract = {
+  job: string;
+  nextJob: string;
+  rows: readonly WindowsReleaseMatrixRow[];
+};
+
+const WINDOWS_RELEASE_MATRIX_CONTRACTS = [
+  {
+    job: "build-windows",
+    nextJob: "prove-windows-preflight",
+    rows: [
+      {
+        runner: "windows-2025",
+        target_group: "windows-x64",
+        architecture: "x64",
+        rust_target: "x86_64-pc-windows-msvc",
+      },
+      {
+        runner: "windows-11-arm",
+        target_group: "windows-arm64",
+        architecture: "arm64",
+        rust_target: "aarch64-pc-windows-msvc",
+      },
+    ],
+  },
+  {
+    job: "prove-windows-preflight",
+    nextJob: "sign-windows-formal",
+    rows: [
+      {
+        runner: "windows-2025",
+        target_group: "windows-x64",
+        architecture: "x64",
+      },
+      {
+        runner: "windows-11-arm",
+        target_group: "windows-arm64",
+        architecture: "arm64",
+      },
+    ],
+  },
+  {
+    job: "sign-windows-formal",
+    nextJob: "seal-windows-formal",
+    rows: [
+      {
+        runner: "windows-2025",
+        target_group: "windows-x64",
+        architecture: "x64",
+      },
+      {
+        runner: "windows-11-arm",
+        target_group: "windows-arm64",
+        architecture: "arm64",
+      },
+    ],
+  },
+  {
+    job: "seal-windows-formal",
+    nextJob: "build-macos",
+    rows: [
+      {
+        runner: "windows-2025",
+        target_group: "windows-x64",
+        architecture: "x64",
+      },
+      {
+        runner: "windows-11-arm",
+        target_group: "windows-arm64",
+        architecture: "arm64",
+      },
+    ],
+  },
+] as const satisfies readonly WindowsReleaseMatrixContract[];
+
+function windowsReleaseMatrixRows(
+  source: string,
+  contract: WindowsReleaseMatrixContract,
+): Array<Record<string, string>> {
+  const job = workflowJobBlock(source, contract.job, contract.nextJob);
+  const marker = "\n      matrix:\n        include:\n";
+  const matrixStart = job.indexOf(marker);
+  expect(matrixStart, `${contract.job} matrix`).toBeGreaterThanOrEqual(0);
+
+  const remainder = job.slice(matrixStart + marker.length);
+  const matrixEnd = remainder.search(/^    [a-z][a-z0-9_-]*:\s*$/mu);
+  expect(matrixEnd, `${contract.job} matrix boundary`).toBeGreaterThan(0);
+  const lines = remainder.slice(0, matrixEnd).trimEnd().split("\n");
+  const rows: Array<Record<string, string>> = [];
+  let current: Record<string, string> | undefined;
+
+  for (const line of lines) {
+    const rowStart = /^          - ([a-z][a-z0-9_]*): (\S.*)$/u.exec(line);
+    const field = /^            ([a-z][a-z0-9_]*): (\S.*)$/u.exec(line);
+    const match = rowStart ?? field;
+    if (!match || (!rowStart && !current)) {
+      throw new Error(
+        `${contract.job} matrix contains an unsupported row: ${line}`,
+      );
+    }
+    if (rowStart) {
+      current = {};
+      rows.push(current);
+    }
+    if (Object.prototype.hasOwnProperty.call(current, match[1])) {
+      throw new Error(`${contract.job} matrix row repeats field ${match[1]}`);
+    }
+    current![match[1]] = match[2];
+  }
+
+  return rows;
+}
+
+function assertExactWindowsReleaseMatrices(source: string): void {
+  for (const contract of WINDOWS_RELEASE_MATRIX_CONTRACTS) {
+    expect(windowsReleaseMatrixRows(source, contract), contract.job).toEqual(
+      contract.rows,
+    );
+  }
+}
+
+function mutateReleaseJob(
+  source: string,
+  contract: WindowsReleaseMatrixContract,
+  mutate: (job: string) => string,
+): string {
+  const job = workflowJobBlock(source, contract.job, contract.nextJob);
+  const mutated = mutate(job);
+  expect(mutated, `${contract.job} mutation`).not.toBe(job);
+  return source.replace(job, () => mutated);
+}
+
+function swapFirstPair(source: string, left: string, right: string): string {
+  const placeholder = "__fyagent_matrix_swap__";
+  return source
+    .replace(left, placeholder)
+    .replace(right, left)
+    .replace(placeholder, right);
+}
+
 const EXPECTED_RELEASE_JOB_IDS = [
   "eligibility",
   "build-windows",
@@ -954,6 +1101,46 @@ describe("FyAgent release workflow", () => {
     expect(source.match(/uses: actions\/checkout@/g)).toHaveLength(
       source.match(/persist-credentials: false/g)?.length ?? 0,
     );
+  });
+
+  it("freezes every Windows release matrix as an exact native target mapping", () => {
+    expect(() => assertExactWindowsReleaseMatrices(source)).not.toThrow();
+
+    const mutations = WINDOWS_RELEASE_MATRIX_CONTRACTS.flatMap((contract) => [
+      {
+        name: `${contract.job} runner swap`,
+        workflow: mutateReleaseJob(source, contract, (job) =>
+          swapFirstPair(job, "windows-2025", "windows-11-arm"),
+        ),
+      },
+      {
+        name: `${contract.job} extra matrix row`,
+        workflow: mutateReleaseJob(source, contract, (job) => {
+          const row = contract.rows[0];
+          const rustTarget =
+            "rust_target" in row
+              ? `\n            rust_target: ${row.rust_target}`
+              : "";
+          return job.replace(
+            "    env:\n",
+            `          - runner: ${row.runner}\n            target_group: ${row.target_group}\n            architecture: ${row.architecture}${rustTarget}\n    env:\n`,
+          );
+        }),
+      },
+      {
+        name: `${contract.job} target group swap`,
+        workflow: mutateReleaseJob(source, contract, (job) =>
+          swapFirstPair(job, "windows-x64", "windows-arm64"),
+        ),
+      },
+    ]);
+
+    for (const mutation of mutations) {
+      expect(
+        () => assertExactWindowsReleaseMatrices(mutation.workflow),
+        mutation.name,
+      ).toThrow();
+    }
   });
 
   it("bootstraps native jobs without implicit tools, broad Git trust, or release caches", () => {
