@@ -489,7 +489,7 @@
 
 .fy-memory-details > div {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 70px minmax(0, 1fr);
   align-items: center;
   min-height: 36px;
   gap: 10px;
@@ -520,6 +520,7 @@
 
 .fy-memory-details dt {
   color: var(--fy-text);
+  white-space: nowrap;
 }
 
 .fy-memory-details dd {
