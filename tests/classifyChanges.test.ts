@@ -199,6 +199,16 @@ describe("repository change classifier", () => {
     });
   });
 
+  it("does not retain ownership for a retired packaging path", () => {
+    const retiredPath = ["flat", "pak/com.fyagent.desktop.yml"].join("");
+
+    expect(classifyChangedPaths([retiredPath])).toEqual({
+      domains: domains(),
+      unknownPaths: [retiredPath],
+      forceFull: false,
+    });
+  });
+
   it("keeps every currently tracked repository path owned", () => {
     const tracked = git(ROOT, "ls-files", "-z")
       .split("\0")

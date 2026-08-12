@@ -269,11 +269,6 @@ function classifyPath(path, domains) {
     return { matched: true, forceFull: false };
   }
 
-  if (path.startsWith("flatpak/")) {
-    addDomains(domains, ["backend", "docsSpec"]);
-    return { matched: true, forceFull: false };
-  }
-
   if (path.startsWith("assets/")) {
     addDomains(domains, ["frontend", "backend", "docsSpec"]);
     return { matched: true, forceFull: false };
