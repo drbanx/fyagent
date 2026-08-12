@@ -1,0 +1,28 @@
+:root {
+  color-scheme: light;
+  --fy-bg: #f1f5fa;
+  --fy-bg-top: #fbfdff;
+  --fy-text: #111827;
+  --fy-text-secondary: #526176;
+  --fy-text-tertiary: #5f6f84;
+  --fy-brand-blue: #0d6fdf;
+  --fy-brand-cyan: #169dbd;
+  --fy-accent: #0969da;
+  --fy-accent-hover: #075dbf;
+  --fy-accent-text: #064b92;
+  --fy-surface: rgba(255, 255, 255, 0.78);
+  --fy-surface-strong: rgba(255, 255, 255, 0.94);
+  --fy-surface-soft: rgba(255, 255, 255, 0.62);
+  --fy-border: rgba(29, 52, 82, 0.12);
+  --fy-border-strong: rgba(29, 52, 82, 0.2);
+  --fy-highlight: rgba(255, 255, 255, 0.9);
+  --fy-selected: rgba(9, 105, 218, 0.13);
+  --fy-selected-border: rgba(9, 105, 218, 0.24);
+  --fy-danger-soft: rgba(214, 49, 49, 0.1);
+  --fy-danger-text: #b42318;
+  --fy-shadow-shell: 0 10px 30px rgba(31, 55, 82, 0.08);
+  --fy-shadow-control: 0 2px 10px rgba(31, 55, 82, 0.09);
+  --fy-focus: #0969da;
+  --fy-top-bar-height: 68px;
+  --fy-content-radius: 22px;
+}
