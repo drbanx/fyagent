@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">FyAgent social preview</title>
+  <desc id="desc">FyAgent is a personal desktop control center for the AI Workers and Agents you use.</desc>
+  <defs>
+    <linearGradient id="signal" x1="760" y1="84" x2="1160" y2="552" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B66FF"/>
+      <stop offset="1" stop-color="#18D3C5"/>
+    </linearGradient>
+    <linearGradient id="hairline" x1="76" y1="0" x2="1204" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B66FF" stop-opacity="0"/>
+      <stop offset="0.45" stop-color="#0B66FF" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#18D3C5" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(1018 318) rotate(90) scale(292)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B66FF" stop-opacity="0.17"/>
+      <stop offset="1" stop-color="#0B66FF" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#F5F2EC" stroke-opacity="0.035"/>
+    </pattern>
+    <mask id="gate-cut" maskUnits="userSpaceOnUse" x="760" y="80" width="420" height="480">
+      <rect x="760" y="80" width="420" height="480" fill="#fff"/>
+      <rect x="928" y="260" width="136" height="136" rx="30" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect width="1280" height="640" fill="#0B0D10"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+  <rect x="720" width="560" height="640" fill="url(#glow)"/>
+  <path d="M76 96H1204" stroke="url(#hairline)"/>
+  <path d="M76 544H1204" stroke="url(#hairline)"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="76" y="155" fill="#18D3C5" font-size="19" font-weight="700" letter-spacing="4">FYAGENT · FOR YOU AGENT</text>
+    <text x="76" y="257" fill="#F5F2EC" font-size="66" font-weight="720" letter-spacing="-2">Own your AI.</text>
+    <text x="76" y="329" fill="#F5F2EC" font-size="53" font-weight="680" letter-spacing="-1.5">Keep your hands on the wheel.</text>
+    <text x="80" y="406" fill="#F5F2EC" fill-opacity="0.68" font-size="24" font-weight="450">Models · Connections · Skills · Instructions · Control</text>
+    <g transform="translate(76 468)">
+      <rect width="124" height="34" rx="17" fill="#0B66FF" fill-opacity="0.14" stroke="#0B66FF" stroke-opacity="0.42"/>
+      <text x="62" y="23" fill="#AFCBFF" font-size="15" font-weight="650" text-anchor="middle">WINDOWS</text>
+      <rect x="138" width="102" height="34" rx="17" fill="#18D3C5" fill-opacity="0.1" stroke="#18D3C5" stroke-opacity="0.36"/>
+      <text x="189" y="23" fill="#A9EDE7" font-size="15" font-weight="650" text-anchor="middle">macOS</text>
+      <rect x="254" width="94" height="34" rx="17" fill="#F5F2EC" fill-opacity="0.06" stroke="#F5F2EC" stroke-opacity="0.18"/>
+      <text x="301" y="23" fill="#DCD9D3" font-size="15" font-weight="650" text-anchor="middle">LINUX</text>
+    </g>
+  </g>
+
+  <g>
+    <path d="M800 188 866 132l130 120 130-120 66 56-148 138v214h-96V326L800 188Z" fill="url(#signal)" mask="url(#gate-cut)"/>
+    <rect x="936" y="268" width="120" height="120" rx="26" fill="none" stroke="url(#signal)" stroke-width="22"/>
+    <rect x="776" y="108" width="432" height="432" rx="96" fill="none" stroke="#F5F2EC" stroke-opacity="0.08"/>
+  </g>
+</svg>

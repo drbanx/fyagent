@@ -1,0 +1,49 @@
+title: "[Show & Tell] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Show the community how FyAgent fits into your real workflow. Screenshots, diagrams, and configuration excerpts are welcome.
+        欢迎分享 FyAgent 在真实工作流中的用法，可以附截图、流程图或配置片段。
+
+  - type: input
+    id: summary
+    attributes:
+      label: One-line summary / 一句话介绍
+      placeholder: "How FyAgent keeps my models and skills consistent across AI tools"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tools
+    attributes:
+      label: Tools in this setup / 使用的工具
+      multiple: true
+      options:
+        - Claude Code
+        - Claude Desktop
+        - Codex
+        - Gemini CLI
+        - Grok Build
+        - OpenCode
+        - OpenClaw
+        - Hermes
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow / 工作流
+      description: Walk through the setup and the problem it solves. / 请介绍配置步骤，以及它解决了什么问题。
+    validations:
+      required: true
+
+  - type: textarea
+    id: lessons
+    attributes:
+      label: Lessons learned / 使用心得
+      description: Share tradeoffs, tips, or what you would change next time. / 分享取舍、技巧或下一次会改进的地方。
+    validations:
+      required: false

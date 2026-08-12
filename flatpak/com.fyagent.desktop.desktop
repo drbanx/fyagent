@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=FyAgent
-Comment=FyAgent - All-in-One Assistant for Claude Code, Codex & Gemini CLI
+Comment=FyAgent - Personal control center for AI Workers and Agents
 Exec=fyagent
 Icon=com.fyagent.desktop
 Terminal=false

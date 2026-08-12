@@ -80,11 +80,13 @@ const CURRENT_PUBLIC_REPOSITORY_FILES = [
   "CONTRIBUTING.md",
   "SECURITY.md",
   "SUPPORT.md",
+  ".github/DISCUSSION_TEMPLATE/ideas.yml",
+  ".github/DISCUSSION_TEMPLATE/q-a.yml",
+  ".github/DISCUSSION_TEMPLATE/show-and-tell.yml",
   ".github/ISSUE_TEMPLATE/bug_report.yml",
   ".github/ISSUE_TEMPLATE/config.yml",
   ".github/ISSUE_TEMPLATE/doc_issue.yml",
   ".github/ISSUE_TEMPLATE/feature_request.yml",
-  ".github/ISSUE_TEMPLATE/question.yml",
   "flatpak/com.fyagent.desktop.metainfo.xml",
 ] as const;
 
@@ -477,12 +479,140 @@ describe("current FyAgent documentation authority", () => {
     const english = read("README_EN.md");
     const japanese = read("README_JA.md");
 
-    expect(chinese).toContain("For You Agent：为你而生，也由你掌控");
+    expect(chinese).toContain("帮你拥有属于自己的 AI。");
     expect(chinese).toContain('href="README_EN.md">English</a>');
     expect(english).toContain('href="README.md">简体中文</a>');
     expect(japanese).toContain('href="README_EN.md">English</a>');
     expect(japanese).toContain('href="README.md">简体中文</a>');
     expect(fs.existsSync(path.join(ROOT, "README_ZH.md"))).toBe(false);
+  });
+
+  it("keeps the approved GitHub brand surface and discussion entry contract", () => {
+    for (const file of PUBLIC_READMES) {
+      const source = read(file);
+      expect(source, file).toContain(
+        'src="assets/brand/github/for-you-gate.svg"',
+      );
+      expect(source, file).toContain("discussions/categories/q-a");
+      expect(source, file).not.toContain('src="assets/fyagent.png"');
+    }
+
+    expect(read("README.md")).toContain("## 常见问题");
+    expect(read("README.md")).toContain("## 愿景：成为 AI 时代的随身数字人格");
+    expect(read("README.md")).toContain(
+      "长期记忆与可延续的数字人格是产品继续建设的方向",
+    );
+    expect(read("README_EN.md")).toContain("## FAQ");
+    expect(read("README_EN.md")).toContain(
+      "## Vision: a portable digital persona for the AI era",
+    );
+    expect(read("README_EN.md")).toContain(
+      "Long-term memory and a durable cross-tool persona are part of the product direction",
+    );
+    expect(read("README_JA.md")).toContain("## よくある質問");
+    expect(read("README_JA.md")).toContain(
+      "## ビジョン：AI 時代に持ち歩けるデジタル人格",
+    );
+
+    const packageDescription =
+      "Personal desktop control center for AI Workers and Agents";
+    expect(JSON.parse(read("package.json")).description).toBe(
+      packageDescription,
+    );
+    expect(read("src-tauri/Cargo.toml")).toContain(
+      `description = "${packageDescription}"`,
+    );
+    expect(read("flatpak/com.fyagent.desktop.metainfo.xml")).toContain(
+      `<summary>${packageDescription}</summary>`,
+    );
+    expect(read("flatpak/com.fyagent.desktop.desktop")).toContain(
+      "Comment=FyAgent - Personal control center for AI Workers and Agents",
+    );
+
+    const appDescriptions = new Map([
+      [
+        "src/i18n/locales/en.json",
+        "Personal desktop control center for your AI Workers and Agents",
+      ],
+      [
+        "src/i18n/locales/zh.json",
+        "面向 AI Worker 与 AI Agent 的个人桌面控制中心",
+      ],
+      [
+        "src/i18n/locales/ja.json",
+        "AI Worker と AI Agent のためのパーソナル・デスクトップコントロールセンター",
+      ],
+      [
+        "src/i18n/locales/zh-TW.json",
+        "面向 AI Worker 與 AI Agent 的個人桌面控制中心",
+      ],
+    ]);
+    for (const [file, expectedDescription] of appDescriptions) {
+      expect(JSON.parse(read(file)).app.description, file).toBe(
+        expectedDescription,
+      );
+    }
+
+    const introductionContracts = [
+      {
+        file: "docs/user-manual/zh/1-getting-started/1.1-introduction.md",
+        currentBoundary:
+          "长期记忆和跨工具延续的完整数字人格仍是产品继续建设的方向",
+      },
+      {
+        file: "docs/user-manual/en/1-getting-started/1.1-introduction.md",
+        currentBoundary:
+          "Long-term memory and a complete persona that persists across tools remain part of the product direction",
+      },
+      {
+        file: "docs/user-manual/ja/1-getting-started/1.1-introduction.md",
+        currentBoundary:
+          "長期記憶とツールをまたいで続く完全なデジタル人格は、今後の製品方向です",
+      },
+    ];
+    for (const { file, currentBoundary } of introductionContracts) {
+      const source = read(file);
+      expect(source, file).toMatch(/AI Worker/u);
+      expect(source, file).toMatch(/AI Agent/u);
+      expect(source, file).toContain(currentBoundary);
+      expect(source, file).not.toMatch(
+        /designed for developers|开发者设计|開発者向けに設計/u,
+      );
+    }
+
+    for (const file of [
+      ".github/ISSUE_TEMPLATE/bug_report.yml",
+      ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ]) {
+      const source = read(file);
+      expect(source, file).toContain("README_EN.md#faq");
+      expect(source, file).toContain("fy-agent/fyagent#常见问题");
+      expect(source, file).toContain("README_JA.md#よくある質問");
+    }
+
+    expect(
+      fs.existsSync(path.join(ROOT, ".github/ISSUE_TEMPLATE/question.yml")),
+    ).toBe(false);
+
+    for (const file of [
+      ".github/DISCUSSION_TEMPLATE/ideas.yml",
+      ".github/DISCUSSION_TEMPLATE/q-a.yml",
+      ".github/DISCUSSION_TEMPLATE/show-and-tell.yml",
+    ]) {
+      const source = read(file);
+      expect(source, file).toContain("body:");
+      expect(source, file).toMatch(/\n\s+- type: (?!markdown)/u);
+    }
+
+    const preview = fs.readFileSync(
+      path.join(ROOT, "assets/brand/github/fyagent-social-preview.png"),
+    );
+    expect(preview.subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    expect(preview.readUInt32BE(16)).toBe(1280);
+    expect(preview.readUInt32BE(20)).toBe(640);
+    expect(preview.byteLength).toBeLessThan(1024 * 1024);
   });
 
   it("keeps the six-chapter manual and visual evidence plan closed", () => {
