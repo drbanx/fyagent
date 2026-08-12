@@ -43,14 +43,14 @@ admission and direct dependencies, not just literal platform words.
 
 ## 3. Cross-layer contraction
 
-| Contract | Producers | Consumers | Result |
-| --- | --- | --- | --- |
-| Supported platform | Rust host/build logic, Node tasks, workflow matrices | renderer types, CI/release tests, docs | Positive Windows/macOS allowlist; unknown fails closed |
-| Tool environment | Rust `ToolVersion` and lifecycle commands | settings API, About UI, locales, mocks | Host-only model; remove environment type, distribution, flag, and shell selection |
-| Window controls | persisted settings and Rust DTO | settings hook, App layout, titlebar controls | Remove the retired-platform setting end to end; preserve Windows/macOS layouts |
-| V2 platform | platform detection | domain types, fixtures, acceptance/visual manifests | `windows`, `macos`, browser/unknown boundary only |
-| Build target evidence | platform metadata writers | build metadata, manifest, verifier, attest/publish | Three target records and four installers |
-| Required CI evidence | workflow jobs | required-gate evaluator and release authority | Remove one job, transfer formatting, retain stable public check |
+| Contract              | Producers                                            | Consumers                                           | Result                                                                            |
+| --------------------- | ---------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Supported platform    | Rust host/build logic, Node tasks, workflow matrices | renderer types, CI/release tests, docs              | Positive Windows/macOS allowlist; unknown fails closed                            |
+| Tool environment      | Rust `ToolVersion` and lifecycle commands            | settings API, About UI, locales, mocks              | Host-only model; remove environment type, distribution, flag, and shell selection |
+| Window controls       | persisted settings and Rust DTO                      | settings hook, App layout, titlebar controls        | Remove the retired-platform setting end to end; preserve Windows/macOS layouts    |
+| V2 platform           | platform detection                                   | domain types, fixtures, acceptance/visual manifests | `windows`, `macos`, browser/unknown boundary only                                 |
+| Build target evidence | platform metadata writers                            | build metadata, manifest, verifier, attest/publish  | Three target records and four installers                                          |
+| Required CI evidence  | workflow jobs                                        | required-gate evaluator and release authority       | Remove one job, transfer formatting, retain stable public check                   |
 
 Every wire-shape edit is atomic across native producer, TypeScript facade,
 state/UI consumer, locale, mock, and test. No optional deprecated field is kept
@@ -258,6 +258,24 @@ current active task exactly, and is omitted from the post-archive/normal CI
 invocation. The check otherwise excludes only the two approved generated
 lockfiles from text matching and encoded SVG payloads from content matching;
 paths and first-party manifests are never excluded.
+
+Raster content is not added as a new opaque exception. The current 146 tracked
+rasters must first pass a one-time decode, exposed-metadata scan, and visual
+review. A sorted path-and-SHA-256 manifest then seals that reviewed identity so
+an added, removed, renamed, or byte-modified raster fails closed until the same
+review is repeated. Container and metadata validation still runs, and the
+identity seal does not replace decoded-pixel checks required by the brand-asset
+specification.
+
+Platform-sensitive first-party source follows the same review-identity model
+without becoming opaque. A bidirectional manifest freezes every Cargo manifest
+and build script plus the current selector-bearing executable/configuration
+surface by canonical path, Git `100644` mode, regular non-symlink type, and
+SHA-256. Those files continue through ordinary text and semantic scanning. The
+seal is a second authority layer: equivalent language syntax, same-file code
+relocation, or a newly introduced selector-bearing file must cause inventory
+or identity drift until the actual source diff is reviewed and the manifest is
+deliberately updated.
 
 Before archival, both the durable check and the strong manual audit exclude the
 exact active task directory. After archival they are rerun with only

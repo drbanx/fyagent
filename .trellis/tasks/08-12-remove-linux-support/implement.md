@@ -316,6 +316,16 @@ portable, fail-closed repository regression gate.
   bypass.
 - Wire the default checker into the canonical contract/check task that will run
   after this task is archived.
+- Decode all current tracked raster assets, scan exposed metadata, perform a
+  contact-sheet visual review, and record the reviewed set in a sorted
+  path-and-SHA-256 identity manifest. Make inventory or digest drift fail before
+  treating image payload bytes as reviewed; retain container/metadata checks and
+  their bounded decompression limits.
+- Freeze the reviewed platform-sensitive source inventory bidirectionally by
+  canonical path, Git `100644` mode, regular non-symlink type, and SHA-256.
+  Keep normal text and semantic scanners active; the inventory is a review
+  seal, not a content exclusion. Cover equivalent Cargo/Rust/JS syntax and
+  same-file relocation with production-authority mutation tests.
 
 **Focused validation**
 
