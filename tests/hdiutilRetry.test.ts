@@ -9,7 +9,14 @@ const RETRY_HDIUTIL = path.join(ROOT, "scripts", "release", "retry-hdiutil.sh");
 const temporaryRoots: string[] = [];
 
 function resolveBashExecutable(): string {
-  if (process.platform !== "win32") return "bash";
+  switch (process.platform) {
+    case "darwin":
+      return "bash";
+    case "win32":
+      break;
+    default:
+      throw new Error(`Unsupported test host: ${process.platform}`);
+  }
 
   const gitExecPath = spawnSync("git", ["--exec-path"], {
     encoding: "utf8",

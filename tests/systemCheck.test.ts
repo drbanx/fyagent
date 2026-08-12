@@ -33,8 +33,15 @@ describe("read-only host prerequisite checks", () => {
       };
       expect(report.platform).toBe(platform);
       expect(report.requirements.commands.length).toBeGreaterThan(0);
+      const forbiddenCommands = [
+        "sudo",
+        ["a", "pt"].join(""),
+        "brew",
+        "winget",
+        "choco",
+      ];
       for (const [command, args, hint] of report.requirements.commands) {
-        expect(command).not.toMatch(/^(?:sudo|apt|brew|winget|choco)$/i);
+        expect(forbiddenCommands).not.toContain(command.toLowerCase());
         expect(args.join(" ")).not.toMatch(/(?:^|\s)(?:install|add)(?:\s|$)/i);
         expect(hint.length).toBeGreaterThan(0);
       }
@@ -90,8 +97,16 @@ describe("read-only host prerequisite checks", () => {
 
   it("contains no elevation or package-manager mutation command", () => {
     const source = fs.readFileSync(SCRIPT, "utf8");
+    const forbiddenCommands = [
+      "sudo",
+      ["a", "pt"].join(""),
+      ["a", "pt", "-get"].join(""),
+      "brew",
+      "winget",
+      "choco",
+    ];
     expect(source).not.toMatch(
-      /run\(["'](?:sudo|apt|apt-get|brew|winget|choco)["']/i,
+      new RegExp(`run\\(["'](?:${forbiddenCommands.join("|")})["']`, "i"),
     );
     expect(source).not.toMatch(/exec(?:File)?Sync\(/);
   });

@@ -231,16 +231,33 @@ export function resolveToolExecutable({
   if (typeof searchPath !== "string" || searchPath === "") {
     throw new Error(`PATH is required to resolve the canonical ${tool}`);
   }
-  const pathApi = platform === "win32" ? path.win32 : path.posix;
-  const delimiter = platform === "win32" ? ";" : ":";
-  const executable = platform === "win32" ? `${tool}.exe` : tool;
+  let pathApi;
+  let delimiter;
+  let executable;
+  let requireExecutePermission;
+  switch (platform) {
+    case "win32":
+      pathApi = path.win32;
+      delimiter = ";";
+      executable = `${tool}.exe`;
+      requireExecutePermission = false;
+      break;
+    case "darwin":
+      pathApi = path.posix;
+      delimiter = ":";
+      executable = tool;
+      requireExecutePermission = true;
+      break;
+    default:
+      throw new Error(`Unsupported host platform: ${platform}`);
+  }
   for (const rawDirectory of searchPath.split(delimiter)) {
     const unquoted = rawDirectory.replace(/^"(.*)"$/, "$1");
     const directory = unquoted === "" ? cwd : unquoted;
     const candidate = pathApi.resolve(directory, executable);
     try {
       if (!fs.statSync(candidate).isFile()) continue;
-      if (platform !== "win32") {
+      if (requireExecutePermission) {
         fs.accessSync(candidate, fs.constants.X_OK);
       }
       return candidate;

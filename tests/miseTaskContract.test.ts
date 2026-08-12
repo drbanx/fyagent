@@ -176,7 +176,7 @@ describe("canonical mise task API", () => {
         ).toThrow();
       }
 
-      if (process.platform !== "win32") {
+      if (process.platform === "darwin") {
         const outside = path.join(os.tmpdir(), `fyagent-format-${process.pid}`);
         const link = path.join(fixture, "escape.json");
         fs.writeFileSync(outside, "{}\n");
@@ -821,7 +821,7 @@ describe("canonical mise task API", () => {
     expect(runCalls).toBe(0);
   });
 
-  it.runIf(process.platform !== "win32")(
+  it.runIf(process.platform === "darwin")(
     "rejects effective Cargo toolchain config includes, cycles, and symlinks before tools start",
     () => {
       const fixture = fs.mkdtempSync(

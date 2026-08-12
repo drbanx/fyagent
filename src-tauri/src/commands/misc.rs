@@ -2262,7 +2262,7 @@ fn package_manager_anchored_command_from_paths(
 /// **关键不变量：返回的命令必须用绝对路径调用执行体；若执行体通过
 /// `#!/usr/bin/env` 查找解释器，还必须把其同级 bin 目录显式放到 PATH 首位**。
 /// 这条命令最终在 `run_elevated_cli_lifecycle_whitelist` 的非登录 `bash -c` 里执行——
-/// GUI App 启动的进程 PATH 由 launchd / Windows Service / systemd 给,通常**不含**
+/// GUI App 启动的进程 PATH 由 launchd / Windows Service 给,通常**不含**
 /// `~/.local/bin` / `/opt/homebrew/bin` / `~/.volta/bin` 等用户级 bin 目录;而探测
 /// 阶段 `try_get_version` 用的是 `$SHELL -lic`(登录+交互式,会读 .zshrc/.zprofile),
 /// 两者 PATH 不对称。裸 `claude update` / `brew upgrade ...` 在 GUI 进程里大概率

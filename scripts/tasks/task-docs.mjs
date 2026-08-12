@@ -27,6 +27,7 @@ const SECTIONS = Object.freeze([
         "check:frontend",
         "check:backend",
         "check:contracts",
+        "supported-platform:check",
       ].includes(name),
   ],
   [
