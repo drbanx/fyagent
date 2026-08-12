@@ -44,7 +44,9 @@ pub struct RuntimePrivilegeStatus {
 #[serde(rename_all = "lowercase")]
 pub enum RuntimePrivilegePlatform {
     Windows,
-    Other,
+    Macos,
+    #[allow(dead_code)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -57,14 +59,35 @@ pub enum InteractiveUserMatch {
 
 impl RuntimePrivilegeStatus {
     #[cfg(target_os = "macos")]
-    const fn unsupported() -> Self {
+    const fn macos() -> Self {
         Self {
-            platform: RuntimePrivilegePlatform::Other,
+            platform: RuntimePrivilegePlatform::Macos,
             supported: false,
             elevated: false,
             local_administrator: false,
             interactive_user_match: InteractiveUserMatch::Unavailable,
         }
+    }
+}
+
+#[cfg(test)]
+mod platform_contract_tests {
+    use super::RuntimePrivilegePlatform;
+
+    #[test]
+    fn privilege_platform_serialization_is_an_explicit_allowlist() {
+        assert_eq!(
+            serde_json::to_string(&RuntimePrivilegePlatform::Windows).unwrap(),
+            "\"windows\""
+        );
+        assert_eq!(
+            serde_json::to_string(&RuntimePrivilegePlatform::Macos).unwrap(),
+            "\"macos\""
+        );
+        assert_eq!(
+            serde_json::to_string(&RuntimePrivilegePlatform::Unknown).unwrap(),
+            "\"unknown\""
+        );
     }
 }
 
@@ -561,7 +584,7 @@ pub fn runtime_privilege_status() -> RuntimePrivilegeStatus {
 
     #[cfg(target_os = "macos")]
     {
-        RuntimePrivilegeStatus::unsupported()
+        RuntimePrivilegeStatus::macos()
     }
 }
 

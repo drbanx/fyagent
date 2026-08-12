@@ -372,7 +372,7 @@ export const handlers = [
 
   http.post(`${TAURI_ENDPOINT}/get_runtime_privilege_status`, () =>
     success({
-      platform: "other",
+      platform: "macos",
       supported: false,
       elevated: false,
       localAdministrator: false,

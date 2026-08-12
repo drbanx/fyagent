@@ -35,7 +35,7 @@ export interface WebDavSyncResult {
  * SID, token, process, and path data from this renderer-facing DTO.
  */
 export interface RuntimePrivilegeStatus {
-  platform: "windows" | "other";
+  platform: "windows" | "macos" | "unknown";
   supported: boolean;
   elevated: boolean;
   localAdministrator: boolean;
