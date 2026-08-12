@@ -20,7 +20,14 @@ export const SUPPORTED_PLATFORMS = Object.freeze([
 export const STABLE_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 export function resolveTaskExecutable(command, platform = process.platform) {
-  return platform === "win32" && command === "pnpm" ? "pnpm.exe" : command;
+  switch (platform) {
+    case "win32":
+      return command === "pnpm" ? "pnpm.exe" : command;
+    case "darwin":
+      return command;
+    default:
+      throw new Error(`Unsupported task host: ${platform}`);
+  }
 }
 
 export function run(command, args = [], options = {}) {

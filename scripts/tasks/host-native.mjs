@@ -268,13 +268,35 @@ export function resolveToolExecutable({
   throw new Error(`Unable to resolve ${tool} to an executable in PATH`);
 }
 
+function supportedHostPathApi(platform) {
+  switch (platform) {
+    case "win32":
+      return path.win32;
+    case "darwin":
+      return path.posix;
+    default:
+      throw new Error(`Unsupported host platform: ${platform}`);
+  }
+}
+
+function normalizeSupportedHostPath(value, platform) {
+  switch (platform) {
+    case "win32":
+      return value.toLowerCase();
+    case "darwin":
+      return value;
+    default:
+      throw new Error(`Unsupported host platform: ${platform}`);
+  }
+}
+
 export function buildNativeRunnerConfig({
   target,
   platform,
   nodeExecutable = process.execPath,
   runnerScript = fileURLToPath(import.meta.url),
 }) {
-  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const pathApi = supportedHostPathApi(platform);
   for (const [label, executable] of [
     ["Node", nodeExecutable],
     ["host-native runner", runnerScript],
@@ -484,7 +506,7 @@ export function ownedCargoEnvironment({
   rustdocExecutable,
   platform,
 }) {
-  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const pathApi = supportedHostPathApi(platform);
   for (const [tool, executable] of [
     ["rustc", rustcExecutable],
     ["rustdoc", rustdocExecutable],
@@ -515,15 +537,14 @@ export function ownedCargoEnvironment({
 }
 
 function samePath(left, right, platform) {
-  const normalize = (value) =>
-    platform === "win32" ? value.toLowerCase() : value;
+  const normalize = (value) => normalizeSupportedHostPath(value, platform);
   return normalize(path.normalize(left)) === normalize(path.normalize(right));
 }
 
 function isPathWithin(parent, candidate, platform) {
   const relative = path.relative(parent, candidate);
   if (relative === "" || relative === ".") return false;
-  const normalized = platform === "win32" ? relative.toLowerCase() : relative;
+  const normalized = normalizeSupportedHostPath(relative, platform);
   return !normalized.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
@@ -931,22 +952,28 @@ export function executeCargoTask({
     rustdocExecutable,
     nativeRunnerConfig,
   });
-  if (platform === "win32") {
-    if (
-      typeof nodeExecutable !== "string" ||
-      !path.win32.isAbsolute(nodeExecutable)
-    ) {
-      throw new Error(
-        "The canonical Node executable must be an absolute Windows path",
-      );
-    }
-    runCommand(nodeExecutable, [WINDOWS_USER_HELPER_PREPARE_SCRIPT], {
-      env: {
-        ...plan.environment,
-        TAURI_ENV_TARGET_TRIPLE: plan.target,
-        TAURI_ENV_DEBUG: "true",
-      },
-    });
+  switch (platform) {
+    case "win32":
+      if (
+        typeof nodeExecutable !== "string" ||
+        !path.win32.isAbsolute(nodeExecutable)
+      ) {
+        throw new Error(
+          "The canonical Node executable must be an absolute Windows path",
+        );
+      }
+      runCommand(nodeExecutable, [WINDOWS_USER_HELPER_PREPARE_SCRIPT], {
+        env: {
+          ...plan.environment,
+          TAURI_ENV_TARGET_TRIPLE: plan.target,
+          TAURI_ENV_DEBUG: "true",
+        },
+      });
+      break;
+    case "darwin":
+      break;
+    default:
+      throw new Error(`Unsupported host platform: ${platform}`);
   }
   runCommand(plan.command, plan.args, { env: plan.environment });
   return plan;

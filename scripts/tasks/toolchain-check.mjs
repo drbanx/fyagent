@@ -53,7 +53,7 @@ function isPathInside(candidate, directory) {
 
 export function normalizeComparablePath(
   value,
-  caseInsensitive = process.platform === "win32",
+  caseInsensitive = hostUsesCaseInsensitivePaths(),
 ) {
   const normalized = path
     .resolve(value)
@@ -62,11 +62,29 @@ export function normalizeComparablePath(
   return caseInsensitive ? normalized.toLowerCase() : normalized;
 }
 
+function hostUsesCaseInsensitivePaths(platform = process.platform) {
+  switch (platform) {
+    case "win32":
+      return true;
+    case "darwin":
+      return false;
+    default:
+      throw new Error(`Unsupported toolchain-check host: ${platform}`);
+  }
+}
+
 function findOnPath(command) {
-  const extensions =
-    process.platform === "win32"
-      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")
-      : [""];
+  let extensions;
+  switch (process.platform) {
+    case "win32":
+      extensions = (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";");
+      break;
+    case "darwin":
+      extensions = [""];
+      break;
+    default:
+      throw new Error(`Unsupported toolchain-check host: ${process.platform}`);
+  }
   for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
     if (!directory) continue;
     for (const extension of extensions) {
@@ -103,10 +121,17 @@ function verifyPython() {
   ]);
   if (!path.isAbsolute(managed))
     throw new Error(`uv returned a non-absolute Python path: ${managed}`);
-  const venvPython =
-    process.platform === "win32"
-      ? path.join(process.cwd(), ".venv", "Scripts", "python.exe")
-      : path.join(process.cwd(), ".venv", "bin", "python");
+  let venvPython;
+  switch (process.platform) {
+    case "win32":
+      venvPython = path.join(process.cwd(), ".venv", "Scripts", "python.exe");
+      break;
+    case "darwin":
+      venvPython = path.join(process.cwd(), ".venv", "bin", "python");
+      break;
+    default:
+      throw new Error(`Unsupported toolchain-check host: ${process.platform}`);
+  }
   if (!fs.existsSync(venvPython)) {
     throw new Error(".venv is missing; run mise run python:sync");
   }

@@ -628,19 +628,26 @@ describe("canonical mise task API", () => {
       "--",
       "settings",
     ]);
-    expect(calls.map(({ command, args }) => ({ command, args }))).toEqual([
+    const expectedCalls = [
       { command: rustcExecutable, args: ["-vV"] },
       { command: rustdocExecutable, args: ["-vV"] },
-      ...(process.platform === "win32"
-        ? [
-            {
-              command: process.execPath,
-              args: ["scripts/prepare-windows-user-helper.mjs"],
-            },
-          ]
-        : []),
-      { command: "cargo", args: cargo.args },
-    ]);
+    ];
+    switch (process.platform) {
+      case "win32":
+        expectedCalls.push({
+          command: process.execPath,
+          args: ["scripts/prepare-windows-user-helper.mjs"],
+        });
+        break;
+      case "darwin":
+        break;
+      default:
+        throw new Error(`Unsupported test host: ${process.platform}`);
+    }
+    expectedCalls.push({ command: "cargo", args: cargo.args });
+    expect(calls.map(({ command, args }) => ({ command, args }))).toEqual(
+      expectedCalls,
+    );
     expect(calls.at(-1)?.environment).toMatchObject({
       RUSTC: rustcExecutable,
       RUSTDOC: rustdocExecutable,
@@ -1067,16 +1074,21 @@ describe("canonical mise task API", () => {
           "wrong-architecture",
         );
         const wrongBytes = fixtureCase.bytes();
-        if (fixtureCase.platform === "win32") {
-          wrongBytes.writeUInt16LE(
-            fixtureCase.wrongMachine,
-            fixtureCase.machineOffset,
-          );
-        } else {
-          wrongBytes.writeUInt32BE(
-            fixtureCase.wrongMachine,
-            fixtureCase.machineOffset,
-          );
+        switch (fixtureCase.platform) {
+          case "win32":
+            wrongBytes.writeUInt16LE(
+              fixtureCase.wrongMachine,
+              fixtureCase.machineOffset,
+            );
+            break;
+          case "darwin":
+            wrongBytes.writeUInt32BE(
+              fixtureCase.wrongMachine,
+              fixtureCase.machineOffset,
+            );
+            break;
+          default:
+            throw new Error("Unsupported fixture host");
         }
         fs.writeFileSync(wrongArchitecture, wrongBytes);
         expect(() =>
