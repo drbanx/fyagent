@@ -35,6 +35,10 @@ const desktopRuntime = read("src-tauri/src/codex_desktop_runtime.rs");
 const hostConfig = read("src-tauri/src/config.rs");
 const hermesConfig = read("src-tauri/src/hermes_config.rs");
 const opencodeConfig = read("src-tauri/src/opencode_config.rs");
+const opencodeSessions = read(
+  "src-tauri/src/session_manager/providers/opencode.rs",
+);
+const opencodeUsage = read("src-tauri/src/services/session_usage_opencode.rs");
 const codexConfig = read("src-tauri/src/codex_config.rs");
 const codexStateDb = read("src-tauri/src/codex_state_db.rs");
 const commandHost = read("src-tauri/src/commands/misc.rs");
@@ -284,10 +288,24 @@ describe("Codex Windows interactive-user contract", () => {
     expect(opencodeConfig).toMatch(
       /#\[cfg\(target_os = "macos"\)\]\s+if let Ok\(custom_path\) = std::env::var\("OPENCODE_DB"\)/,
     );
-    const retiredDataHomeVariable = ["X", "DG_DATA_HOME"].join("");
-    expect(opencodeConfig).not.toContain(retiredDataHomeVariable);
+    const macosDataHomeVariable = ["X", "DG_DATA_HOME"].join("");
+    expect(opencodeConfig).toContain(
+      `const OPENCODE_DATA_HOME_ENV: &str = "${macosDataHomeVariable}";`,
+    );
     expect(opencodeConfig).toMatch(
-      /fn get_opencode_data_dir\(\) -> PathBuf \{[\s\S]*?\.join\("\.local"\)[\s\S]*?\.join\("share"\)[\s\S]*?\.join\("opencode"\)/,
+      /#\[cfg\(target_os = "macos"\)\]\s+pub\(crate\) fn get_opencode_data_dir\(\) -> PathBuf \{[\s\S]*?std::env::var_os\(OPENCODE_DATA_HOME_ENV\)/,
+    );
+    expect(opencodeConfig).toMatch(
+      /#\[cfg\(target_os = "windows"\)\]\s+pub\(crate\) fn get_opencode_data_dir\(\) -> PathBuf \{\s+resolve_opencode_data_dir\(&crate::config::get_home_dir\(\), None\)/,
+    );
+    expect(opencodeSessions).toContain(
+      "crate::opencode_config::get_opencode_data_dir()",
+    );
+    expect(opencodeSessions).toContain(
+      "crate::opencode_config::get_opencode_db_path()",
+    );
+    expect(opencodeUsage).toContain(
+      "use crate::opencode_config::get_opencode_db_path;",
     );
     expect(codexStateDb).toMatch(
       /#\[cfg\(target_os = "windows"\)\]\s+fn sqlite_home_from_env\(\) -> Option<PathBuf> \{[\s\S]*?None\s+\}/,

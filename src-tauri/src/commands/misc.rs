@@ -1282,17 +1282,19 @@ fn extend_windows_cli_manager_search_paths(paths: &mut Vec<std::path::PathBuf>, 
 }
 
 /// OpenCode install.sh 路径优先级（见 https://github.com/anomalyco/opencode README）:
-///   $OPENCODE_INSTALL_DIR > $HOME/bin > $HOME/.opencode/bin
+///   $OPENCODE_INSTALL_DIR > $XDG_BIN_DIR > $HOME/bin > $HOME/.opencode/bin
 /// 额外扫描 Bun 默认全局安装路径（~/.bun/bin）
 /// 和 Go 安装路径（~/go/bin、$GOPATH/*/bin）。
 fn opencode_extra_search_paths(
     home: &Path,
     opencode_install_dir: Option<std::ffi::OsString>,
+    xdg_bin_dir: Option<std::ffi::OsString>,
     gopath: Option<std::ffi::OsString>,
 ) -> Vec<std::path::PathBuf> {
     let mut paths = Vec::new();
 
     push_env_single_dir(&mut paths, opencode_install_dir);
+    push_env_single_dir(&mut paths, xdg_bin_dir);
 
     if !home.as_os_str().is_empty() {
         push_unique_path(&mut paths, home.join("bin"));
@@ -1486,13 +1488,15 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
 
     if tool == "opencode" {
         #[cfg(target_os = "windows")]
-        let ambient_paths = (None, None);
+        let ambient_paths = (None, None, None);
         #[cfg(target_os = "macos")]
         let ambient_paths = (
             std::env::var_os("OPENCODE_INSTALL_DIR"),
+            std::env::var_os("XDG_BIN_DIR"),
             std::env::var_os("GOPATH"),
         );
-        let extra_paths = opencode_extra_search_paths(&home, ambient_paths.0, ambient_paths.1);
+        let extra_paths =
+            opencode_extra_search_paths(&home, ambient_paths.0, ambient_paths.1, ambient_paths.2);
 
         for path in extra_paths {
             push_unique_path(&mut search_paths, path);
@@ -5146,12 +5150,14 @@ mod tests {
     fn opencode_extra_search_paths_includes_install_and_fallback_dirs() {
         let home = PathBuf::from("/Users/tester");
         let install_dir = Some(std::ffi::OsString::from("/custom/opencode/bin"));
+        let xdg_bin_dir = Some(std::ffi::OsString::from("/custom/xdg/bin"));
         let gopath =
             std::env::join_paths([PathBuf::from("/go/path1"), PathBuf::from("/go/path2")]).ok();
 
-        let paths = opencode_extra_search_paths(&home, install_dir, gopath);
+        let paths = opencode_extra_search_paths(&home, install_dir, xdg_bin_dir, gopath);
 
         assert_eq!(paths[0], PathBuf::from("/custom/opencode/bin"));
+        assert_eq!(paths[1], PathBuf::from("/custom/xdg/bin"));
         assert!(paths.contains(&PathBuf::from("/Users/tester/bin")));
         assert!(paths.contains(&PathBuf::from("/Users/tester/.opencode/bin")));
         assert!(paths.contains(&PathBuf::from("/Users/tester/.bun/bin")));
@@ -5163,13 +5169,13 @@ mod tests {
     #[test]
     fn opencode_extra_search_paths_deduplicates_repeated_entries() {
         let home = PathBuf::from("/Users/tester");
-        let same_dir = Some(std::ffi::OsString::from("/Users/tester/bin"));
+        let same_dir = Some(std::ffi::OsString::from("/same/path"));
 
-        let paths = opencode_extra_search_paths(&home, same_dir, None);
+        let paths = opencode_extra_search_paths(&home, same_dir.clone(), same_dir, None);
 
         let count = paths
             .iter()
-            .filter(|path| path.as_path() == Path::new("/Users/tester/bin"))
+            .filter(|path| path.as_path() == Path::new("/same/path"))
             .count();
         assert_eq!(count, 1);
     }
@@ -5177,7 +5183,7 @@ mod tests {
     #[test]
     fn opencode_extra_search_paths_deduplicates_bun_default_dir() {
         let home = PathBuf::from("/Users/tester");
-        let paths = opencode_extra_search_paths(&home, None, None);
+        let paths = opencode_extra_search_paths(&home, None, None, None);
 
         let count = paths
             .iter()

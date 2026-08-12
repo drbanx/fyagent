@@ -219,7 +219,7 @@ fn profile_snapshot_apply_roundtrip_restores_configuration() {
     assert_eq!(current.as_deref(), Some("p1"), "provider restored to p1");
 
     // Claude 分组不再管理 Desktop：apply 后 Desktop 保持切换前的状态不变。
-    // 支持的平台都已切到 d2，因此这里应继续保持 d2。
+    // 测试预先把 Desktop 切到 d2，因此这里应继续保持 d2。
     let current_desktop = state
         .db
         .get_current_provider(AppType::ClaudeDesktop.as_str())

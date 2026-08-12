@@ -11,21 +11,14 @@ use super::utils::{parse_timestamp_to_ms, path_basename, truncate_summary};
 
 const PROVIDER_ID: &str = "opencode";
 
-/// Return the OpenCode base directory.
-///
-/// Windows deliberately resolves the frozen Shell user's home instead of
-/// trusting the elevated process environment.
+/// Return the OpenCode base directory selected by the shared runtime resolver.
 pub(crate) fn get_opencode_base_dir() -> PathBuf {
-    crate::config::get_home_dir().join(".local/share/opencode")
+    crate::opencode_config::get_opencode_data_dir()
 }
 
 /// Return the OpenCode JSON storage directory (legacy flat-file layout).
 pub(crate) fn get_opencode_data_dir() -> PathBuf {
     get_opencode_base_dir().join("storage")
-}
-
-fn get_opencode_db_path() -> PathBuf {
-    get_opencode_base_dir().join("opencode.db")
 }
 
 /// Scan sessions from both the legacy JSON files and the newer SQLite database,
@@ -95,7 +88,7 @@ fn parse_sqlite_source(source: &str) -> Option<(PathBuf, String)> {
 }
 
 fn scan_sessions_sqlite() -> Vec<SessionMeta> {
-    let db_path = get_opencode_db_path();
+    let db_path = crate::opencode_config::get_opencode_db_path();
     scan_sessions_sqlite_at(&db_path)
 }
 
@@ -429,7 +422,11 @@ pub fn delete_session(storage: &Path, path: &Path, session_id: &str) -> Result<b
 
 /// Delete a session from the OpenCode SQLite database.
 pub fn delete_session_sqlite(session_id: &str, source: &str) -> Result<bool, String> {
-    delete_session_sqlite_at(session_id, source, &get_opencode_db_path())
+    delete_session_sqlite_at(
+        session_id,
+        source,
+        &crate::opencode_config::get_opencode_db_path(),
+    )
 }
 
 fn delete_session_sqlite_at(
