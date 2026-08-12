@@ -155,6 +155,28 @@ Correct: validate one session-bound task, transport it privately to one leaf,
 run the selected complete composite, archive, then rerun canonical checks with
 no exclusion.
 
+### Supported-platform identity seals
+
+The durable surface checker keeps two reviewed identity inventories in
+`scripts/tasks/`: one for platform-sensitive first-party source and one for
+tracked raster assets. These inventories are fail-closed review authorities,
+not content exclusions. Every listed file still passes the normal path, text,
+and structure scanners.
+
+The source inventory is recomputed bidirectionally from all tracked Cargo
+manifests and build scripts plus executable/configuration files containing
+platform selectors. The candidate set, canonical paths, Git index mode
+`100644`, regular non-symlink file type, and SHA-256 digest must match exactly.
+Adding, removing, renaming, moving, changing, or changing the mode of a
+candidate fails until the source diff is reviewed and the identity inventory
+is deliberately updated. A digest-only update is not evidence that a platform
+dispatch remains safe.
+
+The checker and both inventories must remain runnable from a clean checkout
+using only Node built-ins. The always-running CI Changes job invokes this path
+before dependency installation, so importing a package or a helper with a
+package dependency is a contract violation.
+
 `format:files` accepts one or more reviewed files and first validates every
 operand. It routes validated `.jsonl` names
 case-insensitively through record formatting: before any write or Prettier

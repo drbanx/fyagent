@@ -69,6 +69,7 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 | Third-party provider, screenshot, or DMG background appears in the diff           | Remove it from the icon change                                                        |
 | Static/build checks pass but native shell or Dock appearance is unobserved        | Keep native visual acceptance pending                                                 |
 | A regenerated ICNS container differs byte-for-byte but decoded sizes/pixels match | Accept only with decoded-image evidence; container bytes are not a stable assertion   |
+| A tracked raster asset differs from the reviewed path-and-digest inventory        | Reject until it is decoded, visually reviewed, and the reviewed inventory is updated  |
 | A Windows setup has a default/extra group or frames that differ from `icon.ico`   | Reject raw setup before upload; reject sealed setup before attestation or publication |
 
 ## 5. Good / Base / Bad Cases
@@ -98,6 +99,14 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
   bounds.
 - Compare the diff/inventory against the pre-change checkout and assert the
   exclusion assets are unchanged.
+- Keep `scripts/tasks/supported-platform-raster-assets.json` as an identity seal
+  for the raster set that has already passed decoding, metadata, and visual
+  review. The digest inventory detects unreviewed byte/path changes; it does not
+  replace decoded-pixel validation or make arbitrary image payloads acceptable.
+  The path set, regular non-symlink type, Git `100644` mode, and SHA-256 digests
+  are exact in both directions. An inventory update must carry fresh decode,
+  metadata, and visual-review evidence; changing only a digest is not
+  acceptance evidence.
 - Run `mise run assets:icons:check`, `mise run format:check`,
   `mise run typecheck`, `mise run build:renderer`, `mise run rust:check`, and a
   desktop bundle build appropriate to the host platform.
