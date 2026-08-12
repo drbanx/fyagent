@@ -226,9 +226,31 @@ function operationalTextFiles(): string[] {
 describe("current FyAgent documentation authority", () => {
   it("removes versioned design packages and keeps one responsibility owner", () => {
     expect(fs.existsSync(path.join(ROOT, "docs/fyagent/dev"))).toBe(false);
-    expect(markdownFilesUnder("docs/release-notes")).toEqual([
-      "docs/release-notes/README.md",
-    ]);
+    const cargoVersion = read("src-tauri/Cargo.toml").match(
+      /\[workspace\.package\]\s+version = "([0-9]+\.[0-9]+\.[0-9]+)"/u,
+    )?.[1];
+    expect(cargoVersion).toBeTruthy();
+    const releaseNotes = markdownFilesUnder("docs/release-notes");
+    const allowedCurrentNotes = new Set(
+      ["en", "zh", "ja"].map(
+        (language) => `docs/release-notes/v${cargoVersion}-${language}.md`,
+      ),
+    );
+    const formalEnglishNote = `docs/release-notes/v${cargoVersion}-en.md`;
+    expect(allowedCurrentNotes.has(formalEnglishNote)).toBe(true);
+    expect(read(".github/workflows/release.yml")).toContain(
+      "docs/release-notes/${RELEASE_TAG}-en.md",
+    );
+    expect(releaseNotes).toContain("docs/release-notes/README.md");
+    for (const note of releaseNotes.filter(
+      (file) => file !== "docs/release-notes/README.md",
+    )) {
+      expect(allowedCurrentNotes.has(note), note).toBe(true);
+      expect(read(note).trim(), note).not.toBe("");
+      expect(read("docs/release-notes/README.md"), note).toContain(
+        `(${path.basename(note)})`,
+      );
+    }
     expect(markdownFilesUnder("docs/fyagent/development")).toEqual(
       [...CURRENT_DEVELOPMENT_DOCS].sort(),
     );

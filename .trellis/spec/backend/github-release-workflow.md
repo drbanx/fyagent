@@ -368,6 +368,15 @@ to false. It performs this transaction:
 9. re-read by Release ID, verify exact published identity/asset IDs, and
    independently confirm it is Latest.
 
+The current-document contract permits versioned notes only for the version in
+`src-tauri/Cargo.toml`, with the exact `en`, `zh`, or `ja` suffixes. Every
+present note must be non-empty and linked from `docs/release-notes/README.md`.
+This keeps the required English formal-release note reachable on the same
+source SHA that owns the successful Required CI evidence, while rejecting
+stale or unrelated version files. After publication, the versioned files may
+be removed whole; published history remains in Git history and GitHub
+Releases.
+
 No failure handler deletes a draft, retries the final PATCH, updates an
 existing Release, or moves/deletes the tag. Before PATCH, failures leave and
 report the draft for a separate human decision. After PATCH is attempted, one

@@ -38,7 +38,7 @@ Before installing, read the release notes and verify the published checksums, `s
 3. Open the target coding tool and send a small test request.
 4. Add MCP servers, Prompts, or Skills only after the basic provider path is working.
 
-The full guide is available in [English](docs/user-manual/en/README.md), [简体中文](docs/user-manual/zh/README.md), and [日本語](docs/user-manual/ja/README.md). Release history lives in [docs/release-notes](docs/release-notes/README.md).
+The full guide is available in [English](docs/user-manual/en/README.md), [简体中文](docs/user-manual/zh/README.md), and [日本語](docs/user-manual/ja/README.md). The [release-note index](docs/release-notes/README.md) defines the policy for the next release; published history remains on [GitHub Releases](https://github.com/fy-agent/fyagent/releases).
 
 ## Development
 

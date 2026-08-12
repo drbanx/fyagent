@@ -38,7 +38,7 @@ Windows 版は NSIS セットアップのみで、MSI とポータブル ZIP は
 3. 対象のコーディングツールを開き、短いテストリクエストで接続を確認します。
 4. 基本の接続が動いてから MCP、Prompts、Skills を追加すると、問題の切り分けが簡単です。
 
-詳しい説明は[日本語マニュアル](docs/user-manual/ja/README.md)にあります。[English](docs/user-manual/en/README.md) と [简体中文](docs/user-manual/zh/README.md) も利用できます。過去の変更は[リリースノート一覧](docs/release-notes/README.md)から確認できます。
+詳しい説明は[日本語マニュアル](docs/user-manual/ja/README.md)にあります。[English](docs/user-manual/en/README.md) と [简体中文](docs/user-manual/zh/README.md) も利用できます。次回リリースのノート運用は[リリースノート一覧](docs/release-notes/README.md)に定義され、公開済みの履歴は [GitHub Releases](https://github.com/fy-agent/fyagent/releases) に残ります。
 
 ## 開発に参加する
 

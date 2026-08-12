@@ -47,7 +47,7 @@ Windows 当前只提供 NSIS 安装程序，不提供 MSI 或便携 ZIP。macOS 
 3. 打开目标编程工具，先发一条简单请求确认链路正常。
 4. 基础调用跑通后，再添加 MCP、Prompts 或 Skills，排查问题会轻松很多。
 
-完整说明见[简体中文手册](docs/user-manual/zh/README.md)，也提供 [English](docs/user-manual/en/README.md) 和 [日本語](docs/user-manual/ja/README.md)。版本记录统一放在[发布说明索引](docs/release-notes/README.md)。
+完整说明见[简体中文手册](docs/user-manual/zh/README.md)，也提供 [English](docs/user-manual/en/README.md) 和 [日本語](docs/user-manual/ja/README.md)。待发布版本的说明规则见[发布说明索引](docs/release-notes/README.md)，已发布历史以 [GitHub Releases](https://github.com/fy-agent/fyagent/releases) 为准。
 
 ## 参与开发
 

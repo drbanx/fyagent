@@ -931,6 +931,21 @@ describe("FyAgent release workflow", () => {
     for (const runner of ["windows-2025", "windows-11-arm", "macos-15"]) {
       expect(source).toContain(runner);
     }
+    for (const [job, nextJob] of [
+      ["eligibility", "build-windows"],
+      ["pin-release-build-inputs", "verify-assets"],
+      ["verify-assets", "attest"],
+      ["attest", "publish"],
+    ] as const) {
+      expectExactLine(
+        workflowJobBlock(source, job, nextJob),
+        "    runs-on: macos-15",
+      );
+    }
+    expectExactLine(
+      source.slice(source.indexOf("\n  publish:\n")),
+      "    runs-on: macos-15",
+    );
     expect(source).not.toContain("windows-2022");
     expect(source).not.toMatch(/runs-on:\s*[^\n]*-latest/);
     expect(source).not.toContain("actions/cache");
