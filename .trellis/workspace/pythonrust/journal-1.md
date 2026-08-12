@@ -577,3 +577,38 @@ Restricted current FyAgent product, runtime, CI, release, documentation, and val
 ### Next Steps
 
 - Run hosted Windows Arm64 and macOS CI plus exact-source formal release preflight before any external publication.
+
+
+## Session 17: Close the postarchive surface audit lifecycle
+
+**Date**: 2026-08-13
+**Task**: Close the postarchive surface audit lifecycle
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Made the canonical current-repository audit independent of the temporary prearchive task exclusion and revalidated the completed lifecycle.
+
+### Main Changes
+
+- Updated the production snapshot contract to run without an active-task input and to reject unexpected session-authority lookup.
+- Removed development-time Git mode substitution and refreshed the reviewed structure identity digest for the changed test.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `38077353` | (see git log) |
+
+### Testing
+
+- [OK] Focused current-tree surface contract passed all 21 tests.
+- [OK] Full no-exclusion postarchive check passed in Visual Studio x64 Developer PowerShell in 131.3 seconds.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Run hosted Windows Arm64 and macOS CI plus exact-source formal release preflight before any external publication.
