@@ -73,6 +73,32 @@ describe("FyAgent V2 routing", () => {
     },
   );
 
+  it("keeps only the four unrelated Phase 1 routes empty", () => {
+    for (const path of ["/agents", "/models", "/prompts", "/memory"]) {
+      const view = render(
+        <RouterProvider
+          router={createMemoryRouter(appRoutes, { initialEntries: [path] })}
+        />,
+      );
+      expect(
+        screen.getByRole("main", { name: "内容承载区" }),
+      ).toBeEmptyDOMElement();
+      view.unmount();
+    }
+
+    for (const path of ["/skills", "/mcp"]) {
+      const view = render(
+        <RouterProvider
+          router={createMemoryRouter(appRoutes, { initialEntries: [path] })}
+        />,
+      );
+      expect(
+        screen.getByRole("main", { name: "内容承载区" }),
+      ).not.toBeEmptyDOMElement();
+      view.unmount();
+    }
+  });
+
   it("keeps the frameless shell available when a child route fails", async () => {
     const [rootRoute] = appRoutes;
     const [contentBoundary] = rootRoute.children ?? [];

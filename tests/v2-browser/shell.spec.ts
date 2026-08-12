@@ -138,7 +138,11 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
     const selectedLinks = navigation.locator('a[aria-current="page"]');
     await expect(selectedLinks).toHaveCount(1);
     await expect(selectedLinks).toHaveText(label);
-    await expect(page.getByTestId("content-viewport")).toHaveText("");
+    if (["/skills", "/mcp"].includes(path)) {
+      await expect(page.getByTestId("content-viewport")).not.toHaveText("");
+    } else {
+      await expect(page.getByTestId("content-viewport")).toHaveText("");
+    }
   }
 
   await expectHealthyPage(page, health);

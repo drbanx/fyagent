@@ -19,6 +19,8 @@ src/v2/
 ```
 
 Do not create empty `entities`, `features`, store, or service layers in Phase 1.
+The approved Skills and MCP exception follows the dedicated
+[V2 Skills and MCP Feature Contract](./v2-skills-mcp.md).
 
 ## 2. Signatures
 
@@ -65,7 +67,8 @@ The navigation source contains exactly these entries in this order:
 - Derive selected state only from router location. The active link has
   `aria-current="page"`; do not maintain a second `currentView` state.
 - Put each production page element below its matching `pages/<route>/` folder.
-  All six Phase 1 page elements render no business content.
+  Agents, Models, Prompts, and Memory remain empty Phase 1 pages. Skills and
+  MCP may render their approved command-backed internal management UI.
 - Register the UI Lab only when `import.meta.env.DEV` is true. Production must
   not expose `#/__dev/ui-lab`.
 
@@ -74,8 +77,9 @@ The navigation source contains exactly these entries in this order:
 - V2 is light-only and owns its globals, motion, primitives, and semantic CSS
   custom properties. Every V2 semantic token starts with `--fy-`.
 - Do not import legacy `src/index.css`, dark-theme tokens, UI wrappers, or
-  `src/i18n/**`. Phase 1 production labels are the fixed Simplified Chinese
-  literals above; multilingual stress strings belong only in the UI Lab.
+  `src/i18n/**`. Shell labels and approved Skills/MCP product copy use fixed
+  Simplified Chinese literals; multilingual stress strings belong only in the
+  UI Lab.
 - Namespace V2 selectors. Do not add blanket positioning, globally hide
   scrollbars, use `transition: all`, animate layout/backdrop blur, or ignore
   `prefers-reduced-motion`.
@@ -121,13 +125,14 @@ complete startup contract, so this renderer is not Release-ready.
 | Production requests the UI Lab path            | Route is absent and the wildcard fallback selects `#/models`            |
 | V2 imports a legacy module                     | ESLint and the executable architecture test fail                        |
 | Non-Tauri-boundary code imports `@tauri-apps/` | ESLint and the executable architecture test fail                        |
-| A page renders Phase 1 business copy           | Shell/content test fails                                                |
+| An unrelated Phase 1 page renders business copy | Shell/content test fails                                               |
 | A supported viewport overflows or overlaps     | Playwright geometry gate fails                                          |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that link is
-  the only selected link and the content viewport remains empty.
+  the only selected link and the content viewport remains empty. Skills and
+  MCP render only their matching management UI.
 - **Base:** Opening the renderer without a route lands on `#/models`, with all
   six links, three tools, and three Windows controls visible and focusable.
 - **Bad:** A widget imports Tauri directly, a component stores `currentView`, a
@@ -148,7 +153,8 @@ mise run build:renderer
 
 - Unit tests assert default/wildcard redirects, reachability and order of all
   six routes, router-owned selected state, `aria-current`, primary tab order,
-  stable accessible names, focusability, and inert tool/browser-window clicks.
+  stable accessible names, focusability, inert tool/browser-window clicks, and
+  that only the four unrelated Phase 1 pages remain empty.
 - Platform tests assert browser no-ops, Windows decoration/action delegation,
   and one ready emission under repeated calls and StrictMode.
 - Architecture tests parse V2 imports and reject legacy dependencies, upward
