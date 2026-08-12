@@ -9,7 +9,7 @@ FyAgent. They are evidence-based reference material for changes under
 Before changing renderer code:
 
 1. For any `src/v2/**` change, read the
-   [V2 Phase 1 Shell Contract](./v2-shell.md) first. It is the only exception
+   [V2 Shell, Prompt and Memory Contract](./v2-shell.md) first. It is the only exception
    to the legacy route-placement, styling, primitive, and translation rules;
    the guidelines below remain authoritative outside V2.
 2. Read the nearest relevant guideline and inspect the existing feature,
@@ -37,7 +37,7 @@ Before changing renderer code:
 
 | Guide                                                                      | Use it for                                                                                               |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [V2 Phase 1 Shell Contract](./v2-shell.md)                                 | Isolated V2 routes, styles, layer/platform boundaries, lifecycle, and V2-only gates.                     |
+| [V2 Shell, Prompt and Memory Contract](./v2-shell.md)                      | Isolated V2 routes, local-Agent Prompt/Memory prototypes, standalone preview, platform boundaries, and gates. |
 | [Directory Structure](./directory-structure.md)                            | Selecting the existing frontend layer and test location.                                                 |
 | [Component Guidelines](./component-guidelines.md)                          | UI primitives, props, styling, translation, and form composition.                                        |
 | [Hook Guidelines](./hook-guidelines.md)                                    | Naming, placement, effects, cleanup, and stateful hook APIs.                                             |
