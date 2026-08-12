@@ -105,10 +105,14 @@ Arguments must never be concatenated into a command string.
 
 ### Prearchive exact-task verification
 
-**Scope / trigger.** Use this path only when a tracked, in-progress Trellis
-task must describe markers that the canonical repository contract rejects.
-Ordinary local checks, CI, and post-archive verification use the canonical
-tasks without an exclusion.
+**Scope / trigger.** This is a task-specific lifecycle bridge for the
+checker-owned fixed change-task identity only. That tracked, in-progress task
+must describe markers that the canonical repository contract rejects.
+The bridge becomes intentionally unusable after this task is archived; it is
+not a reusable exception for future tasks. Ordinary local checks, CI, and
+post-archive verification use the canonical tasks without an exclusion. A
+future task needs a new explicit decision and contract rather than copying or
+broadening this path.
 
 **Signatures.** `check:prearchive` and `check:contracts:prearchive` each require
 `--exclude-active-task <path>`. They delegate to
@@ -131,16 +135,19 @@ session pointer, metadata mismatch, caller-preseeded internal state, invalid
 path, or nested nonzero status must stop the wrapper. No failure may retry with
 a broader path or omit the platform check.
 
-**Examples.** A positive fixture binds
-`.trellis/tasks/<month-day>-<slug>` to the current session and reaches exactly
-one selected composite. The base case runs canonical `check` with no internal
-entry. Negative fixtures cover a different task, a child path, archive path,
-symlink, stale pointer, dual CLI/environment sources, and an unrelated mode.
+**Examples.** The positive acceptance binds the checker-owned exact task path
+to the current session and reaches exactly one selected composite. The base case runs
+canonical `check` with no internal entry. Negative fixtures cover a different
+task, a child path, archive path, symlink, stale pointer, dual CLI/environment
+sources, and an unrelated mode.
 
-**Tests required.** Pure tests freeze target selection, owned environment, and
-caller-preseed rejection. Executable tests run both prearchive composites with
-the exact current task, prove canonical no-argument checks remain strict, and
-prove another path cannot receive the exclusion.
+**Tests required.** Durable pure tests freeze target selection, owned
+environment, exact fixed task identity, session-pointer validation, and
+caller-preseed rejection. This task's acceptance evidence must record real
+runs of both prearchive composites from the directly bound session plus a
+post-archive canonical run without an exclusion. The session-bound composite
+runs are lifecycle evidence, not a portable CI fixture; CI never receives the
+private exclusion environment entry.
 
 **Wrong vs correct.** Wrong: broadcast the raw flag through every task, add an
 active-task glob, or teach canonical checks to skip `.trellis/tasks/**`.

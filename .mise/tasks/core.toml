@@ -67,7 +67,7 @@ run = [
 ]
 
 ["check:prearchive"]
-description = "Run the complete check with one exact current Trellis task excluded before archival"
+description = "Run the complete check with this change task's exact Trellis record excluded before archival"
 usage = '''
 flag "--exclude-active-task <path>" help="Exclude the exact current in-progress task; required before archival"
 '''
@@ -106,7 +106,7 @@ run = [
 ]
 
 ["check:contracts:prearchive"]
-description = "Run contract checks with one exact current Trellis task excluded before archival"
+description = "Run contract checks with this change task's exact Trellis record excluded before archival"
 usage = '''
 flag "--exclude-active-task <path>" help="Exclude the exact current in-progress task; required before archival"
 '''

@@ -329,7 +329,9 @@ git diff --check
 
 **Completion definition:** the exact pre-archive invocation has zero findings,
 the default check contains no active-task wildcard, its tests cover every
-approved exclusion and rejected bypass, and the canonical contract gate passes.
+approved exclusion and rejected bypass, and the prearchive contract gate passes.
+The canonical no-argument gate remains strict while this task is active and is
+rerun after archival.
 
 ## 9. Integrated review and local quality gate
 
@@ -393,7 +395,7 @@ unexecuted unless separately authorized and actually run.
 4. Rerun the strong tracked content/path audit with only
    `.trellis/tasks/archive/**`, the two approved generated lockfiles, and opaque
    SVG payloads excluded. Run `node
-   scripts/tasks/supported-platform-check.mjs` without an active-task argument
+scripts/tasks/supported-platform-check.mjs` without an active-task argument
    and confirm no active task directory remains.
 5. Run `git status --short` and require empty output. Do not push.
 
@@ -416,7 +418,7 @@ The intended sequence is:
 8. `docs: align the repository with supported platforms`
 9. `test(platform): prevent unsupported support surfaces`
 10. Any narrowly scoped review-fix commit, only if a prior commit cannot be
-   amended safely without obscuring already-recorded evidence.
+    amended safely without obscuring already-recorded evidence.
 11. Canonical Trellis archive commit and, if necessary, a separate journal
     commit.
 
