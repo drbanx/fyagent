@@ -43,3 +43,24 @@
 ### Next Steps
 
 - 按 shot cards 在真实应用环境中持续更新产品截图；生成图仅作为营销概念素材使用
+
+
+## Session 2: GitHub brand and community polish
+
+**Date**: 2026-08-12
+**Task**: GitHub brand and community polish
+**Branch**: `codex/github-brand-community-polish`
+
+### Summary
+
+Aligned FyAgent brand positioning, repository entry copy, GitHub community routing, live metadata, and Discussions; published draft PR #98 with verified GitHub-only assets.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3b7f755a5c1c306f417d67edabe4274805859673` | (see git log) |
+
+### Status
+
+[OK] **Completed**
