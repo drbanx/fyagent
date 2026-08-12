@@ -13,16 +13,18 @@ Production V2 code uses this structure:
 src/v2/
 |- app/                  # composition root, router, errors, and styles
 |- pages/<route>/        # one folder for each first-level route
-|- widgets/app-shell/    # visible shell composition
+|- widgets/app-shell/    # visible web-shell composition
 |- shared/               # config, assets, UI, design system, and platform ports
 `- dev/                  # development-only UI Lab
 ```
 
 Do not create empty `entities`, `features`, store, or service layers in Phase 1.
+Native title bars, caption buttons, and dragging are system/Tauri chrome and
+must not be reimplemented in the React tree.
 
 ## 2. Signatures
 
-Navigation and native-window behavior use these exact internal contracts:
+Navigation uses this exact internal contract:
 
 ```ts
 export type NavigationItem = {
@@ -30,20 +32,27 @@ export type NavigationItem = {
   path: "/agents" | "/models" | "/skills" | "/mcp" | "/prompts" | "/memory";
   label: string;
 };
+```
 
-export interface WindowFramePort {
-  isNative: boolean;
-  platform: "browser" | "windows" | "macos" | "linux" | "unknown";
-  prepareFrame(): Promise<void>;
-  minimize(): Promise<void>;
-  toggleMaximize(): Promise<void>;
-  close(): Promise<void>;
+The selected-lens adapter is V2-internal and does not expose the dependency's
+props or types:
+
+```ts
+interface LiquidGlassLensProps {
+  children: ReactNode;
+  className?: string;
 }
 ```
 
-The lifecycle-ready operation returns `Promise<void>` and owns a module-level
-promise/state guard. Its native side effect is the existing payload-free
-`frontend-deeplink-ready` event.
+It wraps `@samasante/liquid-glass@0.1.1` with balanced optics plus
+`dispersion: 0`, `live={false}`, and `filterResolution={1}`. The lifecycle-ready
+operation returns `Promise<void>` and owns a module-level promise guard. Its
+native side effect remains the existing payload-free `frontend-deeplink-ready`
+event.
+
+There is deliberately no `WindowFramePort` or React/native caption-action
+signature in V2. Adding one requires a new reviewed task and native-window
+contract, not an ad hoc shell prop.
 
 ## 3. Contracts
 
@@ -68,19 +77,65 @@ The navigation source contains exactly these entries in this order:
   All six Phase 1 page elements render no business content.
 - Register the UI Lab only when `import.meta.env.DEV` is true. Production must
   not expose `#/__dev/ui-lab`.
+- React keyboard order is the six navigation links followed by Search,
+  Settings, and Avatar. Native caption controls are outside the renderer and
+  outside this tab-order contract.
 
-### Styling and text
+### System-owned native chrome
 
-- V2 is light-only and owns its globals, motion, primitives, and semantic CSS
-  custom properties. Every V2 semantic token starts with `--fy-`.
-- Do not import legacy `src/index.css`, dark-theme tokens, UI wrappers, or
-  `src/i18n/**`. Phase 1 production labels are the fixed Simplified Chinese
-  literals above; multilingual stress strings belong only in the UI Lab.
-- Namespace V2 selectors. Do not add blanket positioning, globally hide
-  scrollbars, use `transition: all`, animate layout/backdrop blur, or ignore
-  `prefers-reduced-motion`.
+- The React top bar has exactly three web regions: Brand, Primary Navigation,
+  and Tools. It contains no minimize, maximize, close, traffic-light, or
+  title-bar drag-region DOM.
+- V2 must not call `setDecorations(false)` or otherwise disable system
+  decorations at runtime. Browser preview correctly renders no native controls.
+- Do not fake system controls for browser screenshots or geometry tests.
+- Direct Tauri imports still live only below
+  `src/v2/shared/platform/tauri/**`. The remaining V2 native bridge is the ready
+  lifecycle event, not a window-frame facade.
+- The ready lifecycle emits at most once per renderer lifetime, including
+  React StrictMode or repeated calls, and is a browser no-op.
 
-### Layer and platform boundaries
+### Material and dependency boundary
+
+The V2 shell owns one Blue Ambient / Clear Glass appearance:
+
+```text
+L0 ambient background      blue-gray gradients and controlled light fields
+L1 content plane           empty, translucent, and low-boundary
+L2 structural glass        primary navigation track
+L3 interactive glass       selected lens, tools, tooltip, and popover
+```
+
+- Every semantic token starts with `--fy-`. Material-fill opacity increases
+  from ambient to structural to interactive. A base edge may match the
+  interactive fill's alpha; the emphasized edge and highlight remain stronger.
+- Keep near-white foregrounds, restrained blue/cyan highlights, a visible
+  glass edge, an inset highlight, and a depth shadow. Do not use an opaque
+  white dashboard, selected underline, rainbow/chromatic effects, or fake
+  native chrome.
+- Use `@samasante/liquid-glass` only behind `LiquidGlassLens`. Mount at most one
+  production instance, inside the active `NavLink`; do not stretch it across
+  the navigation track, tools, popovers, content plane, or background.
+- The `NavLink` owns hit area, focus, accessible name, and `aria-current`.
+  Refraction is decorative enhancement. Project CSS must independently express
+  tint, selected border/color/shadow, edge/highlight, and backdrop fallback.
+- Keep broad structural glass in CSS. SVG filters are not a substitute for
+  accessible state and must not be animated across layout or multiplied across
+  controls.
+
+### Styling and responsive behavior
+
+- V2 owns its globals, motion, primitives, and semantic tokens. Do not import
+  legacy `src/index.css`, dark-theme tokens, UI wrappers, or `src/i18n/**`.
+- Namespace V2 selectors. Do not use `transition: all`, animate layout/backdrop
+  blur, globally hide scrollbars, or ignore `prefers-reduced-motion`.
+- Keep the top bar near 68px, brand mark 28px, brand text 19px, navigation
+  track 46px, and navigation/tool targets 38px. At 900px, reduce CSS gaps and
+  padding without hiding any label or tool or using JavaScript viewport state.
+- Preserve Radix Tooltip/Popover/Tabs behavior and portals, Phosphor icons,
+  React 18, Tailwind 3, and the existing logo.
+
+### Layer boundaries
 
 Dependencies point downward only:
 
@@ -95,44 +150,40 @@ dev -> shared
 No V2 module may import legacy `src/App.tsx`, `src/main.tsx`,
 `src/components/**`, `src/hooks/**`, `src/lib/**`, `src/i18n/**`, or
 `src/index.css`. `pages`, `widgets`, and `app` must not import
-`@tauri-apps/**` directly. All direct Tauri imports live below
-`src/v2/shared/platform/tauri/**`; consumers depend on `WindowFramePort` or a
-V2 platform factory.
+`@tauri-apps/**` directly.
 
-Browser window methods resolve safely without side effects while the preview
-still renders Windows controls. The Windows adapter prepares the frame with
-`setDecorations(false)` and delegates minimize, toggle-maximize, and close to
-the current Tauri window. Dragging is enabled only on explicit empty header
-regions, never on navigation or controls.
-
-The ready lifecycle emits at most once per renderer lifetime, including under
-React StrictMode or repeated calls, and is a browser no-op. It preserves only
-the minimum host activation handshake: Phase 1 does not restore legacy
-deep-link consumption, database recovery UI, models synchronization, or the
-complete startup contract, so this renderer is not Release-ready.
+The V2 renderer preserves only the minimum host activation handshake. It does
+not restore legacy deep-link consumption, database recovery UI, model
+synchronization, or the complete startup contract and is not Release-ready.
 
 ## 4. Validation & Error Matrix
 
 | Condition                                      | Required result                                                         |
 | ---------------------------------------------- | ----------------------------------------------------------------------- |
-| Empty hash, root route, or unknown route       | Redirect to `#/models`; Models link alone has `aria-current="page"`     |
-| Browser calls any `WindowFramePort` method     | Resolve without throwing and without a native side effect               |
-| React StrictMode or callers repeat ready       | One native `frontend-deeplink-ready` emission for the renderer lifetime |
-| Production requests the UI Lab path            | Route is absent and the wildcard fallback selects `#/models`            |
-| V2 imports a legacy module                     | ESLint and the executable architecture test fail                        |
-| Non-Tauri-boundary code imports `@tauri-apps/` | ESLint and the executable architecture test fail                        |
-| A page renders Phase 1 business copy           | Shell/content test fails                                                |
-| A supported viewport overflows or overlaps     | Playwright geometry gate fails                                          |
+| Empty hash, root route, or unknown route       | Redirect to `#/models`; Models alone has `aria-current="page"`          |
+| Any normal production route                    | Exactly one active link and one selected lens                            |
+| UI Lab development route                       | No primary link active; the lab may render one isolated lens specimen    |
+| SVG/backdrop filter unavailable                | CSS tint, edge, shadow, focus, and selected state remain readable         |
+| React StrictMode or repeated ready calls       | One native `frontend-deeplink-ready` emission per renderer lifetime      |
+| Production requests the UI Lab path            | Route is absent and wildcard fallback selects `#/models`                 |
+| Custom controls/drag region/frame port appears | Unit, architecture, or browser negative assertion fails                  |
+| V2 calls `setDecorations(false)`                | Static contract search and V2 tests fail                                 |
+| V2 imports a legacy/upward/native module        | ESLint and executable architecture test fail                             |
+| A page renders Phase 1 business copy            | Shell/content test fails                                                  |
+| A supported viewport overflows or overlaps     | Playwright geometry gate fails                                           |
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that link is
-  the only selected link and the content viewport remains empty.
-- **Base:** Opening the renderer without a route lands on `#/models`, with all
-  six links, three tools, and three Windows controls visible and focusable.
-- **Bad:** A widget imports Tauri directly, a component stores `currentView`, a
-  V2 stylesheet consumes legacy theme variables, or an effect emits ready on
-  every mount. Each violates a static or behavioral gate.
+- **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that
+  `NavLink` alone owns `aria-current="page"`, contains the sole selected lens,
+  remains keyboard-focusable, and the content viewport stays empty.
+- **Base:** Opening without a route lands on `#/models`, with six links and
+  three tools visible. Browser preview has no system or simulated controls.
+- **Fallback:** If refraction cannot render, the selected item remains visibly
+  distinct through its CSS material, text, border, shadow, and focus ring.
+- **Bad:** React disables decorations, stores `currentView`, renders caption
+  buttons/traffic lights, stretches one SVG lens across a wide bar, mounts a
+  lens per tool, or uses an underline/filter as the only selected indicator.
 
 ## 6. Tests Required
 
@@ -146,42 +197,49 @@ mise run test:v2:browser
 mise run build:renderer
 ```
 
-- Unit tests assert default/wildcard redirects, reachability and order of all
-  six routes, router-owned selected state, `aria-current`, primary tab order,
-  stable accessible names, focusability, and inert tool/browser-window clicks.
-- Platform tests assert browser no-ops, Windows decoration/action delegation,
-  and one ready emission under repeated calls and StrictMode.
-- Architecture tests parse V2 imports and reject legacy dependencies, upward
-  layer imports, and direct Tauri imports outside `shared/platform/tauri`.
+- Unit tests assert default/wildcard redirects, six-route order, Router-owned
+  selection, `aria-current`, a sole active lens, nine-stop primary tab order,
+  stable accessible names, inert tool clicks, absence of custom chrome/drag
+  regions, empty content, and idempotent ready behavior.
+- Architecture/static tests reject legacy dependencies, upward layer imports,
+  direct Tauri imports outside `shared/platform/tauri`, and the retired
+  window-frame contract.
+- Vitest may mock the third-party filter surface to isolate router and semantic
+  behavior. Playwright must load the real production dependency.
 - Playwright runs at `900x600`, `1152x640`, `1232x700`, and `1440x900`. At each
-  viewport assert no document/top-bar horizontal overflow; no Brand/Nav/Tools/
-  WindowControls overlap; all primary controls visible; a non-zero, empty
-  content viewport; hash/selected/ARIA agreement; complete keyboard access;
-  and no relevant console, page, or framework-overlay error.
-- UI Lab browser tests cover Tooltip, Popover/Portal, focus ring, long Chinese/
-  English/Japanese labels, icon treatment, and glass fallback without overflow.
-- The production renderer build must succeed with the UI Lab route omitted.
+  viewport assert no document/top-bar overflow; no Brand/Nav/Tools overlap;
+  all six links and three tools visible; empty non-zero content viewport;
+  hash/selected/ARIA/lens agreement; nine-stop keyboard access; absence of
+  fake chrome; and no console, page, or framework-overlay error.
+- UI Lab browser tests cover translucent surfaces, backdrop or meaningful CSS
+  fallback, selected styling without underline, edge/highlight/shadow,
+  Tooltip/Popover portal visibility, focus ring, long multilingual stress
+  labels, and reduced-motion state independence.
+- The production renderer build must omit the UI Lab route and succeed.
 
-Real Windows Tauri/WebView2 behavior at the current host scale remains a
-separate native acceptance gate. Native 125% and 150% display scaling remain
-human acceptance and must not be represented by browser emulation alone.
+The full local project gate remains `mise run check`. Real Windows
+Tauri/WebView2 chrome, SVG/backdrop performance, current-host 125%/150% display
+scaling, and subjective visual similarity remain separate unverified manual
+acceptance evidence unless a task explicitly requires them.
 
 ## 7. Wrong vs Correct
 
-Wrong: let a shell component own both routing and native implementation details.
+Wrong: make React own native chrome and selected state while depending directly
+on an optical effect.
 
 ```tsx
 const [currentView, setCurrentView] = useState("models");
-import { getCurrentWindow } from "@tauri-apps/api/window";
+await getCurrentWindow().setDecorations(false);
+return <button aria-label="Close" onClick={closeWindow} />;
 ```
 
-Correct: route links derive selection from the router, and shell code receives
-the V2 platform port.
+Correct: let Router own the semantic link, wrap only its active label with the
+bounded internal lens, and keep native window chrome outside React.
 
 ```tsx
-<NavLink to={item.path}>{item.label}</NavLink>;
-
-async function minimizeWindow(frame: WindowFramePort) {
-  await frame.minimize();
-}
+<NavLink to={item.path}>
+  {({ isActive }) =>
+    isActive ? <LiquidGlassLens>{item.label}</LiquidGlassLens> : item.label
+  }
+</NavLink>
 ```

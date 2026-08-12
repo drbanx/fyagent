@@ -8,6 +8,40 @@ const ROOT = path.resolve(__dirname, "..");
 const RETRY_HDIUTIL = path.join(ROOT, "scripts", "release", "retry-hdiutil.sh");
 const temporaryRoots: string[] = [];
 
+function resolveBashExecutable(): string {
+  if (process.platform !== "win32") return "bash";
+
+  const gitExecPath = spawnSync("git", ["--exec-path"], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (gitExecPath.status !== 0) {
+    throw new Error(`git --exec-path failed: ${gitExecPath.stderr}`);
+  }
+  const gitRoot = path.resolve(gitExecPath.stdout.trim(), "..", "..", "..");
+  for (const candidate of [
+    path.join(gitRoot, "bin", "bash.exe"),
+    path.join(gitRoot, "usr", "bin", "bash.exe"),
+  ]) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error(`Git Bash was not found below ${gitRoot}`);
+}
+
+const BASH_RUNNER = `
+fake_bin="$1"
+retry_script="$2"
+shift 2
+
+if command -v cygpath >/dev/null 2>&1; then
+  fake_bin="$(cygpath -u "$fake_bin")"
+  retry_script="$(cygpath -u "$retry_script")"
+fi
+
+export PATH="$fake_bin:$PATH"
+exec "$retry_script" "$@"
+`;
+
 function createFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-hdiutil-"));
   temporaryRoots.push(root);
@@ -73,10 +107,20 @@ printf '%s\n' "$1" >> "$FYAGENT_FAKE_SLEEP_LOG"
   ) {
     fs.writeFileSync(outputPath, "stale output");
     return spawnSync(
-      "bash",
-      [RETRY_HDIUTIL, outputPath, "--", ...hdiutilArguments],
+      resolveBashExecutable(),
+      [
+        "-c",
+        BASH_RUNNER,
+        "fyagent-hdiutil-test",
+        binRoot,
+        RETRY_HDIUTIL,
+        outputPath,
+        "--",
+        ...hdiutilArguments,
+      ],
       {
         encoding: "utf8",
+        windowsHide: true,
         env: {
           ...process.env,
           FYAGENT_FAKE_BUSY_FAILURES: String(busyFailures),
@@ -85,7 +129,6 @@ printf '%s\n' "$1" >> "$FYAGENT_FAKE_SLEEP_LOG"
           FYAGENT_FAKE_OUTPUT: outputPath,
           FYAGENT_FAKE_SLEEP_LOG: sleepLog,
           FYAGENT_FAKE_STATE: statePath,
-          PATH: `${binRoot}:${process.env.PATH ?? ""}`,
         },
       },
     );

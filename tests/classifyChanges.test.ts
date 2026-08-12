@@ -132,6 +132,16 @@ describe("repository change classifier", () => {
       ["pnpm-lock.yaml"],
       domains("contracts", "frontend", "desktop"),
     ],
+    [
+      "V2 frontend toolchain roots",
+      [
+        "eslint.v2.config.mjs",
+        "playwright.v2.config.ts",
+        "tsconfig.v2.json",
+        "vitest.v2.config.ts",
+      ],
+      domains("contracts", "frontend"),
+    ],
   ])("classifies the %s fixture", (_name, paths, expectedDomains) => {
     expect(classifyChangedPaths(paths as string[])).toEqual({
       domains: expectedDomains,

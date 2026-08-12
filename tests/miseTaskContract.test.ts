@@ -551,9 +551,17 @@ describe("canonical mise task API", () => {
     expect(calls.map(({ command, args }) => ({ command, args }))).toEqual([
       { command: rustcExecutable, args: ["-vV"] },
       { command: rustdocExecutable, args: ["-vV"] },
+      ...(process.platform === "win32"
+        ? [
+            {
+              command: process.execPath,
+              args: ["scripts/prepare-windows-user-helper.mjs"],
+            },
+          ]
+        : []),
       { command: "cargo", args: cargo.args },
     ]);
-    expect(calls[2].environment).toMatchObject({
+    expect(calls.at(-1)?.environment).toMatchObject({
       RUSTC: rustcExecutable,
       RUSTDOC: rustdocExecutable,
     });

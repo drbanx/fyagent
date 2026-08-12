@@ -1,3 +1,4 @@
+import type { CSSProperties, ReactNode } from "react";
 import {
   fireEvent,
   render,
@@ -8,9 +9,27 @@ import {
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { appRoutes } from "@/v2/app/router";
+
+vi.mock("@samasante/liquid-glass", () => ({
+  Glass: ({
+    children,
+    className,
+    style,
+    "data-testid": testId,
+  }: {
+    children?: ReactNode;
+    className?: string;
+    style?: CSSProperties;
+    "data-testid"?: string;
+  }) => (
+    <span className={className} style={style} data-testid={testId}>
+      {children}
+    </span>
+  ),
+}));
 
 const navigationContract = [
   { path: "/agents", label: "Agent 目录" },
@@ -41,6 +60,26 @@ async function expectPath(router: TestRouter, pathname: string): Promise<void> {
   });
 }
 
+function expectSystemOwnedChrome(): void {
+  const topBar = screen.getByTestId("top-bar");
+
+  expect(
+    Array.from(
+      topBar.querySelectorAll(
+        '[data-testid="brand"], [data-testid="primary-navigation"], [data-testid="tool-cluster"]',
+      ),
+    ).map((element) =>
+      element.getAttribute("data-testid"),
+    ),
+  ).toEqual(["brand", "primary-navigation", "tool-cluster"]);
+  expect(document.querySelector("[data-tauri-drag-region]")).toBeNull();
+  expect(screen.queryByTestId("titlebar-drag-region")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("window-controls")).not.toBeInTheDocument();
+  for (const name of windowControlNames) {
+    expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  }
+}
+
 describe("FyAgent V2 routing", () => {
   it.each(["/", "/route-that-does-not-exist"])(
     "redirects %s to the models route",
@@ -51,6 +90,7 @@ describe("FyAgent V2 routing", () => {
       expect(
         screen.getByRole("link", { name: "模型", current: "page" }),
       ).toHaveAttribute("href", "/models");
+      expect(screen.getAllByTestId("liquid-glass-lens")).toHaveLength(1);
     },
   );
 
@@ -70,10 +110,15 @@ describe("FyAgent V2 routing", () => {
 
       expect(activeLink).toHaveAttribute("aria-current", "page");
       expect(selectedLinks).toEqual([activeLink]);
+      expect(within(activeLink).getByTestId("liquid-glass-lens")).toBeVisible();
+      expect(within(navigation).getAllByTestId("liquid-glass-lens")).toHaveLength(
+        1,
+      );
+      expect(screen.getByRole("main", { name: "内容承载区" })).toBeEmptyDOMElement();
     },
   );
 
-  it("keeps the frameless shell available when a child route fails", async () => {
+  it("keeps the system-chrome shell available when a child route fails", async () => {
     const [rootRoute] = appRoutes;
     const [contentBoundary] = rootRoute.children ?? [];
     const failingRoute: RouteObject = {
@@ -106,10 +151,7 @@ describe("FyAgent V2 routing", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Route failed");
     expect(screen.getByTestId("top-bar")).toBeVisible();
-    expect(screen.getByTestId("titlebar-drag-region")).toBeInTheDocument();
-    for (const name of windowControlNames) {
-      expect(screen.getByRole("button", { name })).toBeVisible();
-    }
+    expectSystemOwnedChrome();
   });
 });
 
@@ -124,27 +166,25 @@ describe("FyAgent V2 shell accessibility", () => {
     const toolButtons = toolNames.map((name) =>
       screen.getByRole("button", { name }),
     );
-    const windowButtons = windowControlNames.map((name) =>
-      screen.getByRole("button", { name }),
-    );
 
     expect(brand).toHaveAccessibleName("FyAgent 品牌");
     expect(screen.getByRole("main", { name: "内容承载区" })).toBeVisible();
     expect(routeLinks.map((link) => link.textContent?.trim())).toEqual(
       navigationContract.map(({ label }) => label),
     );
+    expectSystemOwnedChrome();
 
-    const expectedTabOrder = [...routeLinks, ...toolButtons, ...windowButtons];
+    const expectedTabOrder = [...routeLinks, ...toolButtons];
     for (const control of expectedTabOrder) {
       await user.tab();
       expect(control).toHaveFocus();
     }
   });
 
-  it("keeps inert tools and browser window controls safely clickable", () => {
+  it("keeps inert shell tools safely clickable", () => {
     renderRoute("/models");
 
-    const buttons = [...toolNames, ...windowControlNames].map((name) =>
+    const buttons = toolNames.map((name) =>
       screen.getByRole("button", { name }),
     );
 
@@ -153,5 +193,7 @@ describe("FyAgent V2 shell accessibility", () => {
       expect(button).toHaveAccessibleName();
       expect(() => fireEvent.click(button)).not.toThrow();
     }
+
+    expectSystemOwnedChrome();
   });
 });

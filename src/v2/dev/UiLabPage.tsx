@@ -1,6 +1,7 @@
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 
+import { LiquidGlassLens } from "../shared/ui/LiquidGlassLens";
 import { GlassButton, IconButton, Tooltip } from "../shared/ui/primitives";
 import { PopoverPrimitive, TabsPrimitive } from "../shared/ui/vendor";
 
@@ -54,6 +55,10 @@ export function UiLabPage() {
             <GlassButton data-testid="ui-lab-focus-target">
               键盘焦点
             </GlassButton>
+
+            <LiquidGlassLens className="fy-ui-lab-lens-specimen">
+              <span>Selected lens</span>
+            </LiquidGlassLens>
           </div>
         </article>
 

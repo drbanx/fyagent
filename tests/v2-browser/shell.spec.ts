@@ -22,17 +22,15 @@ const visibleControlTestIds = [
   "search",
   "settings",
   "avatar",
-  "window-minimize",
-  "window-maximize",
-  "window-close",
 ] as const;
 
 const shellRegionTestIds = [
   "brand",
   "primary-navigation",
   "tool-cluster",
-  "window-controls",
 ] as const;
+
+const windowControlNames = ["最小化", "最大化/还原", "关闭"] as const;
 
 const primaryControlTestIds = [
   "#/agents",
@@ -65,6 +63,23 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     (element) => element.scrollWidth <= element.clientWidth + 1,
   );
   expect(topBarFits, "TopBar must not overflow horizontally").toBe(true);
+  expect(
+    await topBar.evaluate((element) =>
+      Array.from(
+        element.querySelectorAll(
+          '[data-testid="brand"], [data-testid="primary-navigation"], [data-testid="tool-cluster"]',
+        ),
+      ).map((region) => region.getAttribute("data-testid")),
+    ),
+    "TopBar must expose only Brand, Primary Navigation, and Tools",
+  ).toEqual([...shellRegionTestIds]);
+
+  await expect(page.locator("[data-tauri-drag-region]")).toHaveCount(0);
+  await expect(page.getByTestId("titlebar-drag-region")).toHaveCount(0);
+  await expect(page.getByTestId("window-controls")).toHaveCount(0);
+  for (const name of windowControlNames) {
+    await expect(page.getByRole("button", { name })).toHaveCount(0);
+  }
 
   const regionBoxes = new Map<
     string,
@@ -102,12 +117,29 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
   }
 
   const navigation = page.getByRole("navigation", { name: "主导航" });
+  const primaryControls: Locator[] = [];
   for (const { label } of navigationContract) {
-    await expect(routeLink(navigation, label)).toBeVisible();
+    const link = routeLink(navigation, label);
+    await expect(link).toBeVisible();
+    primaryControls.push(link);
   }
   for (const testId of visibleControlTestIds) {
-    await expect(page.getByTestId(testId)).toBeVisible();
+    const control = page.getByTestId(testId);
+    await expect(control).toBeVisible();
+    primaryControls.push(control);
   }
+
+  const viewportSize = page.viewportSize();
+  expect(viewportSize).not.toBeNull();
+  for (const [index, control] of primaryControls.entries()) {
+    const box = await requiredBox(control, `primary control ${index + 1}`);
+    expect(box.x).toBeGreaterThanOrEqual(-1);
+    expect(box.y).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewportSize!.width + 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewportSize!.height + 1);
+  }
+
+  await expect(page.getByTestId("liquid-glass-lens")).toHaveCount(1);
 
   const contentViewport = page.getByTestId("content-viewport");
   const contentBox = await requiredBox(contentViewport, "content viewport");
@@ -138,7 +170,41 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
     const selectedLinks = navigation.locator('a[aria-current="page"]');
     await expect(selectedLinks).toHaveCount(1);
     await expect(selectedLinks).toHaveText(label);
+    const lenses = page.getByTestId("liquid-glass-lens");
+    await expect(lenses).toHaveCount(1);
+    await expect(link.getByTestId("liquid-glass-lens")).toHaveCount(1);
+    await expect(link).toHaveClass(/fy-primary-nav-item-selected/);
     await expect(page.getByTestId("content-viewport")).toHaveText("");
+
+    await expect
+      .poll(
+        () =>
+          link.evaluate((element) => {
+            const style = getComputedStyle(element);
+            return (
+              style.borderColor !== "rgba(0, 0, 0, 0)" &&
+              style.boxShadow !== "none" &&
+              (style.backgroundColor !== "rgba(0, 0, 0, 0)" ||
+                style.backgroundImage !== "none")
+            );
+          }),
+        {
+          message:
+            "Selected navigation must settle on a CSS border, surface, and shadow independent of the SVG filter",
+        },
+      )
+      .toBe(true);
+
+    const selectedTreatment = await link.evaluate((element) => {
+      const after = getComputedStyle(element, "::after");
+      return {
+        afterContent: after.content,
+      };
+    });
+    expect(
+      ["none", "normal"],
+      "Selected navigation must not use the retired underline pseudo-element",
+    ).toContain(selectedTreatment.afterContent);
   }
 
   await expectHealthyPage(page, health);
@@ -149,6 +215,17 @@ test("reaches every primary control with the keyboard in document order", async 
 }) => {
   const health = monitorPageHealth(page);
   await openV2Page(page, "/models");
+
+  expect(
+    await page.getByTestId("top-bar").evaluate((element) =>
+      Array.from(
+        element.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((control) => control.tabIndex >= 0).length,
+    ),
+    "Renderer TopBar must contain exactly nine keyboard stops",
+  ).toBe(primaryControlTestIds.length);
 
   const focusedControlIds: string[] = [];
   for (let index = 0; index < primaryControlTestIds.length; index += 1) {

@@ -118,9 +118,16 @@ The delta remains valid only while the Native Fetch → MSW → Tauri mock
 behavior suite covers JSON success, non-2xx text errors, empty responses, and
 cross-realm jsdom Headers, and while the dependency report proves that
 `cross-fetch → node-fetch@2 → whatwg-url@5 → tr46@0.0.3 → built-in punycode`
-is absent. Modern jsdom dependencies on `whatwg-url@14`, `tr46@5`, and the
-userland `punycode@2` package are not the DEP0040 root cause and remain allowed
-when both the pnpm lock and `pnpm why --json` explain their reverse paths.
+is absent. Userland `punycode@2.3.1` is not the DEP0040 root cause only on two
+reviewed reverse origins: the existing jsdom chain through `whatwg-url@14` and
+`tr46@5`, or the exact contiguous suffix
+`eslint@10.8.1 → ajv@6.15.0 → uri-js@4.4.1`. Wrappers may precede ESLint,
+but version drift, an intermediate package, missing ancestors, and unknown
+origins remain fail-closed. Both the pnpm lock and `pnpm why --json` must
+explain the same watched URL and punycode package versions; the exact ESLint,
+Ajv, and URI-JS ancestor suffix is proved by the why graph. Adding or upgrading
+either origin requires a new reverse-path review; this is not a general
+allowance for every `punycode@2` path.
 
 Node 24.19.0's pending-deprecation probe does not reliably surface every warning
 originating under dependencies, so it supplements rather than replaces the

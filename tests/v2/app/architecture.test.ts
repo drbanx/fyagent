@@ -125,6 +125,15 @@ function resolveRepositoryImport(
 
 const parsedModules = listSourceFiles(v2Root).map(parseModule);
 
+const retiredWindowFrameIdentifiers = new Set([
+  "WindowFramePort",
+  "createWindowFramePort",
+  "createBrowserWindowFramePort",
+  "createTauriWindowFramePort",
+  "windowFramePort",
+  "prepareFrame",
+]);
+
 const allowedLayerDependencies: Record<string, ReadonlySet<string>> = {
   root: new Set(["app"]),
   app: new Set(["app", "pages", "widgets", "shared", "dev"]),
@@ -214,6 +223,23 @@ describe("FyAgent V2 architecture boundary", () => {
     ).toEqual([]);
   });
 
+  it("keeps the liquid-glass dependency behind its shared adapter", () => {
+    const adapterPath = "shared/ui/LiquidGlassLens.tsx";
+    const violations = parsedModules.flatMap(({ references }) =>
+      references.flatMap(({ file, line, specifier }) =>
+        specifier === "@samasante/liquid-glass" &&
+        relativeV2Path(file) !== adapterPath
+          ? [`${relativeV2Path(file)}:${line} imports ${specifier}`]
+          : [],
+      ),
+    );
+
+    expect(
+      violations,
+      `The liquid-glass package escaped its V2 adapter:\n${violations.join("\n")}`,
+    ).toEqual([]);
+  });
+
   it("keeps import targets statically auditable", () => {
     const violations = parsedModules.flatMap(
       ({ file, nonLiteralDynamicImports }) =>
@@ -248,6 +274,53 @@ describe("FyAgent V2 architecture boundary", () => {
     expect(
       violations,
       `Router location must remain the sole navigation state source:\n${violations.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("keeps native chrome and the retired window-frame contract out of V2", () => {
+    const violations: string[] = [];
+
+    for (const { file, sourceFile } of parsedModules) {
+      const visit = (node: ts.Node): void => {
+        if (
+          ts.isIdentifier(node) &&
+          retiredWindowFrameIdentifiers.has(node.text)
+        ) {
+          violations.push(
+            `${relativeV2Path(file)}:${lineNumber(sourceFile, node)} uses ${node.text}`,
+          );
+        }
+
+        if (
+          ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === "setDecorations" &&
+          node.arguments.length === 1 &&
+          node.arguments[0].kind === ts.SyntaxKind.FalseKeyword
+        ) {
+          violations.push(
+            `${relativeV2Path(file)}:${lineNumber(sourceFile, node)} disables system decorations`,
+          );
+        }
+
+        if (
+          ts.isJsxAttribute(node) &&
+          node.name.getText(sourceFile) === "data-tauri-drag-region"
+        ) {
+          violations.push(
+            `${relativeV2Path(file)}:${lineNumber(sourceFile, node)} declares a native drag region`,
+          );
+        }
+
+        ts.forEachChild(node, visit);
+      };
+
+      visit(sourceFile);
+    }
+
+    expect(
+      violations,
+      `System-owned native chrome leaked back into V2:\n${violations.join("\n")}`,
     ).toEqual([]);
   });
 });

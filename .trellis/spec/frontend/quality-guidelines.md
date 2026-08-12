@@ -82,13 +82,20 @@ surface a pending deprecation originating below every `node_modules` path, so
 dependency proof is owned by `scripts/tasks/dep0040-check.mjs`: it parses the
 manifest, active module specifiers, the versioned pnpm lock, and argv-based
 `pnpm why --json` reverse paths. The obsolete chain is
-`cross-fetch → node-fetch@2 → whatwg-url@5 → tr46@0.0.3`; the current jsdom
-chain through `whatwg-url@14`, `tr46@5`, and userland `punycode@2` is permitted
-only when the lock and why graph explain the same versions.
+`cross-fetch → node-fetch@2 → whatwg-url@5 → tr46@0.0.3`. Userland
+`punycode@2.3.1` is permitted from only two reviewed reverse origins: the
+existing jsdom chain through `whatwg-url@14` and `tr46@5`, or the exact
+contiguous suffix `eslint@10.8.1 → ajv@6.15.0 → uri-js@4.4.1`. Wrappers
+may precede ESLint, but no version drift or intermediate package is allowed,
+and the why graph must explain that exact ancestor suffix. Lock/why
+reconciliation separately proves the same versions for the watched URL and
+punycode packages. Adding or upgrading either origin requires a new
+reverse-path review; this is not a general allowance for every `punycode@2`
+path.
 
 The report fails closed on malformed active modules, non-canonical watched
 lock entries, package/snapshot disagreement, unexplained aliases, and watched
-reverse paths outside that reviewed jsdom ancestry. Its suppression scan owns
+reverse paths outside those two reviewed ancestries. Its suppression scan owns
 the runnable package, workflow, mise, and script surfaces; statically composed
 JavaScript arguments and shell/PowerShell script files are not escape hatches.
 Negative detector fixtures belong in the contract test input, not in a scanned

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import {
   expectHealthyPage,
@@ -9,32 +9,109 @@ import {
   tabToTestId,
 } from "./support";
 
+interface SurfaceTreatment {
+  backdropFilter: string;
+  backgroundAlpha: number;
+  backgroundColor: string;
+  backgroundImage: string;
+  borderColor: string;
+  boxShadow: string;
+}
+
+async function readSurfaceTreatment(
+  locator: Locator,
+): Promise<SurfaceTreatment> {
+  await expect(locator).toBeVisible();
+
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const backgroundColor = style.backgroundColor;
+    const channels = backgroundColor.match(/[\d.]+/g)?.map(Number) ?? [];
+    const backgroundAlpha =
+      backgroundColor === "transparent"
+        ? 0
+        : channels.length >= 4
+          ? channels[3]
+          : 1;
+
+    return {
+      backdropFilter:
+        style.backdropFilter ||
+        style.getPropertyValue("-webkit-backdrop-filter"),
+      backgroundAlpha,
+      backgroundColor,
+      backgroundImage: style.backgroundImage,
+      borderColor: style.borderColor,
+      boxShadow: style.boxShadow,
+    };
+  });
+}
+
+function expectGlassSurface(
+  treatment: SurfaceTreatment,
+  label: string,
+): void {
+  expect(
+    treatment.backgroundAlpha,
+    `${label} must retain a visible CSS tint fallback`,
+  ).toBeGreaterThan(0);
+  expect(
+    treatment.backgroundAlpha,
+    `${label} must remain translucent rather than opaque`,
+  ).toBeLessThan(0.99);
+  expect(
+    treatment.backdropFilter !== "none" ||
+      treatment.backgroundAlpha > 0 ||
+      treatment.backgroundImage !== "none",
+    `${label} must use backdrop treatment or a real CSS surface fallback`,
+  ).toBe(true);
+  expect(
+    treatment.borderColor,
+    `${label} must expose a visible glass edge`,
+  ).not.toBe("rgba(0, 0, 0, 0)");
+  expect(
+    treatment.boxShadow,
+    `${label} must expose highlight/depth through box shadow`,
+  ).not.toBe("none");
+}
+
+function maximumTransitionSeconds(value: string): number {
+  return Math.max(
+    ...value.split(",").map((duration) => {
+      const normalized = duration.trim();
+      const amount = Number.parseFloat(normalized);
+      return normalized.endsWith("ms") ? amount / 1_000 : amount;
+    }),
+  );
+}
+
 test("exercises UI Lab overlays, focus treatment, long labels, and glass fallback", async ({
   page,
 }) => {
   const health = monitorPageHealth(page);
   await openV2Page(page, "/__dev/ui-lab");
 
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  await expect(navigation.locator('a[aria-current="page"]')).toHaveCount(0);
+
+  const lenses = page.getByTestId("liquid-glass-lens");
+  await expect(lenses).toHaveCount(1);
+  expectGlassSurface(
+    await readSurfaceTreatment(lenses),
+    "UI Lab selected-lens specimen",
+  );
+  expectGlassSurface(
+    await readSurfaceTreatment(navigation),
+    "Primary navigation track",
+  );
+
   const glassButton = page.getByTestId("ui-lab-glass-button");
   await expect(glassButton).toBeVisible();
   await expect(glassButton).toHaveAccessibleName("玻璃按钮");
-
-  const glassTreatment = await glassButton.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      backdropFilter:
-        style.backdropFilter ||
-        style.getPropertyValue("-webkit-backdrop-filter"),
-      backgroundColor: style.backgroundColor,
-    };
-  });
-  expect(
-    glassTreatment.backdropFilter !== "none" ||
-      !["transparent", "rgba(0, 0, 0, 0)"].includes(
-        glassTreatment.backgroundColor,
-      ),
-    "Glass controls need a visible non-transparent fallback surface",
-  ).toBe(true);
+  expectGlassSurface(
+    await readSurfaceTreatment(glassButton),
+    "Glass control",
+  );
 
   const tooltipTrigger = page.getByTestId("ui-lab-tooltip-trigger");
   await tooltipTrigger.hover();
@@ -44,6 +121,10 @@ test("exercises UI Lab overlays, focus treatment, long labels, and glass fallbac
   const popoverTrigger = page.getByTestId("ui-lab-popover-trigger");
   await popoverTrigger.click();
   const popoverContent = page.getByTestId("ui-lab-popover-content");
+  expectGlassSurface(
+    await readSurfaceTreatment(popoverContent),
+    "Portaled popover",
+  );
   const popoverBox = await requiredBox(popoverContent, "UI Lab popover");
   const viewportSize = page.viewportSize();
   expect(viewportSize).not.toBeNull();
@@ -93,6 +174,25 @@ test("exercises UI Lab overlays, focus treatment, long labels, and glass fallbac
   expect(longLabelText).toMatch(/[A-Za-z]/);
   expect(longLabelText).toMatch(/[\u3040-\u30ff\u31f0-\u31ff]/);
   expect(longLabelText).toMatch(/[\u4e00-\u9fff]/);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(lenses).toHaveCount(1);
+  await expect(lenses).toBeVisible();
+  expectGlassSurface(
+    await readSurfaceTreatment(lenses),
+    "Reduced-motion selected-lens specimen",
+  );
+  await expect(page.getByRole("tab", { name: "稳定面" })).toHaveAttribute(
+    "data-state",
+    "active",
+  );
+  const reducedTransitionDuration = await focusTarget.evaluate(
+    (element) => getComputedStyle(element).transitionDuration,
+  );
+  expect(
+    maximumTransitionSeconds(reducedTransitionDuration),
+    "Reduced motion must remove perceptual control transitions without removing state",
+  ).toBeLessThanOrEqual(0.001);
 
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);

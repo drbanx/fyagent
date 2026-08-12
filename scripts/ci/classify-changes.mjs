@@ -71,11 +71,15 @@ const FRONTEND_TEST_PREFIXES = Object.freeze([
 const FRONTEND_ROOT_FILES = new Set([
   "components.json",
   "deplink.html",
+  "eslint.v2.config.mjs",
+  "playwright.v2.config.ts",
   "postcss.config.cjs",
   "tailwind.config.cjs",
   "tsconfig.json",
   "tsconfig.node.json",
+  "tsconfig.v2.json",
   "vite.config.ts",
+  "vitest.v2.config.ts",
   "vitest.config.ts",
 ]);
 

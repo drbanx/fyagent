@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 
 import { navigationItems } from "../../shared/config/navigation";
 import { classNames } from "../../shared/design-system/classNames";
+import { LiquidGlassLens } from "../../shared/ui/LiquidGlassLens";
 
 export function PrimaryNav() {
   return (
@@ -22,7 +23,17 @@ export function PrimaryNav() {
             )
           }
         >
-          {item.label}
+          {({ isActive }) => {
+            const label = (
+              <span className="fy-primary-nav-label">{item.label}</span>
+            );
+
+            return isActive ? (
+              <LiquidGlassLens>{label}</LiquidGlassLens>
+            ) : (
+              label
+            );
+          }}
         </NavLink>
       ))}
     </nav>
