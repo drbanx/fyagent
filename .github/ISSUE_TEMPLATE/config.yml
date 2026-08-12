@@ -5,8 +5,13 @@ contact_links:
     about: |
       Report security vulnerabilities through GitHub Security Advisories.
       请通过 GitHub 安全公告报告安全漏洞。
-  - name: "Discussions / 讨论区"
+  - name: "Q&A / 使用帮助"
+    url: "https://github.com/fy-agent/fyagent/discussions/categories/q-a"
+    about: |
+      Ask usage and configuration questions in Discussions.
+      在讨论区询问使用和配置问题。
+  - name: "Ideas & Show and tell / 想法与分享"
     url: "https://github.com/fy-agent/fyagent/discussions"
     about: |
-      General discussions and community help.
-      一般讨论和社区帮助。
+      Explore early ideas or share your FyAgent workflow.
+      讨论早期想法，或分享你的 FyAgent 工作流。

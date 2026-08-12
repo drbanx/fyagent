@@ -1,0 +1,109 @@
+---
+type: playbook
+status: active
+updated: 2026-08-12
+review_on: 2026-09-12
+authority: fy-agent/fyagent maintainers
+source: current GitHub Discussions configuration and repository support contracts
+---
+
+# GitHub Discussions launch playbook
+
+## Live seed discussions
+
+- [Welcome to FyAgent Discussions / 欢迎来到 FyAgent 讨论区](https://github.com/fy-agent/fyagent/discussions/94) — Announcements, pinned globally
+- [How to ask a question that is easier to solve / 怎样让问题更容易得到解决](https://github.com/fy-agent/fyagent/discussions/95) — Q&A, pinned in category
+- [What should your AI Worker make easier next? / 你最希望自己的 AI Worker 简化什么？](https://github.com/fy-agent/fyagent/discussions/96) — Ideas
+- [Show how you make AI your own / 分享你怎样把 AI 变成自己的](https://github.com/fy-agent/fyagent/discussions/97) — Show and tell
+
+## Category contract
+
+Keep the existing category names and slugs so the files under `.github/DISCUSSION_TEMPLATE/` continue to bind correctly. Improve the category emoji and description in GitHub settings instead of renaming the categories.
+
+| Category | Emoji | Recommended description | Format |
+| --- | --- | --- | --- |
+| Announcements | 📣 | Project updates, release context, and community notices. / 项目动态、版本说明与社区公告。 | Announcement |
+| Q&A | 🙏 | Installation, configuration, and usage help. Include version, OS, and related tool. / 安装、配置与使用帮助，请附版本、系统和相关工具。 | Question and answer |
+| Ideas | 💡 | Explore a problem and possible direction before opening a scoped issue. / 在创建明确 Issue 前，先讨论问题与方向。 | Open discussion |
+| Show and tell | 🙌 | Share real FyAgent setups, workflows, and lessons learned. / 分享真实配置、工作流与使用心得。 | Open discussion |
+| General | 💬 | Conversations that do not fit the focused categories above. / 不属于上述分类的社区交流。 | Open discussion |
+| Polls | 📊 | Maintainer-led community polls when a concrete choice needs feedback. / 仅用于维护者发起的明确选项调研。 | Poll |
+
+## Seed discussions
+
+### 1. Announcements — pin globally
+
+**Title:** Welcome to FyAgent Discussions / 欢迎来到 FyAgent 讨论区
+
+**Body:**
+
+> FyAgent Discussions is the place for usage help, early product ideas, and real workflow sharing.
+>
+> FyAgent 讨论区用于使用帮助、早期产品想法和真实工作流分享。
+>
+> FyAgent helps people own, shape, and manage their AI. Today, the desktop app brings models, tool connections, Skills, working instructions, configuration, and usage records into one place. Its long-term vision is a portable digital persona that remains under user control.
+>
+> FyAgent 希望帮助每个人拥有、培养和管理自己的 AI。当前桌面应用先统一管理模型、工具连接、Skills、行为指令、配置和使用记录；长期愿景是成为始终由用户掌控的随身数字人格。
+>
+> - Ask installation or configuration questions in **Q&A**.
+> - Test an early proposal with the community in **Ideas**.
+> - Share a setup that works for you in **Show and tell**.
+> - Open an **Issue** for a reproducible defect or a clearly scoped task.
+>
+> 提问时请带上 FyAgent 版本、操作系统、相关工具和已经尝试过的步骤。提交日志前请移除凭据。
+>
+> Start with the [README](https://github.com/fy-agent/fyagent#readme), [manual](https://github.com/fy-agent/fyagent/tree/main/docs/user-manual), and [community guidelines](https://github.com/fy-agent/fyagent/blob/main/CODE_OF_CONDUCT.md).
+
+### 2. Q&A — pin in category
+
+**Title:** How to ask a question that is easier to solve / 怎样让问题更容易得到解决
+
+**Body:**
+
+> A useful question contains four things:
+>
+> 1. FyAgent version and operating system.
+> 2. The related AI tool and provider type.
+> 3. What you expected and what happened.
+> 4. The documentation or troubleshooting steps you already tried.
+>
+> 一条容易解决的问题，通常包含：FyAgent 版本与系统、相关 AI 工具与供应商类型、预期结果与实际结果、已经查阅或尝试过的步骤。
+>
+> Use the **Q&A** form—the structured fields are there to save both the author and responders time. Reproducible software defects belong in [Bug Reports](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml).
+
+### 3. Ideas
+
+**Title:** What should your AI Worker make easier next? / 你最希望自己的 AI Worker 简化什么？
+
+**Body:**
+
+> FyAgent's long-term goal is to help each person own, shape, and manage their AI. The most useful product ideas start with a real workflow, not a feature name.
+>
+> Tell us:
+>
+> - what you are trying to accomplish;
+> - where the current workflow becomes repetitive, unclear, or fragile;
+> - what a good outcome would feel like;
+> - whether you can help validate or implement it.
+>
+> FyAgent 希望帮助每个人拥有、培养和管理自己的 AI。好的产品想法从真实工作流开始：请先说清楚你要完成什么、目前卡在哪里、理想结果是什么，以及你是否愿意参与验证或实现。
+
+### 4. Show and tell
+
+**Title:** Show how you make AI your own / 分享你怎样把 AI 变成自己的
+
+**Body:**
+
+> How are you using FyAgent to keep your models, tool connections, Skills, and working instructions under your control across Claude Code, Codex, Gemini CLI, OpenClaw, or another supported tool?
+>
+> Share the setup, the problem it solves, and one lesson others can reuse. Screenshots, small diagrams, and configuration excerpts are welcome—remove credentials before posting.
+>
+> 欢迎分享你怎样管理 AI 的模型、工具连接、Skills 和行为指令，以及一条别人可以复用的经验。可以附截图、流程图或配置片段；发布前请移除凭据。
+
+## Operating rhythm
+
+- Triage new Q&A posts into documentation gap, user configuration, reproducible defect, or unresolved investigation.
+- Convert a mature Idea into an Issue only when the problem, outcome, and acceptance boundary are clear; link both directions.
+- Add solved recurring questions to the manual or README FAQ instead of answering them from scratch indefinitely.
+- Pin no more than two global discussions. Keep category pins focused on instructions or canonical references.
+- Review unanswered Q&A and stale Ideas on a regular maintainer cadence; close the loop with a short status even when no implementation is planned.

@@ -10,8 +10,9 @@ body:
       label: Self Checks / 自检
       options:
         - label: |
-            I have read the [FAQ](https://github.com/fy-agent/fyagent#faq) section in README.
+            I have read the [FAQ](https://github.com/fy-agent/fyagent/blob/main/README_EN.md#faq) section in README.
             我已阅读 README 中的[常见问题](https://github.com/fy-agent/fyagent#常见问题)。
+            README の[よくある質問](https://github.com/fy-agent/fyagent/blob/main/README_JA.md#よくある質問)を確認しました。
           required: true
         - label: |
             I have searched for [existing issues](https://github.com/fy-agent/fyagent/issues), including closed ones.
