@@ -210,7 +210,7 @@ describe("durable supported-platform surface contract", () => {
       for (const invalid of [
         ".trellis/tasks/*",
         `${fixture.relative}/child`,
-        fixture.relative.replaceAll("/", "\\"),
+        fixture.relative.split("/").join("\\"),
         `.trellis/tasks/archive/${path.basename(fixture.relative)}`,
       ]) {
         expect(() =>
