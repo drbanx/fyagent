@@ -75,25 +75,25 @@
 
 下表记录 Gate 0 锁定后的目标事实。旧基线只用于解释计划怎样演进，不能再驱动实施。
 
-| 项目                                            |                                     当前值 | 证据                                                                                       |
-| ----------------------------------------------- | -----------------------------------------: | ------------------------------------------------------------------------------------------ |
-| 规划工作分支                                    |                                 `ccde71d1` | `codex/docs-restructure-visual-plan`，只保存规划与营销样例，尚未迁入目标基线               |
-| 当前远端 main                                   |                                 `ed20d04a` | PR #9 已被 PR #10 revert，不含本计划资产                                                   |
-| 目标基线                                        |                                 `b6f60dfe` | `origin/dev/laiyongjie` 当前提交，包含 v0.3.1 标签后的仓库迁移                             |
-| 目标三语手册 Markdown                           |                                         78 | zh/en/ja 各 26 个，含各语言索引                                                            |
-| 目标三语图片引用                                |                                         84 | zh/en/ja 各 28 处；共享 PNG 共 40 张                                                       |
-| 活动文档本地链接                                |                               372 / 0 失效 | 三份 README、三语手册和 12 份当前开发文档                                                  |
-| 当前开发文档                                    |                                         12 | `docs/fyagent/development/`；`docs/fyagent/dev/` 在目标基线已删除                          |
-| v4 旧基线                                       |        75 个既有章节、40 张 PNG、84 处引用 | 仅适用于 `3adc72ae` 附近，不得当作目标基线事实                                             |
-| `docs/guides/` 文件                             |                                         22 | 其中 6 个旧名称命中均为上游来源说明                                                        |
-| `deplink.html` 旧名称命中                       |                                          0 | 评审时 `rg` 检查                                                                           |
-| 工具版本探测                                    |                                       7 个 | `TOOL_NAMES`                                                                               |
-| 可安装/升级工具                                 |                                       6 个 | `LIFECYCLE_TOOLS`，排除 Codex                                                              |
-| WorkBuddy 错误码                                |                                      22 个 | `WorkBuddyErrorCode`                                                                       |
-| 目标产品线                                      |                              v0.3.1 开发线 | 文案避免把滚动开发分支写成已经发布的 Release                                               |
-| README 截图身份                                 |                                     不合格 | 6 张中/英/日截图的 Git blob 均未变化，可见身份仍属于 `CC Switch`                           |
-| VibeKey 本地归档                                |                              178,272 bytes | SHA-256 `9C54280EB1EB700800AB2022CEF32C392690ECB301D21DC7BBCB07A2BDE9F0C1`                 |
-| 营销样例                                        | v1/v2 `superseded`；v3 `concept_candidate` | v3 为 1672×941，SHA-256 `C0EBE3C401B077DE804A37C3C0D4CC65000125121D4E19A366BF9FD2E5E78555` |
+| 项目                      |                                     当前值 | 证据                                                                                       |
+| ------------------------- | -----------------------------------------: | ------------------------------------------------------------------------------------------ |
+| 规划工作分支              |                                 `ccde71d1` | `codex/docs-restructure-visual-plan`，只保存规划与营销样例，尚未迁入目标基线               |
+| 当前远端 main             |                                 `ed20d04a` | PR #9 已被 PR #10 revert，不含本计划资产                                                   |
+| 目标基线                  |                                 `b6f60dfe` | `origin/dev/laiyongjie` 当前提交，包含 v0.3.1 标签后的仓库迁移                             |
+| 目标三语手册 Markdown     |                                         78 | zh/en/ja 各 26 个，含各语言索引                                                            |
+| 目标三语图片引用          |                                         84 | zh/en/ja 各 28 处；共享 PNG 共 40 张                                                       |
+| 活动文档本地链接          |                               372 / 0 失效 | 三份 README、三语手册和 12 份当前开发文档                                                  |
+| 当前开发文档              |                                         12 | `docs/fyagent/development/`；`docs/fyagent/dev/` 在目标基线已删除                          |
+| v4 旧基线                 |        75 个既有章节、40 张 PNG、84 处引用 | 仅适用于 `3adc72ae` 附近，不得当作目标基线事实                                             |
+| `docs/guides/` 文件       |                                         22 | 其中 6 个旧名称命中均为上游来源说明                                                        |
+| `deplink.html` 旧名称命中 |                                          0 | 评审时 `rg` 检查                                                                           |
+| 工具版本探测              |                                       7 个 | `TOOL_NAMES`                                                                               |
+| 可安装/升级工具           |                                       6 个 | `LIFECYCLE_TOOLS`，排除 Codex                                                              |
+| WorkBuddy 错误码          |                                      22 个 | `WorkBuddyErrorCode`                                                                       |
+| 目标产品线                |                              v0.3.1 开发线 | 文案避免把滚动开发分支写成已经发布的 Release                                               |
+| README 截图身份           |                                     不合格 | 6 张中/英/日截图的 Git blob 均未变化，可见身份仍属于 `CC Switch`                           |
+| VibeKey 私有归档          |                      证据编号 `VK-ARCHIVE` | 具体路径、大小与校验值仅保存在非公开证据记录中                                             |
+| 营销样例                  | v1/v2 `superseded`；v3 `concept_candidate` | v3 为 1672×941，SHA-256 `C0EBE3C401B077DE804A37C3C0D4CC65000125121D4E19A366BF9FD2E5E78555` |
 
 下表是 v4 在旧工作树上记录的 README 边界，只保留为历史证据。实施必须在 Gate 0 选定的 SHA 上按 `<summary>` 或标题语义重新定位，不得按这些行号切割：
 

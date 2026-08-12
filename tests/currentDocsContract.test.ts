@@ -265,14 +265,33 @@ describe("current FyAgent documentation authority", () => {
     }
   });
 
-  it("keeps private local evidence paths out of public audits", () => {
+  it("keeps private local evidence identifiers out of public documentation", () => {
     const localUserRoot = ["C:", "Users", ""].join("\\");
+    const privateFingerprints = [
+      [
+        "9C54280E",
+        "B1EB700800AB2022CEF32C392690ECB301D21DC7BBCB07A2BDE9F0C1",
+      ].join(""),
+      [
+        "BD5DB121",
+        "CEE6ACAEB0F3D706E2054ED7B54B492878E4BBAB85AD260F82B8FB86",
+      ].join(""),
+    ];
     for (const file of [
       "docs/fyagent/audits/vibekey-to-fyagent-capability-gap.md",
       "docs/fyagent/marketing/vibekey-reference-audit.md",
+      "docs/fyagent/marketing/visual-direction-sample-v2.md",
+      ".omo/plans/docs-restructure-v0.3.0.md",
     ]) {
-      expect(read(file), file).not.toContain(localUserRoot);
+      const source = read(file);
+      expect(source, file).not.toContain(localUserRoot);
+      for (const fingerprint of privateFingerprints) {
+        expect(source, file).not.toContain(fingerprint);
+      }
     }
+    expect(
+      read("docs/fyagent/marketing/visual-direction-sample-v2.md"),
+    ).not.toContain(["Chat", "GPT built-in"].join(""));
   });
 
   it("documents the protected ProgramData A1 package bridge without an HTTP or NSIS fallback", () => {
