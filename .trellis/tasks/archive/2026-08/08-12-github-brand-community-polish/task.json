@@ -3,7 +3,7 @@
   "name": "github-brand-community-polish",
   "title": "Polish GitHub repository branding and community",
   "description": "Create a deterministic GitHub-facing FyAgent brand surface around owning and managing your AI, align current product descriptions with the portable-digital-persona vision, improve multilingual onboarding and community routing, and publish approved repository metadata without changing application brand consumers.",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": "docs",
   "scope": "README files, package, Flatpak, and app descriptions, user-manual introductions, assets/brand/github, GitHub templates, maintained marketing docs, tests/currentDocsContract.test.ts, GitHub repository metadata and Discussions",
   "package": null,
@@ -11,12 +11,12 @@
   "creator": "codex",
   "assignee": "codex",
   "createdAt": "2026-08-12",
-  "completedAt": null,
+  "completedAt": "2026-08-12",
   "branch": "codex/github-brand-community-polish",
   "base_branch": "main",
   "worktree_path": "/Users/serendipity/fyagent/.worktrees/github-brand-community-polish",
-  "commit": null,
-  "pr_url": null,
+  "commit": "3b7f755a5c1c306f417d67edabe4274805859673",
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/98",
   "subtasks": [],
   "children": [],
   "parent": null,
@@ -52,6 +52,6 @@
     "docs/fyagent/marketing/github/discussion-launch.md",
     "tests/currentDocsContract.test.ts"
   ],
-  "notes": "",
+  "notes": "GitHub metadata and Discussions were updated with readback. The 1280x640 social-preview asset is verified and included in PR #98; the live Settings upload remains unclaimed because the browser connector lacks file-URL permission.",
   "meta": {}
 }

@@ -85,24 +85,24 @@ tray, installer, and About consumers remain unchanged.
 
 ## Acceptance Criteria
 
-- [ ] AC1: `assets/fyagent.png` and every application-brand consumer are
+- [x] AC1: `assets/fyagent.png` and every application-brand consumer are
       byte-identical to `origin/main`.
-- [ ] AC2: the symbol and social-preview SVGs parse; the PNG is exactly
+- [x] AC2: the symbol and social-preview SVGs parse; the PNG is exactly
       1280x640, decodes successfully, uses a solid background, and is below
       1 MiB.
-- [ ] AC3: the three README files share the approved entry hierarchy, have no
+- [x] AC3: the three README files share the approved entry hierarchy, have no
       broken local links, and contain no fake runtime evidence.
-- [ ] AC4: Q&A, Ideas, and Show-and-tell Discussion forms match current slugs,
+- [x] AC4: Q&A, Ideas, and Show-and-tell Discussion forms match current slugs,
       parse as YAML, and use valid existing labels.
-- [ ] AC5: all mandatory Issue-form FAQ links resolve to an existing heading.
-- [ ] AC6: the organization profile draft is complete and explicitly remains
+- [x] AC5: all mandatory Issue-form FAQ links resolve to an existing heading.
+- [x] AC6: the organization profile draft is complete and explicitly remains
       a draft for the separate organization repository.
-- [ ] AC7: focused docs/contracts checks and `git diff --check` pass from fresh
+- [x] AC7: focused docs/contracts checks and `git diff --check` pass from fresh
       command output.
-- [ ] AC8: GitHub API readback confirms description, homepage, and topics; any
+- [x] AC8: GitHub API readback confirms description, homepage, and topics; any
       UI-only social-preview or category action has visible post-write
       readback or remains explicitly unclaimed.
-- [ ] AC9: the implementation is committed on
+- [x] AC9: the implementation is committed on
       `codex/github-brand-community-polish` and published through the normal PR
       governance path.
 

@@ -34,7 +34,7 @@
 
 ## Phase E. Publish and read back
 
-- [ ] Commit and push the task branch through the normal GitHub publication
+- [x] Commit and push the task branch through the normal GitHub publication
       workflow; create a PR targeting `main`.
 - [x] Update description, homepage, and topics; read them back through GitHub.
 - [ ] If authenticated UI control is available, upload the social preview and
