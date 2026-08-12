@@ -26,10 +26,6 @@ GEMINI.md
 vitest-report.json
 nul
 
-# Flatpak build artifacts
-flatpak/fyagent.deb
-flatpak-build/
-flatpak-repo/
 .worktrees/
 .spec-workflow/
 copilot-api
