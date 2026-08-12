@@ -219,9 +219,11 @@ repository files through the repository-owned verifier:
 The workflow does not duplicate literal Node, pnpm, Rust, uv, Python, or
 application versions. Rust setup disables its implicit cache. uv setup pins
 the resolved reviewed version and disables cache. pnpm installation uses the
-frozen lockfile. The frontend full unit suite excludes only the five
-host-mise integration suites; the contracts job owns their pure/static
-contracts, and the local canonical check owns the real mise boundary.
+frozen lockfile. The frontend full unit suite excludes only the four
+host-mise integration suites (`developmentEnvironment`, `miseTaskContract`,
+`systemCheck`, and `taskAtomicWriter`); the contracts job owns their
+pure/static contracts, and the local canonical check owns the real mise
+boundary.
 
 Backend jobs run locked Cargo check, Clippy with warnings denied, and tests on
 Windows and macOS. macOS additionally owns `cargo fmt --check`. The Windows
