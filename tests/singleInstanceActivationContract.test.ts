@@ -82,7 +82,7 @@ describe("single-instance semantic activation contract", () => {
       submission.indexOf("if should_exit_lightweight"),
     );
     expect(capacityRejection).not.toContain("return;");
-    expect(host).toContain('focus_main_window: !cfg!(target_os = "windows")');
+    expect(host).toContain('focus_main_window: cfg!(target_os = "macos")');
   });
 
   it("reserves full-queue priority for waking semantics without coupling wake to admission", () => {

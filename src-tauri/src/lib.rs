@@ -823,7 +823,7 @@ pub fn run() {
                             PendingActivation::InvalidDeepLink {
                                 // Preserve the macOS focus behavior. Windows rejects protocol-looking
                                 // local input without giving it focus effects.
-                                focus_main_window: !cfg!(target_os = "windows"),
+                                focus_main_window: cfg!(target_os = "macos"),
                             },
                         );
                         return;
