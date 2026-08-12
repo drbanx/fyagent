@@ -79,13 +79,6 @@ def _normalize_windows_shell_path(path_str: str) -> str:
         rest = rest.replace('/', '\\')
         return f"{drive}:\\{rest}"
 
-    # WSL mounted drive (sometimes leaked into env): /mnt/c/Users/...
-    m = re.match(r"^/mnt/([A-Za-z])/(.*)", p)
-    if m:
-        drive, rest = m.group(1).upper(), m.group(2)
-        rest = rest.replace('/', '\\')
-        return f"{drive}:\\{rest}"
-
     return path_str
 
 

@@ -10,8 +10,6 @@ import { ROOT, capture, fail, isMain, run } from "./lib.mjs";
 import { parse as parseToml } from "smol-toml";
 
 export const HOST_RUST_TARGETS = Object.freeze({
-  "linux-x64": "x86_64-unknown-linux-gnu",
-  "linux-arm64": "aarch64-unknown-linux-gnu",
   "darwin-x64": "x86_64-apple-darwin",
   "darwin-arm64": "aarch64-apple-darwin",
   "win32-x64": "x86_64-pc-windows-msvc",
@@ -56,8 +54,6 @@ const TARGET_LINKER_ENVIRONMENT = /^CARGO_TARGET_.+_LINKER$/;
 const TARGET_RUST_FLAG_ENVIRONMENT = /^CARGO_TARGET_.+_RUSTFLAGS$/;
 const TARGET_RUSTDOC_FLAG_ENVIRONMENT = /^CARGO_TARGET_.+_RUSTDOCFLAGS$/;
 const PROCESS_INJECTION_ENVIRONMENT = Object.freeze([
-  "LD_PRELOAD",
-  "LD_LIBRARY_PATH",
   "DYLD_INSERT_LIBRARIES",
   "DYLD_FORCE_FLAT_NAMESPACE",
   "DYLD_LIBRARY_PATH",
@@ -516,10 +512,10 @@ function isPathWithin(parent, candidate, platform) {
 
 function expectedNativeMachine(target) {
   if (target.startsWith("x86_64-")) {
-    return { elf: 62, pe: 0x8664, macho: 0x01000007 };
+    return { pe: 0x8664, macho: 0x01000007 };
   }
   if (target.startsWith("aarch64-")) {
-    return { elf: 183, pe: 0xaa64, macho: 0x0100000c };
+    return { pe: 0xaa64, macho: 0x0100000c };
   }
   throw new Error(`Unsupported native executable target: ${target}`);
 }
@@ -530,26 +526,6 @@ function verifyNativeBinarySignature(file, platform, target) {
   try {
     const header = Buffer.alloc(64);
     const length = fs.readSync(handle, header, 0, header.length, 0);
-    if (platform === "linux") {
-      if (
-        length < 20 ||
-        !header.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]))
-      ) {
-        throw new Error("Native Linux test executable must have an ELF header");
-      }
-      if (header[4] !== 2 || header[5] !== 1) {
-        throw new Error(
-          "Native Linux test executable must be a little-endian 64-bit ELF",
-        );
-      }
-      const machine = header.readUInt16LE(18);
-      if (machine !== expectedMachine.elf) {
-        throw new Error(
-          `Native Linux test executable architecture ${machine} does not match ${target}`,
-        );
-      }
-      return;
-    }
     if (platform === "darwin") {
       if (length < 8) {
         throw new Error(

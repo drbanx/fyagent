@@ -147,18 +147,6 @@ function verifyTool(name, expected, versionArgs, normalize = (value) => value) {
       `${name} PATH executable differs from mise ownership: ${activePath} != ${resolved}`,
     );
   }
-  const procVersion =
-    process.platform === "linux" && fs.existsSync("/proc/version")
-      ? fs.readFileSync("/proc/version", "utf8")
-      : "";
-  if (
-    (process.env.WSL_DISTRO_NAME || /microsoft/i.test(procVersion)) &&
-    /^\/mnt\/[a-z]\//i.test(resolved)
-  ) {
-    throw new Error(
-      `${name} resolved through a Windows /mnt shim: ${resolved}`,
-    );
-  }
   return { version: actual, path: resolved };
 }
 

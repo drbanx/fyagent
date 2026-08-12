@@ -20,7 +20,7 @@ function nodeScript(script: string, ...args: string[]) {
 }
 
 describe("read-only host prerequisite checks", () => {
-  it.each(["linux", "darwin", "win32"])(
+  it.each(["darwin", "win32"])(
     "describes %s prerequisites without probing another host",
     (platform) => {
       const result = nodeScript(SCRIPT, "--describe-platform", platform);
@@ -29,7 +29,6 @@ describe("read-only host prerequisite checks", () => {
         platform: string;
         requirements: {
           commands: Array<[string, string[], string]>;
-          pkgConfig: Array<[string, string]>;
         };
       };
       expect(report.platform).toBe(platform);
@@ -41,6 +40,15 @@ describe("read-only host prerequisite checks", () => {
       }
     },
   );
+
+  it("rejects an unsupported host without probing it", () => {
+    const platform = "freebsd";
+    const result = nodeScript(SCRIPT, "--describe-platform", platform);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(`Unknown platform: ${platform}`);
+  });
 
   it("reports the current host as JSON and makes failures visible", () => {
     const result = spawnSync("mise", ["run", "system:check", "--json"], {

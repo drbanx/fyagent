@@ -12,8 +12,6 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 export const ROOT = path.resolve(scriptDirectory, "..", "..");
 export const SUPPORTED_PLATFORMS = Object.freeze([
-  "linux-x64",
-  "linux-arm64",
   "macos-x64",
   "macos-arm64",
   "windows-x64",
