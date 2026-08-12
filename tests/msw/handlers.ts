@@ -365,7 +365,7 @@ export const handlers = [
   }),
 
   http.post(`${TAURI_ENDPOINT}/get_user_home_dir`, () =>
-    success("/home/mock"),
+    success("/Users/mock"),
   ),
 
   http.post(`${TAURI_ENDPOINT}/is_portable_mode`, () => success(false)),

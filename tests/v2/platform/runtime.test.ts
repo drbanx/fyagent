@@ -26,10 +26,7 @@ describe("V2 runtime detection", () => {
     ).toEqual({ isNative: true, platform: "windows" });
 
     expect(detectNativePlatform({ platform: "MacIntel" })).toBe("macos");
-    expect(detectNativePlatform({ userAgent: "X11; Linux x86_64" })).toBe(
-      "linux",
-    );
-    expect(detectNativePlatform({ userAgent: "Android 16; Linux" })).toBe(
+    expect(detectNativePlatform({ userAgent: "UnsupportedOS x86_64" })).toBe(
       "unknown",
     );
   });

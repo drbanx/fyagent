@@ -36,10 +36,6 @@ export function detectNativePlatform(
     return "macos";
   }
 
-  if (/linux|x11/.test(platformIdentity) && !/android/.test(platformIdentity)) {
-    return "linux";
-  }
-
   return "unknown";
 }
 

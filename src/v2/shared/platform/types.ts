@@ -1,9 +1,4 @@
-export type WindowPlatform =
-  | "browser"
-  | "windows"
-  | "macos"
-  | "linux"
-  | "unknown";
+export type WindowPlatform = "browser" | "windows" | "macos" | "unknown";
 
 export type RuntimeEnvironment =
   | {

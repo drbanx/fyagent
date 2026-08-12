@@ -1,26 +1,50 @@
-import { McpServer, McpServerSpec } from "../types";
-import { isWindows } from "@/lib/platform";
+import type { McpServer, McpServerSpec } from "../types";
+import { isMac, isWindows } from "@/lib/platform";
 
 export type McpPreset = Omit<McpServer, "enabled" | "description">;
 
-// 创建跨平台 npx 命令配置
+// 创建受支持平台的 npx 命令配置。
 // Windows 需要使用 cmd /c wrapper 来执行 npx.cmd
-// Mac/Linux 可以直接执行 npx
+// macOS 可以直接执行 npx；未知平台不生成可执行预设。
 const createNpxCommand = (
   packageName: string,
   extraArgs: string[] = [],
-): { command: string; args: string[] } => {
+): { command: string; args: string[] } | null => {
   if (isWindows()) {
     return {
       command: "cmd",
       args: ["/c", "npx", ...extraArgs, packageName],
     };
-  } else {
+  }
+  if (isMac()) {
     return {
       command: "npx",
       args: [...extraArgs, packageName],
     };
   }
+  return null;
+};
+
+const createNpxPreset = (
+  id: string,
+  packageName: string,
+  tags: string[],
+  docs: string,
+  homepage: string = docs,
+): McpPreset | null => {
+  const command = createNpxCommand(packageName, ["-y"]);
+  if (!command) return null;
+  return {
+    id,
+    name: packageName,
+    tags,
+    server: {
+      type: "stdio",
+      ...command,
+    } as McpServerSpec,
+    homepage,
+    docs,
+  };
 };
 
 // 预设 MCP（逻辑简化版）：
@@ -41,53 +65,35 @@ export const mcpPresets: McpPreset[] = [
     homepage: "https://github.com/modelcontextprotocol/servers",
     docs: "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
   },
-  {
-    id: "time",
-    name: "@modelcontextprotocol/server-time",
-    tags: ["stdio", "time", "utility"],
-    server: {
-      type: "stdio",
-      ...createNpxCommand("@modelcontextprotocol/server-time", ["-y"]),
-    } as McpServerSpec,
-    homepage: "https://github.com/modelcontextprotocol/servers",
-    docs: "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
-  },
-  {
-    id: "memory",
-    name: "@modelcontextprotocol/server-memory",
-    tags: ["stdio", "memory", "graph"],
-    server: {
-      type: "stdio",
-      ...createNpxCommand("@modelcontextprotocol/server-memory", ["-y"]),
-    } as McpServerSpec,
-    homepage: "https://github.com/modelcontextprotocol/servers",
-    docs: "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
-  },
-  {
-    id: "sequential-thinking",
-    name: "@modelcontextprotocol/server-sequential-thinking",
-    tags: ["stdio", "thinking", "reasoning"],
-    server: {
-      type: "stdio",
-      ...createNpxCommand("@modelcontextprotocol/server-sequential-thinking", [
-        "-y",
-      ]),
-    } as McpServerSpec,
-    homepage: "https://github.com/modelcontextprotocol/servers",
-    docs: "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
-  },
-  {
-    id: "context7",
-    name: "@upstash/context7-mcp",
-    tags: ["stdio", "docs", "search"],
-    server: {
-      type: "stdio",
-      ...createNpxCommand("@upstash/context7-mcp", ["-y"]),
-    } as McpServerSpec,
-    homepage: "https://context7.com",
-    docs: "https://github.com/upstash/context7/blob/master/README.md",
-  },
-];
+  createNpxPreset(
+    "time",
+    "@modelcontextprotocol/server-time",
+    ["stdio", "time", "utility"],
+    "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+    "https://github.com/modelcontextprotocol/servers",
+  ),
+  createNpxPreset(
+    "memory",
+    "@modelcontextprotocol/server-memory",
+    ["stdio", "memory", "graph"],
+    "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+    "https://github.com/modelcontextprotocol/servers",
+  ),
+  createNpxPreset(
+    "sequential-thinking",
+    "@modelcontextprotocol/server-sequential-thinking",
+    ["stdio", "thinking", "reasoning"],
+    "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+    "https://github.com/modelcontextprotocol/servers",
+  ),
+  createNpxPreset(
+    "context7",
+    "@upstash/context7-mcp",
+    ["stdio", "docs", "search"],
+    "https://github.com/upstash/context7/blob/master/README.md",
+    "https://context7.com",
+  ),
+].filter((preset): preset is McpPreset => preset !== null);
 
 // 获取带国际化描述的预设
 export const getMcpPresetWithDescription = (

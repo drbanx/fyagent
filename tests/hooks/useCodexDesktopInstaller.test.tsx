@@ -290,7 +290,7 @@ describe("deriveInstallerViewState", () => {
     );
   });
 
-  it("keeps Linux hidden and Intel Mac visibly unsupported", () => {
+  it("keeps unsupported platforms hidden and Intel Mac visibly unsupported", () => {
     expect(
       deriveInstallerViewState(
         { state: "unsupported", reason: "platform" },
