@@ -77,7 +77,7 @@ PPT 和商业计划中的“Mac mini 购买证明控制焦虑”“高置信度�
 | ID | 用户目标 | 当前状态 | 关键证据 / 限制 | 缺口等级 | 建议 |
 |---|---|---|---|---:|---|
 | G1 | 安装 FyAgent 后完成第一次成功调用 | **部分具备** | 首启仅是通知弹窗；安装、Provider、检查分散在不同页面；没有可恢复向导状态 | P0 | 建立首次成功向导和统一 Health Center |
-| G2 | Windows 正式版检测、安装、升级 CLI | **受阻** | 正式 Windows 构建因提权安全边界，在进入 PATH/WSL/用户目录前 fail closed；Codex 生命周期始终只读 | P0 | 设计普通用户 worker 或调整宿主安装边界；禁止用放宽安全检查解决 |
+| G2 | Windows 正式版检测、安装、升级 CLI | **受阻** | 正式 Windows 构建因提权安全边界，在进入用户 PATH 和用户目录前 fail closed；Codex 生命周期始终只读 | P0 | 设计普通用户 worker 或调整宿主安装边界；禁止用放宽安全检查解决 |
 | G3 | 密钥在本机、备份和同步中都可证明安全 | **缺失统一合同** | Provider `settings_config` 以 JSON 写入 SQLite；同步导出包含 Provider 表；未发现 OS keyring/SQLCipher/应用层密文依赖 | P0 | 密钥引用化 + OS 密钥链；默认导出/同步不带密钥；另设加密便携 Vault |
 | G4 | 每次配置变更可预览、确认、撤销 | **局部具备** | Deep Link 有预览；Provider/Profile/接管/批量扩展没有一个统一变更计划和撤销账本 | P0 | 建立 Change Plan、影响说明、备份 ID、Undo 与活动记录 |
 | G5 | 换电脑恢复完整工作状态 | **部分具备** | WebDAV/S3 可同步整库；Profile 只覆盖 Claude、Claude Desktop、Codex，且 payload 主要保存现有实体 ID | P1 | 建立版本化 Workspace Manifest/Pack，分离定义、引用与秘密 |
@@ -107,13 +107,13 @@ Provider 表单
 
 ### 4.2 G2 的安全判断说明
 
-正式 Windows 发行版当前以受保护的提权宿主运行。代码明确拒绝在该边界内探测或执行用户可控的 PATH、WSL 和工具管理器 shim。这是有意的 fail-closed，不是普通 UI bug。
+正式 Windows 发行版当前以受保护的提权宿主运行。代码明确拒绝在该边界内探测或执行用户可控的 PATH 和工具管理器 shim。这是有意的 fail-closed，不是普通 UI bug。
 
 后续设计必须把以下两类责任分开：
 
 ```text
 机器级安装 / 受保护操作  → 受限高权限边界
-用户 CLI / PATH / WSL     → 已认证的普通用户 worker
+用户 CLI / PATH           → 已认证的普通用户 worker
 ```
 
 删除 guard 或直接让高权限进程运行用户 PATH 都不属于可接受修复。

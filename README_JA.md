@@ -26,10 +26,8 @@ FyAgent は、プロバイダー、拡張機能、プロキシルーティング
 
 - macOS: `FyAgent-X.Y.Z-macOS.dmg`、`FyAgent-X.Y.Z-macOS.zip`
 - Windows: `FyAgent-X.Y.Z-Windows-x64-setup.exe`、`FyAgent-X.Y.Z-Windows-arm64-setup.exe`
-- Linux x64: `FyAgent-X.Y.Z-Linux-x86_64.AppImage`、`FyAgent-X.Y.Z-Linux-x86_64.deb`、`FyAgent-X.Y.Z-Linux-x86_64.rpm`
-- Linux arm64: `FyAgent-X.Y.Z-Linux-arm64.AppImage`、`FyAgent-X.Y.Z-Linux-arm64.deb`、`FyAgent-X.Y.Z-Linux-arm64.rpm`
 
-Windows 版は NSIS セットアップのみで、MSI とポータブル ZIP は現在の配布対象ではありません。macOS 版は ad-hoc 署名で、Apple Developer ID では署名されておらず、公証も受けていません。Flatpak はセルフビルド用で、公式リリース成果物ではありません。
+Windows 版は NSIS セットアップのみで、MSI とポータブル ZIP は現在の配布対象ではありません。macOS 版は ad-hoc 署名で、Apple Developer ID では署名されておらず、公証も受けていません。
 
 インストール前にリリースノートを読み、公開されたチェックサム、`signing-status.json`、ビルド証明を確認してください。`NotSigned` は署名状態を示すだけで、安全性の証明ではありません。各 OS の手順は[インストールガイド](docs/user-manual/ja/1-getting-started/1.2-installation.md)にまとめています。
 

@@ -26,10 +26,8 @@ Download the build for your platform from [GitHub Releases](https://github.com/f
 
 - macOS: `FyAgent-X.Y.Z-macOS.dmg`, `FyAgent-X.Y.Z-macOS.zip`
 - Windows: `FyAgent-X.Y.Z-Windows-x64-setup.exe`, `FyAgent-X.Y.Z-Windows-arm64-setup.exe`
-- Linux x64: `FyAgent-X.Y.Z-Linux-x86_64.AppImage`, `FyAgent-X.Y.Z-Linux-x86_64.deb`, `FyAgent-X.Y.Z-Linux-x86_64.rpm`
-- Linux arm64: `FyAgent-X.Y.Z-Linux-arm64.AppImage`, `FyAgent-X.Y.Z-Linux-arm64.deb`, `FyAgent-X.Y.Z-Linux-arm64.rpm`
 
-Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release surface. macOS builds are ad-hoc signed, not signed with an Apple Developer ID, and not notarized. Linux Flatpak files are for self-builds and are not official release artifacts.
+Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release surface. macOS builds are ad-hoc signed, not signed with an Apple Developer ID, and not notarized.
 
 Before installing, read the release notes and verify the published checksums, `signing-status.json`, and build attestation. `NotSigned` is a status, not proof that a file is safe. See the [installation guide](docs/user-manual/en/1-getting-started/1.2-installation.md) for platform-specific steps.
 

@@ -35,7 +35,7 @@ VibeKey 对照审计和一张当前候选样例，但候选样例仍是概念图
 | 运行环境       | portable `mise 2026.8.2`；仓库已信任；`bootstrap` 与 Windows `system:check` 通过 |
 
 首次合同检查还暴露了两个原有 Windows 可移植性缺口：`.mjs` 没有固定 LF，Vitest 会在
-CRLF shebang 上解析失败；macOS shell 合同测试在 Windows 上错误调用 WSL 启动器，并
+CRLF shebang 上解析失败；macOS shell 合同测试在 Windows 上错误调用兼容启动器，并
 直接读取 NTFS 的 Unix 执行位。修正只落在 `.gitattributes`、任务脚本分类和测试层，没有
 改变产品功能。完整性测试的 CRLF fixture 也改为先归一化再转换，避免生成 `CRCRLF`。
 
@@ -59,7 +59,7 @@ CRLF shebang 上解析失败；macOS shell 合同测试在 Windows 上错误调�
 - 新增 [Release Notes 索引](../../release-notes/README.md)，解释 FyAgent v0.3.x 与
   CC Switch v3.6–v3.19.1 历史记录的关系。
 - `docs/guides/` 中保留 6 处有证据的旧名称：3 处上游 PR #5071，3 处 CC Switch
-  v3.19.1 来源说明。`deplink.html` 与 `flatpak/README.md` 没有旧身份命中。
+  v3.19.1 来源说明。`deplink.html` 没有旧身份命中。
 
 ## 三语用户手册
 

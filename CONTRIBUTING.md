@@ -86,8 +86,8 @@ mise run build:debug
 ```
 
 These tasks build only the current host OS and architecture. Formal Windows
-x64/ARM64, Linux x64/ARM64, and macOS Universal Release assets are produced by
-GitHub Actions. Local Linux/WSL-to-Windows or macOS cross-builds are unsupported.
+x64/ARM64 and macOS Universal Release assets are produced by GitHub Actions.
+Local builds do not cross the supported host boundary.
 
 ## Code Style
 
@@ -300,9 +300,8 @@ mise run build
 mise run build:debug
 ```
 
-这些任务只构建当前宿主系统和架构。正式 Windows x64/ARM64、Linux x64/ARM64 和
-macOS Universal Release 资产由 GitHub Actions 生成。不支持 Linux/WSL 到 Windows
-或 macOS 的本地交叉构建。
+这些任务只构建当前宿主系统和架构。正式 Windows x64/ARM64 和 macOS Universal
+Release 资产由 GitHub Actions 生成。本地构建不会跨越受支持的宿主边界。
 
 ## 代码规范
 

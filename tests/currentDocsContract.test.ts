@@ -7,7 +7,6 @@ import { expectedInstallerNames } from "../scripts/release/release-contract.mjs"
 const ROOT = path.resolve(__dirname, "..");
 const EXTERNAL_PLAN_MARKER = ["fyagent", "modernization", "plan"].join("-");
 const LEGACY_REPOSITORY_SLUG = ["NongHua123", "fyagent"].join("/");
-const HISTORICAL_RELEASE_NOTE_PREFIX = "docs/release-notes/v0.3.0-";
 const HISTORICAL_TRELLIS_ARCHIVE_PREFIX = ".trellis/tasks/archive/";
 
 const CURRENT_DEVELOPMENT_DOCS = [
@@ -85,7 +84,6 @@ const CURRENT_PUBLIC_REPOSITORY_FILES = [
   ".github/ISSUE_TEMPLATE/doc_issue.yml",
   ".github/ISSUE_TEMPLATE/feature_request.yml",
   ".github/ISSUE_TEMPLATE/question.yml",
-  "flatpak/com.fyagent.desktop.metainfo.xml",
 ] as const;
 
 const INSTALLER_NAME_TEMPLATES = expectedInstallerNames("1.2.3").map((name) =>
@@ -96,7 +94,6 @@ const WINDOWS_CODEX_DESKTOP_DOC =
   "docs/fyagent/development/windows/codex-desktop.md";
 const WINDOWS_INSTALLER_DOC = "docs/fyagent/development/windows/installer.md";
 const VALIDATION_DOC = "docs/fyagent/development/validation.md";
-const V031_RELEASE_NOTES = "docs/release-notes/v0.3.1-en.md";
 const CODEX_INSTALLER_SPEC = ".trellis/spec/backend/codex-desktop-installer.md";
 const PACKAGE_BRIDGE_ROOT =
   "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
@@ -184,7 +181,6 @@ function currentAuthorityMarkdownFiles(): string[] {
       "README.md",
       "README_EN.md",
       "README_JA.md",
-      "flatpak/README.md",
     ]),
   ].sort();
 }
@@ -194,9 +190,7 @@ function currentPublicRepositoryFiles(): string[] {
     ...new Set([
       ...CURRENT_PUBLIC_REPOSITORY_FILES,
       ...markdownFilesUnder("docs/user-manual"),
-      ...markdownFilesUnder("docs/release-notes").filter(
-        (file) => !file.startsWith(HISTORICAL_RELEASE_NOTE_PREFIX),
-      ),
+      ...markdownFilesUnder("docs/release-notes"),
     ]),
   ].sort();
 }
@@ -232,6 +226,9 @@ function operationalTextFiles(): string[] {
 describe("current FyAgent documentation authority", () => {
   it("removes versioned design packages and keeps one responsibility owner", () => {
     expect(fs.existsSync(path.join(ROOT, "docs/fyagent/dev"))).toBe(false);
+    expect(markdownFilesUnder("docs/release-notes")).toEqual([
+      "docs/release-notes/README.md",
+    ]);
     expect(markdownFilesUnder("docs/fyagent/development")).toEqual(
       [...CURRENT_DEVELOPMENT_DOCS].sort(),
     );
@@ -288,7 +285,6 @@ describe("current FyAgent documentation authority", () => {
       [WINDOWS_CODEX_DESKTOP_DOC, codexDesktop],
       [CODEX_INSTALLER_SPEC, installerSpec],
       [VALIDATION_DOC, read(VALIDATION_DOC)],
-      [V031_RELEASE_NOTES, read(V031_RELEASE_NOTES)],
     ] as const) {
       const normalized = source.replace(/\s+/gu, " ");
       expect(normalized, file).toMatch(
@@ -365,24 +361,6 @@ describe("current FyAgent documentation authority", () => {
     );
   });
 
-  it("marks the v0.3.1 notes as an unpublished preflight candidate with a historical tag mismatch", () => {
-    const notes = read(V031_RELEASE_NOTES);
-    expect(notes).toContain("# FyAgent v0.3.1 candidate (unpublished)");
-    expect(notes).toMatch(
-      /existing annotated `v0\.3\.1` tag[^.]{0,120}(?:different historical SHA|historical SHA that differs)/iu,
-    );
-    expect(notes).toMatch(/must not move or reuse it/iu);
-    expect(notes).toMatch(
-      /(?:current work|current batch)[^.]{0,120}(?:not the formal source|cannot be its formal source)[^.]{0,120}cannot (?:formally )?publish/iu,
-    );
-    expect(notes).toMatch(
-      /future[^.]{0,80}independent version\/tag decision/iu,
-    );
-    expect(notes).toMatch(/same-SHA[^.]{0,80}non-publishing preflight/iu);
-    expect(notes).not.toContain("The formal source is the exact `v0.3.1`");
-    expect(notes).not.toMatch(/^\d+\. annotated `v0\.3\.1` tag equality/mu);
-  });
-
   it("keeps current authority free of old package and fixed-release routing", () => {
     for (const file of currentAuthorityMarkdownFiles()) {
       const source = read(file);
@@ -409,9 +387,9 @@ describe("current FyAgent documentation authority", () => {
       ".trellis/spec/backend/fyagent-version-contract.md",
     )}\n${read(".trellis/spec/backend/github-release-workflow.md")}`;
     for (const schema of [
-      "fyagent-download-manifest/v2",
-      "fyagent-platform-build/v1",
-      "fyagent-build-metadata/v1",
+      "fyagent-download-manifest/v3",
+      "fyagent-platform-build/v2",
+      "fyagent-build-metadata/v2",
     ]) {
       expect(releaseOwners).toContain(schema);
     }
@@ -463,7 +441,6 @@ describe("current FyAgent documentation authority", () => {
     }
     for (const { file, trustPatterns } of LOCALIZED_INSTALLATION_GUIDES) {
       const source = read(file);
-      expect(source, file).not.toContain("FyAgent-X.Y.Z-Linux-*");
       for (const trustPattern of trustPatterns) {
         expect(source, `${file} -> ${trustPattern.source}`).toMatch(
           trustPattern,
