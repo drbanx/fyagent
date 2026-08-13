@@ -1810,6 +1810,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_agent_catalog,
             commands::get_providers,
             commands::get_current_provider,
             commands::add_provider,
