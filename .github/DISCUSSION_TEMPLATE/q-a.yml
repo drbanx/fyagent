@@ -1,0 +1,73 @@
+title: "[Q&A] "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for asking. Please include enough context for another community member to reproduce your setup.
+        感谢提问。请补充足够的环境信息，方便社区成员复现和定位问题。
+
+        Start with the [FAQ](https://github.com/fy-agent/fyagent/blob/main/README_EN.md#faq) or [常见问题](https://github.com/fy-agent/fyagent#常见问题). For a reproducible software defect, use the [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml) form instead.
+
+  - type: dropdown
+    id: related_tool
+    attributes:
+      label: Related tool / 相关工具
+      options:
+        - Claude Code
+        - Claude Desktop
+        - Codex
+        - Gemini CLI
+        - Grok Build
+        - OpenCode
+        - OpenClaw
+        - Hermes
+        - FyAgent itself / FyAgent 本身
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: FyAgent version / FyAgent 版本
+      placeholder: "e.g. 0.3.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating_system
+    attributes:
+      label: Operating system / 操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question / 问题
+      description: What are you trying to do, and what happened instead? / 你想完成什么，实际遇到了什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried? / 已尝试的步骤
+      description: Include relevant documentation, settings, or error messages. Remove credentials before posting logs. / 请附上相关文档、设置或错误信息；日志中请移除凭据。
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context / 补充信息
+      description: Screenshots or a minimal configuration can help. / 截图或最小配置会更有帮助。
+    validations:
+      required: false

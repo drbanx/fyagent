@@ -1,0 +1,60 @@
+title: "[Idea] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this space to test an idea with the community before it becomes a scoped issue.
+        这里适合先和社区验证想法；形成明确范围后，再转为可执行的 Issue。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity / 问题或机会
+      description: Describe the workflow that is difficult today. / 请描述目前不顺畅的真实工作流。
+      placeholder: "When I ..., I need to ..., but currently ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed direction / 建议方向
+      description: Explain the outcome you want, not only a UI element. / 请说明希望达成的结果，而不只是一个界面元素。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area / 产品范围
+      multiple: true
+      options:
+        - AI brain — providers and models / AI 大脑——供应商与模型
+        - Tool connections — MCP / 工具连接——MCP
+        - Skills and working instructions / 技能与行为指令
+        - Routing and recovery / 调度与恢复
+        - Usage record / 使用账本
+        - Work continuity — sessions, backup, and sync / 工作延续——会话、备份与同步
+        - Memory and digital persona — future direction / 记忆与数字人格——未来方向
+        - Documentation or community / 文档与社区
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 已考虑的替代方案
+      description: What workaround do you use today? / 目前用什么方式绕过？
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution / 参与方式
+      options:
+        - label: I can help validate this workflow. / 我可以协助验证这个工作流。
+        - label: I may be able to contribute an implementation. / 我可能可以参与实现。

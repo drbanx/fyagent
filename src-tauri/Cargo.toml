@@ -8,7 +8,7 @@ version = "0.3.4"
 [package]
 name = "fyagent"
 version.workspace = true
-description = "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
+description = "Personal desktop control center for AI Workers and Agents"
 authors = ["NongHua123"]
 license-file = "../LICENSE"
 edition = "2021"

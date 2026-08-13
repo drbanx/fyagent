@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/application-identity.md","reason":"Review current repository authority and historical provenance exceptions."}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Verify exact-head and post-merge Required CI claims against the stable contract."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Verify focused and full local commands and their evidence boundary."}
+{"file":".trellis/tasks/08-13-issue-21-repository-governance/research/docs-contract.md","reason":"Check all public wording, path exceptions, language parity, and test coverage."}
+{"file":".trellis/tasks/08-13-issue-21-repository-governance/research/repository-scans.md","reason":"Check sanitized scan methodology, results, limitations, and no-secret output."}
+{"file":".trellis/tasks/08-13-issue-21-repository-governance/research/github-governance.md","reason":"Check live protection diff, preserved fields, merge gate, and rollback proof."}

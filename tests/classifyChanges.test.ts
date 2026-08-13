@@ -152,6 +152,7 @@ describe("repository change classifier", () => {
 
   it.each([
     ".github/workflows/ci.yml",
+    "scripts/audit/repository-governance-scan.mjs",
     "scripts/ci/classify-changes.mjs",
     "scripts/release/release-contract.mjs",
     "scripts/prepare-windows-user-helper.mjs",

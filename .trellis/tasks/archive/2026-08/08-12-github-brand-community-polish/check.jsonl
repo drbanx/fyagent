@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/application-identity.md","reason":"Verify package and public descriptions changed without drifting identifiers, release facts, or repository provenance."}
+{"file":".trellis/spec/backend/application-brand-assets.md","reason":"Verify the GitHub-only For You Gate assets do not modify application icon consumers."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify all four locale values, type-checking, formatting, and focused contracts."}

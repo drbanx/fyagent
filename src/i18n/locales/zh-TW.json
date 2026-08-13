@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "FyAgent",
-    "description": "Claude Code / Codex / Gemini CLI 全方位輔助工具"
+    "description": "面向 AI Worker 與 AI Agent 的個人桌面控制中心"
   },
   "common": {
     "add": "新增",

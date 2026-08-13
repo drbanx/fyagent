@@ -79,11 +79,13 @@ const CURRENT_PUBLIC_REPOSITORY_FILES = [
   "CONTRIBUTING.md",
   "SECURITY.md",
   "SUPPORT.md",
+  ".github/DISCUSSION_TEMPLATE/ideas.yml",
+  ".github/DISCUSSION_TEMPLATE/q-a.yml",
+  ".github/DISCUSSION_TEMPLATE/show-and-tell.yml",
   ".github/ISSUE_TEMPLATE/bug_report.yml",
   ".github/ISSUE_TEMPLATE/config.yml",
   ".github/ISSUE_TEMPLATE/doc_issue.yml",
   ".github/ISSUE_TEMPLATE/feature_request.yml",
-  ".github/ISSUE_TEMPLATE/question.yml",
 ] as const;
 
 const INSTALLER_NAME_TEMPLATES = expectedInstallerNames("1.2.3").map((name) =>
@@ -223,7 +225,149 @@ function operationalTextFiles(): string[] {
     );
 }
 
+function trackedMarkdownFiles(): string[] {
+  return execFileSync("git", ["ls-files", "--cached", "-z"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  })
+    .split("\0")
+    .filter((file) => file.toLowerCase().endsWith(".md"))
+    .sort();
+}
+
+function hasConcreteWindowsProfilePath(source: string): boolean {
+  const windowsProfileRoot =
+    /(?:^|[^\p{L}\p{N}_])(?:[A-Za-z]:[\\/]+Users[\\/]+)/giu;
+  for (const match of source.matchAll(windowsProfileRoot)) {
+    const profileStart = (match.index ?? 0) + match[0].length;
+    const remainder = source.slice(profileStart);
+    if (!remainder.startsWith("<")) return true;
+    const placeholderEnd = remainder.indexOf(">");
+    const firstSeparator = remainder.search(/[\\/\r\n]/u);
+    if (
+      placeholderEnd <= 1 ||
+      (firstSeparator >= 0 && placeholderEnd > firstSeparator) ||
+      /[<>]/u.test(remainder.slice(1, placeholderEnd))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 describe("current FyAgent documentation authority", () => {
+  it("keeps tracked Markdown free of concrete Windows profile paths", () => {
+    for (const example of [
+      String.raw`C:\Users\<username>\.codex`,
+      String.raw`C:\Users\<用户名>\AppData\Roaming`,
+      String.raw`C:\ProgramData\FyAgent`,
+      String.raw`%USERPROFILE%\.fyagent`,
+      "~/.fyagent",
+    ]) {
+      expect(hasConcreteWindowsProfilePath(example), example).toBe(false);
+    }
+    expect(
+      hasConcreteWindowsProfilePath(
+        String.raw`C:\Users\concrete-profile\.codex`,
+      ),
+    ).toBe(true);
+    for (const file of trackedMarkdownFiles()) {
+      expect(hasConcreteWindowsProfilePath(read(file)), file).toBe(false);
+    }
+  });
+
+  it("keeps README architecture, onboarding, and evidence semantics aligned", () => {
+    for (const file of PUBLIC_READMES) {
+      const source = read(file);
+      const normalized = source.replace(/\s+/gu, " ");
+      expect(source, `${file} -> architecture`).toMatch(
+        /React\s*(?:\+|\/)\s*Vite/iu,
+      );
+      expect(source, `${file} -> IPC`).toMatch(/Tauri IPC/iu);
+      expect(source, `${file} -> Rust`).toMatch(/Rust/iu);
+      expect(source, `${file} -> SQLite`).toMatch(/SQLite/iu);
+      expect(normalized, `${file} -> local proxy`).toMatch(
+        /(?:local proxy|本地代理|ローカルプロキシ)/iu,
+      );
+      expect(source, `${file} -> maintained docs`).toContain(
+        "docs/fyagent/development/README.md",
+      );
+      const commands = [
+        "mise trust",
+        "mise run bootstrap",
+        "mise run system:check",
+        "mise run dev",
+      ];
+      const positions = commands.map((command) => source.indexOf(command));
+      expect(
+        positions.every((position) => position >= 0),
+        file,
+      ).toBe(true);
+      expect(positions).toEqual(
+        [...positions].sort((left, right) => left - right),
+      );
+      expect(source, `${file} -> current host`).toContain("mise run check");
+      expect(source, `${file} -> required CI`).toContain("CI / Required");
+      expect(source, `${file} -> HIL boundary`).toMatch(/HIL/iu);
+    }
+  });
+
+  it("keeps contribution topology and CODEOWNERS enforcement factual", () => {
+    const contributing = read("CONTRIBUTING.md");
+    const normalized = contributing.replace(/\s+/gu, " ");
+    expect(normalized).toMatch(/maintainer[^.]{0,160}origin/iu);
+    expect(normalized).toMatch(/personal fork[^.]{0,160}origin/iu);
+    expect(normalized).toMatch(/canonical[^.]{0,160}fetch/iu);
+    expect(normalized).toMatch(/CC Switch[^.]{0,160}fetch-only/iu);
+    expect(
+      contributing.match(/CI \/ Required/gu)?.length ?? 0,
+    ).toBeGreaterThanOrEqual(2);
+    expect(contributing.match(/squash/giu)?.length ?? 0).toBeGreaterThanOrEqual(
+      2,
+    );
+    const codeowners = read(".github/CODEOWNERS");
+    expect(codeowners).toMatch(/^\*\s+@\S+/mu);
+    expect(codeowners).toMatch(/branch protection/iu);
+    expect(codeowners).toMatch(/Code Owner review/iu);
+  });
+
+  it("keeps the approved GitHub brand and discussion surface", () => {
+    for (const file of PUBLIC_READMES) {
+      const source = read(file);
+      expect(source, file).toContain(
+        'src="assets/brand/github/for-you-gate.svg"',
+      );
+      expect(source, file).toContain("discussions/categories/q-a");
+      expect(source, file).not.toContain('src="assets/fyagent.png"');
+    }
+    expect(
+      fs.existsSync(path.join(ROOT, ".github/ISSUE_TEMPLATE/question.yml")),
+    ).toBe(false);
+    for (const file of [
+      ".github/DISCUSSION_TEMPLATE/ideas.yml",
+      ".github/DISCUSSION_TEMPLATE/q-a.yml",
+      ".github/DISCUSSION_TEMPLATE/show-and-tell.yml",
+    ]) {
+      expect(read(file), file).toContain("body:");
+    }
+    const expectedDescription =
+      "Personal desktop control center for AI Workers and Agents";
+    expect(JSON.parse(read("package.json")).description).toBe(
+      expectedDescription,
+    );
+    expect(read("src-tauri/Cargo.toml")).toContain(
+      `description = "${expectedDescription}"`,
+    );
+    const preview = fs.readFileSync(
+      path.join(ROOT, "assets/brand/github/fyagent-social-preview.png"),
+    );
+    expect(preview.subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    expect(preview.readUInt32BE(16)).toBe(1280);
+    expect(preview.readUInt32BE(20)).toBe(640);
+  });
+
   it("removes versioned design packages and keeps one responsibility owner", () => {
     expect(fs.existsSync(path.join(ROOT, "docs/fyagent/dev"))).toBe(false);
     const cargoVersion = read("src-tauri/Cargo.toml").match(
@@ -505,7 +649,7 @@ describe("current FyAgent documentation authority", () => {
     const english = read("README_EN.md");
     const japanese = read("README_JA.md");
 
-    expect(chinese).toContain("For You Agent：为你而生，也由你掌控");
+    expect(chinese).toContain("<strong>For You Agent</strong>");
     expect(chinese).toContain('href="README_EN.md">English</a>');
     expect(english).toContain('href="README.md">简体中文</a>');
     expect(japanese).toContain('href="README_EN.md">English</a>');

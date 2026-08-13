@@ -28,6 +28,7 @@ const CONTROL_PLANE_PREFIXES = Object.freeze([
   ".mise/",
   ".trellis/agents/",
   ".trellis/scripts/",
+  "scripts/audit/",
   "scripts/ci/",
   "scripts/release/",
   "scripts/tasks/",

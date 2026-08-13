@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "FyAgent",
-    "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
+    "description": "Personal desktop control center for your AI Workers and Agents"
   },
   "common": {
     "add": "Add",
