@@ -73,11 +73,9 @@ type MemoryPrototypeSeed = Omit<
   | "provenance"
   | "syncTargetIds"
   | "previewTasks"
-> &
-  {
-    syncTargetIds: readonly AgentTargetId[];
-  } &
-  Partial<
+> & {
+  syncTargetIds: readonly AgentTargetId[];
+} & Partial<
     Pick<
       MemoryPrototypeItem,
       | "editableInPrototype"

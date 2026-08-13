@@ -21,6 +21,9 @@ export default defineConfig({
     // leak into one another.
     exclude: [
       ...configDefaults.exclude,
+      // Git-ignored local worktrees contain complete dependency graphs and
+      // test suites. Discovering them duplicates tests and React runtimes.
+      "**/.worktrees/**",
       "**/*.test.mjs",
       "tests/v2/**",
       "tests/v2-browser/**",

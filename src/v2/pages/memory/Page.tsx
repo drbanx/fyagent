@@ -97,7 +97,10 @@ function matchesQuery(values: string[], query: string): boolean {
   );
 }
 
-function listStatus(item: MemoryPrototypeItem, isCurrentDirty: boolean): string {
+function listStatus(
+  item: MemoryPrototypeItem,
+  isCurrentDirty: boolean,
+): string {
   if (item.category === "longTerm") {
     return localStateLabels[
       isCurrentDirty ? "changes-pending" : item.localState
@@ -200,10 +203,7 @@ export function MemoryPage() {
         id: item.id,
         name: item.title,
         meta: `${item.sourceLabel} · ${item.storageKind}`,
-        status: listStatus(
-          item,
-          item.id === selectedItem.id && isDirty,
-        ),
+        status: listStatus(item, item.id === selectedItem.id && isDirty),
       }));
   }, [category, isDirty, itemsByCategory, queries, selectedItem.id]);
 

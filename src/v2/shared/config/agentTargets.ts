@@ -123,8 +123,7 @@ export const agentTargets: readonly AgentTargetDefinition[] = [
     instanceNames: ["group_liaison"],
     promptFile: "AGENTS.md",
     promptPath: "~/.openclaw/workspace-group_liaison/AGENTS.md",
-    promptCanonicalResourceKey:
-      "~/.openclaw/workspace-group_liaison/AGENTS.md",
+    promptCanonicalResourceKey: "~/.openclaw/workspace-group_liaison/AGENTS.md",
     promptPathState: "exists",
     memoryDestination: "原生 MEMORY.md · USER.md",
     memorySyncEligibility: "verified-native",
@@ -193,9 +192,7 @@ export function groupPromptTargetsByCanonicalResource(
       continue;
     }
 
-    const existingGroup = groupsByKey.get(
-      target.promptCanonicalResourceKey,
-    );
+    const existingGroup = groupsByKey.get(target.promptCanonicalResourceKey);
     if (existingGroup) {
       existingGroup.targetIds.push(target.id);
       for (const instanceName of target.instanceNames) {

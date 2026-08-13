@@ -8,10 +8,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
-import {
-  useBlocker,
-  type BlockerFunction,
-} from "react-router-dom";
+import { useBlocker, type BlockerFunction } from "react-router-dom";
 
 import {
   agentTargets,
