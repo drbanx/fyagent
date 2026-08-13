@@ -32,6 +32,10 @@ export default defineConfig({
     name: `chromium-${name}`,
     use: {
       ...devices["Desktop Chrome"],
+      channel:
+        process.env.FYAGENT_PLAYWRIGHT_CHANNEL === "chrome"
+          ? "chrome"
+          : undefined,
       viewport: { width, height },
     },
   })),

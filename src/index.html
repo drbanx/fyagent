@@ -3,10 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="icon"
+      type="image/png"
+      href="./v2/shared/assets/fyagent-y-mark-transparent-128.png"
+    />
     <title>FyAgent</title>
+    <script>
+      if (window.location.protocol === "file:") {
+        const previewUrl = new URL(
+          "../FyAgent-前端交互预览.html",
+          window.location.href,
+        );
+        previewUrl.hash = "/prompts";
+        window.location.replace(previewUrl.href);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="./v2/main.tsx"></script>
+    <script type="module">
+      if (window.location.protocol !== "file:") {
+        void import("./v2/main.tsx");
+      }
+    </script>
   </body>
 </html>

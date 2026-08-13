@@ -70,11 +70,13 @@ const FRONTEND_TEST_PREFIXES = Object.freeze([
 ]);
 
 const FRONTEND_ROOT_FILES = new Set([
+  "FyAgent-前端交互预览.html",
   "components.json",
   "deplink.html",
   "eslint.v2.config.mjs",
   "playwright.v2.config.ts",
   "postcss.config.cjs",
+  "scripts/build-v2-preview.mjs",
   "tailwind.config.cjs",
   "tsconfig.json",
   "tsconfig.node.json",
@@ -82,6 +84,7 @@ const FRONTEND_ROOT_FILES = new Set([
   "vite.config.ts",
   "vitest.v2.config.ts",
   "vitest.config.ts",
+  "vitest.v2.config.ts",
 ]);
 
 const DOCUMENTATION_ROOT_FILES = new Set([

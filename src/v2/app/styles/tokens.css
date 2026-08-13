@@ -6,6 +6,7 @@
   --fy-text: #f6fbff;
   --fy-text-secondary: rgba(239, 248, 255, 0.78);
   --fy-text-tertiary: rgba(232, 244, 255, 0.62);
+  --fy-text-disabled: rgba(232, 244, 255, 0.42);
   --fy-brand-blue: #9bd6ff;
   --fy-brand-cyan: #8ce8f2;
   --fy-accent: #9ddcff;
@@ -19,6 +20,7 @@
   --fy-surface-strong: var(--fy-glass-interactive);
   --fy-surface-soft: var(--fy-glass-ambient);
   --fy-border: rgba(236, 248, 255, 0.22);
+  --fy-divider: rgba(236, 248, 255, 0.18);
   --fy-border-strong: rgba(240, 250, 255, 0.34);
   --fy-highlight: rgba(255, 255, 255, 0.54);
   --fy-selected: rgba(218, 241, 255, 0.2);
@@ -30,6 +32,8 @@
   --fy-warning-soft: rgba(132, 82, 13, 0.34);
   --fy-warning-border: rgba(255, 211, 133, 0.44);
   --fy-warning-text: #ffe2aa;
+  --fy-warning: #ffd385;
+  --fy-success: var(--fy-brand-cyan);
   --fy-shadow-shell: 0 18px 46px rgba(12, 29, 47, 0.28);
   --fy-shadow-control: 0 8px 22px rgba(11, 29, 48, 0.22);
   --fy-focus: #b9eaff;

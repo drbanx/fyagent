@@ -78,14 +78,9 @@ The navigation source contains exactly these entries in this order:
 - Derive selected state only from router location. The active link has
   `aria-current="page"`; do not maintain a second `currentView` state.
 - Put each production page element below its matching `pages/<route>/` folder.
-  Agents, Models, Skills, and MCP render their approved business surfaces.
-  At the Agent/Models feature baseline, Prompts and Memory remain the only empty
-  pages; a later integrated feature must update this shell contract and tests
-  when it makes either page non-empty.
-- The active Agent/Models task has a separate final integration gate: after the
-  pinned Prompt/Memory branch is merged, all six routes must be reachable and
-  non-empty while retaining their own dedicated contracts. This sentence is a
-  target, not evidence that the merge or its post-merge tests have completed.
+  All six routes render their approved business surfaces. Prompts and Memory
+  remain bounded local-only prototypes and must not claim native persistence or
+  backend synchronization.
 - Register the UI Lab only when `import.meta.env.DEV` is true. Production must
   not expose `#/__dev/ui-lab`.
 - React keyboard order is the six navigation links followed by Search,
@@ -171,31 +166,28 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                       | Required result                                                       |
-| ----------------------------------------------- | --------------------------------------------------------------------- |
-| Empty hash, root route, or unknown route        | Redirect to `#/models`; Models alone has `aria-current="page"`        |
-| Any normal production route                     | Exactly one active link and one selected lens                         |
-| UI Lab development route                        | No primary link active; the lab may render one isolated lens specimen |
-| SVG/backdrop filter unavailable                 | CSS tint, edge, shadow, focus, and selected state remain readable     |
-| React StrictMode or repeated ready calls        | One native `frontend-deeplink-ready` emission per renderer lifetime   |
-| Production requests the UI Lab path             | Route is absent and wildcard fallback selects `#/models`              |
-| Custom controls/drag region/frame port appears  | Unit, architecture, or browser negative assertion fails               |
-| V2 calls `setDecorations(false)`                | Static contract search and V2 tests fail                              |
-| V2 imports legacy/upward code, or Tauri outside the platform boundary | ESLint and executable architecture test fail              |
-| A route's rendered state disagrees with its dedicated feature contract | Shell/content test fails                                      |
-| Final Codex-branch integration leaves Prompts or Memory empty | Final task acceptance fails; do not infer completion from merge messages alone |
-| A supported viewport overflows or overlaps      | Playwright geometry gate fails                                        |
+| Condition                                                              | Required result                                                                    |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Empty hash, root route, or unknown route                               | Redirect to `#/models`; Models alone has `aria-current="page"`                     |
+| Any normal production route                                            | Exactly one active link and one selected lens                                      |
+| UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
+| SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
+| React StrictMode or repeated ready calls                               | One native `frontend-deeplink-ready` emission per renderer lifetime                |
+| Production requests the UI Lab path                                    | Route is absent and wildcard fallback selects `#/models`                           |
+| Custom controls/drag region/frame port appears                         | Unit, architecture, or browser negative assertion fails                            |
+| V2 calls `setDecorations(false)`                                       | Static contract search and V2 tests fail                                           |
+| V2 imports legacy/upward code, or Tauri outside the platform boundary  | ESLint and executable architecture test fail                                       |
+| A route's rendered state disagrees with its dedicated feature contract | Shell/content test fails                                                           |
+| Prompts or Memory becomes empty after integration                      | Final task acceptance fails; validate the resolved tree rather than merge messages |
+| A supported viewport overflows or overlaps                             | Playwright geometry gate fails                                                     |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that
   `NavLink` alone owns `aria-current="page"`, contains the sole selected lens,
   remains keyboard-focusable, and the Agent directory renders its approved
-  master/detail UI. Models, Skills, and MCP render only their approved feature
-  surfaces; Prompts and Memory remain empty at this baseline.
-- **Integrated target:** after the pinned Prompt/Memory branch is an ancestor,
-  Prompts and Memory render their bounded non-empty surfaces while the first
-  four routes and the common shell retain their existing behavior.
+  master/detail UI. Models, Skills, MCP, Prompts, and Memory render only their
+  approved bounded feature surfaces.
 - **Base:** Opening without a route lands on `#/models`, with six links and
   three tools visible. Browser preview has no system or simulated controls.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
@@ -219,8 +211,7 @@ mise run build:renderer
 - Unit tests assert default/wildcard redirects, six-route order, Router-owned
   selection, `aria-current`, a sole active lens, the TopBar's nine-stop primary
   tab order, stable accessible names, inert tool clicks, absence of custom
-  chrome/drag regions, exactly two empty baseline pages, non-empty
-  Agents/Models/Skills/MCP pages, and idempotent ready behavior.
+  chrome/drag regions, six non-empty product pages, and idempotent ready behavior.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract.
@@ -228,8 +219,8 @@ mise run build:renderer
   behavior. Playwright must load the real production dependency.
 - Playwright runs at `900x600`, `1152x640`, `1232x700`, and `1440x900`. At each
   viewport assert no document/top-bar overflow; no Brand/Nav/Tools overlap;
-  all six links and three tools visible; empty Prompts/Memory pages and
-  non-empty Agents/Models/Skills/MCP pages; hash/selected/ARIA/lens agreement;
+  all six links and three tools visible; all six product pages non-empty;
+  hash/selected/ARIA/lens agreement;
   the TopBar's nine-stop
   keyboard order on the default shell route; absence of fake chrome; and no
   console, page, or framework-overlay error.
@@ -238,10 +229,9 @@ mise run build:renderer
   Tooltip/Popover portal visibility, focus ring, long multilingual stress
   labels, and reduced-motion state independence.
 - The production renderer build must omit the UI Lab route and succeed.
-- The final post-merge gate replaces the two-empty-page assertion with an
-  all-six-routes-non-empty assertion and reruns the shell, architecture, and
-  four-viewport browser matrix from the resolved tree. Pre-merge results remain
-  diagnostic only.
+- The final post-merge gate asserts all six routes are non-empty and reruns the
+  shell, architecture, and four-viewport browser matrix from the resolved tree.
+  Pre-merge results remain diagnostic only.
 
 The full local project gate remains `mise run check`. Real Windows
 Tauri/WebView2 chrome, SVG/backdrop performance, current-host 125%/150% display

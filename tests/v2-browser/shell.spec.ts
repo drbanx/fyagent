@@ -170,11 +170,7 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
     await expect(lenses).toHaveCount(1);
     await expect(link.getByTestId("liquid-glass-lens")).toHaveCount(1);
     await expect(link).toHaveClass(/fy-primary-nav-item-selected/);
-    if (["/agents", "/models", "/skills", "/mcp"].includes(path)) {
-      await expect(page.getByTestId("content-viewport")).not.toHaveText("");
-    } else {
-      await expect(page.getByTestId("content-viewport")).toHaveText("");
-    }
+    await expect(page.getByTestId("content-viewport")).not.toHaveText("");
 
     await expect
       .poll(

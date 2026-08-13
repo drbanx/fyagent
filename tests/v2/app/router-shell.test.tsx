@@ -113,28 +113,12 @@ describe("FyAgent V2 routing", () => {
         within(navigation).getAllByTestId("liquid-glass-lens"),
       ).toHaveLength(1);
       const content = screen.getByRole("main", { name: "内容承载区" });
-      if (["/agents", "/models", "/skills", "/mcp"].includes(path)) {
-        expect(content).not.toBeEmptyDOMElement();
-      } else {
-        expect(content).toBeEmptyDOMElement();
-      }
+      expect(content).not.toBeEmptyDOMElement();
     },
   );
 
-  it("keeps only Prompts and Memory empty", () => {
-    for (const path of ["/prompts", "/memory"]) {
-      const view = render(
-        <RouterProvider
-          router={createMemoryRouter(appRoutes, { initialEntries: [path] })}
-        />,
-      );
-      expect(
-        screen.getByRole("main", { name: "内容承载区" }),
-      ).toBeEmptyDOMElement();
-      view.unmount();
-    }
-
-    for (const path of ["/agents", "/models", "/skills", "/mcp"]) {
+  it("renders all six product workspaces", () => {
+    for (const path of navigationContract.map(({ path }) => path)) {
       const view = render(
         <RouterProvider
           router={createMemoryRouter(appRoutes, { initialEntries: [path] })}
@@ -143,6 +127,12 @@ describe("FyAgent V2 routing", () => {
       expect(
         screen.getByRole("main", { name: "内容承载区" }),
       ).not.toBeEmptyDOMElement();
+      if (path === "/prompts") {
+        expect(screen.getByTestId("prompts-page")).toBeVisible();
+      }
+      if (path === "/memory") {
+        expect(screen.getByTestId("memory-page")).toBeVisible();
+      }
       view.unmount();
     }
   });

@@ -52,11 +52,11 @@ Before changing renderer code:
 | [Codex Desktop Installer](../backend/codex-desktop-installer.md)           | Installer/restart facade DTOs, job snapshots, progress presentation, and trusted launch outcomes.        |
 | [WorkBuddy Configuration](../backend/workbuddy-configuration.md)           | Top-level navigation, query isolation, model selection, overwrite confirmation, and credential lifetime. |
 
-The Agent/Models feature baseline has four non-empty V2 product routes. The
-active integration task additionally requires the pinned Prompt/Memory branch
-to produce a final six-non-empty-route shell. Keep those as separate evidence
-states: a pre-merge renderer check does not prove final branch integration, and
-a merge commit does not replace post-merge shell/browser validation.
+The integrated V2 shell has six non-empty product routes: Agents, Models,
+Skills, MCP, Prompts, and Memory. Agents/Models use native feature ports;
+Prompts/Memory remain explicitly bounded local-only prototypes until a future
+backend contract is reviewed. A merge commit does not replace post-merge
+shell/browser validation.
 
 ## Quality Check
 
