@@ -1,6 +1,57 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { FeaturePorts } from "../../features/ports";
+import type {
+  ProviderQuickSetupRequest,
+  ProviderSummaryQueryData,
+} from "../../features/types";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
+  );
+}
+
+function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
+  if (!isRecord(value) || !hasExactKeys(value, ["providers", "currentId"]))
+    throw new Error("Provider public summary is unavailable");
+  if (!isRecord(value.providers) || typeof value.currentId !== "string")
+    throw new Error("Provider public summary is unavailable");
+
+  const providers: ProviderSummaryQueryData["providers"] = {};
+  for (const [key, candidate] of Object.entries(value.providers)) {
+    if (
+      !isRecord(candidate) ||
+      !hasExactKeys(candidate, ["id", "name"]) ||
+      typeof candidate.id !== "string" ||
+      typeof candidate.name !== "string" ||
+      candidate.id !== key
+    )
+      throw new Error("Provider public summary is unavailable");
+    providers[key] = { id: candidate.id, name: candidate.name };
+  }
+  if (value.currentId !== "" && !(value.currentId in providers))
+    throw new Error("Provider public summary is unavailable");
+  return { providers, currentId: value.currentId };
+}
+
+function assertQuickSetupRequest(
+  request: ProviderQuickSetupRequest,
+): ProviderQuickSetupRequest {
+  if (
+    !isRecord(request) ||
+    !hasExactKeys(request, ["name", "baseUrl", "apiKey", "modelId"]) ||
+    !Object.values(request).every((value) => typeof value === "string")
+  )
+    throw new Error("Provider quick setup request is invalid");
+  return request;
+}
 
 function validateExternalUrl(url: string): void {
   let parsed: URL;
@@ -16,6 +67,24 @@ function validateExternalUrl(url: string): void {
 
 export function createTauriFeaturePorts(): FeaturePorts {
   return {
+    catalog: {
+      get: () => invoke("get_agent_catalog"),
+    },
+    providers: {
+      getSummary: async (app) =>
+        parseProviderSummary(await invoke("get_provider_summary", { app })),
+      applyQuickSetupWithResult: (request, app) =>
+        invoke("apply_provider_quick_setup_with_result", {
+          request: assertQuickSetupRequest(request),
+          app,
+        }),
+    },
+    workbuddy: {
+      getStatus: () => invoke("get_workbuddy_status"),
+      getModelIds: () => invoke("get_workbuddy_model_ids"),
+      fetchModels: (request) => invoke("fetch_workbuddy_models", { request }),
+      saveModels: (request) => invoke("save_workbuddy_models", { request }),
+    },
     skills: {
       getInstalled: () => invoke("get_installed_skills"),
       getBackups: () => invoke("get_skill_backups"),

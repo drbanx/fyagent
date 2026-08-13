@@ -1,8 +1,14 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { useFeatures } from "./provider";
+import type { ProviderAppId } from "./types";
 
 export const featureKeys = {
+  agentCatalog: ["v2", "agents", "catalog"] as const,
+  providerSummary: (app: ProviderAppId) =>
+    ["v2", "providers", app, "summary"] as const,
+  workbuddyStatus: ["v2", "workbuddy", "status"] as const,
+  workbuddyModelIds: ["v2", "workbuddy", "model-ids"] as const,
   skills: ["v2", "skills", "installed"] as const,
   skillBackups: ["v2", "skills", "backups"] as const,
   skillRepos: ["v2", "skills", "repos"] as const,
@@ -12,6 +18,42 @@ export const featureKeys = {
   mcp: ["v2", "mcp"] as const,
   settings: ["v2", "settings"] as const,
 };
+
+export function useAgentCatalog(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.agentCatalog,
+    queryFn: ports.catalog.get,
+    enabled,
+  });
+}
+
+export function useProviderSummary(app: ProviderAppId, enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.providerSummary(app),
+    queryFn: () => ports.providers.getSummary(app),
+    enabled,
+  });
+}
+
+export function useWorkBuddyStatus(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.workbuddyStatus,
+    queryFn: ports.workbuddy.getStatus,
+    enabled,
+  });
+}
+
+export function useWorkBuddyModelIds(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.workbuddyModelIds,
+    queryFn: ports.workbuddy.getModelIds,
+    enabled,
+  });
+}
 
 export function useInstalledSkills() {
   const { ports } = useFeatures();

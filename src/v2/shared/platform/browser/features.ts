@@ -2,44 +2,60 @@ import type { FeaturePorts } from "../../features/ports";
 
 export const NATIVE_ONLY_ERROR = "此操作仅在 FyAgent 桌面应用中可用";
 
-const rejectWrite = async (): Promise<never> => {
+const rejectNativeOnly = async (): Promise<never> => {
   throw new Error(NATIVE_ONLY_ERROR);
 };
 
 export function createBrowserFeaturePorts(): FeaturePorts {
   return {
+    // The native command is the only Agent capability authority. Browser
+    // preview renders the controlled unavailable state instead of carrying a
+    // second capability matrix that could drift into a support claim.
+    catalog: {
+      get: rejectNativeOnly,
+    },
+    providers: {
+      getSummary: rejectNativeOnly,
+      applyQuickSetupWithResult: rejectNativeOnly,
+    },
+    workbuddy: {
+      getStatus: rejectNativeOnly,
+      getModelIds: rejectNativeOnly,
+      fetchModels: rejectNativeOnly,
+      saveModels: rejectNativeOnly,
+    },
     skills: {
       getInstalled: async () => [],
       getBackups: async () => [],
-      deleteBackup: rejectWrite,
-      install: rejectWrite,
-      uninstall: rejectWrite,
-      restoreBackup: rejectWrite,
-      toggleApp: rejectWrite,
+      deleteBackup: rejectNativeOnly,
+      install: rejectNativeOnly,
+      uninstall: rejectNativeOnly,
+      restoreBackup: rejectNativeOnly,
+      toggleApp: rejectNativeOnly,
       scanUnmanaged: async () => [],
-      importFromApps: rejectWrite,
+      importFromApps: rejectNativeOnly,
       discover: async () => [],
       checkUpdates: async () => [],
-      update: rejectWrite,
-      migrateStorage: rejectWrite,
+      update: rejectNativeOnly,
+      migrateStorage: rejectNativeOnly,
       searchSkillsSh: async (query) => ({ skills: [], totalCount: 0, query }),
       getRepos: async () => [],
-      addRepo: rejectWrite,
-      removeRepo: rejectWrite,
-      pickZip: rejectWrite,
-      installFromZip: rejectWrite,
+      addRepo: rejectNativeOnly,
+      removeRepo: rejectNativeOnly,
+      pickZip: rejectNativeOnly,
+      installFromZip: rejectNativeOnly,
     },
     mcp: {
       getAll: async () => ({}),
-      upsert: rejectWrite,
-      delete: rejectWrite,
-      toggleApp: rejectWrite,
-      importFromApps: rejectWrite,
+      upsert: rejectNativeOnly,
+      delete: rejectNativeOnly,
+      toggleApp: rejectNativeOnly,
+      importFromApps: rejectNativeOnly,
     },
     settings: {
       get: async () => ({}),
-      save: rejectWrite,
-      openExternal: rejectWrite,
+      save: rejectNativeOnly,
+      openExternal: rejectNativeOnly,
     },
   };
 }

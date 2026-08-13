@@ -1,4 +1,5 @@
 import type {
+  AgentCatalogResult,
   DiscoverableSkill,
   FeatureSettings,
   ImportSkillSelection,
@@ -12,7 +13,41 @@ import type {
   SkillUpdateInfo,
   SupportedAppId,
   UnmanagedSkill,
+  ProviderAppId,
+  ProviderQuickSetupRequest,
+  ProviderMutationResult,
+  ProviderSummaryQueryData,
+  ProviderSwitchResult,
+  WorkBuddyFetchModelsRequest,
+  WorkBuddyFetchModelsResult,
+  WorkBuddyModelIdsResult,
+  WorkBuddySaveModelsRequest,
+  WorkBuddySaveModelsResult,
+  WorkBuddyStatus,
 } from "./types";
+
+export interface AgentCatalogPort {
+  get(): Promise<AgentCatalogResult>;
+}
+
+export interface ProvidersPort {
+  getSummary(app: ProviderAppId): Promise<ProviderSummaryQueryData>;
+  applyQuickSetupWithResult(
+    request: ProviderQuickSetupRequest,
+    app: ProviderAppId,
+  ): Promise<ProviderMutationResult<ProviderSwitchResult>>;
+}
+
+export interface WorkBuddyPort {
+  getStatus(): Promise<WorkBuddyStatus>;
+  getModelIds(): Promise<WorkBuddyModelIdsResult>;
+  fetchModels(
+    request: WorkBuddyFetchModelsRequest,
+  ): Promise<WorkBuddyFetchModelsResult>;
+  saveModels(
+    request: WorkBuddySaveModelsRequest,
+  ): Promise<WorkBuddySaveModelsResult>;
+}
 
 export interface SkillsPort {
   getInstalled(): Promise<InstalledSkill[]>;
@@ -72,6 +107,9 @@ export interface SettingsPort {
 }
 
 export interface FeaturePorts {
+  catalog: AgentCatalogPort;
+  providers: ProvidersPort;
+  workbuddy: WorkBuddyPort;
   skills: SkillsPort;
   mcp: McpPort;
   settings: SettingsPort;

@@ -5,6 +5,21 @@ export interface FeatureFixtureCall {
   payload: Record<string, unknown>;
 }
 
+export interface RichFeatureFixtureOptions {
+  catalogFailure?: boolean;
+  observationFailure?: "workbuddy" | "codex" | "claude";
+  openExternalFailure?: boolean;
+  existingQuickSetup?: "codex" | "claude";
+  providerMutation?: "success" | "save_failure" | "switch_failure";
+  providerWriteDelayMs?: number;
+  workBuddySave?:
+    | "saved"
+    | "overwrite_then_saved"
+    | "concurrent_modification"
+    | "failure";
+  workBuddyWriteDelayMs?: number;
+}
+
 declare global {
   interface Window {
     __FYAGENT_FEATURE_FIXTURE__: {
@@ -25,8 +40,9 @@ declare global {
 
 export async function installRichTauriFeatureFixture(
   page: Page,
+  options: RichFeatureFixtureOptions = {},
 ): Promise<void> {
-  await page.addInitScript(() => {
+  await page.addInitScript((fixtureOptions: RichFeatureFixtureOptions) => {
     const assignments = (enabled: string[]) =>
       Object.fromEntries(
         [
@@ -99,7 +115,173 @@ export async function installRichTauriFeatureFixture(
         apps: assignments(["gemini"]),
       },
     };
+    const capability = (
+      state:
+        | "available"
+        | "assisted"
+        | "not_supported"
+        | "pending_verification",
+      reason: string,
+    ) => ({ state, reason });
+    const catalog = {
+      contractVersion: 1,
+      reviewedAt: "2026-08-13",
+      agents: [
+        {
+          id: "qoderwork",
+          displayName: "QoderWork CN",
+          description: "Qoder 家族的桌面工作助手；当前仅提供官方入口。",
+          officialUrl: "https://qoder.com.cn/qoderwork",
+          status: "pending_verification",
+          actions: {
+            browse: capability("available", "可打开 QoderWork 官方产品入口。"),
+            observe: capability(
+              "pending_verification",
+              "尚未验证稳定的本地状态或登录态合同。",
+            ),
+            install: capability(
+              "assisted",
+              "安装由厂商官方流程负责；FyAgent 不下载或安装。",
+            ),
+            configure: capability(
+              "assisted",
+              "仅打开厂商官方设置；FyAgent 不写入配置。",
+            ),
+          },
+          evidenceLabel: "官方产品入口；本地接入能力待验证",
+        },
+        {
+          id: "trae-work",
+          displayName: "TRAE Work",
+          description: "TRAE 的多端工作助手；当前仅提供官方入口。",
+          officialUrl: "https://www.trae.cn/",
+          status: "pending_verification",
+          actions: {
+            browse: capability("available", "可打开 TRAE Work 官方产品入口。"),
+            observe: capability(
+              "pending_verification",
+              "尚未验证稳定的本地状态或登录态合同。",
+            ),
+            install: capability(
+              "assisted",
+              "安装由厂商官方流程负责；FyAgent 不下载或安装。",
+            ),
+            configure: capability(
+              "assisted",
+              "仅打开厂商官方设置；FyAgent 不写入配置。",
+            ),
+          },
+          evidenceLabel: "官方产品入口；本地接入能力待验证",
+        },
+        {
+          id: "workbuddy",
+          displayName: "WorkBuddy",
+          description: "可通过 FyAgent 读取并保存受限的模型配置。",
+          officialUrl: "https://www.workbuddy.cn/",
+          status: "manual_install",
+          actions: {
+            browse: capability("available", "可打开 WorkBuddy 官方产品入口。"),
+            observe: capability(
+              "available",
+              "可读取非敏感的 WorkBuddy 配置状态。",
+            ),
+            install: capability("assisted", "安装由 WorkBuddy 官方流程负责。"),
+            configure: capability(
+              "available",
+              "可按 WorkBuddy 的版本与确认合同保存模型配置。",
+            ),
+          },
+          evidenceLabel: "WorkBuddy 专用状态与模型配置命令",
+        },
+        {
+          id: "codex",
+          displayName: "Codex",
+          description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
+          officialUrl: "https://chatgpt.com/codex",
+          status: "manual_install",
+          actions: {
+            browse: capability("available", "可打开 Codex 官方产品入口。"),
+            observe: capability(
+              "available",
+              "可读取 FyAgent 中的 Provider 汇总和当前选择。",
+            ),
+            install: capability("assisted", "安装由 Codex 官方流程负责。"),
+            configure: capability(
+              "available",
+              "可通过现有 Provider 保存与切换合同配置。",
+            ),
+          },
+          evidenceLabel: "Codex Provider 读取、保存与切换命令",
+        },
+        {
+          id: "claude-code",
+          displayName: "Claude Code",
+          description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
+          officialUrl: "https://www.anthropic.com/claude-code",
+          status: "manual_install",
+          actions: {
+            browse: capability(
+              "available",
+              "可打开 Claude Code 官方产品入口。",
+            ),
+            observe: capability(
+              "available",
+              "可读取 FyAgent 中的 Provider 汇总和当前选择。",
+            ),
+            install: capability(
+              "assisted",
+              "安装由 Claude Code 官方流程负责。",
+            ),
+            configure: capability(
+              "available",
+              "可通过现有 Provider 保存与切换合同配置。",
+            ),
+          },
+          evidenceLabel: "Claude Provider 读取、保存与切换命令",
+        },
+      ],
+    };
+    const quickSetupIds = {
+      codex: "fyagent-v2-quick-setup-codex",
+      claude: "fyagent-v2-quick-setup-claude",
+    } as const;
+    const providers: Record<string, Record<string, Record<string, unknown>>> = {
+      codex: {
+        "fixture-codex-current": {
+          id: "fixture-codex-current",
+          name: "Fixture Codex Current",
+        },
+      },
+      claude: {
+        "fixture-claude-current": {
+          id: "fixture-claude-current",
+          name: "Fixture Claude Current",
+        },
+      },
+    };
+    const currentProviderIds: Record<string, string> = {
+      codex: "fixture-codex-current",
+      claude: "fixture-claude-current",
+    };
+    if (fixtureOptions.existingQuickSetup) {
+      const app = fixtureOptions.existingQuickSetup;
+      const id = quickSetupIds[app];
+      providers[app][id] = {
+        id,
+        name: `Existing ${app} quick setup`,
+      };
+    }
+    let workBuddyRevision = "fixture-revision-1";
+    let workBuddyModelIds = ["existing-model"];
+    let workBuddySaveAttempts = 0;
     const calls: FeatureFixtureCall[] = [];
+
+    const delay = async (milliseconds = 0) => {
+      if (milliseconds <= 0) return;
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, milliseconds);
+      });
+    };
 
     window.__FYAGENT_FEATURE_FIXTURE__ = { calls };
     window.__TAURI_INTERNALS__ = {
@@ -116,6 +298,135 @@ export async function installRichTauriFeatureFixture(
           payload: structuredClone(payload),
         });
         switch (command) {
+          case "get_agent_catalog":
+            if (fixtureOptions.catalogFailure) {
+              throw new Error("fixture catalog unavailable");
+            }
+            return structuredClone(catalog);
+          case "get_workbuddy_status":
+            if (fixtureOptions.observationFailure === "workbuddy") {
+              throw {
+                code: "WORKBUDDY_CONFIG_READ_FAILED",
+                messageKey: "workbuddy.error.configReadFailed",
+                details: {},
+              };
+            }
+            return {
+              path: ".workbuddy/models.json",
+              exists: true,
+              modelCount: workBuddyModelIds.length,
+              revision: workBuddyRevision,
+              backupExists: true,
+              format: "objectRoot",
+            };
+          case "get_workbuddy_model_ids":
+            return {
+              ids: structuredClone(workBuddyModelIds),
+              revision: workBuddyRevision,
+            };
+          case "fetch_workbuddy_models":
+            return {
+              models: ["fixture-model-alpha", "fixture-model-beta"],
+              truncated: false,
+            };
+          case "save_workbuddy_models": {
+            await delay(fixtureOptions.workBuddyWriteDelayMs);
+            workBuddySaveAttempts += 1;
+            if (fixtureOptions.workBuddySave === "failure") {
+              throw {
+                code: "WORKBUDDY_CONFIG_WRITE_FAILED",
+                messageKey: "workbuddy.error.configWriteFailed",
+                details: {},
+              };
+            }
+            if (fixtureOptions.workBuddySave === "concurrent_modification") {
+              return { state: "concurrent_modification" };
+            }
+            const request = payload.request as
+              | Record<string, unknown>
+              | undefined;
+            if (
+              fixtureOptions.workBuddySave === "overwrite_then_saved" &&
+              workBuddySaveAttempts === 1
+            ) {
+              return {
+                state: "overwrite_confirmation_required",
+                token: "fixture-opaque-overwrite-token",
+                existingIds: ["existing-model"],
+              };
+            }
+            if (
+              fixtureOptions.workBuddySave === "overwrite_then_saved" &&
+              request?.overwriteToken !== "fixture-opaque-overwrite-token"
+            ) {
+              throw {
+                code: "WORKBUDDY_OVERWRITE_TOKEN_INVALID",
+                messageKey: "workbuddy.error.overwriteTokenInvalid",
+                details: {},
+              };
+            }
+            workBuddyModelIds = [
+              ...new Set(
+                [
+                  ...((request?.selectedModelIds as string[] | undefined) ??
+                    []),
+                  ...((request?.manualModelIds as string[] | undefined) ?? []),
+                ].filter(Boolean),
+              ),
+            ];
+            workBuddyRevision = `fixture-revision-${workBuddySaveAttempts + 1}`;
+            return {
+              state: "saved",
+              revision: workBuddyRevision,
+              modelCount: workBuddyModelIds.length,
+              createdEntries: workBuddyModelIds.length,
+              updatedEntries: 0,
+            };
+          }
+          case "get_provider_summary": {
+            const app = String(payload.app);
+            if (fixtureOptions.observationFailure === app) {
+              throw new Error(
+                `fixture ${app} Provider observation unavailable`,
+              );
+            }
+            return {
+              providers: structuredClone(providers[app] ?? {}),
+              currentId: currentProviderIds[app] ?? "",
+            };
+          }
+          case "apply_provider_quick_setup_with_result": {
+            await delay(fixtureOptions.providerWriteDelayMs);
+            if (
+              fixtureOptions.providerMutation === "save_failure" ||
+              fixtureOptions.providerMutation === "switch_failure"
+            ) {
+              throw new Error("fixture Provider atomic apply rejected");
+            }
+            const app = String(payload.app);
+            const request = structuredClone(
+              payload.request as Record<string, unknown>,
+            );
+            const providerId = `fyagent-v2-quick-setup-${app}`;
+            providers[app] ??= {};
+            providers[app][providerId] = {
+              id: providerId,
+              name: String(request.name),
+            };
+            currentProviderIds[app] = providerId;
+            return {
+              value: { warnings: [] },
+              liveConfigChanged: app === "codex",
+              app,
+              warningCodes:
+                app === "codex" ? ["CODEX_WEBSOCKET_NON_GPT_MODEL"] : [],
+            };
+          }
+          case "open_external":
+            if (fixtureOptions.openExternalFailure) {
+              throw new Error("fixture external open rejected");
+            }
+            return undefined;
           case "get_installed_skills":
             return structuredClone(skills);
           case "get_mcp_servers":
@@ -150,7 +461,7 @@ export async function installRichTauriFeatureFixture(
         }
       },
     };
-  });
+  }, options);
 }
 
 export async function featureFixtureCalls(

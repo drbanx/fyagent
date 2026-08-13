@@ -143,7 +143,7 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
   expect(contentBox.height).toBeGreaterThan(0);
   expect(
     await contentViewport.evaluate((element) => element.textContent?.trim()),
-  ).toBe("");
+  ).not.toBe("");
 
   await expectHealthyPage(page, health);
 });
@@ -170,7 +170,7 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
     await expect(lenses).toHaveCount(1);
     await expect(link.getByTestId("liquid-glass-lens")).toHaveCount(1);
     await expect(link).toHaveClass(/fy-primary-nav-item-selected/);
-    if (path === "/skills" || path === "/mcp") {
+    if (["/agents", "/models", "/skills", "/mcp"].includes(path)) {
       await expect(page.getByTestId("content-viewport")).not.toHaveText("");
     } else {
       await expect(page.getByTestId("content-viewport")).toHaveText("");

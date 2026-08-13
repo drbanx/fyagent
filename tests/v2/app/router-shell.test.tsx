@@ -113,7 +113,7 @@ describe("FyAgent V2 routing", () => {
         within(navigation).getAllByTestId("liquid-glass-lens"),
       ).toHaveLength(1);
       const content = screen.getByRole("main", { name: "内容承载区" });
-      if (path === "/skills" || path === "/mcp") {
+      if (["/agents", "/models", "/skills", "/mcp"].includes(path)) {
         expect(content).not.toBeEmptyDOMElement();
       } else {
         expect(content).toBeEmptyDOMElement();
@@ -121,8 +121,8 @@ describe("FyAgent V2 routing", () => {
     },
   );
 
-  it("keeps only the four unrelated Phase 1 routes empty", () => {
-    for (const path of ["/agents", "/models", "/prompts", "/memory"]) {
+  it("keeps only Prompts and Memory empty", () => {
+    for (const path of ["/prompts", "/memory"]) {
       const view = render(
         <RouterProvider
           router={createMemoryRouter(appRoutes, { initialEntries: [path] })}
@@ -134,7 +134,7 @@ describe("FyAgent V2 routing", () => {
       view.unmount();
     }
 
-    for (const path of ["/skills", "/mcp"]) {
+    for (const path of ["/agents", "/models", "/skills", "/mcp"]) {
       const view = render(
         <RouterProvider
           router={createMemoryRouter(appRoutes, { initialEntries: [path] })}
