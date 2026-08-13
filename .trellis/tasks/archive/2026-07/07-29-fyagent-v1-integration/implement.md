@@ -38,7 +38,7 @@ macOS Dock/菜单栏的视觉正确性保留给人工验收。
 
 | 类别 | 命令 / 检查 | 结果 |
 | ---- | ----------- | ---- |
-| 源图 | `Get-FileHash C:\Users\Administrator\Desktop\fyagent.png -Algorithm SHA256`；Pillow 读取外部输入与 `assets/fyagent.png` 的 PNG metadata/alpha | 退出码 0；两者 SHA-256 均为 `17236EBB0DD38D8A9FE5C4BA8D1621E4048909B86F1BD8C88BA55E8DBA63C9BF`；1024×1024、RGBA、alpha 0..255，含抗锯齿值 |
+| 源图 | `Get-FileHash <local-fyagent-source-image> -Algorithm SHA256`；Pillow 读取外部输入与 `assets/fyagent.png` 的 PNG metadata/alpha | 退出码 0；两者 SHA-256 均为 `17236EBB0DD38D8A9FE5C4BA8D1621E4048909B86F1BD8C88BA55E8DBA63C9BF`；1024×1024、RGBA、alpha 0..255，含抗锯齿值 |
 | 标准集合 | `pnpm tauri icon assets/fyagent.png --output src-tauri/icons` | 退出码 0；生成桌面、Windows Store、Android、iOS 共 50 个既有路径，包含 `64x64.png`；未新增额外生成路径 |
 | About / tray | `Copy-Item src-tauri\icons\32x32.png src\assets\icons\app-icon.png -Force`；Pillow 按源 alpha 非透明边界生成三个 macOS template | About 与 32×32 输出 SHA-256 同为 `A0E4AC31157CAA5B9DD893A38A558B3BD506A6DDD37A61174BFB05EE12B54C19`；template 为 24/48/72 RGBA、RGB 全黑、alpha 0..255 且含部分透明值，非透明 bbox 分别为 `(4,3,20,21)`、`(8,6,41,42)`、`(12,9,61,62)` |
 | 文件级验证 | 内联 Python/Pillow + `git ls-files`/`git diff --name-only` 校验 source、inventory、PNG/ICO/ICNS、About、template、排除资产与 ZIP | 退出码 0；53/53 个既有应用品牌路径均变化；51/51 PNG 可解码且为 RGBA；ICO 含 16/24/32/48/64/256；ICNS 最大 1024×1024；DMG 背景、第三方 provider、截图和其他 renderer icons 无 diff；`v1.zip` 19/19 Markdown 逐字节一致 |

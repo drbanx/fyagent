@@ -26,6 +26,8 @@ Provider、MCP、Prompt といった用語を先に理解する必要はあり�
 
 現在の FyAgent は、まず具体的な設定管理から始めています。Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes に対応しています。
 
+WorkBuddy には独立したトップレベルの設定入口があります。上記の対象ツールや Provider ドメインには含まれないため、このツール一覧から WorkBuddy の対応範囲を推測することはできません。
+
 > **リリース状況:** FyAgent は現在も継続的に開発されています。更新前に大切な設定をバックアップし、インストール前に各リリースの信頼情報を確認してください。
 
 ## ビジョン：AI 時代に持ち歩けるデジタル人格
@@ -53,6 +55,10 @@ AI が賢くなるほど、権限を誰に渡したのか、なぜ設定が壊�
 | 作業の継続 | セッションやワークスペースを再開し、設定をバックアップ・同期する |
 
 作業データは既定でローカルの `~/.fyagent` に保存されます。設定更新には SQLite とアトミック書き込みを使い、`fyagent://` からのインポートも書き込み前に変更内容を表示します。
+
+## アーキテクチャ
+
+`React/Vite` レンダラーは Tauri IPC を介して Rust の commands/services を呼び出します。ローカルの Rust 層は SQLite の状態、対象 AI ツールへの設定書き込み、ローカルプロキシを担当します。各層の責任範囲と検証境界は、保守されている[開発ガイド](docs/fyagent/development/README.md)を参照してください。
 
 ## クイックスタート
 
@@ -113,16 +119,28 @@ FyAgent はソースを利用可能なソフトウェアであり、OSI が定�
 
 ## 開発に参加する
 
-このリポジトリでは `mise` を正式な入口として使います。
+初回 checkout には、グローバルにインストールした `mise >= 2026.8.0` が必要です。リポジトリ設定を確認したうえで、対話的な開発は次の順序で開始します。
 
 ```bash
 mise trust
 mise run bootstrap
+mise run system:check
 mise run dev
+```
+
+現在のホスト向けビルドは任意であり、対話的な起動とは別の手順です。
+
+```bash
 mise run build
 ```
 
-Pull Request の前に `mise run check` を実行してください。ツールチェーンと個別チェックは[開発ガイド](docs/fyagent/development/README.md)にあります。
+検証証拠は範囲ごとに区別します。
+
+- `mise run check` は現在のホストに対する完全なゲートです。ネイティブウィンドウやインストーラーの HIL、署名、公証を証明するものではありません。
+- Pull Request の正確な head で成功した `CI / Required` がリモートのマージゲートです。別の SHA や個別ジョブでは代替できません。
+- 正式な Release には、正確なソース SHA、前提 CI、annotated tag、正式な Release workflow、公開済みアセットから成る独立した証拠チェーンが必要です。ローカルビルドや Pull Request のチェックでは代替できません。
+
+ツールチェーンと個別チェックは[開発ガイド](docs/fyagent/development/README.md)にあります。
 
 ## プロジェクトの経緯とライセンス
 

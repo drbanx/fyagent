@@ -89,6 +89,25 @@ These tasks build only the current host OS and architecture. Formal Windows
 x64/ARM64, Linux x64/ARM64, and macOS Universal Release assets are produced by
 GitHub Actions. Local Linux/WSL-to-Windows or macOS cross-builds are unsupported.
 
+## Repository and remote roles
+
+The canonical source of truth is [`fy-agent/fyagent`](https://github.com/fy-agent/fyagent).
+Remote names are local conventions, so verify the repository role instead of
+assuming that every checkout has the same configuration:
+
+- A maintainer checkout may use the canonical repository as its writable
+  `origin`.
+- An external contributor normally uses a personal fork as `origin` and adds
+  the canonical FyAgent repository as another fetch source. That source is
+  commonly named `upstream`, or `fyagent` when CC Switch maintenance reserves
+  `upstream` for its separate contract.
+- CC Switch synchronization uses a distinct fetch-only maintenance remote. It
+  is neither the canonical FyAgent repository nor a contributor's fork, and it
+  must never become a normal push target.
+
+Documentation and project tasks do not create, rename, or rewrite a
+contributor's remotes.
+
 ## Code Style
 
 - **Frontend**: Prettier formatting and strict TypeScript
@@ -112,9 +131,11 @@ and reviewed; they do not belong in ordinary read-only checks.
 ## Pull Request Guidelines
 
 1. **Open an issue first** for new features — PRs for features that are not a good fit may be closed.
-2. **Fork and branch** — Create a feature branch from `main` (e.g., `feat/my-feature` or `fix/issue-123`).
-3. **Keep PRs focused** — One feature or fix per PR. Avoid unrelated changes.
+2. **Branch from current canonical `main`** — Fetch the canonical source through the remote appropriate to your role, then create a feature branch (e.g., `feat/my-feature` or `fix/issue-123`). Do not commit directly or force-push to `main`.
+3. **Keep PRs focused** — Open one focused PR against canonical `main` for one feature or fix. Avoid unrelated changes.
 4. **Follow the PR template** — Fill in the summary, related issue, and checklist.
+5. **Wait for the exact-head gate** — The stable `CI / Required` check must succeed on the exact PR head; another SHA or an individual job is not a substitute.
+6. **Use the repository merge path** — Accepted changes are squash-merged. This policy does not promise source-branch deletion or require a human approval unless live GitHub protection says so.
 
 ### PR Checklist
 
@@ -169,12 +190,15 @@ in new current material or an appended entry.
 
 ## Upstream CC Switch changes
 
-`origin` is FyAgent's writable repository and `upstream` is fetch-only. Formal
-upstream tag work uses the `upstream:*` tasks, verifies the immutable tag object
-and peeled commit, preserves a two-parent merge commit and MIT ancestry, and
-stops before any automatic commit or push. A PR that contains upstream work
-must record the tag, full SHAs, conflict decisions, FyAgent-specific contracts
-preserved, tests, and rollback boundary.
+CC Switch synchronization uses its own fetch-only maintenance remote
+(`upstream` in the maintained `upstream:*` tasks). That remote is separate from
+both the canonical FyAgent source and a contributor fork. The checkout's normal
+push target remains `origin`: canonical for a maintainer checkout or the
+personal fork for an external contributor. Formal upstream tag work verifies
+the immutable tag object and peeled commit, preserves a two-parent merge commit
+and MIT ancestry, and stops before any automatic commit or push. A PR that
+contains upstream work must record the tag, full SHAs, conflict decisions,
+FyAgent-specific contracts preserved, tests, and rollback boundary.
 
 ## Evidence and release changes
 
@@ -304,6 +328,20 @@ mise run build:debug
 macOS Universal Release 资产由 GitHub Actions 生成。不支持 Linux/WSL 到 Windows
 或 macOS 的本地交叉构建。
 
+## 仓库与 remote 角色
+
+唯一规范来源是 [`fy-agent/fyagent`](https://github.com/fy-agent/fyagent)。remote 名称是
+本地约定，操作前应核对仓库角色，不能假设每个 checkout 都采用相同配置：
+
+- 维护者 checkout 可以把规范仓库作为可写的 `origin`。
+- 外部贡献者通常把个人 fork 作为 `origin`，并把 FyAgent 规范仓库添加为额外 fetch
+  来源。该来源通常可命名为 `upstream`；需要执行 CC Switch 维护合同时，则用 `fyagent`
+  等名称，把 `upstream` 留给独立的上游合同。
+- CC Switch 同步使用单独的只读 fetch 维护 remote。它既不是 FyAgent 规范仓库，也不是
+  贡献者 fork，且不得成为常规 push 目标。
+
+文档和项目任务不会创建、重命名或改写贡献者的 remote。
+
 ## 代码规范
 
 - **前端**：使用 Prettier 格式化和严格 TypeScript
@@ -326,9 +364,11 @@ mise run check
 ## Pull Request 指南
 
 1. **先开 Issue 讨论** — 新功能请先开 Issue，不适合项目方向的 PR 可能会被关闭。
-2. **Fork 并创建分支** — 从 `main` 创建功能分支（如 `feat/my-feature` 或 `fix/issue-123`）。
-3. **保持 PR 专注** — 每个 PR 只做一件事，避免无关改动。
+2. **基于规范仓库的最新 `main` 创建分支** — 通过符合自身角色的 remote 获取规范来源，再创建功能分支（如 `feat/my-feature` 或 `fix/issue-123`）；不得直接提交或 force-push 到 `main`。
+3. **保持 PR 专注** — 针对规范仓库的 `main` 开一个聚焦 PR，每个 PR 只做一个功能或修复，避免无关改动。
 4. **遵循 PR 模板** — 填写概述、关联 Issue 和检查清单。
+5. **等待精确 head 门禁** — 名称稳定的 `CI / Required` 必须在 PR 的精确 head 上成功；其他 SHA 或单个 job 不能替代。
+6. **使用仓库合并路径** — 接受的改动使用 squash merge；除非 GitHub 实时保护策略另有要求，此流程不承诺删除源分支，也不声称必须获得人工批准。
 
 ### PR 检查清单
 
@@ -377,10 +417,12 @@ chore(deps): update dependencies
 
 ## 上游 CC Switch 变更
 
-`origin` 是 FyAgent 可写仓库，`upstream` 只允许 fetch。正式上游标签工作使用
-`upstream:*` 任务，验证不可变 tag object 与 peeled commit，保留双亲 merge commit
-和 MIT ancestry，并在任何自动 commit/push 前停止。包含上游变更的 PR 必须记录 tag、
-完整 SHA、冲突裁决、保留的 FyAgent 专属契约、测试与回退边界。
+CC Switch 同步使用独立的只读 fetch 维护 remote（维护中的 `upstream:*` 任务将其命名为
+`upstream`）。该 remote 与 FyAgent 规范来源和贡献者 fork 都不同。checkout 的常规 push
+目标仍是 `origin`：维护者 checkout 指向规范仓库，外部贡献者 checkout 指向个人 fork。
+正式上游标签工作会验证不可变 tag object 与 peeled commit，保留双亲 merge commit 和
+MIT ancestry，并在任何自动 commit/push 前停止。包含上游变更的 PR 必须记录 tag、完整
+SHA、冲突裁决、保留的 FyAgent 专属契约、测试与回退边界。
 
 ## 证据与发布变更
 
