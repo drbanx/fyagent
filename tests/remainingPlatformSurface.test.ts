@@ -58,6 +58,7 @@ type SourceContract = { id: string; file: string; snippet: string };
 type CheckerModule = {
   ACTIVE_TASK_ENV: string;
   EXPECTED_ACTIVE_TASK: string;
+  GENERATED_STANDALONE_PREVIEW_PATH: string;
   MACOS_POSIX_CONTRACT: readonly SourceContract[];
   RUST_ALLOWANCE_CONTRACT: readonly RustAllowance[];
   RASTER_ASSET_CONTRACT: readonly { path: string; digest: string }[];
@@ -467,6 +468,16 @@ describe("durable supported-platform surface contract", () => {
     expect(checker.isTextExcludedPath("pnpm-lock.yaml")).toBe(true);
     expect(checker.isTextExcludedPath("src-tauri/Cargo.lock")).toBe(true);
     expect(checker.isTextExcludedPath("mise.lock")).toBe(false);
+
+    const standalone = checker.GENERATED_STANDALONE_PREVIEW_PATH;
+    expect(standalone).toBe("FyAgent-前端交互预览.html");
+    expect(checker.isExcludedPath(standalone)).toBe(false);
+    expect(checker.isTextExcludedPath(standalone)).toBe(true);
+    expect(checker.isTextExcludedPath(`nested/${standalone}`)).toBe(false);
+    expect(checker.isTextExcludedPath("scripts/build-v2-preview.mjs")).toBe(
+      false,
+    );
+    expect(checker.isTextExcludedPath("src/v2/main.tsx")).toBe(false);
 
     const fixture = activeTaskFixture();
     const directSession = () => fixture.relative;
@@ -1130,7 +1141,7 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes the decoded and visually reviewed raster inventory by path and digest", () => {
     const currentPaths = checker.listCurrentFiles(ROOT);
-    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(148);
+    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(166);
     expect(checker.validateRasterAssetInventory(currentPaths)).toEqual([]);
 
     const first = checker.RASTER_ASSET_CONTRACT[0];
@@ -1345,7 +1356,7 @@ describe("durable supported-platform surface contract", () => {
         ),
       );
       fs.writeFileSync(manifestPath, JSON.stringify(current));
-      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(148);
+      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(166);
 
       fs.writeFileSync(
         manifestPath,

@@ -607,7 +607,15 @@ function sanitizeWarningCodes(
   ];
 }
 
-function ProviderPanel({ app }: { app: ProviderAppId }) {
+function ProviderPanel({
+  app,
+  writesBlocked,
+  onBlockWrites,
+}: {
+  app: ProviderAppId;
+  writesBlocked: boolean;
+  onBlockWrites: (app: ProviderAppId) => void;
+}) {
   const { ports } = useFeatures();
   const summaryQuery = useProviderSummary(app, true);
   const [name, setName] = useState(
@@ -654,7 +662,7 @@ function ProviderPanel({ app }: { app: ProviderAppId }) {
   const currentId = summaryQuery.data?.currentId ?? "";
 
   const submit = async () => {
-    if (writeLock.current) return;
+    if (writeLock.current || writesBlocked) return;
     const validated = validateQuickSetup(
       {
         name,
@@ -685,6 +693,7 @@ function ProviderPanel({ app }: { app: ProviderAppId }) {
     setNotice(null);
     setWarningCodes([]);
     let authorityRereadAttempted = false;
+    let keepWriteLock = false;
     try {
       const request = buildQuickSetupRequest(app, validated.value);
       const applyResult = await ports.providers.applyQuickSetupWithResult(
@@ -739,18 +748,23 @@ function ProviderPanel({ app }: { app: ProviderAppId }) {
       }
     } catch (error) {
       if (mountedRef.current) {
-        const stateUnknown =
+        const rollbackConfirmed =
           typeof error === "object" &&
           error !== null &&
           "code" in error &&
-          error.code === "ROLLBACK_PARTIAL_STATE_UNKNOWN";
+          error.code === "APPLY_FAILED_ROLLED_BACK";
+        const stateUnknown = !rollbackConfirmed;
+        if (stateUnknown) {
+          keepWriteLock = true;
+          onBlockWrites(app);
+        }
         setNotice({
           tone: "error",
           title: stateUnknown
             ? "Provider 状态未知，请停止继续写入"
             : "Provider 原子应用失败，已完成回滚",
           description: stateUnknown
-            ? "后端未能确认完整补偿；请刷新并人工核对 Provider、live 配置与代理状态。原始错误已隐藏。"
+            ? "后端未能确认完整补偿；当前页面已停止后续写入。请重新进入页面并人工核对 Provider、live 配置与代理状态。原始错误已隐藏。"
             : "后端已确认完整补偿；未显示可能包含敏感信息的原始错误，请以权威回读为准。",
         });
       }
@@ -758,7 +772,7 @@ function ProviderPanel({ app }: { app: ProviderAppId }) {
       clearApiKey();
       if (!authorityRereadAttempted) await summaryQuery.refetch();
       if (mountedRef.current) setBusy(false);
-      writeLock.current = false;
+      if (!keepWriteLock) writeLock.current = false;
     }
   };
 
@@ -912,10 +926,14 @@ function ProviderPanel({ app }: { app: ProviderAppId }) {
         <div className="fy-models-actions">
           <Button
             className="fy-control-button-primary"
-            disabled={busy || queryPending || queryUnavailable}
+            disabled={busy || writesBlocked || queryPending || queryUnavailable}
             onClick={() => void submit()}
           >
-            {busy ? "配置中…" : "保存并切换"}
+            {busy
+              ? "配置中…"
+              : writesBlocked
+                ? "状态未知，已停止写入"
+                : "保存并切换"}
           </Button>
         </div>
       </div>
@@ -1043,13 +1061,27 @@ function GuidancePanel({ target }: { target: "qoderwork" | "trae" }) {
   );
 }
 
-function TargetPanel({ target }: { target: ModelTarget }) {
+function TargetPanel({
+  target,
+  blockedProviderWrites,
+  onBlockProviderWrites,
+}: {
+  target: ModelTarget;
+  blockedProviderWrites: Partial<Record<ProviderAppId, boolean>>;
+  onBlockProviderWrites: (app: ProviderAppId) => void;
+}) {
   switch (target) {
     case "workbuddy":
       return <WorkBuddyPanel />;
     case "codex":
     case "claude":
-      return <ProviderPanel app={target} />;
+      return (
+        <ProviderPanel
+          app={target}
+          writesBlocked={Boolean(blockedProviderWrites[target])}
+          onBlockWrites={onBlockProviderWrites}
+        />
+      );
     case "qoderwork":
     case "trae":
       return <GuidancePanel target={target} />;
@@ -1058,6 +1090,9 @@ function TargetPanel({ target }: { target: ModelTarget }) {
 
 export function ModelsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [blockedProviderWrites, setBlockedProviderWrites] = useState<
+    Partial<Record<ProviderAppId, boolean>>
+  >({});
   const target = parseModelTarget(searchParams.get("target"));
   const targets = useMemo(() => MODEL_TARGETS, []);
 
@@ -1108,7 +1143,17 @@ export function ModelsPage() {
             })}
           </div>
         </aside>
-        <TargetPanel key={target} target={target} />
+        <TargetPanel
+          key={target}
+          target={target}
+          blockedProviderWrites={blockedProviderWrites}
+          onBlockProviderWrites={(app) =>
+            setBlockedProviderWrites((current) => ({
+              ...current,
+              [app]: true,
+            }))
+          }
+        />
       </div>
     </div>
   );

@@ -229,49 +229,49 @@ state.
 
 ## Acceptance criteria
 
-- [ ] The native catalog command returns contract version 1 and exactly the
+- [x] The native catalog command returns contract version 1 and exactly the
   five requested Agents in the required order with tested, honest action
   states; QoderWork and TRAE remain `pending_verification`.
-- [ ] `#/agents` renders a keyboard-accessible left selector and right detail
+- [x] `#/agents` renders a keyboard-accessible left selector and right detail
   view for all five Agents, uses the requested official icons, and opens only
   official QoderWork/TRAE HTTP(S) destinations through native `open_external`.
-- [ ] Agent details show real WorkBuddy and Claude/Codex backend observations
+- [x] Agent details show real WorkBuddy and Claude/Codex backend observations
   or an explicit controlled degradation; no UI copy upgrades absence of
   evidence to installation, authentication, model, or support success.
-- [ ] `#/models` performs real WorkBuddy model discovery/save and real
+- [x] `#/models` performs real WorkBuddy model discovery/save and real
   Claude/Codex atomic quick-setup apply operations with pending, success,
   warning, failure, concurrency, overwrite, rollback, and
   sanitized activation-reread states; QoderWork CN is the default/top selector
   and all five selectors use local icons.
-- [ ] Formal Windows WorkBuddy reads and writes remain bound to the frozen
+- [x] Formal Windows WorkBuddy reads and writes remain bound to the frozen
   Explorer user's verified no-follow directory handle. Parent junctions, leaf
   reparse points, and identity drift fail closed with no primary, backup, temp,
   or redirected-target change.
-- [ ] QoderWork/TRAE model fields are transient guidance only and cannot emit a
+- [x] QoderWork/TRAE model fields are transient guidance only and cannot emit a
   configuration-success state or persist secrets/configuration.
-- [ ] API keys enter only the explicitly requested protected Provider/WorkBuddy
+- [x] API keys enter only the explicitly requested protected Provider/WorkBuddy
   DB or live credential/config files and the one native request. They do not
   enter URLs, renderer/shared/non-secret storage, query caches/keys, logs,
   snapshots, public summaries, model IDs/names, or user-visible errors, and are
   cleared at all required renderer lifecycle boundaries.
-- [ ] Agents, Models, Skills, MCP, Prompts, and Memory are reachable and
+- [x] Agents, Models, Skills, MCP, Prompts, and Memory are reachable and
   non-empty in final post-merge V2 shell unit/browser tests; existing
   Skills/MCP behavior, the merged Prompt/Memory contracts, and V2 architecture
   gates continue to pass.
-- [ ] The QoderWork/Trae asset bytes match their recorded official-source
+- [x] The QoderWork/Trae asset bytes match their recorded official-source
   identities before processing, local assets resolve correctly, and the
   conservative nominative-use/provenance boundary remains documented.
-- [ ] `assets/fyagent.png`, all Tauri bundle icons, Windows NSIS icon, About
+- [x] `assets/fyagent.png`, all Tauri bundle icons, Windows NSIS icon, About
   icon, and macOS tray templates are synchronized to the Y identity and pass
   source, decode, frame, digest, equality, and mask checks.
-- [ ] A real Windows native app run validates the new routes/actions and visible
+- [x] A real Windows native app run validates the new routes/actions and visible
   application identity; a real Windows bundle build plus PE inspection proves
   its setup icon matches `src-tauri/icons/icon.ico`.
-- [ ] Every commit pinned in `research/remote-codex-merge-inventory.md` is an
+- [x] Every commit pinned in `research/remote-codex-merge-inventory.md` is an
   ancestor of local `dev/laiyongjie`; conflicts preserve both intended feature
   sets, all merge commits are local and attributable, and no remote ref is
   modified.
-- [ ] The full local check matrix passes, any unexecuted macOS/legal/remote
+- [x] The full local check matrix passes, any unexecuted macOS/legal/remote
   evidence is reported as residual rather than inferred, the task is archived,
   all work is committed locally, no remote state is changed, and the working
   tree is clean.

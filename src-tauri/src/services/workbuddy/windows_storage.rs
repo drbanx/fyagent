@@ -33,8 +33,8 @@ use windows::{
         Foundation::{
             LocalFree, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, OBJ_CASE_INSENSITIVE,
             OBJ_DONT_REPARSE, STATUS_BUFFER_OVERFLOW, STATUS_BUFFER_TOO_SMALL,
-            STATUS_INFO_LENGTH_MISMATCH, STATUS_NO_SUCH_FILE, STATUS_OBJECT_NAME_COLLISION,
-            STATUS_OBJECT_NAME_NOT_FOUND, STATUS_OBJECT_PATH_NOT_FOUND, UNICODE_STRING,
+            STATUS_INFO_LENGTH_MISMATCH, STATUS_NO_SUCH_FILE, STATUS_OBJECT_NAME_NOT_FOUND,
+            STATUS_OBJECT_PATH_NOT_FOUND, UNICODE_STRING,
         },
         Security::{
             Authorization::{GetSecurityInfo, SetSecurityInfo, SE_FILE_OBJECT},
@@ -57,9 +57,10 @@ use windows::{
     },
 };
 
+use super::document::MAX_CONFIG_BYTES;
+
 const MODELS_FILE_NAME: &str = "models.json";
 const BACKUP_FILE_NAME: &str = "models.json.backup";
-const MAX_CONFIG_BYTES: u64 = 2 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ObjectKind {
@@ -183,7 +184,7 @@ impl WindowsWorkBuddyStorage {
                 | FILE_DELETE_CHILD
                 | SYNCHRONIZE)
                 .0,
-            (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE).0,
+            (FILE_SHARE_READ | FILE_SHARE_WRITE).0,
             if create_directory {
                 RelativeDisposition::OpenIf
             } else {
@@ -564,7 +565,7 @@ fn open_absolute_ancestor_chain(home: &Path) -> io::Result<(Vec<HeldDirectory>, 
                     FILE_ACCESS_RIGHTS(0)
                 })
             .0,
-            (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE).0,
+            (FILE_SHARE_READ | FILE_SHARE_WRITE).0,
             RelativeDisposition::Open,
             FILE_ATTRIBUTE_DIRECTORY.0,
             (FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT).0,
@@ -675,8 +676,6 @@ fn open_relative(
             STATUS_NO_SUCH_FILE | STATUS_OBJECT_NAME_NOT_FOUND | STATUS_OBJECT_PATH_NOT_FOUND
         ) {
             Err(RelativeOpenError::NotFound)
-        } else if status == STATUS_OBJECT_NAME_COLLISION {
-            Err(RelativeOpenError::Rejected)
         } else {
             Err(RelativeOpenError::Rejected)
         };
@@ -1245,28 +1244,32 @@ mod tests {
     }
 
     #[test]
-    fn directory_namespace_swap_is_detected_and_redirect_target_stays_untouched() {
+    fn pinned_directory_denies_namespace_swap_and_keeps_the_primary_transactional() {
         let temp = tempfile::tempdir().unwrap();
         let home = temp.path().join("profile");
         let workbuddy = home.join(".workbuddy");
         let moved = home.join(".workbuddy-moved");
-        let target = temp.path().join("redirect-target");
         fs::create_dir(&home).unwrap();
         fs::create_dir(&workbuddy).unwrap();
-        fs::create_dir(&target).unwrap();
         fs::write(workbuddy.join("models.json"), b"primary").unwrap();
-        fs::write(target.join("sentinel"), b"unchanged").unwrap();
 
         let storage = WindowsWorkBuddyStorage::open(&home, false).unwrap();
-        fs::rename(&workbuddy, &moved).unwrap();
-        make_junction(&workbuddy, &target);
+        assert!(
+            fs::rename(&workbuddy, &moved).is_err(),
+            "a pinned directory must not remain renameable"
+        );
 
-        assert!(storage.snapshot_models().is_err());
-        assert_eq!(fs::read(moved.join("models.json")).unwrap(), b"primary");
-        assert_eq!(fs::read(target.join("sentinel")).unwrap(), b"unchanged");
-        assert!(!target.join("models.json").exists());
-        assert!(!target.join("models.json.backup").exists());
-        assert_no_temp_leaves(&moved);
-        assert_no_temp_leaves(&target);
+        let mut snapshot = storage.snapshot_models().unwrap();
+        storage.commit(&mut snapshot, b"replacement").unwrap();
+        assert_eq!(
+            fs::read(workbuddy.join("models.json")).unwrap(),
+            b"replacement"
+        );
+        assert_eq!(
+            fs::read(workbuddy.join("models.json.backup")).unwrap(),
+            b"primary"
+        );
+        assert!(!moved.exists());
+        assert_no_temp_leaves(&workbuddy);
     }
 }

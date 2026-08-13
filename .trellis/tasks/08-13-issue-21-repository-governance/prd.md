@@ -21,8 +21,8 @@ pull-request gate, merge to `main`, and archive this Trellis task.
 - The current public Markdown tree contains six real Windows user-profile
   paths: the five references named by Issue #21 plus one committed Trellis
   archive reference. Generic examples such as `C:\Users\<username>\...`,
-  localized angle-bracket placeholders, `C:\Demo\...`, and `/home/demo/...`
-  are documentation examples and are not personal identifiers.
+  localized angle-bracket placeholders and neutral `example/profile/...`
+  paths are documentation examples and are not personal identifiers.
 - The three root README files already describe the product goal, current
   capability boundary, active-development status, and release-trust boundary.
   They do not yet provide a useful runtime architecture overview; their first

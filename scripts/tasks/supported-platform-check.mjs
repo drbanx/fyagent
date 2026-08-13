@@ -231,7 +231,16 @@ const DIRECTORY_PATH_RULE = Object.freeze({
 });
 
 const ARCHIVE_PREFIX = ".trellis/tasks/archive/";
-const TEXT_EXCLUSIONS = new Set(["pnpm-lock.yaml", "src-tauri/Cargo.lock"]);
+export const GENERATED_STANDALONE_PREVIEW_PATH =
+  "FyAgent-前端交互预览.html";
+// The standalone preview is deterministic compiled output. Exclude only its
+// generated body; its exact root filename is still inspected, while the V2
+// source tree and build generator remain in the ordinary text scan.
+const TEXT_EXCLUSIONS = new Set([
+  "pnpm-lock.yaml",
+  "src-tauri/Cargo.lock",
+  GENERATED_STANDALONE_PREVIEW_PATH,
+]);
 export const ACTIVE_TASK_ENV = "FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK";
 
 export const EXPECTED_ACTIVE_TASK = [

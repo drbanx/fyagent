@@ -35,7 +35,7 @@ image evidence.
 
 Known generic examples that must remain valid include localized
 `C:\Users\<...>\...` examples in the Codex history guide and FAQ manuals, and
-the explicit `C:\Demo\...` / `/home/demo/...` privacy examples in the screenshot
+the explicit `example/profile/...` privacy examples in the screenshot
 card. System paths such as `C:\ProgramData` and `C:\Program Files`, test roots
 such as `D:\FyAgent-Acceptance`, `%USERPROFILE%`, and `~` are not personal
 user-profile disclosures.

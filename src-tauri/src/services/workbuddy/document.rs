@@ -15,6 +15,8 @@ use super::{
     types::WorkBuddyConfigFormat,
 };
 
+pub(crate) const MAX_CONFIG_BYTES: u64 = 2 * 1024 * 1024;
+
 #[derive(Debug, Clone)]
 pub(crate) struct WorkBuddyDocument {
     root: Value,
@@ -161,6 +163,9 @@ impl WorkBuddyDocument {
         let mut serialized = serde_json::to_vec_pretty(&self.root)
             .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
         serialized.push(b'\n');
+        if serialized.len() as u64 > MAX_CONFIG_BYTES {
+            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed));
+        }
         Ok(serialized)
     }
 

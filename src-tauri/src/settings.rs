@@ -823,6 +823,33 @@ pub fn update_settings(mut new_settings: AppSettings) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Merge and persist a full settings payload against the latest in-memory
+/// settings while holding the settings write lock.
+///
+/// Renderer settings payloads are snapshots. Backend-owned fields can change
+/// after a renderer read (for example, while switching the current Provider),
+/// so callers that merge protected fields must do the merge and persistence
+/// under the same lock instead of composing `get_settings` + `update_settings`.
+pub(crate) fn update_settings_with_latest<F>(
+    incoming: AppSettings,
+    merge: F,
+) -> Result<(AppSettings, AppSettings), AppError>
+where
+    F: FnOnce(AppSettings, &AppSettings) -> AppSettings,
+{
+    let mut guard = settings_store().write().unwrap_or_else(|e| {
+        log::warn!("设置锁已毒化，使用恢复值: {e}");
+        e.into_inner()
+    });
+    let mut existing = guard.clone();
+    existing.normalize_paths();
+    let mut merged = merge(incoming, &existing);
+    merged.normalize_paths();
+    save_settings_file(&merged)?;
+    *guard = merged.clone();
+    Ok((existing, merged))
+}
+
 fn mutate_settings<F>(mutator: F) -> Result<(), AppError>
 where
     F: FnOnce(&mut AppSettings),

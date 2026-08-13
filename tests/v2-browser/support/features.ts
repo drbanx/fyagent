@@ -397,11 +397,14 @@ export async function installRichTauriFeatureFixture(
           }
           case "apply_provider_quick_setup_with_result": {
             await delay(fixtureOptions.providerWriteDelayMs);
-            if (
-              fixtureOptions.providerMutation === "save_failure" ||
-              fixtureOptions.providerMutation === "switch_failure"
-            ) {
+            if (fixtureOptions.providerMutation === "save_failure") {
               throw new Error("fixture Provider atomic apply rejected");
+            }
+            if (fixtureOptions.providerMutation === "switch_failure") {
+              throw {
+                code: "APPLY_FAILED_ROLLED_BACK",
+                message: "fixture Provider atomic apply rolled back",
+              };
             }
             const app = String(payload.app);
             const request = structuredClone(

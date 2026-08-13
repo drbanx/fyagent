@@ -4579,7 +4579,7 @@ wire_api = "responses"
         .expect("enable Codex official auth preservation");
 
         let db = Arc::new(Database::memory().expect("init db"));
-        let state = crate::store::AppState::new(db.clone());
+        let state = Arc::new(crate::store::AppState::new(db.clone()));
         let oauth_auth = json!({
             "auth_mode": "chatgpt",
             "tokens": {
@@ -4643,8 +4643,18 @@ wire_api = "responses"
             "this reproduces the activation window before set_takeover_for_app marks enabled=true"
         );
 
-        crate::services::provider::ProviderService::sync_current_to_live(&state)
+        let (sync_result_tx, sync_result_rx) = std::sync::mpsc::sync_channel(1);
+        let state_for_sync = state.clone();
+        let sync_worker = std::thread::spawn(move || {
+            let result =
+                crate::services::provider::ProviderService::sync_current_to_live(&state_for_sync);
+            let _ = sync_result_tx.send(result);
+        });
+        sync_result_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("provider sync must not deadlock while Codex takeover is activating")
             .expect("sync current providers during takeover activation");
+        sync_worker.join().expect("provider sync worker");
 
         let live_auth: Value =
             crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())

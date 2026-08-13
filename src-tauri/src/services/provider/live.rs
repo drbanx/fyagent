@@ -1258,7 +1258,7 @@ fn sync_current_provider_for_app_respecting_takeover(
             futures::executor::block_on(
                 state
                     .proxy_service
-                    .update_live_backup_from_provider(app_type.as_str(), provider),
+                    .update_live_backup_from_provider_inner(app_type.as_str(), provider),
             )
             .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
         }

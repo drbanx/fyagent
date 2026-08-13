@@ -848,6 +848,22 @@ mod tests {
     }
 
     #[test]
+    fn save_rejects_a_document_over_the_read_limit_without_writing() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let mut request = request(None);
+        request.manual_model_ids =
+            vec!["m".repeat(super::super::document::MAX_CONFIG_BYTES as usize)];
+
+        let error = save_workbuddy_models_at_locked(&paths, &request).unwrap_err();
+
+        assert_eq!(error.code(), WorkBuddyErrorCode::ConfigWriteFailed);
+        assert!(!paths.models.exists());
+        assert!(!paths.backup.exists());
+        assert!(!paths.directory.exists());
+    }
+
+    #[test]
     fn array_root_round_trips_unknown_fields_and_stays_an_array() {
         let temp = tempfile::tempdir().unwrap();
         let paths = paths(&temp);

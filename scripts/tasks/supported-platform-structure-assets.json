@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "498c16ad34a37b23177516862391e21eb1460b03185d2ac9d8440323c9b733d7"
+      "066a1749d91123f40b61139cbf382d249985fbbd2b3756f97070be6e1d4df508"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -39,7 +39,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "b7042eea2909fbb94ba91e34ee10c51a08c0fcf6ecc2e6bbd591d8ad9707f96a"
+      "ced83ab65bb6815e25498fccf10f6ee36cade452214f54fb44e88958c86a733c"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -59,7 +59,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "6d3bbc77d8bc8c3bb755f932a85452bfe6d70acf791116ccc296c857abe2fca4"
+      "205a123e061688262e5fd00fdbf32e361c4bf89977a9c6bc10eb3faf374ed25f"
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
@@ -119,7 +119,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "f8965ef9cbbcbb12bcbaa3174a9a5ac3acdfe661081bbc937b6e508f2ec2082b"
+      "ab8c3111a23f3ffb11ff4fe409d4e191b8a51abd9d36d2bba3702603466d965f"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -167,7 +167,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "1c49c8004ad956de820d400dd683362b2ec11c5cf272852355951c1d457f5473"
+      "5dc1c38e80f977e39a7fdd4d2b63cde9f4c581808a053f874da3d405cf6872c1"
     ],
     [
       "src-tauri/src/services/session_usage_codex.rs",
@@ -187,7 +187,11 @@
     ],
     [
       "src-tauri/src/services/workbuddy/config.rs",
-      "82b6fa04b076a1891aa29ca40737bf679d1528f841bcba4d71e9af04a8ed8928"
+      "76df4bd1ddde601a7f10dc2120cfda9073d54b6bef0018468ec27b2eb6353c8a"
+    ],
+    [
+      "src-tauri/src/services/workbuddy/mod.rs",
+      "fb53f72d1b71cb0b0137aa3db4c989e79a2578caac3e7eae36a4cd1598a73044"
     ],
     [
       "src-tauri/src/session_manager/providers/opencode.rs",
@@ -199,7 +203,7 @@
     ],
     [
       "src-tauri/src/settings.rs",
-      "d75fb5ee902e406c5106565f42c9df9f0e65fbecc8f613628da11bfc6f55a8ca"
+      "1283c274ce73388190b57666025fcf47775e8b5701c79b5081d466bd8d7ab193"
     ],
     [
       "src-tauri/src/tray.rs",
@@ -307,7 +311,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "8f69745eb112cb5aa0a6e7a7c0dbf704ffec7a4f51c29a45fadac86a761ea357"
+      "8942e3a70a321a7510d3d09eea3909b0927d82f5105c3fca7c50b1708367836f"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
@@ -320,6 +324,10 @@
     [
       "tests/taskAtomicWriter.test.ts",
       "805bbcc0a269f88662d77061e9777cb4334433a2b494f7761056bee6cb73a9d2"
+    ],
+    [
+      "tests/v2/scripts/build-v2-preview.test.ts",
+      "5e1c75f675bb6a37bee214b807d5689ca70f93d92e47af220628396c27d5bf13"
     ]
   ]
 }

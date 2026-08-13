@@ -462,7 +462,7 @@ describe("V2 Models page", () => {
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
   });
 
-  it("reports a redacted atomic apply failure and clears the key", async () => {
+  it("treats an unclassified apply failure as unknown and stops writes", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.providers.getSummary = vi.fn(async () => ({
@@ -488,7 +488,7 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("模型 ID"), "claude-model");
     await user.click(screen.getByRole("button", { name: "保存并切换" }));
 
-    await screen.findByText("Provider 原子应用失败，已完成回滚");
+    await screen.findByText("Provider 状态未知，请停止继续写入");
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -502,6 +502,9 @@ describe("V2 Models page", () => {
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(document.body).not.toHaveTextContent("claude-secret");
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByRole("button", { name: "状态未知，已停止写入" }),
+    ).toBeDisabled();
   });
 
   it("stops further writes when the backend reports partial rollback", async () => {
@@ -531,6 +534,22 @@ describe("V2 Models page", () => {
     await screen.findByText("Provider 状态未知，请停止继续写入");
     expect(document.body).not.toHaveTextContent("partial-secret");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
+    const blockedButton = screen.getByRole("button", {
+      name: "状态未知，已停止写入",
+    });
+    expect(blockedButton).toBeDisabled();
+    await user.click(blockedButton);
+    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByTestId("model-target-claude"));
+    await screen.findByRole("heading", { name: "Claude Code" });
+    await user.click(screen.getByTestId("model-target-codex"));
+    expect(
+      await screen.findByRole("button", {
+        name: "状态未知，已停止写入",
+      }),
+    ).toBeDisabled();
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
   });
 

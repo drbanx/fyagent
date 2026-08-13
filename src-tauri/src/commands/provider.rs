@@ -614,6 +614,10 @@ pub async fn switch_provider_with_result(
 }
 
 fn import_default_config_internal(state: &AppState, app_type: AppType) -> Result<bool, AppError> {
+    // Keep the eligibility checks, live read, Provider/current writes, and
+    // command-only post-processing in one per-app critical section. Calling
+    // the public service wrapper below would acquire this same lock again.
+    let _guard = ProviderService::lock_provider_mutation(state, &app_type);
     if matches!(app_type, AppType::GrokBuild) {
         // 官方登录态（live 语法合法且无自定义模型表）+ 用户手动导入：
         // 导入的正确结果是让 Grok Official 成为当前供应商，而非报错。
@@ -654,7 +658,7 @@ fn import_default_config_internal(state: &AppState, app_type: AppType) -> Result
         }
     }
 
-    let imported = ProviderService::import_default_config(state, app_type.clone())?;
+    let imported = ProviderService::import_default_config_with_lock_held(state, app_type.clone())?;
 
     if imported {
         // Extract common config snippet (mirrors old startup logic in lib.rs)

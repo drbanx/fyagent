@@ -232,6 +232,15 @@ mise run build:renderer
 - The final post-merge gate asserts all six routes are non-empty and reruns the
   shell, architecture, and four-viewport browser matrix from the resolved tree.
   Pre-merge results remain diagnostic only.
+- The root `FyAgent-前端交互预览.html` is a deterministic, generated standalone
+  bundle. The supported-platform text scanner may exclude only that exact root
+  file's generated body; the filename, `src/v2/**` sources,
+  `scripts/build-v2-preview.mjs`, and every nested same-named file remain in
+  scope. Acceptance requires a fresh renderer build, a second generation with
+  an identical SHA-256, focused tests that freeze this exact-path boundary, and
+  normal scanning of all source-visible platform wording. This exception does
+  not claim that the final inline bundle receives an independent full-text
+  platform scan; changing the generator or source coverage must revisit it.
 
 The full local project gate remains `mise run check`. Real Windows
 Tauri/WebView2 chrome, SVG/backdrop performance, current-host 125%/150% display
