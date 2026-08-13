@@ -1,4 +1,4 @@
-# Implementation plan: V2 Agent catalog, Models, and Y identity
+# Implementation plan: V2 Agent catalog, Models, Y identity, and Codex integration
 
 ## 0. Planning approval and activation gate
 
@@ -56,9 +56,15 @@ coordination. Neither edits Rust catalog or package icon pipeline files.
   exact Claude/Codex wire shapes.
 - Implement Agent master/detail UI, lazy/bounded observations, official-link
   actions, and `/models?target=...` navigation.
-- Implement Models target selection, WorkBuddy fetch/save/overwrite/revision
-  flow, Claude/Codex add-or-update/switch/reread flow, warning/partial-failure
+- Implement Models target selection in the exact QoderWork, TRAE Work,
+  WorkBuddy, Codex, Claude Code order; make QoderWork the missing/unknown-target
+  default and render all five local icons.
+- Implement WorkBuddy fetch/save/overwrite/revision flow, Claude/Codex atomic
+  quick-setup apply/reread flow, warning/unconfirmed/failure
   states, and QoderWork/TRAE controlled guidance.
+- On Windows, bind WorkBuddy reads and the complete save transaction to the
+  frozen Explorer profile and one verified no-follow directory handle; reject
+  parent/leaf reparse objects and never return to a full string path for rename.
 - Add responsive namespaced styles and reuse current V2 primitives.
 - Update browser fixtures and positive `open_external` recording. Preserve
   native-only rejection in normal browser adapter tests.
@@ -142,8 +148,9 @@ Windows canonical ICO remains release-verifiable.
 
 **Depends on:** phases 1-4 interfaces are stable.
 
-- Update `.trellis/spec/frontend/v2-shell.md` to replace the four-empty-page
-  Phase 1 rule with the two-empty-page rule and document the new port/actions.
+- Update `.trellis/spec/frontend/v2-shell.md` and the dedicated Agent/Models
+  contract for the page state at this task's feature baseline. After remote
+  integration, reconcile the shell again to the final six-non-empty-page state.
 - Add or update a focused durable Agent catalog/model quick-setup spec if the
   behavior would otherwise overload the shell note; update spec indexes.
 - Update application-brand asset spec only for durable generator/check behavior
@@ -164,7 +171,46 @@ git diff --check
 **Completion definition:** executable tests, code, and current Trellis specs
 describe one consistent cross-layer contract.
 
-## 6. Native Windows HIL and bundle evidence
+## 6. Commit feature baseline and integrate remote Codex branches
+
+**Depends on:** phases 1-5 are stable and their focused checks pass.
+
+1. Review and commit the local Agent/Models/backend/security/Y-icon/spec write
+   set in attributable commits so a failed merge can be diagnosed without
+   destructive reset.
+2. Use the immutable fetch snapshot in
+   `research/remote-codex-merge-inventory.md`. For each ref, record the pinned
+   tip, merge base, unique commits, ancestry, overlap, and conflict paths.
+3. Merge non-contained tips in deterministic topology-aware order with full
+   remote ref names and attributable merge commits. Do not rebase, squash,
+   force-update, delete, rename, or push a remote branch.
+4. Resolve overlapping V2 shell/spec/test content into one six-page contract:
+   Agent/Models retain this task's native-backed behavior; Prompt/Memory retain
+   the integrated branch's behavior; Skills/MCP remain regression-safe.
+5. Preserve the latest credential and Provider-atomicity fixes, redact newly
+   introduced absolute personal paths, and regenerate derived manifests from
+   the resolved tree.
+6. Require `git merge-base --is-ancestor <tip> HEAD` for every pinned tip.
+   Later remote branch creation or movement is outside this user-frozen scope.
+
+**Focused validation**
+
+```powershell
+Get-Content .trellis/tasks/08-13-v2-agent-catalog-model-setup/research/remote-codex-merge-inventory.md
+git merge-base --is-ancestor <each-pinned-tip> HEAD
+mise run lint:v2
+mise run typecheck:v2
+mise run test:v2
+mise run test:v2:browser
+git diff --check
+```
+
+**Completion definition:** every fetched remote Codex tip is an ancestor of the
+local branch, both feature sets survive conflict resolution, no personal path
+or credential is newly exposed, no remote state changes, and the post-merge
+tree is ready for one final full gate.
+
+## 7. Native Windows HIL and bundle evidence
 
 **Depends on:** focused static/unit/browser checks pass.
 
@@ -176,9 +222,13 @@ describe one consistent cross-layer contract.
 3. Avoid overwriting unrelated user config. Use a reserved Provider ID and
    remove/restore only task-owned HIL state; use test-home isolation where the
    existing command contract supports it.
-4. Inspect window/taskbar/About identity visually on the current Windows host.
-5. Build the real Windows bundle and locate the generated setup artifact.
-6. Parse the setup PE icon resource and compare it to canonical `icon.ico`.
+4. In disposable directories, exercise normal WorkBuddy create/update/backup,
+   parent-junction rejection, leaf-reparse rejection, and target-tree zero-write
+   assertions. A genuine two-account Explorer/UAC run is separate evidence and
+   remains explicitly unverified when this host cannot provide it.
+5. Inspect window/taskbar/About identity visually on the current Windows host.
+6. Build the real Windows bundle and locate the generated setup artifact.
+7. Parse the setup PE icon resource and compare it to canonical `icon.ico`.
 
 **Validation**
 
@@ -193,7 +243,7 @@ node scripts/release/verify-windows-setup-icon.mjs <actual-setup.exe> src-tauri/
 observed and recorded; any action that cannot be safely exercised remains an
 explicit unverified item rather than a mock-derived claim.
 
-## 7. Full quality review and final local gate
+## 8. Full quality review and final local gate
 
 1. Run `trellis-check` with code-quality, cross-layer, UI/accessibility,
    security/credential, testing/release, and docs/spec perspectives. Resolve
@@ -220,7 +270,8 @@ mise run release:check
 mise run check
 mise run build
 
-mise run check:prearchive -- --exclude-active-task .trellis/tasks/08-13-v2-agent-catalog-model-setup
+mise run supported-platform:check
+mise run check
 git diff --check
 ```
 
@@ -230,7 +281,7 @@ git diff --check
 **Completion definition:** every local gate passes or an acceptance criterion
 is honestly marked unverified; no known critical/security finding remains.
 
-## 8. Commits, Trellis archive, and clean-tree proof
+## 9. Commits, Trellis archive, and clean-tree proof
 
 1. Create reviewable local commits, preferably:
    - `chore(trellis): plan v2 agent and model pages`
@@ -251,7 +302,8 @@ git status --short
 to produce no output.
 
 **Completion definition:** implementation and evidence are committed, the task
-is archived, no remote state changed, and the local worktree is clean.
+is archived, all fetched `origin/codex/*` tips remain ancestors, no remote state
+changed, and the local worktree is clean.
 
 ## Rollback and stopping conditions
 

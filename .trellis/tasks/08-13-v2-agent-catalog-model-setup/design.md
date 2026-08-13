@@ -1,4 +1,4 @@
-# Design: V2 Agent catalog, model quick setup, and Y identity
+# Design: V2 Agent catalog, model quick setup, Y identity, and Codex integration
 
 ## 1. Design objective
 
@@ -37,7 +37,7 @@ Trellis task. Phase 2 may use parallel workers with disjoint file ownership:
 3. official Agent assets plus FyAgent package-asset generation/checks.
 
 The main session owns spec updates, integration, conflict resolution, HIL,
-commits, and archive.
+commits, remote-branch merge orchestration, and archive.
 
 ### Reuse backend behavior; do not import legacy frontend
 
@@ -64,8 +64,10 @@ It calls existing commands with their current safety contracts:
 
 - WorkBuddy: revision-checked atomic write, backup, opaque overwrite token,
   credential-safe fetch and error DTOs.
-- Claude/Codex: current Provider service add/update/switch result envelopes and
-  authoritative rereads.
+- Claude/Codex: one quick-setup-specific backend apply envelope. Its per-app
+  critical section covers authoritative reread, validated Provider persistence,
+  current selection, live configuration, and failure recovery. The renderer
+  must not emulate this transaction with separate save and switch IPC calls.
 
 The UI labels these as bounded quick configuration and never claims rollback
 or end-to-end model availability beyond the command's actual result.
@@ -103,13 +105,16 @@ registration is covered by compile/static tests.
 Extend the existing `FeaturePorts` rather than add a service layer:
 
 - `catalog.get()` -> versioned native catalog;
-- `providers.getAll/getCurrent/addWithResult/updateWithResult/switchWithResult`
-  for only `claude | codex`;
+- `providers.getAll/getCurrent/applyQuickSetupWithResult` for only
+  `claude | codex`; the apply request is the smallest quick-setup wire and the
+  Rust side derives or verifies the reserved Provider identity;
 - `workbuddy.getStatus/getModelIds/fetchModels/saveModels`;
 - existing `settings.openExternal` for all official links.
 
-All direct `invoke` calls remain in the Tauri adapter. The browser adapter
-returns deterministic non-authoritative read fixtures and rejects every write.
+All direct `invoke` calls remain in the Tauri adapter. The normal browser
+adapter reports native-only unavailability for authoritative Agent, Provider,
+and WorkBuddy reads and rejects every write; deterministic success fixtures
+exist only in the dedicated browser test harness.
 Feature query keys add catalog, per-app Provider summaries, and WorkBuddy status
 and model IDs. Credentials are mutation arguments only; they are never query
 data or keys.
@@ -136,8 +141,10 @@ and decorative treatment in duplicate list positions.
 
 ### Target selection
 
-The URL query may select a known non-secret target ID for deep navigation from
-the Agent page; unknown values fall back safely. API keys and form content
+The target order is exactly QoderWork CN, TRAE Work, WorkBuddy, Codex, and
+Claude Code. The URL query may select a known non-secret target ID for deep
+navigation from the Agent page; a missing or unknown value falls back to
+QoderWork CN. All five selectors use the local Agent asset mapping. API keys and form content
 never enter the URL. Each target owns separate component state and changing
 target clears sensitive state.
 
@@ -153,20 +160,32 @@ target clears sensitive state.
 6. Concurrent modification, expired/mismatched token, success, or failure
    clears sensitive/frozen state as appropriate and rereads authoritative
    status/model IDs.
+7. On formal Windows builds, open the frozen Explorer profile and `.workbuddy`
+   component with no-follow, relative-handle semantics. Keep the directory
+   handle pinned through primary/backup/temp work and perform the final rename
+   from an opened source handle. A parent junction, leaf reparse point, shell
+   identity drift, or object-identity drift returns a generic failure with no
+   target-tree write. Non-Windows persistence retains its existing contract.
 
 ### Claude Code and Codex
 
-1. Read Provider map and current ID.
+1. Read the native sanitized `{providers: {id,name}, currentId}` snapshot; the
+   renderer never receives the generic Provider map.
 2. Validate trimmed name, absolute HTTP(S) Base URL, nonempty key, and model ID
    in the renderer before mutation; backend remains authoritative.
-3. Construct the smallest existing Provider wire shape in a tested pure helper.
-   Use a stable reserved quick-setup ID scoped per app to avoid duplicate rows.
-4. If the reserved row exists, update it; otherwise add it. Only after save
-   succeeds, switch it current.
-5. Reread Provider state. If switching fails after save, report the partial
-   outcome and leave the saved row visible for recovery; never say the target
-   is active.
-6. Surface Codex live-change and warning codes. Clear the key after every
+3. Construct only the dedicated `{name, baseUrl, apiKey, modelId}` quick-setup
+   request in a tested pure helper. Rust derives the stable reserved ID and all
+   generic Provider fields; the renderer never submits a generic Provider.
+4. Send one backend quick-setup apply request. Under one per-app critical
+   section it rereads authoritative state, persists exactly this request's
+   reserved Provider, selects it, synchronizes live configuration, and rolls
+   back task-owned DB/current/live changes if a later step fails.
+5. Compute this request's warning result before releasing the per-app guard.
+   Reread the sanitized Provider state and only claim that the fixed reserved
+   ID is active when its current ID matches. Do not claim that the reread proves
+   this request's exact configuration bytes; a later serialized writer may have
+   legitimately won. A failed or mismatched reread remains unconfirmed.
+6. Surface Codex live-change and request-attributed warning codes. Clear the key after every
    terminal outcome and prevent concurrent submits.
 
 No model availability request, login probe, token reuse, or automatic process
@@ -230,3 +249,33 @@ the actual setup PE resource and compares frames with the canonical ICO.
   lifecycle or signing. macOS visual behavior, hosted CI, vendor permission,
   trademark similarity, signing, notarization, and release readiness remain
   unproven unless separately executed.
+
+## 10. Remote Codex branch integration
+
+The remote integration is an ordered merge, not a rebase or content copy:
+
+```text
+pinned origin fetch snapshot
+  -> enumerate refs/remotes/origin/codex/* and record immutable tip IDs
+  -> commit the verified local Agent/Models/Y baseline
+  -> merge topology-related brand/history tips before overlapping V2 work
+  -> resolve Prompt/Memory + Agent/Models into one six-page shell contract
+  -> regenerate derived inventories
+  -> require every pinned tip to be an ancestor of final HEAD
+  -> rerun the complete post-merge gate
+```
+
+- Use full remote refs, including non-ASCII names. Already-contained tips are
+  recorded as integrated without manufacturing empty commits; each other tip
+  is merged with an attributable merge commit.
+- Conflict resolution preserves both user-facing feature sets. Shared V2 shell,
+  navigation, styles, specs, and tests describe the final six non-empty pages;
+  security fixes and the atomic Provider apply contract are not replaced by an
+  older branch snapshot.
+- Generated raster/structure manifests are recomputed from the resolved tree.
+  They are never resolved by taking an arbitrary side's digest list.
+- Before committing a merge, scan newly introduced journals, task metadata,
+  fixtures, and generated previews for credentials and absolute personal paths;
+  redact local-user/worktree fingerprints without changing product evidence.
+- Final validation and review run only after all pinned tips are ancestors.
+  Pre-merge checks remain useful diagnostics but are not final acceptance.

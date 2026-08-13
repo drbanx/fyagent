@@ -76,10 +76,10 @@ Additional issue searches for `qoder`, `trae`, `Agent 目录`, `models v2`, `fro
 
 No remote PR was found with `qoder` or `trae` in its searchable metadata; no open PR existed in the repository when `gh pr list --state all` was queried.
 
-### 5. Files found and local code patterns
+### 5. Pre-implementation baseline observed on 2026-08-13
 
-- `src/v2/pages/agents/Page.tsx:1-3` — current V2 Agents page is `return null`; there is no local QoderWork/TRAE implementation to reuse.
-- `src/v2/pages/models/Page.tsx:1-3` — current V2 Models page is `return null`.
+- `src/v2/pages/agents/Page.tsx:1-3` — at baseline commit `cc8553f8`, the V2 Agents page was `return null`; there was no local QoderWork/TRAE implementation to reuse.
+- `src/v2/pages/models/Page.tsx:1-3` — at baseline commit `cc8553f8`, the V2 Models page was `return null`.
 - `src/v2/shared/config/navigation.ts:1-13` — typed six-route contract and exact order (`agents`, `models`, `skills`, `mcp`, `prompts`, `memory`).
 - `src/v2/widgets/app-shell/Brand.tsx:1-18` — the V2 header already imports the project-owned transparent Y-shaped FyAgent mark from `src/v2/shared/assets/fyagent-y-mark-transparent-128.png`; this is distinct from the current Tauri package icon set.
 - `src-tauri/tauri.conf.json:35-52` — desktop bundle uses `icons/32x32.png`, `icons/128x128.png`, `icons/128x128@2x.png`, `icons/icon.icns`, and `icons/icon.ico`.
@@ -98,6 +98,24 @@ No remote PR was found with `qoder` or `trae` in its searchable metadata; no ope
 - `.trellis/spec/frontend/component-guidelines.md` — accessible typed component conventions.
 - `.trellis/spec/frontend/directory-structure.md` — legacy layout context; V2-specific placement is governed by `v2-shell.md`.
 
+## Selected local assets
+
+The implementation selected the exact reviewed vendor bytes without runtime
+network loading or recoloring:
+
+| Local path | SHA-256 | Bytes | Boundary |
+| --- | --- | ---: | --- |
+| `src/v2/shared/assets/agents/qoderwork.svg` | `2924a0fe240e0ca63895e345f65efbb6780b5c8e8b97a3ecf98c610f6e01fc41` | 39,257 | Exact passive official Qoder family SVG used only for `QoderWork CN`. |
+| `src/v2/shared/assets/agents/trae-work.png` | `49d523938a22af5a70dd79923725df38674823026e2f917e76337319969f4af4` | 488 | Exact official TRAE 48x48 PNG used only for `TRAE Work`. |
+
+The separate FyAgent application identity pipeline now renders the audited Y
+geometry into canonical `assets/fyagent.png` (SHA-256
+`9e2ceb57c5614a15e73c1812b2013b2b53b34ebbd9289e6c39d5c0f453f77a0f`,
+56,130 bytes) and its generated consumers. These file identities and static
+icon checks do not by themselves establish a fresh Windows bundle, PE-resource
+inspection, native-window HIL, macOS HIL, or trademark approval; those remain
+separate acceptance gates.
+
 ## Caveats / Not Found
 
 - Neither vendor published an explicit logo/brand-use license in the official sources inspected. Official hosting proves provenance, not permission to redistribute or modify. The safest implementation is unmodified small nominative display with an official link and no endorsement claim; obtain written permission if public distribution policy requires it.
@@ -106,4 +124,7 @@ No remote PR was found with `qoder` or `trae` in its searchable metadata; no ope
 - Search-engine snapshots around QoderWork were ahead of/different from the 2026-08-13 raw HTML, which now presents a broader Qoder CN landing page. Preserve the exact source URLs and retrieval date and avoid claiming a stable vendor asset API.
 - Issue comments are historical/research context and can conflict with later Issue bodies/PRD. For product decisions, #101 plus the current bodies of #22/#34/#41 override older comments; the user's explicit five-Agent scope governs this task.
 - Remote Issues describe broader future catalog/apply contracts than can be safely implemented in a fast iteration. Honest official-link-only degradation for QoderWork/TRAE is supported; automatic installation, credential reuse, token relay, or claims of configuration support are not.
-- App-icon metadata above does not validate a newly generated Y-mark package set. That separate implementation still needs the repository's source validation, icon generation/checks, diff inventory, Windows package-resource checks, and native visual acceptance required by the application-brand spec.
+- The selected Y files and generator checks do not validate a fresh packaged
+  setup or native visual result. Windows package-resource inspection and native
+  visual acceptance remain required by the application-brand spec; macOS and
+  legal approval remain explicitly unverified unless separately executed.

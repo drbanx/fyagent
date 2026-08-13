@@ -9,7 +9,7 @@ FyAgent. They are evidence-based reference material for changes under
 Before changing renderer code:
 
 1. For any `src/v2/**` change, read the
-   [V2 Phase 1 Shell Contract](./v2-shell.md) first. It is the only exception
+   [V2 Shell Contract](./v2-shell.md) first. It is the only exception
    to the legacy route-placement, styling, primitive, and translation rules;
    the guidelines below remain authoritative outside V2.
 2. Read the nearest relevant guideline and inspect the existing feature,
@@ -37,7 +37,8 @@ Before changing renderer code:
 
 | Guide                                                                      | Use it for                                                                                               |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [V2 Phase 1 Shell Contract](./v2-shell.md)                                 | Isolated V2 routes, styles, layer/platform boundaries, lifecycle, and V2-only gates.                     |
+| [V2 Shell Contract](./v2-shell.md)                                         | Isolated V2 routes, styles, layer/platform boundaries, lifecycle, and V2-only gates.                     |
+| [V2 Agent and Models Contract](./v2-agent-models.md)                       | Versioned catalog, local icons, official-only candidates, WorkBuddy, Provider quick setup, and secrets.  |
 | [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md)                   | Skills/MCP ports, authoritative state, secret handling, responsive UI, and feature-specific gates.       |
 | [Directory Structure](./directory-structure.md)                            | Selecting the existing frontend layer and test location.                                                 |
 | [Component Guidelines](./component-guidelines.md)                          | UI primitives, props, styling, translation, and form composition.                                        |
@@ -50,6 +51,12 @@ Before changing renderer code:
 | [Codex Provider Configuration](../backend/codex-provider-configuration.md) | Codex native-capability controls, warnings, live-change result, and trusted restart handoff.             |
 | [Codex Desktop Installer](../backend/codex-desktop-installer.md)           | Installer/restart facade DTOs, job snapshots, progress presentation, and trusted launch outcomes.        |
 | [WorkBuddy Configuration](../backend/workbuddy-configuration.md)           | Top-level navigation, query isolation, model selection, overwrite confirmation, and credential lifetime. |
+
+The Agent/Models feature baseline has four non-empty V2 product routes. The
+active integration task additionally requires the pinned Prompt/Memory branch
+to produce a final six-non-empty-route shell. Keep those as separate evidence
+states: a pre-merge renderer check does not prove final branch integration, and
+a merge commit does not replace post-merge shell/browser validation.
 
 ## Quality Check
 

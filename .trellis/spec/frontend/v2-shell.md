@@ -1,10 +1,10 @@
-# V2 Phase 1 Shell Contract
+# V2 Shell Contract
 
 ## 1. Scope / Trigger
 
 Read this contract before changing `src/v2/**`, the V2-only test/configuration
-files, or the renderer entry that selects `src/v2/main.tsx`. It is a narrow
-Phase 1 exception to the legacy renderer conventions: the existing frontend
+files, or the renderer entry that selects `src/v2/main.tsx`. It is a narrow V2
+exception to the legacy renderer conventions: the existing frontend
 specs remain authoritative for every path outside the V2 boundary.
 
 Production V2 code uses this structure:
@@ -18,11 +18,13 @@ src/v2/
 `- dev/                  # development-only UI Lab
 ```
 
-Do not create empty `entities`, `features`, store, or service layers in Phase 1.
+Do not create empty `entities`, `features`, store, or service layers speculatively.
 Native title bars, caption buttons, and dragging are system/Tauri chrome and
 must not be reimplemented in the React tree.
 The approved Skills and MCP exception follows the dedicated
 [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md).
+Agent directory and model quick setup follow the dedicated
+[V2 Agent and Models Contract](./v2-agent-models.md).
 
 ## 2. Signatures
 
@@ -76,8 +78,14 @@ The navigation source contains exactly these entries in this order:
 - Derive selected state only from router location. The active link has
   `aria-current="page"`; do not maintain a second `currentView` state.
 - Put each production page element below its matching `pages/<route>/` folder.
-  Agents, Models, Prompts, and Memory remain empty Phase 1 pages. Skills and
-  MCP may render their approved command-backed internal management UI.
+  Agents, Models, Skills, and MCP render their approved business surfaces.
+  At the Agent/Models feature baseline, Prompts and Memory remain the only empty
+  pages; a later integrated feature must update this shell contract and tests
+  when it makes either page non-empty.
+- The active Agent/Models task has a separate final integration gate: after the
+  pinned Prompt/Memory branch is merged, all six routes must be reachable and
+  non-empty while retaining their own dedicated contracts. This sentence is a
+  target, not evidence that the merge or its post-merge tests have completed.
 - Register the UI Lab only when `import.meta.env.DEV` is true. Production must
   not expose `#/__dev/ui-lab`.
 - React keyboard order is the six navigation links followed by Search,
@@ -157,8 +165,9 @@ No V2 module may import legacy `src/App.tsx`, `src/main.tsx`,
 `@tauri-apps/**` directly.
 
 The V2 renderer preserves only the minimum host activation handshake. It does
-not restore legacy deep-link consumption, database recovery UI, model
-synchronization, or the complete startup contract and is not Release-ready.
+not restore legacy deep-link consumption, database recovery UI, generalized
+model synchronization, or the complete startup contract. The bounded
+Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 
 ## 4. Validation & Error Matrix
 
@@ -173,15 +182,20 @@ synchronization, or the complete startup contract and is not Release-ready.
 | Custom controls/drag region/frame port appears  | Unit, architecture, or browser negative assertion fails               |
 | V2 calls `setDecorations(false)`                | Static contract search and V2 tests fail                              |
 | V2 imports legacy/upward code, or Tauri outside the platform boundary | ESLint and executable architecture test fail              |
-| An unrelated Phase 1 page renders business copy | Shell/content test fails                                              |
+| A route's rendered state disagrees with its dedicated feature contract | Shell/content test fails                                      |
+| Final Codex-branch integration leaves Prompts or Memory empty | Final task acceptance fails; do not infer completion from merge messages alone |
 | A supported viewport overflows or overlaps      | Playwright geometry gate fails                                        |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that
   `NavLink` alone owns `aria-current="page"`, contains the sole selected lens,
-  remains keyboard-focusable, and the content viewport stays empty. Skills
-  and MCP render only their approved management UI.
+  remains keyboard-focusable, and the Agent directory renders its approved
+  master/detail UI. Models, Skills, and MCP render only their approved feature
+  surfaces; Prompts and Memory remain empty at this baseline.
+- **Integrated target:** after the pinned Prompt/Memory branch is an ancestor,
+  Prompts and Memory render their bounded non-empty surfaces while the first
+  four routes and the common shell retain their existing behavior.
 - **Base:** Opening without a route lands on `#/models`, with six links and
   three tools visible. Browser preview has no system or simulated controls.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
@@ -205,8 +219,8 @@ mise run build:renderer
 - Unit tests assert default/wildcard redirects, six-route order, Router-owned
   selection, `aria-current`, a sole active lens, the TopBar's nine-stop primary
   tab order, stable accessible names, inert tool clicks, absence of custom
-  chrome/drag regions, exactly four empty Phase 1 pages, non-empty Skills/MCP
-  pages, and idempotent ready behavior.
+  chrome/drag regions, exactly two empty baseline pages, non-empty
+  Agents/Models/Skills/MCP pages, and idempotent ready behavior.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract.
@@ -214,8 +228,9 @@ mise run build:renderer
   behavior. Playwright must load the real production dependency.
 - Playwright runs at `900x600`, `1152x640`, `1232x700`, and `1440x900`. At each
   viewport assert no document/top-bar overflow; no Brand/Nav/Tools overlap;
-  all six links and three tools visible; empty unrelated pages and non-empty
-  Skills/MCP pages; hash/selected/ARIA/lens agreement; the TopBar's nine-stop
+  all six links and three tools visible; empty Prompts/Memory pages and
+  non-empty Agents/Models/Skills/MCP pages; hash/selected/ARIA/lens agreement;
+  the TopBar's nine-stop
   keyboard order on the default shell route; absence of fake chrome; and no
   console, page, or framework-overlay error.
 - UI Lab browser tests cover translucent surfaces, backdrop or meaningful CSS
@@ -223,6 +238,10 @@ mise run build:renderer
   Tooltip/Popover portal visibility, focus ring, long multilingual stress
   labels, and reduced-motion state independence.
 - The production renderer build must omit the UI Lab route and succeed.
+- The final post-merge gate replaces the two-empty-page assertion with an
+  all-six-routes-non-empty assertion and reruns the shell, architecture, and
+  four-viewport browser matrix from the resolved tree. Pre-merge results remain
+  diagnostic only.
 
 The full local project gate remains `mise run check`. Real Windows
 Tauri/WebView2 chrome, SVG/backdrop performance, current-host 125%/150% display

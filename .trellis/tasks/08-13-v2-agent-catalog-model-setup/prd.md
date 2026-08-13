@@ -1,4 +1,4 @@
-# Build the V2 Agent catalog and model quick setup
+# Build the V2 Agent catalog, model quick setup, and integrated Codex branches
 
 ## Goal
 
@@ -11,14 +11,20 @@ The same delivery adopts the existing For You Gate Y mark across the
 application and installer asset chain and keeps the first four V2 routes
 (`Agent 目录`, `模型`, `Skills`, and `MCP`) regression-tested as reachable,
 non-empty, and connected to a real native action or an explicit controlled
-degradation.
+degradation. As a final integration requirement, every current remote
+`origin/codex/*` branch is merged into the local `dev/laiyongjie` branch. The
+combined result preserves the Agent/Models contracts from this task and the
+Prompt/Memory functionality brought in by the remote frontend branch, then
+passes one post-merge validation and archival gate without pushing any remote
+state.
 
 ## Background and confirmed facts
 
 - `src/index.html` loads `src/v2/main.tsx`; V2 is the current production
   renderer, not a prototype-only entrypoint.
-- `/agents` and `/models` exist in the router and navigation but currently
-  return `null`. `/skills` and `/mcp` already have real Tauri-backed pages.
+- At the pre-implementation baseline observed on 2026-08-13, `/agents` and
+  `/models` existed in the router but returned `null`; `/skills` and `/mcp`
+  already had real Tauri-backed pages.
 - V2 is deliberately isolated from the legacy renderer. V2 code cannot import
   legacy components, hooks, API facades, translations, or styles; native calls
   remain below `src/v2/shared/platform/tauri/**`.
@@ -42,14 +48,21 @@ degradation.
   expose byte-identical current favicon art. Neither vendor publishes a clear
   brand-use license, so the marks are used unmodified, at small size, only to
   identify their own catalog entries and never as FyAgent identity.
-- The current package source is `assets/fyagent.png`; Tauri/NSIS, About, and
-  macOS tray consumers form one application-brand asset contract. The V2
-  header already uses the Y mark, while the package consumers still use the
-  prior identity.
+- The canonical package source path is `assets/fyagent.png`; Tauri/NSIS, About,
+  and macOS tray consumers form one application-brand asset contract. At the
+  pre-implementation baseline the V2 header already used the Y mark while the
+  package consumers still used the prior identity. The implementation must
+  regenerate all of those consumers from the audited Y vector rather than
+  treating the historical baseline as current acceptance evidence.
 - The For You Gate Y mark is still a `concept_candidate` in remote Issue #93.
   This task implements the user's explicit code/package switch, but does not
   claim that trademark, similarity, or cross-platform native visual approval
   has been completed.
+- The user expanded the approved scope on 2026-08-13 to include every remote
+  `origin/codex/*` branch, then explicitly froze "current" to the fetch snapshot
+  recorded in `research/remote-codex-merge-inventory.md`. Completion is proved
+  by ancestry of every pinned tip, not by chasing later ref movement or by
+  creating empty merge commits for tips already contained in `HEAD`.
 
 ## Requirements
 
@@ -91,19 +104,32 @@ degradation.
 
 ### R3. Models quick-setup page
 
-- Present five clearly separated targets: WorkBuddy, Codex, Claude Code,
-  QoderWork, and TRAE Work. Opening the default `/models` route performs only
-  lightweight reads; every write requires an explicit user action.
+- Present five clearly separated targets in this exact order: QoderWork CN,
+  TRAE Work, WorkBuddy, Codex, and Claude Code. Missing or unknown `target`
+  defaults to QoderWork CN, and all five selectors render the reviewed local
+  Agent icon. Opening `/models` performs only lightweight reads; every write
+  requires an explicit user action.
 - WorkBuddy reuses the existing dedicated commands for status, model IDs,
   bounded `/models` fetch, save, revision drift, and one-time overwrite
   confirmation. API keys remain only in component memory and one Tauri request,
   clear on target change/unmount and after terminal success/failure, and never
-  enter query keys/cache, URL state, storage, logs, toasts, or error text.
+  enter query keys/cache, URL state, renderer/shared storage, logs, toasts, or
+  error text. The explicitly requested protected WorkBuddy configuration file
+  is the intended credential destination.
+- On formal Windows builds, every WorkBuddy status/read/save/backup/temp/replace
+  operation is anchored to the frozen Explorer user's profile and an opened
+  `.workbuddy` directory handle. Parent junctions and leaf reparse points fail
+  closed before data is returned or any file is created; the implementation
+  must not fall back to a checked string path for the final replace.
 - Codex and Claude Code offer one bounded quick-configuration form for name,
-  Base URL, API key, and model ID. A stable FyAgent-owned quick-setup Provider
-  is added or updated and then explicitly switched through the existing
-  Provider commands. Repeat clicks are locked, success triggers authoritative
-  rereads, and partial failure is reported rather than collapsed into success.
+  Base URL, API key, and model ID. One quick-setup-specific backend apply
+  operation owns the per-app critical section, authoritative reread, reserved
+  Provider persistence, current selection, live configuration, and failure
+  recovery. The renderer must not compose separate save/switch IPC calls.
+  Repeat clicks are locked. A sanitized reread may confirm only that the fixed
+  Quick Setup Provider ID is currently active; it does not prove that the
+  current bytes still belong to this request after another serialized writer.
+  An unconfirmed/failed outcome is not collapsed into success.
 - Codex surfaces `liveConfigChanged` and stable warning codes. Saving a Provider
   and restarting/using Codex remain separate outcomes; this task does not port
   the full legacy restart or Codex Desktop installer coordinator.
@@ -111,17 +137,19 @@ degradation.
   note fields and official setup guidance. FyAgent does not persist or submit
   those values and the action is named "打开官方设置" (or equivalent), never
   "一键配置成功".
-- Browser adapters provide deterministic read fixtures and reject writes with
-  the existing native-only error. Browser/mock success is not described as a
-  native configuration result.
+- Normal browser adapters report native-only unavailability for authoritative
+  reads and reject writes. Deterministic success fixtures exist only in focused
+  tests, and browser/mock success is never described as a native configuration
+  result.
 
 ### R4. V2 shell, visual, and architecture integration
 
 - Preserve the six-route order, Hash Router ownership, single selected lens,
   native chrome boundary, and V2 downward dependency rules.
 - Update the V2 shell contract and executable tests so Agents, Models, Skills,
-  and MCP are the four non-empty command-backed/controlled-degradation pages;
-  Prompts and Memory remain empty for this delivery.
+  and MCP remain non-empty command-backed/controlled-degradation pages. After
+  integrating the remote Prompt/Memory frontend branch, Prompts and Memory also
+  remain reachable and non-empty under their own frozen prototype contracts.
 - Extend the existing V2 feature types, ports, queries, Tauri adapter, browser
   adapter, fixtures, primitives, and namespaced styles rather than importing
   legacy code or adding a parallel service/store abstraction.
@@ -175,6 +203,30 @@ degradation.
 - Archive this Trellis task through the canonical workflow and require
   `git status --short` to be empty at completion.
 
+### R8. Integrate every remote Codex branch
+
+- Use the approved `origin` fetch snapshot recorded in
+  `research/remote-codex-merge-inventory.md`. Record each full ref, pinned tip,
+  merge base, unique commits, overlap, and likely conflict paths before
+  mutation; later ref creation/movement is outside this fixed scope.
+- Start from a committed, verified Agent/Models/Y-icon baseline. Do not merge
+  into the dirty implementation worktree and do not discard or overwrite
+  either side to resolve conflicts.
+- Merge every fetched tip into local `dev/laiyongjie` in a deterministic,
+  topology-aware order. Preserve both branches' user-visible functionality;
+  resolve shared V2 shell/spec/test files against the final six-page product
+  contract, and regenerate derived manifests from the resolved file set rather
+  than choosing stale manifest bytes from either side.
+- Treat a remote tip as integrated only when
+  `git merge-base --is-ancestor <tip> HEAD` succeeds. A tip already contained
+  in `HEAD` needs no artificial empty merge commit; every non-contained branch
+  receives an attributable merge commit.
+- Re-run code, security, docs, V2/browser, Rust, application-brand, release,
+  native Windows, and fresh bundle checks after the final merge. Pre-merge
+  results are diagnostic evidence only and cannot establish final acceptance.
+- Do not push, delete, rename, rebase, force-update, or otherwise mutate any
+  remote branch.
+
 ## Acceptance criteria
 
 - [ ] The native catalog command returns contract version 1 and exactly the
@@ -187,15 +239,25 @@ degradation.
   or an explicit controlled degradation; no UI copy upgrades absence of
   evidence to installation, authentication, model, or support success.
 - [ ] `#/models` performs real WorkBuddy model discovery/save and real
-  Claude/Codex Provider add-or-update/switch operations with pending, success,
-  warning, failure, concurrency, overwrite, and authoritative-reread states.
+  Claude/Codex atomic quick-setup apply operations with pending, success,
+  warning, failure, concurrency, overwrite, rollback, and
+  sanitized activation-reread states; QoderWork CN is the default/top selector
+  and all five selectors use local icons.
+- [ ] Formal Windows WorkBuddy reads and writes remain bound to the frozen
+  Explorer user's verified no-follow directory handle. Parent junctions, leaf
+  reparse points, and identity drift fail closed with no primary, backup, temp,
+  or redirected-target change.
 - [ ] QoderWork/TRAE model fields are transient guidance only and cannot emit a
   configuration-success state or persist secrets/configuration.
-- [ ] API keys do not enter storage, URLs, query caches/keys, logs, snapshots,
-  or user-visible errors and are cleared at all required lifecycle boundaries.
-- [ ] Agents, Models, Skills, and MCP are reachable and non-empty in V2 shell
-  unit/browser tests; Prompts and Memory remain empty; existing Skills/MCP
-  behavior and V2 architecture gates continue to pass.
+- [ ] API keys enter only the explicitly requested protected Provider/WorkBuddy
+  DB or live credential/config files and the one native request. They do not
+  enter URLs, renderer/shared/non-secret storage, query caches/keys, logs,
+  snapshots, public summaries, model IDs/names, or user-visible errors, and are
+  cleared at all required renderer lifecycle boundaries.
+- [ ] Agents, Models, Skills, MCP, Prompts, and Memory are reachable and
+  non-empty in final post-merge V2 shell unit/browser tests; existing
+  Skills/MCP behavior, the merged Prompt/Memory contracts, and V2 architecture
+  gates continue to pass.
 - [ ] The QoderWork/Trae asset bytes match their recorded official-source
   identities before processing, local assets resolve correctly, and the
   conservative nominative-use/provenance boundary remains documented.
@@ -205,6 +267,10 @@ degradation.
 - [ ] A real Windows native app run validates the new routes/actions and visible
   application identity; a real Windows bundle build plus PE inspection proves
   its setup icon matches `src-tauri/icons/icon.ico`.
+- [ ] Every commit pinned in `research/remote-codex-merge-inventory.md` is an
+  ancestor of local `dev/laiyongjie`; conflicts preserve both intended feature
+  sets, all merge commits are local and attributable, and no remote ref is
+  modified.
 - [ ] The full local check matrix passes, any unexecuted macOS/legal/remote
   evidence is reported as residual rather than inferred, the task is archived,
   all work is committed locally, no remote state is changed, and the working
@@ -229,3 +295,6 @@ degradation.
 - Claiming trademark clearance, vendor endorsement, macOS native visual HIL,
   signing/notarization, hosted-runner success, or release readiness without
   separately executed evidence.
+- Rebasing, squashing, deleting, renaming, or pushing the remote `codex/*`
+  branches. Their committed content is integrated; their remote lifecycle and
+  any unrelated product expansion beyond that content are not changed here.
