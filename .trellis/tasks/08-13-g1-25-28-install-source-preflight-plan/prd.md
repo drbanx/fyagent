@@ -10,7 +10,7 @@
 - 交付物：
   - 高保真原型图：`prototype/installer-decoder-prototype.png`
   - PRD、详细设计、前端设计、概要设计三份文本
-  - 下阶段子执行清单（Sol 模型）用于并行派发
+  - 下阶段子执行清单（Sol 模型）用于单一执行者在 Git 内顺序推进
 
 ![installer-decoder-prototype](/Users/serendipity/.codex/worktrees/9a56/fyagent/.trellis/tasks/08-13-g1-25-28-install-source-preflight-plan/prototype/installer-decoder-prototype.png)
 
@@ -105,7 +105,7 @@
 2. `distribution_allowed=false` 时是否允许下载流程进入“观测态”但禁止安装。
 3. 预检重试策略是否限定 1 次手工触发，或允许 `auto-refresh`。
 
-## 9. 下一步启动清单（给子执行者）
+## 9. 下一步启动清单（单一执行者）
 1. 后端：完成 4 层结构化快照模型与 API 字段追加（按 Sol）。
 2. 前端：完成安装详情页四层组件、未知态和重确认态。
 3. 文档：补充 API 示例/失败码字典与 FAQ。

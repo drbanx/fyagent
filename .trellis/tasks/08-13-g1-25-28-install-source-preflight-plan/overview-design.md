@@ -73,7 +73,7 @@ sequenceDiagram
 3. 何时展示 signer/revocation 详细证据？（建议进卡片展开）
 
 ## 8. 下级任务与同步建议
-- 对每个 Issue 建议建立子执行任务：
+- 对每个 Issue 建议建立子执行任务，由**赖永杰**单独串行执行：
   - #25：source contract 与许可边界字段
   - #26：integrity 证据字典
   - #27：preflight 码表 + unknown
