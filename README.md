@@ -26,6 +26,8 @@ FyAgent 面向正在使用 AI Agent、AI Worker 和智能助手的人。它把�
 
 今天，FyAgent 先从最具体、也最容易失控的配置层做起，支持 Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw 和 Hermes。
 
+WorkBuddy 另有独立的顶层配置入口；它不属于上述目标工具或 Provider 域，不能从这份工具清单推断其能力范围。
+
 > **发布状态：** FyAgent 仍在持续开发。升级前请备份重要配置，并在安装前阅读当次发布的可信度说明。
 
 ## 愿景：成为 AI 时代的随身数字人格
@@ -53,6 +55,10 @@ AI 越强，人越容易担心权限交给了谁、配置为什么失效、换�
 | 工作延续 | 从会话和工作区继续此前工作，并备份、同步配置 |
 
 FyAgent 的工作数据默认保存在本机 `~/.fyagent`。配置更新使用 SQLite 和原子写入；通过 `fyagent://` 导入配置时，应用会先展示变更内容，再决定是否写入。
+
+## 架构概览
+
+`React/Vite` 渲染层通过 Tauri IPC 调用 Rust commands/services；Rust 本地层负责 SQLite 状态、目标 AI 工具的配置写入和本地代理。各层的维护入口与验证边界见[开发文档](docs/fyagent/development/README.md)。
 
 ## 快速开始
 
@@ -113,16 +119,28 @@ FyAgent 是源码可用软件，不是 OSI 定义的开源软件。FyAgent 自�
 
 ## 参与开发
 
-本仓库统一通过 `mise` 进入开发环境：
+首次 checkout 需要全局安装 `mise >= 2026.8.0`。检查仓库配置后，按以下顺序进入交互开发：
 
 ```bash
 mise trust
 mise run bootstrap
+mise run system:check
 mise run dev
+```
+
+构建当前宿主是与交互启动分开的可选步骤：
+
+```bash
 mise run build
 ```
 
-提交 PR 前请运行 `mise run check`。工具链与小范围检查命令见[开发文档](docs/fyagent/development/README.md)。
+验证证据按范围分层：
+
+- `mise run check` 是完整的当前宿主门禁，不证明原生窗口或安装器 HIL，也不证明签名或公证。
+- 精确 PR head 上成功的 `CI / Required` 是远程合并门禁；其他 SHA 或单个子任务不能替代它。
+- 正式 Release 需要独立的精确源 SHA、前置 CI、annotated tag、正式 Release workflow 与已发布资产证据；本地构建和 PR 检查不能替代这条链路。
+
+工具链与小范围检查命令见[开发文档](docs/fyagent/development/README.md)。
 
 ## 项目沿革与授权
 

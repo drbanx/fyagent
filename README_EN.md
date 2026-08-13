@@ -26,6 +26,8 @@ You do not need to begin with terms such as Provider, MCP, or Prompt. To a perso
 
 Today, FyAgent starts with the most concrete configuration layer and supports Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, and Hermes.
 
+WorkBuddy has a separate top-level configuration entry. It is not part of the target-tool or Provider domains above, so its scope should not be inferred from that tool list.
+
 > **Release status:** FyAgent is under active development. Back up important configuration before upgrading, and review the trust information for each release before installing it.
 
 ## Vision: a portable digital persona for the AI era
@@ -53,6 +55,10 @@ Long-term memory and a durable cross-tool persona are part of the product direct
 | Work continuity | Resume sessions and workspaces, then back up and sync configuration |
 
 Working data is stored locally in `~/.fyagent` by default. FyAgent uses SQLite and atomic file writes for configuration updates; `fyagent://` imports show the proposed changes before anything is written.
+
+## Architecture
+
+The `React/Vite` renderer calls Rust commands and services through Tauri IPC. The local Rust layer owns SQLite state, configuration writes for target AI tools, and the local proxy. See the maintained [development guide](docs/fyagent/development/README.md) for layer ownership and validation boundaries.
 
 ## Quick start
 
@@ -113,16 +119,28 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [SUPPORT.md](SUPPORT.md), and [CON
 
 ## Development
 
-The repository uses `mise` as its supported entry point:
+A first checkout requires a global `mise >= 2026.8.0`. After reviewing the repository configuration, use this sequence for interactive development:
 
 ```bash
 mise trust
 mise run bootstrap
+mise run system:check
 mise run dev
+```
+
+A current-host build is optional and separate from interactive startup:
+
+```bash
 mise run build
 ```
 
-Run `mise run check` before opening a pull request. The [development guide](docs/fyagent/development/README.md) lists the toolchain and smaller checks available while you work.
+Validation evidence is scoped deliberately:
+
+- `mise run check` is the complete current-host gate. It does not prove native-window or installer HIL, signing, or notarization.
+- A successful `CI / Required` result on the exact pull-request head is the remote merge gate; another SHA or an individual component job is not a substitute.
+- A formal Release requires its separate exact-source-SHA, prerequisite CI, annotated-tag, formal Release workflow, and published-asset evidence chain. A local build or pull-request check does not establish that chain.
+
+The [development guide](docs/fyagent/development/README.md) lists the toolchain and smaller checks available while you work.
 
 ## Project history and license
 

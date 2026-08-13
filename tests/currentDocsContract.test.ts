@@ -231,7 +231,147 @@ function operationalTextFiles(): string[] {
     );
 }
 
+function trackedMarkdownFiles(): string[] {
+  return execFileSync("git", ["ls-files", "--cached", "-z"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  })
+    .split("\0")
+    .filter((file) => file.toLowerCase().endsWith(".md"))
+    .sort();
+}
+
+function hasConcreteWindowsProfilePath(source: string): boolean {
+  const windowsProfileRoot =
+    /(?:^|[^\p{L}\p{N}_])(?:[A-Za-z]:[\\/]+Users[\\/]+)/giu;
+  for (const match of source.matchAll(windowsProfileRoot)) {
+    const profileStart = (match.index ?? 0) + match[0].length;
+    const remainder = source.slice(profileStart);
+    if (!remainder.startsWith("<")) return true;
+    const placeholderEnd = remainder.indexOf(">");
+    const firstSeparator = remainder.search(/[\\/\r\n]/u);
+    if (
+      placeholderEnd <= 1 ||
+      (firstSeparator >= 0 && placeholderEnd > firstSeparator) ||
+      /[<>]/u.test(remainder.slice(1, placeholderEnd))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 describe("current FyAgent documentation authority", () => {
+  it("keeps tracked Markdown free of concrete Windows profile paths", () => {
+    const acceptedExamples = [
+      String.raw`C:\Users\<username>\.codex`,
+      String.raw`C:\Users\<用户名>\AppData\Roaming`,
+      String.raw`C:\Users\<ユーザー名>\.fyagent`,
+      String.raw`C:\Demo\screenshots`,
+      "/home/demo/.fyagent",
+      String.raw`C:\ProgramData\FyAgent`,
+      String.raw`C:\Program Files\FyAgent`,
+      String.raw`D:\FyAgent-Acceptance`,
+      String.raw`%USERPROFILE%\.fyagent`,
+      "~/.fyagent",
+    ];
+    for (const example of acceptedExamples) {
+      expect(
+        hasConcreteWindowsProfilePath(example),
+        "approved path example",
+      ).toBe(false);
+    }
+    expect(
+      hasConcreteWindowsProfilePath(
+        String.raw`C:\Users\concrete-profile\.codex`,
+      ),
+      "concrete profile fixture",
+    ).toBe(true);
+
+    const files = trackedMarkdownFiles();
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      expect(hasConcreteWindowsProfilePath(read(file)), file).toBe(false);
+    }
+  });
+
+  it("keeps README architecture, onboarding, and evidence semantics aligned", () => {
+    for (const file of PUBLIC_READMES) {
+      const source = read(file);
+      const normalized = source.replace(/\s+/gu, " ");
+
+      expect(source, `${file} -> architecture`).toMatch(
+        /React\s*(?:\+|\/)\s*Vite/iu,
+      );
+      expect(source, `${file} -> IPC`).toMatch(/Tauri IPC/iu);
+      expect(source, `${file} -> Rust`).toMatch(/Rust/iu);
+      expect(source, `${file} -> SQLite`).toMatch(/SQLite/iu);
+      expect(normalized, `${file} -> target-tool configuration`).toMatch(
+        /(?:configuration writes[^.。]{0,40}target AI tools|target AI tools?[^.。]{0,40}configuration|目标 AI 工具[^.。]{0,40}配置|対象 AI ツール[^.。]{0,40}設定)/iu,
+      );
+      expect(normalized, `${file} -> local proxy`).toMatch(
+        /(?:local proxy|本地代理|ローカルプロキシ)/iu,
+      );
+      expect(source, `${file} -> maintained development docs`).toContain(
+        "docs/fyagent/development/README.md",
+      );
+      expect(normalized, `${file} -> WorkBuddy boundary`).toMatch(
+        /(?:WorkBuddy[^.。\n]{0,120}(?:separate|independent|独立)|(?:separate|independent|独立)[^.。\n]{0,120}WorkBuddy)/iu,
+      );
+
+      expect(source, `${file} -> mise version`).toContain("mise >= 2026.8.0");
+      const onboarding = [
+        "mise trust",
+        "mise run bootstrap",
+        "mise run system:check",
+        "mise run dev",
+      ];
+      const positions = onboarding.map((command) => source.indexOf(command));
+      expect(
+        positions.every((position) => position >= 0),
+        file,
+      ).toBe(true);
+      expect(positions).toEqual(
+        [...positions].sort((left, right) => left - right),
+      );
+
+      expect(source, `${file} -> current-host gate`).toContain(
+        "mise run check",
+      );
+      expect(source, `${file} -> remote gate`).toContain("CI / Required");
+      expect(normalized, `${file} -> formal release evidence`).toMatch(
+        /(?:formal|正式(?:な)?)\s*Release/iu,
+      );
+      expect(source, `${file} -> HIL limit`).toMatch(/HIL/iu);
+    }
+  });
+
+  it("keeps contribution topology and CODEOWNERS enforcement factual", () => {
+    const contributing = read("CONTRIBUTING.md");
+    const normalized = contributing.replace(/\s+/gu, " ");
+    expect(
+      contributing.match(/fy-agent\/fyagent/gu)?.length ?? 0,
+    ).toBeGreaterThanOrEqual(2);
+    expect(normalized).toMatch(/maintainer[^.]{0,160}origin/iu);
+    expect(normalized).toMatch(/维护者[^。]{0,160}origin/u);
+    expect(normalized).toMatch(/personal fork[^.]{0,160}origin/iu);
+    expect(normalized).toMatch(/个人[^。]{0,80}fork[^。]{0,80}origin/iu);
+    expect(normalized).toMatch(/canonical[^.]{0,160}fetch/iu);
+    expect(normalized).toMatch(/CC Switch[^.]{0,160}fetch-only/iu);
+    expect(
+      contributing.match(/CI \/ Required/gu)?.length ?? 0,
+    ).toBeGreaterThanOrEqual(2);
+    expect(contributing.match(/squash/giu)?.length ?? 0).toBeGreaterThanOrEqual(
+      2,
+    );
+
+    const codeowners = read(".github/CODEOWNERS");
+    expect(codeowners).toMatch(/^\*\s+@\S+/mu);
+    expect(codeowners).toMatch(/advisory/iu);
+    expect(codeowners).toMatch(/branch protection/iu);
+    expect(codeowners).toMatch(/Code Owner review/iu);
+  });
+
   it("removes versioned design packages and keeps one responsibility owner", () => {
     expect(fs.existsSync(path.join(ROOT, "docs/fyagent/dev"))).toBe(false);
     expect(markdownFilesUnder("docs/fyagent/development")).toEqual(

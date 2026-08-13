@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/application-identity.md","reason":"Canonical fy-agent/fyagent provenance and public-source boundary."}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Exact CI / Required name, PR/main event behavior, and evidence limits."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Maintained mise onboarding and current-host validation contract."}
+{"file":".trellis/tasks/08-13-issue-21-repository-governance/research/docs-contract.md","reason":"Path findings, three-way README gaps, contributor topology, and test reuse."}
+{"file":".trellis/tasks/08-13-issue-21-repository-governance/research/repository-scans.md","reason":"Safe account, secret, LFS, and current/history blob scan boundary."}
+{"file":".trellis/tasks/08-13-issue-21-repository-governance/research/github-governance.md","reason":"Approved branch-protection target, compare-and-set sequence, and rollback."}
