@@ -10,6 +10,7 @@ use std::collections::HashSet;
 use serde_json::{Map, Value};
 
 use super::{
+    credential_matches_model_id,
     error::{WorkBuddyError, WorkBuddyErrorCode},
     types::WorkBuddyConfigFormat,
 };
@@ -164,19 +165,39 @@ impl WorkBuddyDocument {
     }
 
     fn validate_models(&self) -> Result<(), WorkBuddyError> {
+        let mut ids = Vec::new();
+        let mut credentials = Vec::new();
         for (index, entry) in self.models().iter().enumerate() {
             let model = entry.as_object().ok_or_else(|| {
                 WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry)
                     .with_invalid_entry_index(index)
             })?;
-            let valid_id = model
+            let id = model
                 .get("id")
                 .and_then(Value::as_str)
-                .is_some_and(|id| !id.trim().is_empty());
-            if !valid_id {
-                return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry)
-                    .with_invalid_entry_index(index));
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| {
+                    WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry)
+                        .with_invalid_entry_index(index)
+                })?;
+            ids.push(id);
+            if let Some(api_key) = model
+                .get("apiKey")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                credentials.push(api_key);
             }
+        }
+
+        if ids.iter().any(|id| {
+            credentials
+                .iter()
+                .any(|credential| credential_matches_model_id(credential, id))
+        }) {
+            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
         }
         Ok(())
     }
@@ -220,6 +241,20 @@ mod tests {
             ]),
             ["model-a", "Model-A"]
         );
+    }
+
+    #[test]
+    fn rejects_any_model_id_that_matches_any_trimmed_document_api_key() {
+        let credential = "TEST-SECRET-DOCUMENT-KEY";
+        let error = WorkBuddyDocument::parse(serde_json::json!([
+            { "id": "safe-model", "apiKey": format!(" {credential} ") },
+            { "id": format!(" {credential} "), "apiKey": "other-key" }
+        ]))
+        .unwrap_err();
+
+        let serialized = serde_json::to_string(&error.to_dto()).unwrap();
+        assert_eq!(error.code(), WorkBuddyErrorCode::ConfigInvalidEntry);
+        assert!(!serialized.contains(credential));
     }
 
     #[test]

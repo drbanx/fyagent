@@ -7,15 +7,17 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    fs::{self, OpenOptions},
-    io::{self, Write},
+    io,
     path::{Path, PathBuf},
     sync::{Mutex as StdMutex, OnceLock},
     time::{Duration, Instant},
 };
 
+#[cfg(any(target_os = "macos", test))]
+use std::fs;
+
 #[cfg(target_os = "macos")]
-use std::fs::File;
+use std::{fs::File, fs::OpenOptions, io::Write};
 
 use hmac::{Hmac, Mac};
 use serde_json::{Map, Value};
@@ -24,19 +26,21 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::{
+    credential_matches_model_id,
     document::WorkBuddyDocument,
     error::{WorkBuddyError, WorkBuddyErrorCode},
     types::{
         SaveWorkBuddyModelsOutcome, SaveWorkBuddyModelsRequest, WorkBuddyModelIdsResult,
         WorkBuddyStatus,
     },
-    url::{normalize_workbuddy_base_url, NormalizedWorkBuddyUrl},
+    url::{normalize_workbuddy_base_url, reject_url_credential_collision, NormalizedWorkBuddyUrl},
 };
 
 const MODELS_FILE_NAME: &str = "models.json";
 const BACKUP_FILE_NAME: &str = "models.json.backup";
 const DISPLAY_PATH: &str = ".workbuddy/models.json";
 const OVERWRITE_TOKEN_TTL: Duration = Duration::from_secs(3 * 60);
+const OVERWRITE_TOKEN_EXPIRED_RETENTION: Duration = Duration::from_secs(3 * 60);
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone)]
@@ -123,13 +127,30 @@ fn pending_overwrites() -> &'static StdMutex<HashMap<String, PendingOverwrite>> 
 pub(crate) fn get_workbuddy_status_at(
     paths: &WorkBuddyPaths,
 ) -> Result<WorkBuddyStatus, WorkBuddyError> {
-    let loaded = load_config(&paths.models)?;
+    #[cfg(target_os = "windows")]
+    let (loaded, backup_exists) = match open_windows_storage(paths, false) {
+        Ok(storage) => {
+            let bytes = storage
+                .read_models()
+                .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+            let backup_exists = storage
+                .backup_exists()
+                .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+            (load_config_bytes(bytes)?, backup_exists)
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => (load_config_bytes(None)?, false),
+        Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
+    };
+
+    #[cfg(target_os = "macos")]
+    let (loaded, backup_exists) = (load_config(&paths.models)?, paths.backup.exists());
+
     Ok(WorkBuddyStatus {
         path: DISPLAY_PATH.to_string(),
         exists: loaded.exists,
         model_count: loaded.document.unique_model_ids().len(),
         revision: loaded.revision,
-        backup_exists: paths.backup.exists(),
+        backup_exists,
         format: loaded.document.format(),
     })
 }
@@ -137,7 +158,20 @@ pub(crate) fn get_workbuddy_status_at(
 pub(crate) fn get_workbuddy_model_ids_at(
     paths: &WorkBuddyPaths,
 ) -> Result<WorkBuddyModelIdsResult, WorkBuddyError> {
+    #[cfg(target_os = "windows")]
+    let loaded = match open_windows_storage(paths, false) {
+        Ok(storage) => load_config_bytes(
+            storage
+                .read_models()
+                .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?,
+        )?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => load_config_bytes(None)?,
+        Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
+    };
+
+    #[cfg(target_os = "macos")]
     let loaded = load_config(&paths.models)?;
+
     Ok(WorkBuddyModelIdsResult {
         ids: loaded.document.unique_model_ids(),
         revision: loaded.revision,
@@ -149,10 +183,18 @@ pub(crate) fn save_workbuddy_models_at_locked(
     request: &SaveWorkBuddyModelsRequest,
 ) -> Result<SaveWorkBuddyModelsOutcome, WorkBuddyError> {
     let normalized_url = normalize_workbuddy_base_url(&request.base_url)?;
+    reject_url_credential_collision(&normalized_url, &request.api_key)?;
     if request.api_key.trim().is_empty() && !request.allow_no_api_key {
         return Err(WorkBuddyError::new(WorkBuddyErrorCode::ApiKeyRequired));
     }
     let target_ids = normalized_target_ids(request);
+    let credential = request.api_key.trim();
+    if target_ids
+        .iter()
+        .any(|id| credential_matches_model_id(credential, id))
+    {
+        return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
+    }
     if target_ids.is_empty() {
         return Err(WorkBuddyError::new(
             WorkBuddyErrorCode::ConfigNoTargetModels,
@@ -169,6 +211,20 @@ pub(crate) fn save_workbuddy_models_at_locked(
         .map(|token| consume_overwrite_token(token, request, &normalized_url, &target_ids))
         .transpose()?;
 
+    #[cfg(target_os = "windows")]
+    let (mut loaded, mut windows_state) = match open_windows_storage(paths, false) {
+        Ok(storage) => {
+            let snapshot = storage
+                .snapshot_models()
+                .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+            let loaded = load_config_bytes(snapshot.bytes().map(<[u8]>::to_vec))?;
+            (loaded, Some((storage, snapshot)))
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => (load_config_bytes(None)?, None),
+        Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
+    };
+
+    #[cfg(target_os = "macos")]
     let mut loaded = load_config(&paths.models)?;
     if request.expected_revision != loaded.revision {
         return Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification);
@@ -226,6 +282,91 @@ pub(crate) fn save_workbuddy_models_at_locked(
     let model_count = loaded.document.unique_model_ids().len();
     let serialized = loaded.document.serialize()?;
 
+    #[cfg(all(test, target_os = "macos"))]
+    if let Some(replacement) = WORKBUDDY_PRECOMMIT_REPLACEMENT
+        .lock()
+        .expect("workbuddy precommit test hook lock")
+        .take()
+    {
+        fs::write(&paths.models, replacement)
+            .expect("workbuddy precommit test hook must replace primary file");
+    }
+
+    // Re-read immediately before creating a backup or replacing the primary.
+    // FyAgent's process lock cannot exclude an external editor, so the exact
+    // preimage validated above must still be present at commit time.
+    #[cfg(target_os = "windows")]
+    let current_matches = if let Some((storage, snapshot)) = windows_state.as_mut() {
+        storage
+            .snapshot_matches(snapshot)
+            .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?
+            && snapshot.bytes() == loaded.exists.then_some(loaded.original_bytes.as_slice())
+    } else {
+        match open_windows_storage(paths, false) {
+            Ok(storage) => {
+                let snapshot = storage
+                    .snapshot_models()
+                    .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+                let matches = snapshot.bytes().is_none();
+                windows_state = Some((storage, snapshot));
+                matches
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => true,
+            Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
+        }
+    };
+
+    #[cfg(target_os = "macos")]
+    let current_bytes = match fs::read(&paths.models) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
+    };
+    #[cfg(target_os = "macos")]
+    let current_matches = {
+        let expected_bytes = loaded.exists.then_some(loaded.original_bytes.as_slice());
+        current_bytes.as_deref() == expected_bytes
+    };
+    if !current_matches {
+        return Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let (storage, mut snapshot) = match windows_state {
+            Some(state) => state,
+            None => {
+                let storage = open_windows_storage(paths, true)
+                    .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
+                let snapshot = storage
+                    .snapshot_models()
+                    .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+                if snapshot.bytes().is_some() {
+                    return Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification);
+                }
+                (storage, snapshot)
+            }
+        };
+        match storage.commit(&mut snapshot, &serialized) {
+            Ok(()) => {}
+            Err(super::windows_storage::WindowsCommitError::Concurrent) => {
+                return Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification);
+            }
+            Err(error) => {
+                return Err(WorkBuddyError::new(match error {
+                    super::windows_storage::WindowsCommitError::Backup => {
+                        WorkBuddyErrorCode::ConfigBackupFailed
+                    }
+                    super::windows_storage::WindowsCommitError::Primary => {
+                        WorkBuddyErrorCode::ConfigWriteFailed
+                    }
+                    super::windows_storage::WindowsCommitError::Concurrent => unreachable!(),
+                }));
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
     if loaded.exists {
         write_credential_file_atomically(&paths.backup, &loaded.original_bytes)
             .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigBackupFailed))?;
@@ -233,6 +374,7 @@ pub(crate) fn save_workbuddy_models_at_locked(
         return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed));
     }
 
+    #[cfg(target_os = "macos")]
     write_credential_file_atomically(&paths.models, &serialized)
         .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
 
@@ -244,18 +386,28 @@ pub(crate) fn save_workbuddy_models_at_locked(
     })
 }
 
+#[cfg(all(test, target_os = "macos"))]
+static WORKBUDDY_PRECOMMIT_REPLACEMENT: std::sync::Mutex<Option<Vec<u8>>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(target_os = "macos")]
 fn load_config(path: &Path) -> Result<LoadedConfig, WorkBuddyError> {
-    let original_bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(LoadedConfig {
-                exists: false,
-                original_bytes: Vec::new(),
-                revision: None,
-                document: WorkBuddyDocument::missing(),
-            });
-        }
+    let bytes = match fs::read(path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
+    };
+    load_config_bytes(bytes)
+}
+
+fn load_config_bytes(bytes: Option<Vec<u8>>) -> Result<LoadedConfig, WorkBuddyError> {
+    let Some(original_bytes) = bytes else {
+        return Ok(LoadedConfig {
+            exists: false,
+            original_bytes: Vec::new(),
+            revision: None,
+            document: WorkBuddyDocument::missing(),
+        });
     };
 
     let root: Value = serde_json::from_slice(&original_bytes)
@@ -267,6 +419,30 @@ fn load_config(path: &Path) -> Result<LoadedConfig, WorkBuddyError> {
         original_bytes,
         document,
     })
+}
+
+#[cfg(target_os = "windows")]
+fn open_windows_storage(
+    paths: &WorkBuddyPaths,
+    create_directory: bool,
+) -> io::Result<super::windows_storage::WindowsWorkBuddyStorage> {
+    let home = paths.directory.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "WorkBuddy storage unavailable",
+        )
+    })?;
+    let expected = WorkBuddyPaths::from_home(home);
+    if expected.directory != paths.directory
+        || expected.models != paths.models
+        || expected.backup != paths.backup
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "WorkBuddy storage unavailable",
+        ));
+    }
+    super::windows_storage::WindowsWorkBuddyStorage::open(home, create_directory)
 }
 
 fn normalized_target_ids(request: &SaveWorkBuddyModelsRequest) -> Vec<String> {
@@ -347,7 +523,11 @@ fn issue_overwrite_token(
     };
     let mut pending_overwrites = lock_pending_overwrites();
     let now = Instant::now();
-    pending_overwrites.retain(|_, pending| pending.expires_at > now);
+    // Keep a bounded expired tombstone so a client receives the stable
+    // `expired` outcome even when another preflight is issued concurrently.
+    // The capability remains one-time and is removed on the first use.
+    pending_overwrites
+        .retain(|_, pending| pending.expires_at + OVERWRITE_TOKEN_EXPIRED_RETENTION > now);
     pending_overwrites.insert(token.clone(), pending);
     token
 }
@@ -483,6 +663,7 @@ fn random_mac_key() -> [u8; 32] {
     key
 }
 
+#[cfg(target_os = "macos")]
 fn write_credential_file_atomically(path: &Path, data: &[u8]) -> io::Result<()> {
     let parent = path
         .parent()
@@ -497,6 +678,7 @@ fn write_credential_file_atomically(path: &Path, data: &[u8]) -> io::Result<()> 
     result
 }
 
+#[cfg(target_os = "macos")]
 fn create_temp_file(
     parent: &Path,
     file_name: &std::ffi::OsStr,
@@ -542,51 +724,6 @@ fn create_temp_file(
     ))
 }
 
-#[cfg(windows)]
-fn replace_file(temp: &Path, target: &Path) -> io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows::{
-        core::PCWSTR,
-        Win32::Storage::FileSystem::{
-            MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH, REPLACEFILE_WRITE_THROUGH,
-        },
-    };
-
-    let temp_wide = temp
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    let target_wide = target
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    // Existing credential files use ReplaceFileW so Windows preserves the
-    // destination's ACL/metadata in the platform replacement operation. The
-    // first creation has no destination to replace and uses same-directory
-    // MoveFileExW with write-through. Neither path deletes the target first.
-    unsafe {
-        if target.exists() {
-            ReplaceFileW(
-                PCWSTR(target_wide.as_ptr()),
-                PCWSTR(temp_wide.as_ptr()),
-                PCWSTR::null(),
-                REPLACEFILE_WRITE_THROUGH,
-                None,
-                None,
-            )
-        } else {
-            MoveFileExW(
-                PCWSTR(temp_wide.as_ptr()),
-                PCWSTR(target_wide.as_ptr()),
-                MOVEFILE_WRITE_THROUGH,
-            )
-        }
-        .map_err(|_| io::Error::last_os_error())
-    }
-}
-
 #[cfg(target_os = "macos")]
 fn replace_file(temp: &Path, target: &Path) -> io::Result<()> {
     fs::rename(temp, target)
@@ -595,11 +732,6 @@ fn replace_file(temp: &Path, target: &Path) -> io::Result<()> {
 #[cfg(target_os = "macos")]
 fn sync_parent_directory(parent: &Path) -> io::Result<()> {
     File::open(parent)?.sync_all()
-}
-
-#[cfg(target_os = "windows")]
-fn sync_parent_directory(_parent: &Path) -> io::Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]
@@ -700,6 +832,22 @@ mod tests {
     }
 
     #[test]
+    fn save_rejects_a_model_id_containing_the_trimmed_api_key_without_writing() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let credential = "TEST-SECRET-MODEL-ID";
+        let mut request = request(None);
+        request.api_key = format!("  {credential}  ");
+        request.selected_model_ids = vec![format!(" prefix-{credential}-suffix ")];
+
+        let error = save_workbuddy_models_at_locked(&paths, &request).unwrap_err();
+        let serialized = serde_json::to_string(&error.to_dto()).unwrap();
+        assert_eq!(error.code(), WorkBuddyErrorCode::ConfigInvalidEntry);
+        assert!(!serialized.contains(credential));
+        assert!(!paths.models.exists());
+    }
+
+    #[test]
     fn array_root_round_trips_unknown_fields_and_stays_an_array() {
         let temp = tempfile::tempdir().unwrap();
         let paths = paths(&temp);
@@ -772,6 +920,32 @@ mod tests {
         assert_eq!(ids.revision, status.revision);
         assert!(!serialized_status.contains("first"));
         assert!(!serialized_status.contains("model-a"));
+    }
+
+    #[test]
+    fn malicious_local_document_never_reaches_status_or_model_id_dtos() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let credential = "TEST-SECRET-LOCAL-DOCUMENT-KEY";
+        write_models(
+            &paths,
+            &serde_json::json!({
+                "models": [
+                    { "id": "safe-model", "apiKey": credential },
+                    { "id": format!("prefix-{credential}-suffix"), "apiKey": "other-key" }
+                ]
+            })
+            .to_string(),
+        );
+
+        for error in [
+            get_workbuddy_status_at(&paths).unwrap_err(),
+            get_workbuddy_model_ids_at(&paths).unwrap_err(),
+        ] {
+            let serialized = serde_json::to_string(&error.to_dto()).unwrap();
+            assert_eq!(error.code(), WorkBuddyErrorCode::ConfigInvalidEntry);
+            assert!(!serialized.contains(credential));
+        }
     }
 
     #[test]
@@ -1044,6 +1218,26 @@ mod tests {
         assert!(!paths.backup.exists());
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn external_edit_after_initial_revision_check_is_not_overwritten() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        write_models(&paths, r#"[{"id":"model-a","apiKey":"old-key"}]"#);
+        let revision = get_workbuddy_status_at(&paths).unwrap().revision;
+        let external = br#"[{"id":"model-a","apiKey":"editor-key","note":"external"}]"#.to_vec();
+        *WORKBUDDY_PRECOMMIT_REPLACEMENT.lock().unwrap() = Some(external.clone());
+        let mut save_request = request(revision);
+        save_request.selected_model_ids = vec!["model-b".to_string()];
+
+        assert_eq!(
+            save_workbuddy_models_at_locked(&paths, &save_request).unwrap(),
+            SaveWorkBuddyModelsOutcome::ConcurrentModification
+        );
+        assert_eq!(fs::read(&paths.models).unwrap(), external);
+        assert!(!paths.backup.exists());
+    }
+
     #[test]
     fn backup_is_the_immediately_previous_file_and_failed_backup_keeps_primary() {
         let temp = tempfile::tempdir().unwrap();
@@ -1057,9 +1251,9 @@ mod tests {
         assert_eq!(fs::read(&paths.backup).unwrap(), original);
 
         let before = fs::read(&paths.models).unwrap();
+        let revision = get_workbuddy_status_at(&paths).unwrap().revision;
         let _ = fs::remove_file(&paths.backup);
         fs::create_dir(&paths.backup).unwrap();
-        let revision = get_workbuddy_status_at(&paths).unwrap().revision;
         let error = save_workbuddy_models_at_locked(&paths, &request(revision)).unwrap_err();
         assert_eq!(error.code(), WorkBuddyErrorCode::ConfigBackupFailed);
         assert_eq!(fs::read(&paths.models).unwrap(), before);
@@ -1099,6 +1293,7 @@ mod tests {
             .contains("TEST-SECRET-WORKBUDDY-KEY"));
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn failed_replacement_never_deletes_an_existing_target() {
         let temp = tempfile::tempdir().unwrap();
