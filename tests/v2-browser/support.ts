@@ -12,6 +12,16 @@ export interface ElementBox {
   height: number;
 }
 
+const faviconRoutes = new WeakSet<Page>();
+
+async function interceptKnownAssetRequests(page: Page): Promise<void> {
+  if (faviconRoutes.has(page)) return;
+  faviconRoutes.add(page);
+  await page.route("**/favicon.ico", (route) =>
+    route.fulfill({ status: 204, body: "" }),
+  );
+}
+
 export function monitorPageHealth(page: Page): PageHealthMonitor {
   const monitor: PageHealthMonitor = {
     consoleErrors: [],
@@ -31,6 +41,7 @@ export function monitorPageHealth(page: Page): PageHealthMonitor {
 }
 
 export async function openV2Page(page: Page, route: string): Promise<void> {
+  await interceptKnownAssetRequests(page);
   await page.goto(`/#${route}`);
   await expect(page).toHaveTitle("FyAgent");
   await expect(page.getByTestId("top-bar")).toBeVisible();

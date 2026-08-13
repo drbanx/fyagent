@@ -6,6 +6,7 @@ import { MemoryPage } from "../pages/memory/Page";
 import { ModelsPage } from "../pages/models/Page";
 import { PromptsPage } from "../pages/prompts/Page";
 import { SkillsPage } from "../pages/skills/Page";
+import { FeatureProvider } from "../shared/features/provider";
 import { AppShell } from "../widgets/app-shell/AppShell";
 import { RootError } from "./RootError";
 
@@ -25,7 +26,11 @@ const developmentRoutes: RouteObject[] = import.meta.env.DEV
 export const appRoutes: RouteObject[] = [
   {
     path: "/",
-    element: <AppShell />,
+    element: (
+      <FeatureProvider>
+        <AppShell />
+      </FeatureProvider>
+    ),
     children: [
       {
         errorElement: <RootError />,

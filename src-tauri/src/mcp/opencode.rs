@@ -208,7 +208,9 @@ pub fn remove_server_from_opencode(id: &str) -> Result<(), AppError> {
 
 /// Import MCP servers from OpenCode config to unified structure
 ///
-/// Existing servers will have OpenCode app enabled without overwriting other fields.
+/// Existing servers preserve the source OpenCode enable flag without
+/// overwriting other fields. Explicitly disabled source entries are carried to
+/// the persistence boundary only to clear an existing assignment.
 pub fn import_from_opencode(config: &mut MultiAppConfig) -> Result<usize, AppError> {
     let mcp_map = opencode_config::get_mcp_servers()?;
     if mcp_map.is_empty() {
@@ -222,6 +224,8 @@ pub fn import_from_opencode(config: &mut MultiAppConfig) -> Result<usize, AppErr
     let mut errors = Vec::new();
 
     for (id, spec) in mcp_map {
+        let source_enabled = super::source_server_is_enabled(&spec);
+
         // Convert from OpenCode format to unified format
         let unified_spec = match convert_from_opencode_format(&spec) {
             Ok(s) => s,
@@ -240,14 +244,12 @@ pub fn import_from_opencode(config: &mut MultiAppConfig) -> Result<usize, AppErr
         }
 
         if let Some(existing) = servers.get_mut(&id) {
-            // Existing server: just enable OpenCode app
-            if !existing.apps.opencode {
-                existing.apps.opencode = true;
+            if existing.apps.opencode != source_enabled {
+                existing.apps.opencode = source_enabled;
                 changed += 1;
-                log::info!("MCP server '{id}' enabled for OpenCode");
+                log::info!("MCP server '{id}' imported with its OpenCode enablement");
             }
         } else {
-            // New server: default to only OpenCode enabled
             servers.insert(
                 id.clone(),
                 McpServer {
@@ -259,7 +261,7 @@ pub fn import_from_opencode(config: &mut MultiAppConfig) -> Result<usize, AppErr
                         codex: false,
                         gemini: false,
                         grokbuild: false,
-                        opencode: true,
+                        opencode: source_enabled,
                         hermes: false,
                     },
                     description: None,
@@ -268,8 +270,10 @@ pub fn import_from_opencode(config: &mut MultiAppConfig) -> Result<usize, AppErr
                     tags: Vec::new(),
                 },
             );
-            changed += 1;
-            log::info!("Imported new MCP server '{id}' from OpenCode");
+            if source_enabled {
+                changed += 1;
+            }
+            log::info!("Imported MCP server '{id}' from OpenCode with source enablement");
         }
     }
 

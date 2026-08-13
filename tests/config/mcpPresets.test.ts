@@ -1,17 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 async function loadPresets(platform: "windows" | "macos" | "unknown") {
-  vi.doMock("@/lib/platform", () => ({
-    isMac: () => platform === "macos",
-    isWindows: () => platform === "windows",
+  vi.doMock("@/v2/shared/platform/runtime", () => ({
+    detectNativePlatform: () => platform,
   }));
   vi.resetModules();
-  return import("@/config/mcpPresets");
+  const [legacy, v2] = await Promise.all([
+    import("@/config/mcpPresets"),
+    import("@/v2/shared/features/presets"),
+  ]);
+  expect(legacy.mcpPresets).toBe(v2.mcpPresets);
+  return legacy;
 }
 
 describe("MCP preset platform commands", () => {
   afterEach(() => {
-    vi.doUnmock("@/lib/platform");
+    vi.doUnmock("@/v2/shared/platform/runtime");
     vi.resetModules();
   });
 

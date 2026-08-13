@@ -68,9 +68,7 @@ function expectSystemOwnedChrome(): void {
       topBar.querySelectorAll(
         '[data-testid="brand"], [data-testid="primary-navigation"], [data-testid="tool-cluster"]',
       ),
-    ).map((element) =>
-      element.getAttribute("data-testid"),
-    ),
+    ).map((element) => element.getAttribute("data-testid")),
   ).toEqual(["brand", "primary-navigation", "tool-cluster"]);
   expect(document.querySelector("[data-tauri-drag-region]")).toBeNull();
   expect(screen.queryByTestId("titlebar-drag-region")).not.toBeInTheDocument();
@@ -111,12 +109,43 @@ describe("FyAgent V2 routing", () => {
       expect(activeLink).toHaveAttribute("aria-current", "page");
       expect(selectedLinks).toEqual([activeLink]);
       expect(within(activeLink).getByTestId("liquid-glass-lens")).toBeVisible();
-      expect(within(navigation).getAllByTestId("liquid-glass-lens")).toHaveLength(
-        1,
-      );
-      expect(screen.getByRole("main", { name: "内容承载区" })).toBeEmptyDOMElement();
+      expect(
+        within(navigation).getAllByTestId("liquid-glass-lens"),
+      ).toHaveLength(1);
+      const content = screen.getByRole("main", { name: "内容承载区" });
+      if (path === "/skills" || path === "/mcp") {
+        expect(content).not.toBeEmptyDOMElement();
+      } else {
+        expect(content).toBeEmptyDOMElement();
+      }
     },
   );
+
+  it("keeps only the four unrelated Phase 1 routes empty", () => {
+    for (const path of ["/agents", "/models", "/prompts", "/memory"]) {
+      const view = render(
+        <RouterProvider
+          router={createMemoryRouter(appRoutes, { initialEntries: [path] })}
+        />,
+      );
+      expect(
+        screen.getByRole("main", { name: "内容承载区" }),
+      ).toBeEmptyDOMElement();
+      view.unmount();
+    }
+
+    for (const path of ["/skills", "/mcp"]) {
+      const view = render(
+        <RouterProvider
+          router={createMemoryRouter(appRoutes, { initialEntries: [path] })}
+        />,
+      );
+      expect(
+        screen.getByRole("main", { name: "内容承载区" }),
+      ).not.toBeEmptyDOMElement();
+      view.unmount();
+    }
+  });
 
   it("keeps the system-chrome shell available when a child route fails", async () => {
     const [rootRoute] = appRoutes;

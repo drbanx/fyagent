@@ -18,11 +18,7 @@ const navigationContract = [
   { path: "/memory", label: "记忆" },
 ] as const;
 
-const visibleControlTestIds = [
-  "search",
-  "settings",
-  "avatar",
-] as const;
+const visibleControlTestIds = ["search", "settings", "avatar"] as const;
 
 const shellRegionTestIds = [
   "brand",
@@ -174,7 +170,11 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
     await expect(lenses).toHaveCount(1);
     await expect(link.getByTestId("liquid-glass-lens")).toHaveCount(1);
     await expect(link).toHaveClass(/fy-primary-nav-item-selected/);
-    await expect(page.getByTestId("content-viewport")).toHaveText("");
+    if (path === "/skills" || path === "/mcp") {
+      await expect(page.getByTestId("content-viewport")).not.toHaveText("");
+    } else {
+      await expect(page.getByTestId("content-viewport")).toHaveText("");
+    }
 
     await expect
       .poll(
@@ -217,13 +217,16 @@ test("reaches every primary control with the keyboard in document order", async 
   await openV2Page(page, "/models");
 
   expect(
-    await page.getByTestId("top-bar").evaluate((element) =>
-      Array.from(
-        element.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((control) => control.tabIndex >= 0).length,
-    ),
+    await page
+      .getByTestId("top-bar")
+      .evaluate(
+        (element) =>
+          Array.from(
+            element.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((control) => control.tabIndex >= 0).length,
+      ),
     "Renderer TopBar must contain exactly nine keyboard stops",
   ).toBe(primaryControlTestIds.length);
 

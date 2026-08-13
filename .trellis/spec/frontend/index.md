@@ -38,6 +38,7 @@ Before changing renderer code:
 | Guide                                                                      | Use it for                                                                                               |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [V2 Phase 1 Shell Contract](./v2-shell.md)                                 | Isolated V2 routes, styles, layer/platform boundaries, lifecycle, and V2-only gates.                     |
+| [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md)                   | Skills/MCP ports, authoritative state, secret handling, responsive UI, and feature-specific gates.       |
 | [Directory Structure](./directory-structure.md)                            | Selecting the existing frontend layer and test location.                                                 |
 | [Component Guidelines](./component-guidelines.md)                          | UI primitives, props, styling, translation, and form composition.                                        |
 | [Hook Guidelines](./hook-guidelines.md)                                    | Naming, placement, effects, cleanup, and stateful hook APIs.                                             |

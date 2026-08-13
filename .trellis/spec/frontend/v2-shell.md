@@ -21,6 +21,8 @@ src/v2/
 Do not create empty `entities`, `features`, store, or service layers in Phase 1.
 Native title bars, caption buttons, and dragging are system/Tauri chrome and
 must not be reimplemented in the React tree.
+The approved Skills and MCP exception follows the dedicated
+[V2 Skills and MCP Feature Contract](./v2-skills-mcp.md).
 
 ## 2. Signatures
 
@@ -74,7 +76,8 @@ The navigation source contains exactly these entries in this order:
 - Derive selected state only from router location. The active link has
   `aria-current="page"`; do not maintain a second `currentView` state.
 - Put each production page element below its matching `pages/<route>/` folder.
-  All six Phase 1 page elements render no business content.
+  Agents, Models, Prompts, and Memory remain empty Phase 1 pages. Skills and
+  MCP may render their approved command-backed internal management UI.
 - Register the UI Lab only when `import.meta.env.DEV` is true. Production must
   not expose `#/__dev/ui-lab`.
 - React keyboard order is the six navigation links followed by Search,
@@ -90,8 +93,9 @@ The navigation source contains exactly these entries in this order:
   decorations at runtime. Browser preview correctly renders no native controls.
 - Do not fake system controls for browser screenshots or geometry tests.
 - Direct Tauri imports still live only below
-  `src/v2/shared/platform/tauri/**`. The remaining V2 native bridge is the ready
-  lifecycle event, not a window-frame facade.
+  `src/v2/shared/platform/tauri/**`. The outer shell's only native bridge is the
+  ready lifecycle event, not a window-frame facade; feature pages use dedicated
+  ports below the same platform boundary.
 - The ready lifecycle emits at most once per renderer lifetime, including
   React StrictMode or repeated calls, and is a browser no-op.
 
@@ -101,7 +105,7 @@ The V2 shell owns one Blue Ambient / Clear Glass appearance:
 
 ```text
 L0 ambient background      blue-gray gradients and controlled light fields
-L1 content plane           empty, translucent, and low-boundary
+L1 content plane           route-owned, translucent, and low-boundary
 L2 structural glass        primary navigation track
 L3 interactive glass       selected lens, tools, tooltip, and popover
 ```
@@ -158,25 +162,26 @@ synchronization, or the complete startup contract and is not Release-ready.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                      | Required result                                                         |
-| ---------------------------------------------- | ----------------------------------------------------------------------- |
-| Empty hash, root route, or unknown route       | Redirect to `#/models`; Models alone has `aria-current="page"`          |
-| Any normal production route                    | Exactly one active link and one selected lens                            |
-| UI Lab development route                       | No primary link active; the lab may render one isolated lens specimen    |
-| SVG/backdrop filter unavailable                | CSS tint, edge, shadow, focus, and selected state remain readable         |
-| React StrictMode or repeated ready calls       | One native `frontend-deeplink-ready` emission per renderer lifetime      |
-| Production requests the UI Lab path            | Route is absent and wildcard fallback selects `#/models`                 |
-| Custom controls/drag region/frame port appears | Unit, architecture, or browser negative assertion fails                  |
-| V2 calls `setDecorations(false)`                | Static contract search and V2 tests fail                                 |
-| V2 imports a legacy/upward/native module        | ESLint and executable architecture test fail                             |
-| A page renders Phase 1 business copy            | Shell/content test fails                                                  |
-| A supported viewport overflows or overlaps     | Playwright geometry gate fails                                           |
+| Condition                                       | Required result                                                       |
+| ----------------------------------------------- | --------------------------------------------------------------------- |
+| Empty hash, root route, or unknown route        | Redirect to `#/models`; Models alone has `aria-current="page"`        |
+| Any normal production route                     | Exactly one active link and one selected lens                         |
+| UI Lab development route                        | No primary link active; the lab may render one isolated lens specimen |
+| SVG/backdrop filter unavailable                 | CSS tint, edge, shadow, focus, and selected state remain readable     |
+| React StrictMode or repeated ready calls        | One native `frontend-deeplink-ready` emission per renderer lifetime   |
+| Production requests the UI Lab path             | Route is absent and wildcard fallback selects `#/models`              |
+| Custom controls/drag region/frame port appears  | Unit, architecture, or browser negative assertion fails               |
+| V2 calls `setDecorations(false)`                | Static contract search and V2 tests fail                              |
+| V2 imports legacy/upward code, or Tauri outside the platform boundary | ESLint and executable architecture test fail              |
+| An unrelated Phase 1 page renders business copy | Shell/content test fails                                              |
+| A supported viewport overflows or overlaps      | Playwright geometry gate fails                                        |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that
   `NavLink` alone owns `aria-current="page"`, contains the sole selected lens,
-  remains keyboard-focusable, and the content viewport stays empty.
+  remains keyboard-focusable, and the content viewport stays empty. Skills
+  and MCP render only their approved management UI.
 - **Base:** Opening without a route lands on `#/models`, with six links and
   three tools visible. Browser preview has no system or simulated controls.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
@@ -198,9 +203,10 @@ mise run build:renderer
 ```
 
 - Unit tests assert default/wildcard redirects, six-route order, Router-owned
-  selection, `aria-current`, a sole active lens, nine-stop primary tab order,
-  stable accessible names, inert tool clicks, absence of custom chrome/drag
-  regions, empty content, and idempotent ready behavior.
+  selection, `aria-current`, a sole active lens, the TopBar's nine-stop primary
+  tab order, stable accessible names, inert tool clicks, absence of custom
+  chrome/drag regions, exactly four empty Phase 1 pages, non-empty Skills/MCP
+  pages, and idempotent ready behavior.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract.
@@ -208,9 +214,10 @@ mise run build:renderer
   behavior. Playwright must load the real production dependency.
 - Playwright runs at `900x600`, `1152x640`, `1232x700`, and `1440x900`. At each
   viewport assert no document/top-bar overflow; no Brand/Nav/Tools overlap;
-  all six links and three tools visible; empty non-zero content viewport;
-  hash/selected/ARIA/lens agreement; nine-stop keyboard access; absence of
-  fake chrome; and no console, page, or framework-overlay error.
+  all six links and three tools visible; empty unrelated pages and non-empty
+  Skills/MCP pages; hash/selected/ARIA/lens agreement; the TopBar's nine-stop
+  keyboard order on the default shell route; absence of fake chrome; and no
+  console, page, or framework-overlay error.
 - UI Lab browser tests cover translucent surfaces, backdrop or meaningful CSS
   fallback, selected styling without underline, edge/highlight/shadow,
   Tooltip/Popover portal visibility, focus ring, long multilingual stress

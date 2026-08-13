@@ -11,6 +11,7 @@
   --fy-accent: #9ddcff;
   --fy-accent-hover: #c4ebff;
   --fy-accent-text: #f8fcff;
+  --fy-accent-ink: #173d5a;
   --fy-glass-ambient: rgba(222, 241, 255, 0.1);
   --fy-glass-structural: rgba(222, 241, 255, 0.16);
   --fy-glass-interactive: rgba(229, 246, 255, 0.22);
@@ -23,7 +24,12 @@
   --fy-selected: rgba(218, 241, 255, 0.2);
   --fy-selected-border: rgba(239, 250, 255, 0.44);
   --fy-danger-soft: rgba(255, 121, 126, 0.18);
+  --fy-danger-border: rgba(255, 210, 212, 0.6);
+  --fy-danger-surface: rgba(126, 31, 43, 0.5);
   --fy-danger-text: #ffd2d4;
+  --fy-warning-soft: rgba(132, 82, 13, 0.34);
+  --fy-warning-border: rgba(255, 211, 133, 0.44);
+  --fy-warning-text: #ffe2aa;
   --fy-shadow-shell: 0 18px 46px rgba(12, 29, 47, 0.28);
   --fy-shadow-control: 0 8px 22px rgba(11, 29, 48, 0.22);
   --fy-focus: #b9eaff;

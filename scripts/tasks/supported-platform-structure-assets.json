@@ -274,12 +274,12 @@
       "6da3eabff63b75d4c061e18c3bff6b3d9911c9923362b1022102355da51835e9"
     ],
     [
-      "src/config/mcpPresets.ts",
-      "83d08dbdeea6ec6c459d7b0d181d6d02569353dbae26c7fcc725f1ea2ab2f122"
-    ],
-    [
       "src/lib/platform.ts",
       "220bae4f18ccd08a041f5ad2c1982722a35b268934cf9a025b4af7148184139e"
+    ],
+    [
+      "src/v2/shared/features/presets.ts",
+      "2844c31f9781a975fd50e3485036690baffac05c2cfd0227559ceb2bfadfde64"
     ],
     [
       "tests/codexUserHelperContract.test.ts",

@@ -25,27 +25,29 @@ impl McpService {
             .map(|s| s.apps.clone())
             .unwrap_or_default();
 
-        state.db.save_mcp_server(&server)?;
-
         // 处理禁用：若旧版本启用但新版本取消，则需要从该应用的 live 配置移除
         if prev_apps.claude && !server.apps.claude {
-            Self::remove_server_from_app(state, &server.id, &AppType::Claude)?;
+            Self::disable_server_for_app(state, &server.id, &AppType::Claude)?;
         }
         if prev_apps.codex && !server.apps.codex {
-            Self::remove_server_from_app(state, &server.id, &AppType::Codex)?;
+            Self::disable_server_for_app(state, &server.id, &AppType::Codex)?;
         }
         if prev_apps.gemini && !server.apps.gemini {
-            Self::remove_server_from_app(state, &server.id, &AppType::Gemini)?;
+            Self::disable_server_for_app(state, &server.id, &AppType::Gemini)?;
         }
         if prev_apps.grokbuild && !server.apps.grokbuild {
-            Self::remove_server_from_app(state, &server.id, &AppType::GrokBuild)?;
+            Self::disable_server_for_app(state, &server.id, &AppType::GrokBuild)?;
         }
         if prev_apps.opencode && !server.apps.opencode {
-            Self::remove_server_from_app(state, &server.id, &AppType::OpenCode)?;
+            Self::disable_server_for_app(state, &server.id, &AppType::OpenCode)?;
         }
         if prev_apps.hermes && !server.apps.hermes {
-            Self::remove_server_from_app(state, &server.id, &AppType::Hermes)?;
+            Self::disable_server_for_app(state, &server.id, &AppType::Hermes)?;
         }
+
+        // 安全相关的取消分配必须先在 live 配置生效，才能提交数据库状态；
+        // 否则清理失败后，界面会显示已关闭，但 Agent 仍会加载旧命令。
+        state.db.save_mcp_server(&server)?;
 
         // 同步到各个启用的应用
         Self::sync_server_to_apps(state, &server)?;
@@ -58,10 +60,10 @@ impl McpService {
         let server = state.db.get_all_mcp_servers()?.shift_remove(id);
 
         if let Some(server) = server {
-            state.db.delete_mcp_server(id)?;
-
             // 从所有应用的 live 配置中移除
             Self::remove_server_from_all_apps(state, id, &server)?;
+            // 只有所有 live 清理都成功，才删除可重试的权威记录。
+            state.db.delete_mcp_server(id)?;
             Ok(true)
         } else {
             Ok(false)
@@ -75,16 +77,16 @@ impl McpService {
         app: AppType,
         enabled: bool,
     ) -> Result<(), AppError> {
-        if let Some(server) = state
-            .db
-            .update_mcp_server_app_enabled(server_id, &app, enabled)?
-        {
-            // 同步到对应应用
-            if enabled {
+        if enabled {
+            if let Some(server) = state
+                .db
+                .update_mcp_server_app_enabled(server_id, &app, true)?
+            {
                 Self::sync_server_to_app(state, &server, &app)?;
-            } else {
-                Self::remove_server_from_app(state, server_id, &app)?;
             }
+        } else if state.db.get_all_mcp_servers()?.contains_key(server_id) {
+            // 禁用先清理 live，再提交数据库；失败时保留原开关和重试入口。
+            Self::disable_server_for_app(state, server_id, &app)?;
         }
 
         Ok(())
@@ -157,8 +159,17 @@ impl McpService {
     ) -> Result<(), AppError> {
         // 从所有曾启用的应用中移除
         for app in server.apps.enabled_apps() {
-            Self::remove_server_from_app(state, id, &app)?;
+            // Commit each successful cleanup independently. If a later client
+            // fails, the retained row describes exactly which clients can be
+            // retried instead of reverting to a false all-enabled snapshot.
+            Self::disable_server_for_app(state, id, &app)?;
         }
+        Ok(())
+    }
+
+    fn disable_server_for_app(state: &AppState, id: &str, app: &AppType) -> Result<(), AppError> {
+        Self::remove_server_from_app(state, id, app)?;
+        state.db.update_mcp_server_app_enabled(id, app, false)?;
         Ok(())
     }
 
@@ -183,6 +194,22 @@ impl McpService {
             }
         }
         Ok(())
+    }
+
+    /// Persist one application's imported servers without treating a shared ID
+    /// as proof that executable specs are equivalent. A conflicting command,
+    /// argument, environment, header, or URL must remain scoped to its source
+    /// application until the user resolves it explicitly.
+    fn persist_imported_servers(
+        state: &AppState,
+        config: &crate::app_config::MultiAppConfig,
+        app: &AppType,
+    ) -> Result<usize, AppError> {
+        let Some(servers) = &config.mcp.servers else {
+            return Ok(0);
+        };
+        let imported = servers.values().cloned().collect::<Vec<_>>();
+        state.db.import_mcp_servers_atomically(&imported, app)
     }
 
     /// 手动同步所有启用的 MCP 服务器到对应的应用。
@@ -294,36 +321,8 @@ impl McpService {
         let mut temp_config = crate::app_config::MultiAppConfig::default();
 
         // 调用原有的导入逻辑（从 mcp.rs）
-        let count = crate::mcp::import_from_claude(&mut temp_config)?;
-
-        let mut new_count = 0;
-
-        // 如果有导入的服务器，保存到数据库
-        if count > 0 {
-            if let Some(servers) = &temp_config.mcp.servers {
-                let mut existing = state.db.get_all_mcp_servers()?;
-                for server in servers.values() {
-                    // 已存在：仅启用 Claude，不覆盖其他字段（与导入模块语义保持一致）
-                    let to_save = if let Some(existing_server) = existing.get(&server.id) {
-                        let mut merged = existing_server.clone();
-                        merged.apps.claude = true;
-                        merged
-                    } else {
-                        // 真正的新服务器
-                        new_count += 1;
-                        server.clone()
-                    };
-
-                    state.db.save_mcp_server(&to_save)?;
-                    existing.insert(to_save.id.clone(), to_save.clone());
-
-                    // 导入是读取已有配置，不应反向写回任何应用的 live 配置。
-                    // 显式编辑、启用/禁用或手动同步时再执行写回。
-                }
-            }
-        }
-
-        Ok(new_count)
+        crate::mcp::import_from_claude(&mut temp_config)?;
+        Self::persist_imported_servers(state, &temp_config, &AppType::Claude)
     }
 
     /// 从 Codex 导入 MCP（v3.7.0 已更新为统一结构）
@@ -332,36 +331,8 @@ impl McpService {
         let mut temp_config = crate::app_config::MultiAppConfig::default();
 
         // 调用原有的导入逻辑（从 mcp.rs）
-        let count = crate::mcp::import_from_codex(&mut temp_config)?;
-
-        let mut new_count = 0;
-
-        // 如果有导入的服务器，保存到数据库
-        if count > 0 {
-            if let Some(servers) = &temp_config.mcp.servers {
-                let mut existing = state.db.get_all_mcp_servers()?;
-                for server in servers.values() {
-                    // 已存在：仅启用 Codex，不覆盖其他字段（与导入模块语义保持一致）
-                    let to_save = if let Some(existing_server) = existing.get(&server.id) {
-                        let mut merged = existing_server.clone();
-                        merged.apps.codex = true;
-                        merged
-                    } else {
-                        // 真正的新服务器
-                        new_count += 1;
-                        server.clone()
-                    };
-
-                    state.db.save_mcp_server(&to_save)?;
-                    existing.insert(to_save.id.clone(), to_save.clone());
-
-                    // 导入是读取已有配置，不应反向写回任何应用的 live 配置。
-                    // 显式编辑、启用/禁用或手动同步时再执行写回。
-                }
-            }
-        }
-
-        Ok(new_count)
+        crate::mcp::import_from_codex(&mut temp_config)?;
+        Self::persist_imported_servers(state, &temp_config, &AppType::Codex)
     }
 
     /// 从 Gemini 导入 MCP（v3.7.0 已更新为统一结构）
@@ -370,62 +341,15 @@ impl McpService {
         let mut temp_config = crate::app_config::MultiAppConfig::default();
 
         // 调用原有的导入逻辑（从 mcp.rs）
-        let count = crate::mcp::import_from_gemini(&mut temp_config)?;
-
-        let mut new_count = 0;
-
-        // 如果有导入的服务器，保存到数据库
-        if count > 0 {
-            if let Some(servers) = &temp_config.mcp.servers {
-                let mut existing = state.db.get_all_mcp_servers()?;
-                for server in servers.values() {
-                    // 已存在：仅启用 Gemini，不覆盖其他字段（与导入模块语义保持一致）
-                    let to_save = if let Some(existing_server) = existing.get(&server.id) {
-                        let mut merged = existing_server.clone();
-                        merged.apps.gemini = true;
-                        merged
-                    } else {
-                        // 真正的新服务器
-                        new_count += 1;
-                        server.clone()
-                    };
-
-                    state.db.save_mcp_server(&to_save)?;
-                    existing.insert(to_save.id.clone(), to_save.clone());
-
-                    // 导入是读取已有配置，不应反向写回任何应用的 live 配置。
-                    // 显式编辑、启用/禁用或手动同步时再执行写回。
-                }
-            }
-        }
-
-        Ok(new_count)
+        crate::mcp::import_from_gemini(&mut temp_config)?;
+        Self::persist_imported_servers(state, &temp_config, &AppType::Gemini)
     }
 
     /// 从 Grok Build 的 `[mcp_servers]` 导入 MCP。
     pub fn import_from_grokbuild(state: &AppState) -> Result<usize, AppError> {
         let mut temp_config = crate::app_config::MultiAppConfig::default();
-        let count = crate::mcp::import_from_grokbuild(&mut temp_config)?;
-        let mut new_count = 0;
-
-        if count > 0 {
-            if let Some(servers) = &temp_config.mcp.servers {
-                let mut existing = state.db.get_all_mcp_servers()?;
-                for server in servers.values() {
-                    let to_save = if let Some(existing_server) = existing.get(&server.id) {
-                        let mut merged = existing_server.clone();
-                        merged.apps.grokbuild = true;
-                        merged
-                    } else {
-                        new_count += 1;
-                        server.clone()
-                    };
-                    state.db.save_mcp_server(&to_save)?;
-                    existing.insert(to_save.id.clone(), to_save);
-                }
-            }
-        }
-        Ok(new_count)
+        crate::mcp::import_from_grokbuild(&mut temp_config)?;
+        Self::persist_imported_servers(state, &temp_config, &AppType::GrokBuild)
     }
 
     /// 从 OpenCode 导入 MCP（v3.9.2+ 新增）
@@ -434,36 +358,8 @@ impl McpService {
         let mut temp_config = crate::app_config::MultiAppConfig::default();
 
         // 调用原有的导入逻辑（从 mcp/opencode.rs）
-        let count = crate::mcp::import_from_opencode(&mut temp_config)?;
-
-        let mut new_count = 0;
-
-        // 如果有导入的服务器，保存到数据库
-        if count > 0 {
-            if let Some(servers) = &temp_config.mcp.servers {
-                let mut existing = state.db.get_all_mcp_servers()?;
-                for server in servers.values() {
-                    // 已存在：仅启用 OpenCode，不覆盖其他字段（与导入模块语义保持一致）
-                    let to_save = if let Some(existing_server) = existing.get(&server.id) {
-                        let mut merged = existing_server.clone();
-                        merged.apps.opencode = true;
-                        merged
-                    } else {
-                        // 真正的新服务器
-                        new_count += 1;
-                        server.clone()
-                    };
-
-                    state.db.save_mcp_server(&to_save)?;
-                    existing.insert(to_save.id.clone(), to_save.clone());
-
-                    // 导入是读取已有配置，不应反向写回任何应用的 live 配置。
-                    // 显式编辑、启用/禁用或手动同步时再执行写回。
-                }
-            }
-        }
-
-        Ok(new_count)
+        crate::mcp::import_from_opencode(&mut temp_config)?;
+        Self::persist_imported_servers(state, &temp_config, &AppType::OpenCode)
     }
 
     /// 从 Hermes 导入 MCP
@@ -472,36 +368,8 @@ impl McpService {
         let mut temp_config = crate::app_config::MultiAppConfig::default();
 
         // 调用导入逻辑（从 mcp/hermes.rs）
-        let count = crate::mcp::import_from_hermes(&mut temp_config)?;
-
-        let mut new_count = 0;
-
-        // 如果有导入的服务器，保存到数据库
-        if count > 0 {
-            if let Some(servers) = &temp_config.mcp.servers {
-                let mut existing = state.db.get_all_mcp_servers()?;
-                for server in servers.values() {
-                    // 已存在：仅启用 Hermes，不覆盖其他字段（与导入模块语义保持一致）
-                    let to_save = if let Some(existing_server) = existing.get(&server.id) {
-                        let mut merged = existing_server.clone();
-                        merged.apps.hermes = true;
-                        merged
-                    } else {
-                        // 真正的新服务器
-                        new_count += 1;
-                        server.clone()
-                    };
-
-                    state.db.save_mcp_server(&to_save)?;
-                    existing.insert(to_save.id.clone(), to_save.clone());
-
-                    // 导入是读取已有配置，不应反向写回任何应用的 live 配置。
-                    // 显式编辑、启用/禁用或手动同步时再执行写回。
-                }
-            }
-        }
-
-        Ok(new_count)
+        crate::mcp::import_from_hermes(&mut temp_config)?;
+        Self::persist_imported_servers(state, &temp_config, &AppType::Hermes)
     }
 
     /// 从所有支持 MCP 的应用导入服务器，返回新导入的数量。

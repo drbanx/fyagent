@@ -6,10 +6,54 @@ use crate::app_config::{AppType, McpApps, McpServer};
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use indexmap::IndexMap;
-use rusqlite::{params, OptionalExtension, Row};
+use rusqlite::{params, Connection, OptionalExtension, Row};
 
 const MCP_SERVER_SELECT: &str =
     "SELECT id, name, server_config, description, homepage, docs, tags, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes FROM mcp_servers";
+const MCP_SERVER_UPSERT: &str = "INSERT OR REPLACE INTO mcp_servers (
+    id, name, server_config, description, homepage, docs, tags,
+    enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)";
+
+fn mcp_app_column(app: &AppType) -> Option<&'static str> {
+    match app {
+        AppType::Claude => Some("enabled_claude"),
+        AppType::Codex => Some("enabled_codex"),
+        AppType::Gemini => Some("enabled_gemini"),
+        AppType::GrokBuild => Some("enabled_grokbuild"),
+        AppType::OpenCode => Some("enabled_opencode"),
+        AppType::Hermes => Some("enabled_hermes"),
+        AppType::ClaudeDesktop | AppType::OpenClaw => None,
+    }
+}
+
+fn save_mcp_server_on(conn: &Connection, server: &McpServer) -> Result<(), AppError> {
+    let server_config = serde_json::to_string(&server.server)
+        .map_err(|e| AppError::Database(format!("Failed to serialize server config: {e}")))?;
+    let tags = serde_json::to_string(&server.tags)
+        .map_err(|e| AppError::Database(format!("Failed to serialize tags: {e}")))?;
+
+    conn.execute(
+        MCP_SERVER_UPSERT,
+        params![
+            server.id,
+            server.name,
+            server_config,
+            server.description,
+            server.homepage,
+            server.docs,
+            tags,
+            server.apps.claude,
+            server.apps.codex,
+            server.apps.gemini,
+            server.apps.grokbuild,
+            server.apps.opencode,
+            server.apps.hermes,
+        ],
+    )
+    .map_err(|e| AppError::Database(e.to_string()))?;
+    Ok(())
+}
 
 fn row_to_mcp_server(row: &Row<'_>) -> rusqlite::Result<(String, McpServer)> {
     let id: String = row.get(0)?;
@@ -83,16 +127,7 @@ impl Database {
         enabled: bool,
     ) -> Result<Option<McpServer>, AppError> {
         let conn = lock_conn!(self.conn);
-        let column = match app {
-            AppType::Claude => Some("enabled_claude"),
-            AppType::Codex => Some("enabled_codex"),
-            AppType::Gemini => Some("enabled_gemini"),
-            AppType::GrokBuild => Some("enabled_grokbuild"),
-            AppType::OpenCode => Some("enabled_opencode"),
-            AppType::Hermes => Some("enabled_hermes"),
-            // These applications intentionally have no MCP flag in the SSOT.
-            AppType::ClaudeDesktop | AppType::OpenClaw => None,
-        };
+        let column = mcp_app_column(app);
 
         if let Some(column) = column {
             // `column` comes exclusively from the fixed allow-list above.
@@ -117,32 +152,75 @@ impl Database {
     /// 保存 MCP 服务器
     pub fn save_mcp_server(&self, server: &McpServer) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
-        conn.execute(
-            "INSERT OR REPLACE INTO mcp_servers (
-                id, name, server_config, description, homepage, docs, tags,
-                enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![
-                server.id,
-                server.name,
-                serde_json::to_string(&server.server).map_err(|e| AppError::Database(format!(
-                    "Failed to serialize server config: {e}"
-                )))?,
-                server.description,
-                server.homepage,
-                server.docs,
-                serde_json::to_string(&server.tags)
-                    .map_err(|e| AppError::Database(format!("Failed to serialize tags: {e}")))?,
-                server.apps.claude,
-                server.apps.codex,
-                server.apps.gemini,
-                server.apps.grokbuild,
-                server.apps.opencode,
-                server.apps.hermes,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(())
+        save_mcp_server_on(&conn, server)
+    }
+
+    /// Import one application's complete MCP snapshot in one transaction.
+    /// Existing equivalent rows keep their metadata and receive only the app
+    /// flag; conflicting specs abort before any row is changed.
+    pub fn import_mcp_servers_atomically(
+        &self,
+        servers: &[McpServer],
+        app: &AppType,
+    ) -> Result<usize, AppError> {
+        let column = mcp_app_column(app)
+            .ok_or_else(|| AppError::McpValidation(format!("{} 不支持 MCP 分配", app.as_str())))?;
+        let mut conn = lock_conn!(self.conn);
+        let transaction = conn
+            .transaction()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let mut ordered = servers.iter().collect::<Vec<_>>();
+        ordered.sort_by(|left, right| left.id.cmp(&right.id));
+        let mut existing_updates = Vec::new();
+        let mut new_servers = Vec::new();
+
+        for server in ordered {
+            let source_enabled = server.apps.is_enabled_for(app);
+            let existing = transaction
+                .query_row(
+                    &format!("{MCP_SERVER_SELECT} WHERE id = ?1"),
+                    params![server.id],
+                    |row| row_to_mcp_server(row).map(|(_, server)| server),
+                )
+                .optional()
+                .map_err(|e| AppError::Database(e.to_string()))?;
+
+            if let Some(existing) = existing {
+                if source_enabled
+                    && !crate::mcp::server_specs_are_equivalent(&existing.server, &server.server)
+                {
+                    return Err(AppError::McpValidation(format!(
+                        "MCP 服务器 '{}' 在多个应用中的配置冲突；未合并 {} 分配",
+                        server.id,
+                        app.as_str()
+                    )));
+                }
+                existing_updates.push((server.id.clone(), source_enabled));
+            } else if source_enabled {
+                let mut imported = server.clone();
+                imported.apps.set_enabled_for(app, true);
+                new_servers.push(imported);
+            }
+        }
+
+        for (id, enabled) in existing_updates {
+            // `column` comes exclusively from the fixed allow-list above.
+            transaction
+                .execute(
+                    &format!("UPDATE mcp_servers SET {column} = ?1 WHERE id = ?2"),
+                    params![enabled, id],
+                )
+                .map_err(|e| AppError::Database(e.to_string()))?;
+        }
+        for server in &new_servers {
+            save_mcp_server_on(&transaction, server)?;
+        }
+
+        let new_count = new_servers.len();
+        transaction
+            .commit()
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(new_count)
     }
 
     /// 删除 MCP 服务器
@@ -264,5 +342,85 @@ mod tests {
                 .expect("server exists");
             assert_eq!(returned.apps, original.apps);
         }
+    }
+
+    #[test]
+    fn imported_mcp_batch_rolls_back_app_flags_when_a_later_insert_fails() {
+        let db = Database::memory().expect("create memory db");
+        let existing = test_server();
+        db.save_mcp_server(&existing).expect("seed server");
+
+        {
+            let conn = db.conn.lock().expect("lock database");
+            conn.execute_batch(
+                "CREATE TRIGGER reject_second_mcp_import
+                 BEFORE INSERT ON mcp_servers
+                 WHEN NEW.id = 'zeta'
+                 BEGIN
+                   SELECT RAISE(ABORT, 'forced MCP import failure');
+                 END;",
+            )
+            .expect("install failure trigger");
+        }
+
+        let mut equivalent = existing.clone();
+        equivalent.apps.claude = true;
+        equivalent.server = json!({
+            "type": "stdio",
+            "command": "echo",
+            "args": ["hello"],
+            "env": {},
+            "cwd": ""
+        });
+        let mut rejected = existing.clone();
+        rejected.id = "zeta".to_string();
+        rejected.name = "Zeta".to_string();
+        rejected.apps.claude = true;
+
+        db.import_mcp_servers_atomically(&[equivalent, rejected], &AppType::Claude)
+            .expect_err("second insert must fail the complete batch");
+
+        let stored = db.get_all_mcp_servers().expect("read servers");
+        let existing = stored.get("shared-server").expect("existing row remains");
+        assert!(!existing.apps.claude, "earlier app update must roll back");
+        assert!(existing.apps.gemini, "unrelated app flag must remain");
+        assert!(
+            !stored.contains_key("zeta"),
+            "failed insert must not persist"
+        );
+    }
+
+    #[test]
+    fn disabled_source_mcp_clears_existing_assignment_without_inserting_a_new_row() {
+        let db = Database::memory().expect("create memory db");
+        let mut existing = test_server();
+        existing.apps.opencode = true;
+        db.save_mcp_server(&existing).expect("seed existing server");
+
+        let mut disabled_existing = existing.clone();
+        disabled_existing.apps.opencode = false;
+        let mut disabled_new = existing.clone();
+        disabled_new.id = "disabled-new".to_string();
+        disabled_new.name = "Disabled New".to_string();
+        disabled_new.apps.opencode = false;
+
+        let new_count = db
+            .import_mcp_servers_atomically(&[disabled_existing, disabled_new], &AppType::OpenCode)
+            .expect("import disabled source entries");
+
+        assert_eq!(new_count, 0);
+        let stored = db.get_all_mcp_servers().expect("read servers");
+        assert!(
+            !stored
+                .get("shared-server")
+                .expect("existing row remains")
+                .apps
+                .opencode,
+            "explicit source disablement must clear the existing assignment"
+        );
+        assert!(
+            !stored.contains_key("disabled-new"),
+            "an explicitly disabled source command must not become a new managed row"
+        );
     }
 }
