@@ -82,19 +82,19 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 
 ## Version, Assets, and Cleanup
 
-| Task                 | Description                                                                       | Usage                   | Effect             |
-| -------------------- | --------------------------------------------------------------------------------- | ----------------------- | ------------------ |
-| `assets:icons`       | Preview or generate the application icon set from a validated source image        | --source <file> --apply | preview-by-default |
-| `assets:icons:check` | Verify required application icon consumers and basic file signatures              | —                       | read-only          |
-| `clean:all`          | Preview or remove every approved repository-local generated directory             | --apply                 | preview-by-default |
-| `clean:artifacts`    | Preview or remove repository-local package and release artifacts                  | --apply                 | preview-by-default |
-| `clean:frontend`     | Preview or remove repository-local frontend generated state                       | --apply                 | preview-by-default |
-| `clean:python`       | Preview or remove the repository-local uv .venv                                   | --apply                 | preview-by-default |
-| `clean:rust`         | Preview or remove repository-local Cargo target output                            | --apply                 | preview-by-default |
-| `version:bump`       | Preview or atomically bump the product version through the canonical version tool | <level> --apply         | preview-by-default |
-| `version:check`      | Verify every product-version consumer and an optional release tag                 | --tag <tag>             | read-only          |
-| `version:get`        | Print the Cargo-workspace product version                                         | —                       | read-only          |
-| `version:set`        | Preview or atomically set the product version through the canonical version tool  | <version> --apply       | preview-by-default |
+| Task                 | Description                                                                            | Usage                   | Effect             |
+| -------------------- | -------------------------------------------------------------------------------------- | ----------------------- | ------------------ |
+| `assets:icons`       | Preview or regenerate every application-brand icon consumer from the reviewed Y source | --source <file> --apply | preview-by-default |
+| `assets:icons:check` | Regenerate in temporary storage and verify every application-brand icon consumer       | —                       | read-only          |
+| `clean:all`          | Preview or remove every approved repository-local generated directory                  | --apply                 | preview-by-default |
+| `clean:artifacts`    | Preview or remove repository-local package and release artifacts                       | --apply                 | preview-by-default |
+| `clean:frontend`     | Preview or remove repository-local frontend generated state                            | --apply                 | preview-by-default |
+| `clean:python`       | Preview or remove the repository-local uv .venv                                        | --apply                 | preview-by-default |
+| `clean:rust`         | Preview or remove repository-local Cargo target output                                 | --apply                 | preview-by-default |
+| `version:bump`       | Preview or atomically bump the product version through the canonical version tool      | <level> --apply         | preview-by-default |
+| `version:check`      | Verify every product-version consumer and an optional release tag                      | --tag <tag>             | read-only          |
+| `version:get`        | Print the Cargo-workspace product version                                              | —                       | read-only          |
+| `version:set`        | Preview or atomically set the product version through the canonical version tool       | <version> --apply       | preview-by-default |
 
 ## Dependency and Toolchain Maintenance
 

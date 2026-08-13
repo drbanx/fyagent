@@ -110,15 +110,15 @@ confirm = { message = "Validate reviewed visual-baseline evidence?", default = "
 run = "node scripts/tasks/frontend.mjs visual-update"
 
 ["assets:icons"]
-description = "Preview or generate the application icon set from a validated source image"
+description = "Preview or regenerate every application-brand icon consumer from the reviewed Y source"
 usage = '''
-flag "--source <file>" help="Square source PNG or SVG" default="assets/fyagent.png"
-flag "--apply" help="Generate files in src-tauri/icons; otherwise print the plan"
+flag "--source <file>" help="Canonical 1024 RGBA package source path" default="assets/fyagent.png"
+flag "--apply" help="Regenerate canonical PNG, Tauri, About, and macOS tray assets; otherwise print the plan"
 '''
 env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
 run = "node scripts/tasks/frontend.mjs assets-icons"
 
 ["assets:icons:check"]
-description = "Verify required application icon consumers and basic file signatures"
+description = "Regenerate in temporary storage and verify every application-brand icon consumer"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = "node scripts/tasks/frontend.mjs assets-icons-check"

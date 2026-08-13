@@ -1130,7 +1130,7 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes the decoded and visually reviewed raster inventory by path and digest", () => {
     const currentPaths = checker.listCurrentFiles(ROOT);
-    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(146);
+    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(148);
     expect(checker.validateRasterAssetInventory(currentPaths)).toEqual([]);
 
     const first = checker.RASTER_ASSET_CONTRACT[0];
@@ -1345,7 +1345,7 @@ describe("durable supported-platform surface contract", () => {
         ),
       );
       fs.writeFileSync(manifestPath, JSON.stringify(current));
-      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(146);
+      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(148);
 
       fs.writeFileSync(
         manifestPath,
