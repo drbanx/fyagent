@@ -62,7 +62,7 @@ const fn capability(state: AgentActionState, reason: &'static str) -> AgentActio
 const AGENT_CATALOG: [AgentCatalogEntry; 5] = [
     AgentCatalogEntry {
         id: "qoderwork",
-        display_name: "QoderWork",
+        display_name: "QoderWork CN",
         description: "Qoder 家族的桌面工作助手；当前仅提供官方入口。",
         official_url: "https://qoder.com.cn/qoderwork",
         status: AgentCatalogStatus::PendingVerification,
@@ -228,6 +228,20 @@ mod tests {
                 "workbuddy",
                 "codex",
                 "claude-code",
+            ]
+        );
+        assert_eq!(
+            catalog
+                .agents
+                .iter()
+                .map(|entry| entry.display_name)
+                .collect::<Vec<_>>(),
+            [
+                "QoderWork CN",
+                "TRAE Work",
+                "WorkBuddy",
+                "Codex",
+                "Claude Code",
             ]
         );
         assert_eq!(
