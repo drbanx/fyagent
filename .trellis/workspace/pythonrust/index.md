@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 17
+- **Total Sessions**: 18
 - **Last Active**: 2026-08-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~614 | Active |
+| `journal-1.md` | ~650 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 18 | 2026-08-13 | V2 Agent catalog and model setup | `94048e2b`, `f749581f`, `a2473c91`, `e82369d3`, `39ef24fb`, `b780b9ae`, `8edabe17`, `5ddd49b0`, `e4d00991`, `179cf481`, `0ba62c4f`, `e1286cf0`, `33216297`, `d7291ce5`, `54d914b8`, `87071076` | `dev/laiyongjie` |
 | 17 | 2026-08-13 | Close the postarchive surface audit lifecycle | `38077353` | `dev/laiyongjie` |
 | 16 | 2026-08-13 | Contract desktop support to Windows and macOS | `e968538ad3cd38d39bb3450606f63ea4f3b3a223`, `041fdeb7186066650d4abe3961f437a115552354`, `586ec185a9e8eedee8054771fa9dcdb8912c35f4`, `e3e79721f4ac20be1b125217595dbd040e9cfaff`, `425f34f067c283f57b5332ed8d7a4f285b8c4469`, `bc3ec9b8f9ffa73d8546ea37ae75b2c7774f0fe4`, `c584863b3bd6737cd82512e8729202919c1df460`, `140655a754eb86f9eb163af41925b24b8f7179cc`, `7a483a417266f63216ea69f4047c0c371f7f6a96`, `40cb2b513272866d1cab0923a6bd02fcc4d230f9`, `7affe962d9fb39c90fc703efdebeeacb9cb39920`, `054de2dab4df1ee2d428ff47a1fe9098cea1dca0`, `9b9e7a9eb3ed2ee1e99c32d2bcd1fcaf2cf2971e`, `fbec2a37e1863941a13ab40056d72223466757af`, `9aaea37050ce3eb462f8bc3e7a05c335365fad30`, `f8503a6b53e54fe8de358d7bc5a0be61e155f96f`, `041a1513c69244accdfee4f59373cc82816cad60`, `67a0bbe5dd9b9af78cb7770033a76eb0fc9e8619`, `33d2c62c7d1a3059cc3a7c1fad8d4c64de7de416`, `54484b3f0f32ef43ac62f3717d637a5c102f6840`, `5c5348a49116b6e805676ad4a573f774e441a7cc`, `a95350fb514264f2a5f9f46c9c8e982c2ee96c19`, `2fa6a5d47c1d8b4c6f6a1a968a51f8eb6aa4f846`, `43cd17c30834502a559f458ac80f393bc5a6c20e`, `cb3b16734ecd8d1dbc65b07888cf9cb1dfcb0bf7`, `d534bd68d66977f1c38e5e894c1b44bc5974929e`, `c0e940895fdd940c941189d0a00c5cc903fbb1df`, `f674f2ee0a24aab3c1c763daef4442bdd56e047c`, `5f9948f447a5461451fd6e1cf2822bd9f1a05893`, `5a414c00b39cdc08e9ea727228a39d3c0fc7d9eb`, `a3c3189aeacf893b680fb82e6ce432c92a8ae77a`, `68ff6ab4aca3902d089ac1dbe9b59f1094bc3a49`, `e2090435e0e1b097b64f5b179661062c9f78a9ff`, `b7dc74f261db570eebe768455e4bb01219ccab51` | `dev/laiyongjie` |
 | 15 | 2026-08-12 | FyAgent V2 native liquid glass shell | `f4d3dca5`, `80b7ed9a38e1fbd1924f75e37ec6e15e2cf9c411` | `dev/laiyongjie` |

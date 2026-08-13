@@ -612,3 +612,39 @@ Made the canonical current-repository audit independent of the temporary prearch
 ### Next Steps
 
 - Run hosted Windows Arm64 and macOS CI plus exact-source formal release preflight before any external publication.
+
+
+## Session 18: V2 Agent catalog and model setup
+
+**Date**: 2026-08-13
+**Task**: V2 Agent catalog and model setup
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Completed the V2 Agent catalog and Models quick-setup flow, integrated all current origin/codex branches, synchronized the Y application and installer identity, passed the full local validation matrix, produced and verified the Windows NSIS package, and archived the task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `94048e2b` | (see git log) |
+| `f749581f` | (see git log) |
+| `a2473c91` | (see git log) |
+| `e82369d3` | (see git log) |
+| `39ef24fb` | (see git log) |
+| `b780b9ae` | (see git log) |
+| `8edabe17` | (see git log) |
+| `5ddd49b0` | (see git log) |
+| `e4d00991` | (see git log) |
+| `179cf481` | (see git log) |
+| `0ba62c4f` | (see git log) |
+| `e1286cf0` | (see git log) |
+| `33216297` | (see git log) |
+| `d7291ce5` | (see git log) |
+| `54d914b8` | (see git log) |
+| `87071076` | (see git log) |
+
+### Status
+
+[OK] **Completed**
