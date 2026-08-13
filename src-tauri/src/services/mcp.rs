@@ -17,6 +17,13 @@ impl McpService {
 
     /// 添加或更新 MCP 服务器
     pub fn upsert_server(state: &AppState, server: McpServer) -> Result<(), AppError> {
+        // Codex MCP and Provider settings share config.toml. Serialize every
+        // read-modify-write with Provider switching/quick setup.
+        let _codex_guard = futures::executor::block_on(
+            state
+                .proxy_service
+                .lock_switch_for_app(AppType::Codex.as_str()),
+        );
         // 读取旧状态：用于处理“编辑时取消勾选某个应用”的场景（需要从对应 live 配置中移除）
         let prev_apps = state
             .db
@@ -57,6 +64,11 @@ impl McpService {
 
     /// 删除 MCP 服务器
     pub fn delete_server(state: &AppState, id: &str) -> Result<bool, AppError> {
+        let _codex_guard = futures::executor::block_on(
+            state
+                .proxy_service
+                .lock_switch_for_app(AppType::Codex.as_str()),
+        );
         let server = state.db.get_all_mcp_servers()?.shift_remove(id);
 
         if let Some(server) = server {
@@ -77,6 +89,8 @@ impl McpService {
         app: AppType,
         enabled: bool,
     ) -> Result<(), AppError> {
+        let _guard =
+            futures::executor::block_on(state.proxy_service.lock_switch_for_app(app.as_str()));
         if enabled {
             if let Some(server) = state
                 .db
@@ -219,10 +233,24 @@ impl McpService {
     /// 应用的 MCP 状态陈旧。全部跑完后若有失败，聚合成一个错误上报，
     /// 保留调用方的可见性。
     pub fn sync_all_enabled(state: &AppState) -> Result<(), AppError> {
+        Self::sync_all_enabled_with_locking(state, true)
+    }
+
+    pub(crate) fn sync_all_enabled_inner(state: &AppState) -> Result<(), AppError> {
+        Self::sync_all_enabled_with_locking(state, false)
+    }
+
+    fn sync_all_enabled_with_locking(
+        state: &AppState,
+        lock_each_app: bool,
+    ) -> Result<(), AppError> {
         let servers = Self::get_all_servers(state)?;
 
         let mut failures: Vec<String> = Vec::new();
         for app in AppType::all() {
+            let _guard = lock_each_app.then(|| {
+                futures::executor::block_on(state.proxy_service.lock_switch_for_app(app.as_str()))
+            });
             if let Err(err) = Self::project_servers_to_app(state, &servers, &app) {
                 log::warn!("同步 MCP 到 {app:?} 失败: {err}");
                 failures.push(format!("{}: {err}", app.as_str()));
@@ -243,6 +271,15 @@ impl McpService {
     /// 定向重投影，避免把无关应用的失败面（如 ~/.claude.json 坏 JSON）
     /// 牵连进目标应用的关键路径。
     pub fn sync_enabled_for_app(state: &AppState, app: &AppType) -> Result<(), AppError> {
+        let _guard =
+            futures::executor::block_on(state.proxy_service.lock_switch_for_app(app.as_str()));
+        Self::sync_enabled_for_app_inner(state, app)
+    }
+
+    pub(crate) fn sync_enabled_for_app_inner(
+        state: &AppState,
+        app: &AppType,
+    ) -> Result<(), AppError> {
         let servers = Self::get_all_servers(state)?;
         Self::project_servers_to_app(state, &servers, app)
     }

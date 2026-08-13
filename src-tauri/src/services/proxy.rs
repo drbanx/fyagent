@@ -2336,7 +2336,7 @@ impl ProxyService {
     }
 
     /// 仅供已持有 per-app 切换锁的调用方使用。
-    async fn update_live_backup_from_provider_inner(
+    pub(crate) async fn update_live_backup_from_provider_inner(
         &self,
         app_type: &str,
         provider: &Provider,
@@ -2611,6 +2611,18 @@ impl ProxyService {
         Ok(HotSwitchOutcome {
             logical_target_changed,
         })
+    }
+
+    pub(crate) async fn set_active_target_for_provider_inner(
+        &self,
+        app_type: &AppType,
+        provider: &Provider,
+    ) {
+        if let Some(server) = self.server.read().await.as_ref() {
+            server
+                .set_active_target(app_type.as_str(), &provider.id, &provider.name)
+                .await;
+        }
     }
 
     #[cfg(test)]
