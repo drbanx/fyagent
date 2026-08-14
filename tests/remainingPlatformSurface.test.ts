@@ -502,6 +502,7 @@ describe("durable supported-platform surface contract", () => {
     for (const taskName of [
       "01-02-first-valid-task",
       "12-31-second-valid-task",
+      "08-14-agent-catalog-interactions",
     ]) {
       const fixture = activeTaskFixture(taskName);
       try {
@@ -515,14 +516,6 @@ describe("durable supported-platform surface contract", () => {
         fs.rmSync(fixture.root, { recursive: true, force: true });
       }
     }
-
-    const currentTask = ".trellis/tasks/08-14-agent-catalog-interactions";
-    expect(
-      checker.validateActiveTaskExclusion(currentTask, {
-        root: ROOT,
-        sessionResolver: () => currentTask,
-      }),
-    ).toBe(currentTask);
   });
 
   it("rejects noncanonical, nested, linked, mismatched, and completed tasks", () => {
