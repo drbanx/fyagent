@@ -1805,7 +1805,11 @@ jobs:
       "artifact_digest: ${{ steps.upload.outputs.artifact-digest }}",
     );
     expect(pin).toContain("pattern: raw-windows-*");
-    expect(pin).toContain("pattern: installers-macos-*");
+    expect(pin).toContain("name: installers-macos-universal");
+    expect(pin).toContain(
+      "path: release-build-inputs/installers-macos-universal",
+    );
+    expect(pin).not.toContain("pattern: installers-macos-*");
     expect(pin).toContain("pattern: metadata-*");
     expect(pin).toContain("pin-release-build-inputs.mjs create");
     expect(pin).toContain("name: trusted-build-inputs");

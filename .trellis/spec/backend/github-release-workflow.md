@@ -178,7 +178,9 @@ file's version/source/size/SHA-256 in `trusted-build-inputs.json`, and uploads
 one `trusted-build-inputs` artifact. Its original artifact ID/digest are job
 outputs. All trusted consumers download that original ID. Deleting it causes a
 failure; uploading a same-name replacement yields another ID and cannot
-replace the pinned bytes.
+replace the pinned bytes. Because `download-artifact` extracts a single match
+directly into the requested path, the one macOS artifact is downloaded by
+exact name into its own explicit `installers-macos-universal` directory.
 
 The preflight and formal Windows paths are mutually exclusive:
 
