@@ -690,3 +690,24 @@ Upgraded the V2 Agent catalog to structured official links, embedded the existin
 ### Status
 
 [OK] **Completed**
+
+
+## Session 21: V2 Prompt and Memory native business integration
+
+**Date**: 2026-08-15
+**Task**: V2 Prompt and Memory native business integration
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Replaced the V2 Prompt and Memory prototypes with validated native business ports, shared-theme pages, authoritative refresh and dirty-state protections; added focused contracts, deterministic standalone preview evidence, full gates, and read-only Windows Tauri smoke coverage without writing user Prompt or Memory data.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8ddef12db1e5cda508cde643fcc6e53518ff5a05` | (see git log) |
+
+### Status
+
+[OK] **Completed**

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
-- **Last Active**: 2026-08-14
+- **Total Sessions**: 21
+- **Last Active**: 2026-08-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~692 | Active |
+| `journal-1.md` | ~713 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-08-15 | V2 Prompt and Memory native business integration | `8ddef12db1e5cda508cde643fcc6e53518ff5a05` | `dev/laiyongjie` |
 | 20 | 2026-08-14 | FyAgent v2 QoderWork / TRAE Work P0 | `47c2dab` | `dev/laiyongjie` |
 | 19 | 2026-08-14 | Agent catalog interactions and managed Codex install | `2324f4f9` | `dev/laiyongjie` |
 | 18 | 2026-08-13 | V2 Agent catalog and model setup | `94048e2b`, `f749581f`, `a2473c91`, `e82369d3`, `39ef24fb`, `b780b9ae`, `8edabe17`, `5ddd49b0`, `e4d00991`, `179cf481`, `0ba62c4f`, `e1286cf0`, `33216297`, `d7291ce5`, `54d914b8`, `87071076` | `dev/laiyongjie` |
