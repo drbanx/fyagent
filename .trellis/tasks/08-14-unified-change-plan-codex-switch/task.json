@@ -3,7 +3,7 @@
   "name": "unified-change-plan-codex-switch",
   "title": "Codex Provider Change Plan Switch Vertical Slice",
   "description": "Implement the first baseline-bound Unified Change Plan vertical slice for switching an existing Codex Provider, with one approval, durable job state, local readback, partial/recovery truth, and a shared result dialog.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "backend,frontend,database,tauri-ipc,codex-provider-switch,tests; excludes provider-create-edit,workbuddy,src-v2,native-integration,profile-v2,workspace-pack",
   "package": null,
