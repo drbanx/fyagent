@@ -669,3 +669,24 @@ Upgraded the V2 Agent catalog to structured official links, embedded the existin
 ### Status
 
 [OK] **Completed**
+
+
+## Session 20: FyAgent v2 QoderWork / TRAE Work P0
+
+**Date**: 2026-08-14
+**Task**: FyAgent v2 QoderWork / TRAE Work P0
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成 QoderWork/TRAE Work P0 自动化实现：catalog v3、runtime fail-closed、SkillTargetId 八目标、Qoder Hooks、TRAE endpoint/MCP 预检、共享 Agent/Models UI、窄权限、安全复制与 Trellis 归档。typecheck/lint/test/browser/format/rust gates passed; HIL 未执行。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `47c2dab` | (see git log) |
+
+### Status
+
+[OK] **Completed**
