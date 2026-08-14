@@ -16,11 +16,11 @@ import { useFeatures } from "../../shared/features/provider";
 import { featureKeys, useMcpServers } from "../../shared/features/queries";
 import { useWideFeatureLayout } from "../../shared/features/responsive";
 import {
-  createAssignments,
-  SUPPORTED_APPS,
+  createMcpAssignments,
+  MCP_TARGETS,
   type McpServer,
   type McpServerSpec,
-  type SupportedAppId,
+  type McpTargetId,
 } from "../../shared/features/types";
 import {
   Badge,
@@ -35,7 +35,7 @@ import {
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
 
-const DEFAULT_NEW_APPS: SupportedAppId[] = [
+const DEFAULT_NEW_APPS: McpTargetId[] = [
   "claude",
   "codex",
   "gemini",
@@ -60,7 +60,7 @@ function ServerDetail({
 }: {
   server: McpServer;
   busy: boolean;
-  onToggle: (app: SupportedAppId, enabled: boolean) => void;
+  onToggle: (app: McpTargetId, enabled: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
   onOpen: (url: string) => void;
@@ -171,6 +171,7 @@ function ServerDetail({
             disabled={busy}
             labelSuffix="MCP 分配"
             onToggle={onToggle}
+            targets={MCP_TARGETS}
           />
         </div>
       )}
@@ -224,11 +225,11 @@ export function McpPage() {
       writeLock.current = false;
     }
   };
-  const toggle = (server: McpServer, app: SupportedAppId, enabled: boolean) =>
+  const toggle = (server: McpServer, app: McpTargetId, enabled: boolean) =>
     write("分配已更新", async () => {
       await ports.mcp.toggleApp(server.id, app, enabled);
     });
-  const bulkAssign = (app: SupportedAppId, enabled: boolean) =>
+  const bulkAssign = (app: McpTargetId, enabled: boolean) =>
     write("批量分配完成", async () => {
       const ids = servers
         .filter((server) => Boolean(server.apps[app]) !== enabled)
@@ -362,7 +363,7 @@ export function McpPage() {
                           "无描述"}{" "}
                         · {transportOf(server)} ·{" "}
                         {
-                          SUPPORTED_APPS.filter((app) => server.apps[app.id])
+                          MCP_TARGETS.filter((app) => server.apps[app.id])
                             .length
                         }{" "}
                         Agent
@@ -389,10 +390,11 @@ export function McpPage() {
                     disabled={busy}
                     labelSuffix="MCP 分配"
                     onToggle={(app, enabled) => toggle(selected, app, enabled)}
+                    targets={MCP_TARGETS}
                   />
                   <hr />
                   <h3>全量分配</h3>
-                  {SUPPORTED_APPS.map((app) => (
+                  {MCP_TARGETS.map((app) => (
                     <div key={app.id} className="fy-feature-assignment">
                       <span>{app.label}</span>
                       <span>
@@ -494,7 +496,7 @@ function McpEditor({
       .join("\n"),
   );
   const [apps, setApps] = useState(() =>
-    initial ? { ...initial.apps } : createAssignments(DEFAULT_NEW_APPS),
+    initial ? { ...initial.apps } : createMcpAssignments(DEFAULT_NEW_APPS),
   );
   const [mode, setMode] = useState<Mode>("quick");
   const [advanced, setAdvanced] = useState(JSON.stringify(spec, null, 2));
@@ -836,7 +838,7 @@ function McpEditor({
         <fieldset className="fy-feature-form-span">
           <legend>初始 Agent 分配</legend>
           <div className="fy-feature-check-grid">
-            {SUPPORTED_APPS.map((app) => (
+            {MCP_TARGETS.map((app) => (
               <label key={app.id} className="fy-feature-check">
                 <Checkbox
                   checked={Boolean(apps[app.id])}

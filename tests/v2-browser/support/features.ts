@@ -47,7 +47,7 @@ export async function installRichTauriFeatureFixture(
   options: RichFeatureFixtureOptions = {},
 ): Promise<void> {
   await page.addInitScript((fixtureOptions: RichFeatureFixtureOptions) => {
-    const assignments = (enabled: string[]) =>
+    const mcpAssignments = (enabled: string[]) =>
       Object.fromEntries(
         [
           "claude",
@@ -60,6 +60,11 @@ export async function installRichTauriFeatureFixture(
           "openclaw",
         ].map((id) => [id, enabled.includes(id)]),
       );
+    const skillAssignments = (enabled: string[]): Record<string, boolean> => ({
+      ...mcpAssignments(enabled),
+      qoderwork: enabled.includes("qoderwork"),
+      "trae-work": enabled.includes("trae-work"),
+    });
     const skills = [
       {
         id: "fixture-review",
@@ -70,7 +75,7 @@ export async function installRichTauriFeatureFixture(
         repoName: "skills",
         repoBranch: "main",
         readmeUrl: "https://example.test/review-companion",
-        apps: assignments(["claude", "gemini"]),
+        apps: skillAssignments(["claude", "gemini"]),
         installedAt: 1_700_000_000,
         contentHash: "fixture-local-hash",
         updatedAt: 1_700_000_100,
@@ -80,7 +85,7 @@ export async function installRichTauriFeatureFixture(
         name: "Release Notes",
         description: "Second populated list item",
         directory: "release-notes",
-        apps: assignments(["codex"]),
+        apps: skillAssignments(["codex"]),
         installedAt: 1_700_000_200,
         updatedAt: 1_700_000_300,
       },
@@ -103,7 +108,7 @@ export async function installRichTauriFeatureFixture(
             retained: true,
           },
         },
-        apps: assignments(["claude", "codex"]),
+        apps: mcpAssignments(["claude", "codex"]),
       },
       "fixture-http": {
         id: "fixture-http",
@@ -116,23 +121,46 @@ export async function installRichTauriFeatureFixture(
             Authorization: "Bearer synthetic-header-never-render",
           },
         },
-        apps: assignments(["gemini"]),
+        apps: mcpAssignments(["gemini"]),
       },
     };
-    const capability = (
-      state:
-        | "available"
-        | "assisted"
-        | "not_supported"
-        | "pending_verification",
-      reason: string,
-    ) => ({ state, reason });
+    const capabilityIds = [
+      "product.open",
+      "app.detect",
+      "app.launch",
+      "skills.read",
+      "skills.write",
+      "hooks.read",
+      "hooks.write",
+      "models.validate",
+      "models.write",
+      "mcp.validate",
+      "mcp.write",
+    ];
+    const catalogCapabilities = (id: string) =>
+      capabilityIds.map((capabilityId) => ({
+        id: capabilityId,
+        mode:
+          capabilityId === "product.open" && id === "codex"
+            ? "unsupported"
+            : capabilityId === "app.detect" || capabilityId === "app.launch"
+              ? "unverified"
+              : "direct",
+        reasonCode:
+          capabilityId === "product.open" && id === "codex"
+            ? "no_catalog_product_link"
+            : capabilityId === "app.detect" || capabilityId === "app.launch"
+              ? "trusted_runtime_identity_unavailable"
+              : "dedicated_native_contract",
+        evidenceIds: ["p0_scope"],
+      }));
     const catalog = {
-      contractVersion: 2,
+      contractVersion: 3,
       reviewedAt: "2026-08-14",
       agents: [
         {
           id: "qoderwork",
+          variantId: "qoderwork-cn",
           displayName: "QoderWork CN",
           description: "Qoder 家族的桌面工作助手；当前仅提供官方入口。",
           officialLinks: [
@@ -142,26 +170,11 @@ export async function installRichTauriFeatureFixture(
               url: "https://qoder.com.cn/qoderwork",
             },
           ],
-          status: "pending_verification",
-          actions: {
-            browse: capability("available", "可打开 QoderWork 官方产品入口。"),
-            observe: capability(
-              "pending_verification",
-              "尚未验证稳定的本地状态或登录态合同。",
-            ),
-            install: capability(
-              "assisted",
-              "安装由厂商官方流程负责；FyAgent 不下载或安装。",
-            ),
-            configure: capability(
-              "assisted",
-              "仅打开厂商官方设置；FyAgent 不写入配置。",
-            ),
-          },
-          evidenceLabel: "官方产品入口；本地接入能力待验证",
+          capabilities: catalogCapabilities("qoderwork"),
         },
         {
           id: "trae-work",
+          variantId: "trae-work-cn",
           displayName: "TRAE Work",
           description: "TRAE 的多端工作助手；当前仅提供官方入口。",
           officialLinks: [
@@ -171,26 +184,11 @@ export async function installRichTauriFeatureFixture(
               url: "https://work.trae.cn/",
             },
           ],
-          status: "pending_verification",
-          actions: {
-            browse: capability("available", "可打开 TRAE Work 官方产品入口。"),
-            observe: capability(
-              "pending_verification",
-              "尚未验证稳定的本地状态或登录态合同。",
-            ),
-            install: capability(
-              "assisted",
-              "安装由厂商官方流程负责；FyAgent 不下载或安装。",
-            ),
-            configure: capability(
-              "assisted",
-              "仅打开厂商官方设置；FyAgent 不写入配置。",
-            ),
-          },
-          evidenceLabel: "官方产品入口；本地接入能力待验证",
+          capabilities: catalogCapabilities("trae-work"),
         },
         {
           id: "workbuddy",
+          variantId: "workbuddy",
           displayName: "WorkBuddy",
           description: "可通过 FyAgent 读取并保存受限的模型配置。",
           officialLinks: [
@@ -200,50 +198,20 @@ export async function installRichTauriFeatureFixture(
               url: "https://www.workbuddy.cn/",
             },
           ],
-          status: "manual_install",
-          actions: {
-            browse: capability("available", "可打开 WorkBuddy 官方产品入口。"),
-            observe: capability(
-              "available",
-              "可读取非敏感的 WorkBuddy 配置状态。",
-            ),
-            install: capability("assisted", "安装由 WorkBuddy 官方流程负责。"),
-            configure: capability(
-              "available",
-              "可按 WorkBuddy 的版本与确认合同保存模型配置。",
-            ),
-          },
-          evidenceLabel: "WorkBuddy 专用状态与模型配置命令",
+          capabilities: catalogCapabilities("workbuddy"),
         },
         {
           id: "codex",
+          variantId: "codex",
           displayName: "Codex",
           description:
             "可通过 FyAgent 安装或更新 Codex Desktop，并管理受限的 Provider 配置。",
           officialLinks: [],
-          status: "managed_install",
-          actions: {
-            browse: capability(
-              "not_supported",
-              "FyAgent 内置安装不依赖外部产品链接。",
-            ),
-            observe: capability(
-              "available",
-              "可读取 FyAgent 中的 Provider 汇总和当前选择。",
-            ),
-            install: capability(
-              "available",
-              "可通过 FyAgent 的内置 Codex Desktop 安装器安装或更新。",
-            ),
-            configure: capability(
-              "available",
-              "可通过现有 Provider 保存与切换合同配置。",
-            ),
-          },
-          evidenceLabel: "Codex Desktop 安装器与 Provider 配置命令",
+          capabilities: catalogCapabilities("codex"),
         },
         {
           id: "claude-code",
+          variantId: "claude-code",
           displayName: "Claude Code",
           description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
           officialLinks: [
@@ -258,26 +226,7 @@ export async function installRichTauriFeatureFixture(
               url: "https://claude.com/download",
             },
           ],
-          status: "manual_install",
-          actions: {
-            browse: capability(
-              "available",
-              "可打开 Claude Code 官方产品入口。",
-            ),
-            observe: capability(
-              "available",
-              "可读取 FyAgent 中的 Provider 汇总和当前选择。",
-            ),
-            install: capability(
-              "assisted",
-              "安装由 Claude Code 官方流程负责。",
-            ),
-            configure: capability(
-              "available",
-              "可通过现有 Provider 保存与切换合同配置。",
-            ),
-          },
-          evidenceLabel: "Claude Provider 读取、保存与切换命令",
+          capabilities: catalogCapabilities("claude-code"),
         },
       ],
     };
@@ -335,6 +284,9 @@ export async function installRichTauriFeatureFixture(
     };
     let installerSequence = 0;
     let installerJob: Record<string, unknown> | null = null;
+    let qoderHooksRevision = "fixture-qoder-hooks-revision-1";
+    let qoderHookGroups: Array<Record<string, unknown>> = [];
+    const traeRequestId = "123e4567-e89b-42d3-a456-426614174000";
     const makeInstallerJob = (
       stage: "checking" | "cancelled",
     ): Record<string, unknown> => ({
@@ -383,6 +335,110 @@ export async function installRichTauriFeatureFixture(
               throw new Error("fixture catalog unavailable");
             }
             return structuredClone(catalog);
+          case "get_external_agent_status":
+            return {
+              agentId: payload.agentId,
+              detected: null,
+              running: null,
+              version: null,
+              installSource: null,
+              capabilities: [
+                {
+                  id: "app.detect",
+                  state: "unverified",
+                  reasonCode: "trusted_runtime_identity_unavailable",
+                },
+                {
+                  id: "app.launch",
+                  state: "unverified",
+                  reasonCode: "trusted_runtime_identity_unavailable",
+                },
+              ],
+            };
+          case "launch_external_agent":
+            return {
+              agentId: payload.agentId,
+              destination: payload.destination,
+              state: "unverified",
+              reasonCode: "trusted_runtime_identity_unavailable",
+            };
+          case "get_qoderwork_hooks":
+            return {
+              revision: qoderHooksRevision,
+              exists: qoderHookGroups.length > 0,
+              groups: structuredClone(qoderHookGroups),
+              restartRequired: true,
+              supportedStructure: true,
+            };
+          case "save_qoderwork_hooks": {
+            const request = payload.request as Record<string, unknown>;
+            qoderHookGroups = structuredClone(
+              (request.groups as Array<Record<string, unknown>>) ?? [],
+            );
+            qoderHooksRevision = "fixture-qoder-hooks-revision-2";
+            return {
+              state: "saved",
+              snapshot: {
+                revision: qoderHooksRevision,
+                exists: true,
+                groups: structuredClone(qoderHookGroups),
+                restartRequired: true,
+                supportedStructure: true,
+              },
+            };
+          }
+          case "validate_external_mcp_config": {
+            const config = payload.config as {
+              mcpServers?: Record<string, Record<string, unknown>>;
+            };
+            const findings = Object.entries(config.mcpServers ?? {}).map(
+              ([serverId, server]) => ({
+                serverId,
+                transport: "url" in server ? "http" : "stdio",
+                reasonCodes: ["TRAE_MCP_SERVER_VALID"],
+                executableAvailable: "url" in server ? null : true,
+                hasSecrets: "env" in server || "headers" in server,
+              }),
+            );
+            const redactedServers = Object.fromEntries(
+              Object.entries(config.mcpServers ?? {}).map(
+                ([serverId, server]) => [
+                  serverId,
+                  {
+                    ...server,
+                    ...(server.env ? { env: { REDACTED: "<redacted>" } } : {}),
+                    ...(server.headers
+                      ? { headers: { REDACTED: "<redacted>" } }
+                      : {}),
+                  },
+                ],
+              ),
+            );
+            return {
+              agentId: payload.agentId,
+              valid: true,
+              findings,
+              redactedTemplate: { mcpServers: redactedServers },
+            };
+          }
+          case "validate_traework_model_config":
+            return {
+              requestId: traeRequestId,
+              state: "valid",
+              reasonCode: "TRAE_MODEL_CONFIG_VALID",
+              durationBucket: "lt_1s",
+              statusClass: null,
+            };
+          case "test_traework_model_endpoint":
+            return {
+              requestId: payload.requestId,
+              state: "reachable",
+              reasonCode: "TRAE_ENDPOINT_REACHABLE",
+              durationBucket: "1s_to_3s",
+              statusClass: "2xx",
+            };
+          case "cancel_traework_model_endpoint":
+            return { requestId: payload.requestId, cancelled: true };
           case "codex_desktop_get_local_status":
             return structuredClone(installerLocal);
           case "codex_desktop_check_latest":

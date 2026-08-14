@@ -10,7 +10,7 @@ import {
 
 import { createFeaturePorts } from "../platform/features";
 import type { FeaturePorts } from "./ports";
-import type { SupportedAppId } from "./types";
+import type { SkillTargetId } from "./types";
 
 interface ToastMessage {
   id: number;
@@ -21,8 +21,8 @@ interface ToastMessage {
 
 interface FeatureContextValue {
   ports: FeaturePorts;
-  installTarget: SupportedAppId;
-  setInstallTarget: (target: SupportedAppId) => void;
+  installTarget: SkillTargetId;
+  setInstallTarget: (target: SkillTargetId) => void;
   notify: (message: Omit<ToastMessage, "id">) => void;
 }
 
@@ -49,7 +49,7 @@ export function FeatureProvider({
     [injectedPorts],
   );
   const [queryClient] = useState(createFeatureQueryClient);
-  const [installTarget, setInstallTarget] = useState<SupportedAppId>("claude");
+  const [installTarget, setInstallTarget] = useState<SkillTargetId>("claude");
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const notify = useCallback((message: Omit<ToastMessage, "id">) => {
     const id = Date.now() + Math.random();

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { getAgentIcon, type AgentIconId } from "../../shared/assets/agents";
+import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
 import type { FeaturePorts } from "../../shared/features/ports";
 import { useFeatures } from "../../shared/features/provider";
 import {
@@ -13,6 +13,8 @@ import {
 import type {
   CodexProviderMutationWarning,
   ProviderAppId,
+  TraeModelProbeResult,
+  TraeWorkModelRequest,
 } from "../../shared/features/types";
 import {
   Badge,
@@ -23,6 +25,13 @@ import {
   Input,
   Spinner,
 } from "../../shared/ui/primitives";
+import {
+  CatalogDetail,
+  CatalogList,
+  CatalogListItem,
+  CatalogMasterDetail,
+  CatalogRail,
+} from "../../shared/ui/catalog";
 import {
   buildQuickSetupRequest,
   isHttpUrl,
@@ -44,8 +53,8 @@ const TARGET_PRESENTATION: Record<
   ModelTarget,
   { label: string; summary: string }
 > = {
-  qoderwork: { label: "QoderWork CN", summary: "官方辅助设置" },
-  trae: { label: "TRAE Work", summary: "官方辅助设置" },
+  qoderwork: { label: "QoderWork CN", summary: "内置模型 / Hooks / MCP" },
+  trae: { label: "TRAE Work", summary: "模型连接预检" },
   workbuddy: { label: "WorkBuddy", summary: "专用模型配置" },
   codex: { label: "Codex", summary: "Provider 快速配置" },
   claude: { label: "Claude Code", summary: "Provider 快速配置" },
@@ -403,7 +412,10 @@ function WorkBuddyPanel() {
   const readFailed = statusQuery.isError || modelIdsQuery.isError;
 
   return (
-    <section className="fy-models-config-panel" aria-label="WorkBuddy 模型配置">
+    <CatalogDetail
+      className="fy-models-config-panel"
+      ariaLabel="WorkBuddy 模型配置"
+    >
       <header className="fy-models-config-heading">
         <div>
           <h2>WorkBuddy</h2>
@@ -582,7 +594,7 @@ function WorkBuddyPanel() {
       >
         <p>确认后只会重放刚才冻结的请求，并使用一次性后端令牌。</p>
       </Dialog>
-    </section>
+    </CatalogDetail>
   );
 }
 
@@ -781,9 +793,9 @@ function ProviderPanel({
   const queryPending = summaryQuery.isLoading;
 
   return (
-    <section
+    <CatalogDetail
       className="fy-models-config-panel"
-      aria-label={`${label} 模型配置`}
+      ariaLabel={`${label} 模型配置`}
     >
       <header className="fy-models-config-heading">
         <div>
@@ -949,27 +961,27 @@ function ProviderPanel({
           </ul>
         </InlineNotice>
       )}
-    </section>
+    </CatalogDetail>
   );
 }
 
-function GuidancePanel({ target }: { target: "qoderwork" | "trae" }) {
+function QoderGuidancePanel() {
   const { ports } = useFeatures();
+  const navigate = useNavigate();
   const catalogQuery = useAgentCatalog();
-  const [endpointNote, setEndpointNote] = useState("");
-  const [modelNote, setModelNote] = useState("");
   const [opening, setOpening] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const openLock = useRef(false);
   const mountedRef = useRef(true);
-  const catalogId = target === "trae" ? "trae-work" : "qoderwork";
   const entry = catalogQuery.data?.agents.find(
-    (agent) => agent.id === catalogId,
+    (agent) => agent.id === "qoderwork",
   );
   const productLink = entry?.officialLinks.find(
     (link) => link.id === "product",
   );
-  const label = target === "trae" ? "TRAE Work" : "QoderWork CN";
+  const productCapability = entry?.capabilities.find(
+    (capability) => capability.id === "product.open",
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1001,50 +1013,27 @@ function GuidancePanel({ target }: { target: "qoderwork" | "trae" }) {
   };
 
   return (
-    <section
+    <CatalogDetail
       className="fy-models-config-panel"
-      aria-label={`${label} 官方辅助设置`}
+      ariaLabel="QoderWork CN 模型与能力入口"
     >
       <header className="fy-models-config-heading">
         <div>
-          <h2>{label}</h2>
-          <p>当前仅提供厂商官方设置入口，不探测登录态或私有配置格式。</p>
+          <h2>QoderWork CN</h2>
+          <p>
+            QoderWork 使用厂商内置模型能力；FyAgent 不写入未公开的模型私有存储。
+          </p>
         </div>
-        <Badge tone="warning">待验证</Badge>
+        <Badge tone="neutral">厂商内置模型</Badge>
       </header>
 
-      <InlineNotice tone="warning">
-        FyAgent
-        不会写入这些值。端点与模型备注只存在于当前组件内存，切换目标或离开页面即丢弃。
+      <InlineNotice>
+        可在 Agent 目录中读取/编辑 Qoder Hooks，并对 MCP JSON 做不执行 server
+        的静态预检。模型选择和最终 MCP 配置仍在 QoderWork 厂商界面完成。
       </InlineNotice>
 
-      <div className="fy-models-guidance-fields">
-        <label className="fy-control-field">
-          端点备注
-          <Input
-            id={`${target}-endpoint-note`}
-            name={`${target}-endpoint-note`}
-            value={endpointNote}
-            onChange={(event) => setEndpointNote(event.target.value)}
-            placeholder="仅供复制到官方设置时参考"
-            autoComplete="off"
-          />
-        </label>
-        <label className="fy-control-field">
-          模型备注
-          <Input
-            id={`${target}-model-note`}
-            name={`${target}-model-note`}
-            value={modelNote}
-            onChange={(event) => setModelNote(event.target.value)}
-            placeholder="不会由 FyAgent 保存或提交"
-            autoComplete="off"
-          />
-        </label>
-      </div>
-
       {catalogQuery.isLoading && (
-        <Spinner label={`正在读取 ${label} 官方入口`} />
+        <Spinner label="正在读取 QoderWork 官方入口" />
       )}
       {catalogQuery.isError && (
         <InlineNotice tone="error">
@@ -1053,9 +1042,16 @@ function GuidancePanel({ target }: { target: "qoderwork" | "trae" }) {
       )}
       <div className="fy-models-actions">
         <Button
+          className="fy-control-button-primary"
+          onClick={() => navigate("/agents?target=qoderwork")}
+        >
+          管理 Hooks / 预检 MCP
+        </Button>
+        <Button
           disabled={
             !productLink ||
-            entry?.actions.browse.state !== "available" ||
+            (productCapability?.mode !== "direct" &&
+              productCapability?.mode !== "assisted") ||
             opening
           }
           onClick={() => void openOfficial()}
@@ -1064,7 +1060,408 @@ function GuidancePanel({ target }: { target: "qoderwork" | "trae" }) {
         </Button>
       </div>
       <NoticeView notice={notice} />
-    </section>
+    </CatalogDetail>
+  );
+}
+
+const traeProbeCopy: Readonly<
+  Record<
+    TraeModelProbeResult["state"],
+    { tone: Notice["tone"]; title: string; description: string }
+  >
+> = {
+  reachable: {
+    tone: "info",
+    title: "FyAgent 本次连接预检可达",
+    description:
+      "这只证明本次受限请求通过 FyAgent 预检，不表示 TRAE 已保存配置、完全兼容或厂商最终检查会成功。请回到 TRAE 完成最终保存。",
+  },
+  auth_rejected: {
+    tone: "warning",
+    title: "端点拒绝了本次认证预检",
+    description: "API Key 已清除；请在 TRAE 厂商界面复核凭据后重试。",
+  },
+  model_rejected: {
+    tone: "warning",
+    title: "端点拒绝了模型标识",
+    description: "API Key 已清除；请在 TRAE 厂商界面复核模型 ID。",
+  },
+  network_rejected: {
+    tone: "warning",
+    title: "连接被网络安全策略或远端响应拒绝",
+    description: "未回显地址或响应正文；请检查 HTTPS、代理、DNS 与网络授权。",
+  },
+  timeout: {
+    tone: "warning",
+    title: "连接预检超时",
+    description: "API Key 已清除；超时不代表 TRAE 已保存或端点不可用。",
+  },
+  cancelled: {
+    tone: "warning",
+    title: "连接预检已取消",
+    description: "API Key 已清除，未产生 TRAE 配置写入。",
+  },
+};
+
+function TraePreflightPanel() {
+  const { ports } = useFeatures();
+  const catalogQuery = useAgentCatalog();
+  const [apiFormat, setApiFormat] = useState<TraeWorkModelRequest["apiFormat"]>(
+    "openai_chat_completions",
+  );
+  const [urlMode, setUrlMode] =
+    useState<TraeWorkModelRequest["urlMode"]>("base_url");
+  const [url, setUrl] = useState("");
+  const [modelId, setModelId] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [allowNoApiKey, setAllowNoApiKey] = useState(false);
+  const [allowLoopback, setAllowLoopback] = useState(false);
+  const [allowPrivateNetwork, setAllowPrivateNetwork] = useState(false);
+  const [probeConsent, setProbeConsent] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [opening, setOpening] = useState(false);
+  const mountedRef = useRef(true);
+  const activeRequestIdRef = useRef<string | null>(null);
+  const cancelRequestedRef = useRef(false);
+  const apiKeyRef = useRef("");
+  const openLock = useRef(false);
+  const entry = catalogQuery.data?.agents.find(
+    (agent) => agent.id === "trae-work",
+  );
+  const productLink = entry?.officialLinks.find(
+    (link) => link.id === "product",
+  );
+  const productCapability = entry?.capabilities.find(
+    (capability) => capability.id === "product.open",
+  );
+
+  const clearApiKey = () => {
+    apiKeyRef.current = "";
+    if (mountedRef.current) setApiKey("");
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      apiKeyRef.current = "";
+      const requestId = activeRequestIdRef.current;
+      activeRequestIdRef.current = null;
+      cancelRequestedRef.current = true;
+      if (requestId)
+        void ports.traeWork
+          .cancelModelEndpoint(requestId)
+          .catch(() => undefined);
+    };
+  }, [ports.traeWork]);
+
+  const buildRequest = (): TraeWorkModelRequest | null => {
+    const trimmedUrl = url.trim();
+    const trimmedModelId = modelId.trim();
+    if (!trimmedUrl || !trimmedModelId) {
+      setNotice({
+        tone: "error",
+        title: "请填写 URL 和模型 ID",
+        description: "结构校验不会把输入写入 URL、缓存或本地存储。",
+      });
+      return null;
+    }
+    try {
+      const parsed = new URL(trimmedUrl);
+      if (
+        (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+        !parsed.hostname ||
+        parsed.username ||
+        parsed.password ||
+        parsed.search ||
+        parsed.hash
+      )
+        throw new Error("invalid");
+    } catch {
+      setNotice({
+        tone: "error",
+        title: "URL 结构无效",
+        description:
+          "只接受无 userinfo、query、fragment 的 HTTP(S) URL；后端仍会执行 DNS 与地址安全校验。",
+      });
+      return null;
+    }
+    if (!allowNoApiKey && apiKeyRef.current.trim().length === 0) {
+      setNotice({
+        tone: "error",
+        title: "请填写 API Key 或明确允许无 Key 预检",
+        description: "API Key 只用于当前一次原生命令。",
+      });
+      return null;
+    }
+    if (!probeConsent) {
+      setNotice({
+        tone: "error",
+        title: "需要明确同意本次网络预检",
+        description: "未同意时不会发起网络请求。",
+      });
+      return null;
+    }
+    return {
+      apiFormat,
+      urlMode,
+      url: trimmedUrl,
+      modelId: trimmedModelId,
+      apiKey: apiKeyRef.current,
+      allowNoApiKey,
+      allowLoopback,
+      allowPrivateNetwork,
+    };
+  };
+
+  const runProbe = async () => {
+    if (pending) return;
+    setNotice(null);
+    const request = buildRequest();
+    if (!request) {
+      clearApiKey();
+      setProbeConsent(false);
+      return;
+    }
+    cancelRequestedRef.current = false;
+    setPending(true);
+    try {
+      const validation = await ports.traeWork.validateModelConfig(request);
+      if (!mountedRef.current) return;
+      activeRequestIdRef.current = validation.requestId;
+      if (cancelRequestedRef.current) {
+        await ports.traeWork.cancelModelEndpoint(validation.requestId);
+        if (mountedRef.current) setNotice(traeProbeCopy.cancelled);
+        return;
+      }
+      const result = await ports.traeWork.testModelEndpoint(
+        validation.requestId,
+        request,
+      );
+      if (!mountedRef.current) return;
+      const copy = traeProbeCopy[result.state];
+      setNotice(copy);
+    } catch {
+      if (mountedRef.current) {
+        setNotice({
+          tone: "error",
+          title: "TRAE 模型预检失败",
+          description:
+            "请求已终止，API Key 与原始错误已清除；FyAgent 未写入 TRAE 配置。",
+        });
+      }
+    } finally {
+      activeRequestIdRef.current = null;
+      cancelRequestedRef.current = false;
+      clearApiKey();
+      if (mountedRef.current) {
+        setPending(false);
+        setProbeConsent(false);
+      }
+    }
+  };
+
+  const cancelProbe = async () => {
+    const requestId = activeRequestIdRef.current;
+    cancelRequestedRef.current = true;
+    clearApiKey();
+    if (!requestId) return;
+    try {
+      await ports.traeWork.cancelModelEndpoint(requestId);
+      if (mountedRef.current) {
+        setNotice({
+          tone: "warning",
+          title: "已发送取消请求",
+          description: "API Key 已立即清除，等待原生预检进入终态。",
+        });
+      }
+    } catch {
+      if (mountedRef.current) {
+        setNotice({
+          tone: "warning",
+          title: "无法确认取消结果",
+          description: "API Key 已立即清除；离开页面会再次请求取消。",
+        });
+      }
+    }
+  };
+
+  const openOfficial = async () => {
+    if (!productLink || openLock.current) return;
+    openLock.current = true;
+    setOpening(true);
+    try {
+      await ports.settings.openExternal(productLink.url);
+    } catch {
+      if (mountedRef.current) {
+        setNotice({
+          tone: "error",
+          title: "无法打开 TRAE 官方设置",
+          description: "FyAgent 未执行任何配置写入。",
+        });
+      }
+    } finally {
+      openLock.current = false;
+      if (mountedRef.current) setOpening(false);
+    }
+  };
+
+  return (
+    <CatalogDetail
+      className="fy-models-config-panel"
+      ariaLabel="TRAE Work 模型连接预检"
+    >
+      <header className="fy-models-config-heading">
+        <div>
+          <h2>TRAE Work</h2>
+          <p>
+            结构校验后发起一次受限网络预检；最终模型保存仍在 TRAE 厂商界面完成。
+          </p>
+        </div>
+        <Badge tone="warning">FyAgent 预检</Badge>
+      </header>
+
+      <div className="fy-models-form">
+        <label className="fy-control-field">
+          API Format
+          <select
+            className="fy-control-input"
+            value={apiFormat}
+            onChange={(event) =>
+              setApiFormat(
+                event.target.value as TraeWorkModelRequest["apiFormat"],
+              )
+            }
+            disabled={pending}
+          >
+            <option value="openai_chat_completions">
+              OpenAI Chat Completions
+            </option>
+            <option value="anthropic_messages">Anthropic Messages</option>
+          </select>
+        </label>
+        <label className="fy-control-field">
+          URL 模式
+          <select
+            className="fy-control-input"
+            value={urlMode}
+            onChange={(event) =>
+              setUrlMode(event.target.value as TraeWorkModelRequest["urlMode"])
+            }
+            disabled={pending}
+          >
+            <option value="base_url">Base URL</option>
+            <option value="complete_url">完整 Endpoint URL</option>
+          </select>
+        </label>
+        <label className="fy-control-field fy-models-form-wide">
+          {urlMode === "base_url" ? "Base URL" : "完整 Endpoint URL"}
+          <Input
+            type="url"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="https://gateway.example/v1"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={pending}
+          />
+        </label>
+        <label className="fy-control-field">
+          模型 ID
+          <Input
+            value={modelId}
+            onChange={(event) => setModelId(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={pending}
+          />
+        </label>
+        <label className="fy-control-field">
+          API Key
+          <Input
+            type="password"
+            value={apiKey}
+            onChange={(event) => {
+              apiKeyRef.current = event.target.value;
+              setApiKey(event.target.value);
+            }}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={pending || allowNoApiKey}
+          />
+        </label>
+        <div className="fy-models-form-wide fy-models-consent-list">
+          <label className="fy-models-checkbox-row">
+            <Checkbox
+              checked={allowNoApiKey}
+              onCheckedChange={(checked) => {
+                setAllowNoApiKey(checked);
+                if (checked) clearApiKey();
+              }}
+              label="允许无 API Key 预检"
+              disabled={pending}
+            />
+            允许无 API Key 预检
+          </label>
+          <label className="fy-models-checkbox-row">
+            <Checkbox
+              checked={allowLoopback}
+              onCheckedChange={setAllowLoopback}
+              label="允许 loopback 地址"
+              disabled={pending}
+            />
+            我确认目标是本机 loopback 地址（如适用）
+          </label>
+          <label className="fy-models-checkbox-row">
+            <Checkbox
+              checked={allowPrivateNetwork}
+              onCheckedChange={setAllowPrivateNetwork}
+              label="允许私有网络地址"
+              disabled={pending}
+            />
+            我确认目标是受信任的私有网络地址（如适用）
+          </label>
+          <label className="fy-models-checkbox-row">
+            <Checkbox
+              checked={probeConsent}
+              onCheckedChange={setProbeConsent}
+              label="同意发起一次网络预检"
+              disabled={pending}
+            />
+            我明确同意 FyAgent 发起一次受限网络预检
+          </label>
+        </div>
+        <div className="fy-models-actions">
+          <Button
+            className="fy-control-button-primary"
+            disabled={pending}
+            onClick={() => void runProbe()}
+          >
+            {pending ? "正在预检…" : "验证并测试连接"}
+          </Button>
+          {pending && (
+            <Button onClick={() => void cancelProbe()}>取消预检</Button>
+          )}
+          <Button
+            disabled={
+              !productLink ||
+              (productCapability?.mode !== "direct" &&
+                productCapability?.mode !== "assisted") ||
+              opening
+            }
+            onClick={() => void openOfficial()}
+          >
+            {opening ? "正在打开…" : "打开 TRAE 官方模型设置"}
+          </Button>
+        </div>
+      </div>
+      <NoticeView notice={notice} />
+      <InlineNotice>
+        预检不会保存模型到 TRAE。即使本次可达，也必须回到 TRAE
+        厂商界面完成配置并接受厂商自己的最终检查。
+      </InlineNotice>
+    </CatalogDetail>
   );
 }
 
@@ -1090,8 +1487,9 @@ function TargetPanel({
         />
       );
     case "qoderwork":
+      return <QoderGuidancePanel />;
     case "trae":
-      return <GuidancePanel target={target} />;
+      return <TraePreflightPanel />;
   }
 }
 
@@ -1118,38 +1516,27 @@ export function ModelsPage() {
         </div>
       </header>
 
-      <div className="fy-models-layout">
-        <aside className="fy-models-target-panel" aria-label="模型配置目标">
-          <h2>选择 Agent</h2>
-          <div className="fy-models-target-list">
+      <CatalogMasterDetail>
+        <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择 Agent">
+          <CatalogList>
             {targets.map((candidate) => {
               const presentation = TARGET_PRESENTATION[candidate];
               return (
-                <button
+                <CatalogListItem
                   key={candidate}
-                  type="button"
-                  className="fy-models-target"
-                  aria-current={candidate === target ? "true" : undefined}
-                  data-testid={`model-target-${candidate}`}
-                  onClick={() =>
+                  asset={getAgentBrand(TARGET_ICON_IDS[candidate])}
+                  label={presentation.label}
+                  summary={presentation.summary}
+                  selected={candidate === target}
+                  testId={`model-target-${candidate}`}
+                  onSelect={() =>
                     setSearchParams({ target: candidate }, { replace: true })
                   }
-                >
-                  <img
-                    className="fy-models-target-icon"
-                    src={getAgentIcon(TARGET_ICON_IDS[candidate])}
-                    alt=""
-                    aria-hidden="true"
-                  />
-                  <span className="fy-models-target-copy">
-                    <strong>{presentation.label}</strong>
-                    <span>{presentation.summary}</span>
-                  </span>
-                </button>
+                />
               );
             })}
-          </div>
-        </aside>
+          </CatalogList>
+        </CatalogRail>
         <TargetPanel
           key={target}
           target={target}
@@ -1161,7 +1548,7 @@ export function ModelsPage() {
             }))
           }
         />
-      </div>
+      </CatalogMasterDetail>
     </div>
   );
 }

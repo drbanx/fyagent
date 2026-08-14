@@ -9,10 +9,14 @@ The common shell, native-chrome, router, and layer rules remain in
 [V2 Shell](./v2-shell.md). Skills/MCP and Prompt/Memory have separate feature
 contracts and must not be folded into the Agent capability catalog.
 
-The product boundary is deliberately asymmetric:
+The product boundary is deliberately asymmetric. Agents and Models share one
+`CatalogMasterDetail` geometry and local brand metadata, but each detail keeps
+its own capability workflow:
 
 - QoderWork CN, TRAE Work, and WorkBuddy each expose one catalog-owned product
-  link; Claude Code exposes separate CLI and Desktop links.
+  link; Claude Code exposes separate CLI and Desktop links. QoderWork additionally
+  exposes safe Hooks/MCP preparation, while TRAE Models owns connection
+  preflight and external MCP validation.
 - WorkBuddy additionally uses its dedicated revision-checked configuration
   domain.
 - Codex exposes no catalog link. Its detail owns the FyAgent-managed desktop
@@ -41,33 +45,56 @@ type AgentOfficialLink = {
 };
 
 type AgentCatalogResult = {
-  contractVersion: 2;
+  contractVersion: 3;
   reviewedAt: string;
   agents: Array<{
     id: AgentCatalogId;
+    variantId:
+      | "qoderwork-cn"
+      | "trae-work-cn"
+      | "workbuddy"
+      | "codex"
+      | "claude-code";
     displayName: string;
     description: string;
     officialLinks: AgentOfficialLink[];
-    status:
-      | "pending_verification"
-      | "manual_install"
-      | "managed_install";
-    actions: Record<
-      "browse" | "observe" | "install" | "configure",
-      {
-        state:
-          | "available"
-          | "assisted"
-          | "not_supported"
-          | "pending_verification";
-        reason: string;
-      }
-    >;
-    evidenceLabel: string;
+    capabilities: Array<{
+      id:
+        | "product.open" | "app.detect" | "app.launch"
+        | "skills.read" | "skills.write"
+        | "hooks.read" | "hooks.write"
+        | "models.validate" | "models.write"
+        | "mcp.validate" | "mcp.write";
+      mode: "direct" | "assisted" | "unsupported" | "unverified";
+      reasonCode: string;
+      evidenceIds: string[];
+    }>;
   }>;
 };
 
 get_agent_catalog() -> AgentCatalogResult
+
+get_external_agent_status({ agentId }) -> {
+  agentId: AgentCatalogId;
+  detected: boolean | null;
+  running: boolean | null;
+  version: string | null;
+  installSource:
+    | "managed_installer" | "official_installer" | "system_package"
+    | "user_installation" | null;
+  capabilities: Array<{
+    id: AgentCatalogResult["agents"][number]["capabilities"][number]["id"];
+    state:
+      | "available" | "assisted" | "unavailable" | "unverified"
+      | "blocked_by_version" | "probe_failed";
+    reasonCode: string;
+  }>;
+}
+
+launch_external_agent({
+  agentId,
+  destination: "home" | "skills" | "hooks" | "models" | "mcp",
+}) -> { agentId, destination, state, reasonCode }
 ```
 
 V2 reads a non-secret Provider projection in one native snapshot:
@@ -126,15 +153,17 @@ mutation arguments only and never query keys or query data.
 
 - `get_agent_catalog` is deterministic, non-networking, non-secret, and ordered
   exactly: QoderWork CN, TRAE Work, WorkBuddy, Codex, Claude Code.
-- The v2 link matrix is exact: QoderWork CN, TRAE Work, and WorkBuddy each own
+- The v3 link matrix is exact: QoderWork CN, TRAE Work, and WorkBuddy each own
   one `product` link; Claude Code owns `cli` then `desktop`; Codex owns an empty
-  list, `browse: not_supported`, `install: available`, and
-  `status: managed_install`. Link IDs are unique per entry, labels are nonempty,
-  and URLs are absolute HTTPS values owned by Rust.
-- V1 `officialUrl` payloads and unknown contract versions fail closed in the
+  list and keeps its dedicated managed installer outside generic launch. Link
+  IDs are unique per entry, labels are nonempty, and URLs are absolute HTTPS
+  values owned by Rust.
+- V1 `officialUrl`, catalog v2, future catalog versions, and unknown capability,
+  mode, evidence, variant, or runtime values fail closed in the
   Tauri adapter. The renderer never guesses a legacy shape or carries a second
   URL table.
-- The UI renders the catalog's status/action reasons; it does not derive
+- The UI renders catalog capability mode/reason/evidence and the separate
+  runtime capability state; it does not derive
   capability from the display name, icon, URL, installed files, or a duplicate
   frontend matrix.
 - Every entry resolves through `src/v2/shared/assets/agents`. QoderWork uses the
@@ -149,6 +178,10 @@ mutation arguments only and never query keys or query data.
 
 - Render a keyboard-accessible left selector and right detail. The selected
   button owns `aria-current`; initial selection follows native catalog order.
+- Both pages use the shared rail `clamp(220px, 24vw, 268px)`, 14px gap, 56px
+  rows, 36px list frames, 64px detail frames, stable scrollbar gutter, and the
+  single 760px stack breakpoint. Page CSS must not redefine catalog columns,
+  brand-ID sizing, or another responsive rail.
 - QoderWork/TRAE/WorkBuddy and Claude link actions call only
   `settings.openExternal(link.url)` from the catalog. Models selects an explicit
   `product` link when it needs product guidance; it never depends on array
@@ -162,6 +195,15 @@ mutation arguments only and never query keys or query data.
 - WorkBuddy status and Provider summaries are lazy/bounded observations. A read
   failure is `unknown/unavailable`, never `not installed`, `not configured`, or
   verified absence.
+- External runtime status preserves `null` as unknown. A launch control is
+  positive only when the native runtime capability is explicitly `available`;
+  the renderer never submits a path, URL, or executable.
+- Qoder Hooks uses exact revisioned snapshots and an explicit preview. A
+  backend overwrite token may be replayed once with the frozen request; a
+  successful save states only that the file was saved and QoderWork must be
+  restarted. Qoder/TRAE MCP preparation displays and copies only the backend's
+  redacted template and never claims a server was started or vendor config was
+  saved.
 - Configuration actions navigate only with a known non-secret `target` query.
 
 ### Models target selection
@@ -173,6 +215,12 @@ mutation arguments only and never query keys or query data.
 - Target state is component-local. API keys and form content never enter the
   hash, URL query, local/session storage, or cross-target state. Target change
   and unmount clear sensitive values and stale write intent.
+- TRAE model setup requires explicit connection-test consent, calls native
+  validation before the probe, echoes the backend UUID into the probe/cancel
+  commands, accepts only closed terminal results, and clears the API key on
+  success, rejection, error, timeout, cancel, target change, route leave, and
+  unmount. A reachable result proves only the FyAgent preflight; final save
+  remains in TRAE Work.
 
 ### WorkBuddy
 
@@ -241,13 +289,17 @@ mutation arguments only and never query keys or query data.
 
 | Condition                                                                                  | Required result                                                                                         |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Catalog version/order/ID/link/action state drifts                                          | Exact Rust/V2 contract test fails                                                                       |
-| V1 `officialUrl`, unknown link ID, duplicate link ID, non-HTTPS URL, or Codex link arrives | Runtime parse fails; catalog is unavailable                                                             |
+| Catalog version/order/ID/link/capability/evidence state drifts                             | Exact Rust/V2 contract test fails                                                                       |
+| V1 `officialUrl`, catalog v2/future, unknown enum, duplicate ID, non-HTTPS URL, or Codex link arrives | Runtime parse fails; catalog is unavailable                                                  |
 | Codex is selected                                                                          | Show the managed installer and no official-link button                                                  |
 | A non-Codex entry is selected                                                              | Do not read or subscribe to the Codex installer                                                         |
 | Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
-| QoderWork/TRAE selected                                                                    | Only transient guidance and exact catalog official link are available                                   |
+| QoderWork/TRAE selected                                                                    | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
 | Native observation fails                                                                   | Show controlled unavailable/unknown; never infer absence                                                |
+| Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
+| Qoder Hooks revision or overwrite request drifts                                           | Write nothing or require one exact token replay; never claim save                                       |
+| TRAE preflight reaches any terminal result                                                 | Clear key/request state; report only FyAgent validation, never vendor save                               |
+| External MCP result contains an original env/header value                                  | Reject the result and expose no copy action                                                             |
 | Models target missing or unknown                                                           | Select QoderWork CN; issue no write                                                                     |
 | Any selector lacks a local icon                                                            | Asset mapping/unit/browser gate fails                                                                   |
 | WorkBuddy remote/local ID contains a complete API key                                      | Generic fail-closed error before DTO/cache/DOM/write                                                    |
@@ -267,6 +319,11 @@ mutation arguments only and never query keys or query data.
 - Good: `/models` opens on QoderWork CN at the top, all five local icons render,
   and the page resolves the catalog's explicit `product` link when assisted
   guidance is requested.
+- Good: TRAE validation returns a canonical request ID, the renderer passes the
+  same ID to one cancellable probe, clears the key in `finally`, and describes
+  `reachable` as a local preflight rather than vendor configuration success.
+- Good: Qoder Hooks saves a previewed revisioned request and reports the
+  required restart without claiming the running process consumed it.
 - Good: Claude Code renders independent CLI and Desktop actions, while Codex
   renders no link and reuses the existing native installer contract through a
   V2 port.
@@ -276,9 +333,10 @@ mutation arguments only and never query keys or query data.
   fixed-ID activation confirmation.
 - Base: browser preview renders the pages but authoritative panels report that
   desktop state is unavailable; test-only fixtures may exercise UI branches.
-- Bad: hard-code a second capability matrix, treat an empty Provider map as a
-  real native read, compose generic add/update/switch calls in React, retain a
-  key for retry, or say "rolled back" after partial compensation.
+- Bad: hard-code a second capability matrix, treat `null` runtime as absence,
+  pass an executable/path to launch, retain a key for retry, expose an MCP
+  secret template, compose generic add/update/switch calls in React, or say
+  "rolled back" after partial compensation.
 
 ## 6. Tests Required
 
@@ -298,7 +356,8 @@ mise run rust:test
 
 Required focused coverage includes:
 
-- exact catalog v2 version/order/status/action/link ID/label/HTTPS matrix,
+- exact catalog v3 version/order/variant/capability/mode/reason/evidence/link
+  ID/label/HTTPS matrix and v2/future/unknown/excess fail-closed cases,
   Claude CLI/Desktop order, Codex zero-link behavior, and command registration;
 - five local assets, official Qoder/TRAE digests/passive formats, Qoder default,
   exact Models order, master/detail keyboard/ARIA, four maintained viewports;
@@ -321,6 +380,9 @@ Required focused coverage includes:
   consistency, Tauri runtime parser, React Query/DOM secret-negative scans;
 - StrictMode replay, unmount/target-change cleanup, repeat-click locks, no API
   key in DOM/hash/localStorage/sessionStorage/query cache or logged fixtures.
+- exact external status/launch, Qoder read/save/token, external MCP validation,
+  and TRAE validate/probe/cancel IPC payloads and result parsers; terminal,
+  target-change, route-leave, and unmount secret cleanup.
 
 Browser tests prove renderer/IPC wiring only. Rust tests prove service/command
 contracts. Real Windows Tauri HIL and an isolated/reversible native mutation are

@@ -2,26 +2,32 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { createAssignments, SUPPORTED_APPS } from "@/v2/shared/features/types";
+import {
+  createMcpAssignments,
+  createSkillAssignments,
+  MCP_TARGETS,
+  SKILL_TARGETS,
+} from "@/v2/shared/features/types";
 import { AssignmentPanel } from "@/v2/shared/ui/AssignmentPanel";
 
 describe("AssignmentPanel", () => {
-  it("renders one six-switch panel with decorative local app icons", () => {
+  it("renders one eight-switch Skills panel with decorative local target icons", () => {
     const { container } = render(
       <AssignmentPanel
-        apps={createAssignments(["claude", "gemini"])}
+        apps={createSkillAssignments(["claude", "gemini", "qoderwork"])}
         disabled={false}
         labelSuffix="Skill 分配"
         onToggle={vi.fn()}
+        targets={SKILL_TARGETS}
       />,
     );
 
     expect(screen.getAllByRole("heading", { name: "Agent 分配" })).toHaveLength(
       1,
     );
-    expect(screen.getAllByRole("switch")).toHaveLength(6);
+    expect(screen.getAllByRole("switch")).toHaveLength(8);
 
-    for (const app of SUPPORTED_APPS) {
+    for (const app of SKILL_TARGETS) {
       expect(screen.getByText(app.label)).toBeVisible();
       expect(
         screen.getByRole("switch", { name: `${app.label} Skill 分配` }),
@@ -33,7 +39,7 @@ describe("AssignmentPanel", () => {
         ".fy-feature-assignment-icon",
       ),
     );
-    expect(icons).toHaveLength(6);
+    expect(icons).toHaveLength(8);
     for (const icon of icons) {
       expect(icon).toHaveAttribute("alt", "");
       expect(icon).toHaveAttribute("aria-hidden", "true");
@@ -47,10 +53,11 @@ describe("AssignmentPanel", () => {
     const onToggle = vi.fn();
     render(
       <AssignmentPanel
-        apps={createAssignments()}
+        apps={createMcpAssignments()}
         disabled={false}
         labelSuffix="MCP 分配"
         onToggle={onToggle}
+        targets={MCP_TARGETS}
       />,
     );
 

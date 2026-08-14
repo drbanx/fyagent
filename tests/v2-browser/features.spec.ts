@@ -52,6 +52,7 @@ for (const feature of [
     list: "已安装 Skills 列表",
     detail: "Skill 详情",
     switchSuffix: "Skill 分配",
+    targetCount: 8,
   },
   {
     route: "/mcp",
@@ -59,6 +60,7 @@ for (const feature of [
     list: "MCP 列表",
     detail: "MCP 详情",
     switchSuffix: "MCP 分配",
+    targetCount: 6,
   },
 ] as const) {
   test(`${feature.route} renders populated responsive master-detail-assignment data`, async ({
@@ -81,11 +83,11 @@ for (const feature of [
     const switches = page.getByRole("switch", {
       name: new RegExp(`${feature.switchSuffix}$`),
     });
-    await expect(switches).toHaveCount(6);
+    await expect(switches).toHaveCount(feature.targetCount);
     const switchNames = await switches.evaluateAll((elements) =>
       elements.map((element) => element.getAttribute("aria-label")),
     );
-    expect(new Set(switchNames).size).toBe(6);
+    expect(new Set(switchNames).size).toBe(feature.targetCount);
 
     const panelCount = await page
       .locator(".fy-feature-master > .fy-feature-panel")

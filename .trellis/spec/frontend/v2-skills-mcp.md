@@ -4,9 +4,10 @@
 
 Read this contract before changing the V2 Skills or MCP pages, their shared
 feature types, query state, controls, platform adapters, or feature tests. It
-defines a frontend-only integration over the existing Tauri commands. It does
-not authorize changes to Rust commands, persistence, the outer V2 shell, or
-the four unrelated Phase 1 pages.
+defines the renderer boundary over the native Skills/MCP commands. Native
+target, persistence, and security rules are authoritative in
+[External Agent P0 Safety](../backend/external-agent-p0.md); this page does not
+authorize widening the outer V2 shell or unrelated feature domains.
 
 Production V2 feature code is limited to these boundaries:
 
@@ -21,11 +22,12 @@ from `src/components`, `src/hooks`, `src/lib`, or `src/i18n`.
 
 ## 2. Signatures
 
-The supported application identity is the exact six-member union below. User
-interfaces must not add Claude Desktop or OpenClaw to this list.
+Skills and direct MCP assignment intentionally use different closed identities.
+User interfaces must not merge these collections or add Claude Desktop or
+OpenClaw to either list.
 
 ```ts
-type SupportedAppId =
+type McpTargetId =
   | "claude"
   | "codex"
   | "gemini"
@@ -33,9 +35,14 @@ type SupportedAppId =
   | "opencode"
   | "hermes";
 
-const supportedAppIconById: Record<SupportedAppId, string>;
+type SkillTargetId = McpTargetId | "qoderwork" | "trae-work";
 
-function getSupportedAppIcon(id: SupportedAppId): string;
+const MCP_TARGETS: ReadonlyArray<{ id: McpTargetId; label: string }>;
+const SKILL_TARGETS: ReadonlyArray<{ id: SkillTargetId; label: string }>;
+
+const supportedAppIconById: Record<SkillTargetId, string>;
+
+function getSupportedAppIcon(id: SkillTargetId): string;
 
 interface SkillsPort {
   getInstalled(): Promise<InstalledSkill[]>;
@@ -43,16 +50,16 @@ interface SkillsPort {
   deleteBackup(backupId: string): Promise<boolean>;
   install(
     skill: DiscoverableSkill,
-    currentApp: SupportedAppId,
+    currentApp: SkillTargetId,
   ): Promise<InstalledSkill>;
   uninstall(id: string): Promise<{ backupPath?: string }>;
   restoreBackup(
     backupId: string,
-    currentApp: SupportedAppId,
+    currentApp: SkillTargetId,
   ): Promise<InstalledSkill>;
   toggleApp(
     id: string,
-    app: SupportedAppId,
+    app: SkillTargetId,
     enabled: boolean,
   ): Promise<boolean>;
   scanUnmanaged(): Promise<UnmanagedSkill[]>;
@@ -72,7 +79,7 @@ interface SkillsPort {
   pickZip(): Promise<string | null>;
   installFromZip(
     filePath: string,
-    currentApp: SupportedAppId,
+    currentApp: SkillTargetId,
   ): Promise<InstalledSkill[]>;
 }
 
@@ -82,7 +89,7 @@ interface McpPort {
   delete(id: string): Promise<boolean>;
   toggleApp(
     serverId: string,
-    app: SupportedAppId,
+    app: McpTargetId,
     enabled: boolean,
   ): Promise<void>;
   importFromApps(): Promise<number>;
@@ -102,6 +109,10 @@ interface SettingsPort {
 - Only `src/v2/shared/platform/tauri/**` imports `@tauri-apps/**`.
 - The Tauri adapter maps the port methods to the existing snake-case command
   names and camel-case payload keys. It must not call deprecated per-app APIs.
+- Skill ports accept all eight `SkillTargetId` values. MCP CRUD/import/direct
+  assignment accepts only the original six `McpTargetId` values; QoderWork and
+  TRAE Work external MCP preparation uses the separate sanitized validator and
+  never enters direct assignment.
 - Browser reads return empty authority snapshots. Browser writes reject with a
   clear native-only error and never report success.
 - MCP presets have one source under `shared/features`: Windows uses
@@ -116,6 +127,10 @@ interface SettingsPort {
 - A FeatureProvider owns one stable QueryClient and a session-only install
   target. The default target is Claude; navigation preserves it, while a full
   application restart resets it.
+- Skill assignment authority contains eight booleans. Missing persisted
+  `qoderwork` or `trae-work` values parse as false; the existing six values are
+  preserved. QoderWork/TRAE Work sync is copy-only and its successful UI copy
+  claims directory synchronization, not vendor recognition or loading.
 - Server data is authoritative. Successful writes and partial failures both
   invalidate and reread the affected resources before the UI settles.
 - Disabling or deleting an MCP assignment removes it from that application's
@@ -152,14 +167,16 @@ interface SettingsPort {
 - User-visible CSS is namespaced under `.fy-skills-*`, `.fy-mcp-*`, or
   `.fy-control-*` and consumes only `--fy-*` tokens.
 - The shared assignment panel resolves Claude, Codex, Gemini, Grok Build,
-  OpenCode, and Hermes through one exhaustive V2-owned
-  `Record<SupportedAppId, string>`. Runtime code must not import a legacy asset
-  path or a remote URL. A reviewed byte-for-byte local asset copy is acceptable
-  when V2 owns the resulting path and the asset inventory is updated.
+  OpenCode, Hermes, QoderWork, and TRAE Work through one exhaustive V2-owned
+  `Record<SkillTargetId, string>` when rendered for Skills. MCP passes its
+  six-target collection explicitly. Runtime code must not import a legacy
+  asset path or a remote URL. A reviewed byte-for-byte local asset copy is
+  acceptable when V2 owns the resulting path and the asset inventory is
+  updated.
 - Assignment icons are decorative beside the existing text:
   `alt=""` and `aria-hidden="true"`. The switch keeps the sole accessible name
   `${app.label} ${labelSuffix}`; an icon must not create a duplicate label.
-- At most one six-application assignment panel exists in the DOM and
+- At most one assignment panel exists in the DOM and
   accessibility tree. Responsive layout changes whether it is the third
   column or a details section; CSS must not hide a duplicate semantic panel.
 - Changes must not alter the TopBar, brand, primary navigation, window chrome
@@ -186,9 +203,11 @@ interface SettingsPort {
 | Imported shared ID has a different executable specification      | Reject that application's import without partial persistence          |
 | OpenCode/Hermes source entry has `enabled: false`                | Keep it disabled; do not create or activate a managed assignment      |
 | MCP live cleanup fails while disabling or deleting               | Retain the failed assignment and retryable authoritative record       |
+| A Skill response omits either new external target                | Default that target to false without changing any legacy assignment   |
+| QoderWork or TRAE Work is submitted to direct MCP assignment     | Type/runtime adapter rejects before invoke                            |
 | A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image |
 | An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name |
-| Viewport changes between two- and three-column layouts           | Render exactly one assignment panel with six unique switches          |
+| Viewport changes between two- and three-column layouts           | Render exactly one panel: eight unique Skill or six unique MCP switches |
 
 ## 5. Good / Base / Bad Cases
 
@@ -196,9 +215,13 @@ interface SettingsPort {
   `toggle_skill_app` with `{ id, app: "codex", enabled }`, locks only
   conflicting writes, then rereads installed Skills before settling. The row
   shows the V2-owned Codex icon decoratively without changing the switch name.
+- **Good:** An old installed-Skill row has only the six legacy flags. The
+  adapter preserves those values, supplies false for both new targets, and a
+  later QoderWork sync uses only the trusted fixed copy destination.
 - **Base:** A browser preview has no fixture. Both pages show their native-safe
   empty states; attempts to mutate reject instead of simulating persistence.
-- **Bad:** MCP search uses `JSON.stringify(server)`, a toast prints an invoke
+- **Bad:** MCP search uses `JSON.stringify(server)`, a QoderWork ID is passed to
+  direct MCP assignment, a toast prints an invoke
   error containing headers, quick mode reconstructs the whole server object,
   or both responsive assignment panels remain mounted. Each violates a
   security, compatibility, or accessibility contract.
@@ -218,17 +241,19 @@ git diff --check
 ```
 
 - Adapter tests assert every command name, exact camel-case payload, return,
-  and error propagation across Skills, MCP, Settings, and external links.
+  and error propagation across Skills, MCP, Settings, and external links,
+  including eight-value Skill and six-value MCP separation.
 - Pure tests cover public-field search, secret exclusion, selection
   convergence, repository parsing, installed-key matching, pagination,
   env/header/args parsing, advanced JSON validation, and extension retention.
 - Component tests cover empty, loading, error, pending, write/refetch, dialogs,
   assignment, destructive confirmation, secret-safe presentation, an exhaustive
-  six-ID icon map, six decodable local assets, decorative icon semantics, and
-  the unchanged six unique switch names.
+  eight-ID icon map, eight decodable local assets, decorative icon semantics,
+  eight unique Skill switches, and six unique MCP switches.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
-  populated two-/three-column layouts, a single six-switch panel, no overflow,
-  no secret rendering, exact invoke payloads, and authoritative refetch.
+  populated two-/three-column layouts, a single correctly-sized assignment
+  panel, no overflow, no secret rendering, exact invoke payloads, and
+  authoritative refetch.
 - Browser tests do not replace native Windows Tauri/WebView2 acceptance,
   actual filesystem/config writes, or 125%/150% display-scale review.
 

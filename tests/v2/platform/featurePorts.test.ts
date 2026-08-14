@@ -12,8 +12,12 @@ import {
   NATIVE_ONLY_ERROR,
 } from "@/v2/shared/platform/browser/features";
 import type {
-  AgentActionState,
+  AgentCapabilityId,
+  AgentCatalogEntry,
+  AgentCatalogId,
   AgentCatalogResult,
+  QoderWorkHooksSnapshot,
+  SaveQoderWorkHooksRequest,
 } from "@/v2/shared/features/types";
 
 const invoke = vi.fn();
@@ -78,115 +82,97 @@ function installerJob(
   };
 }
 
-const capability = (state: AgentActionState) => ({
-  state,
-  reason: `${state} fixture capability`,
-});
+const agentCapabilityIds: readonly AgentCapabilityId[] = [
+  "product.open",
+  "app.detect",
+  "app.launch",
+  "skills.read",
+  "skills.write",
+  "hooks.read",
+  "hooks.write",
+  "models.validate",
+  "models.write",
+  "mcp.validate",
+  "mcp.write",
+];
+
+const agentVariantById = {
+  qoderwork: "qoderwork-cn",
+  "trae-work": "trae-work-cn",
+  workbuddy: "workbuddy",
+  codex: "codex",
+  "claude-code": "claude-code",
+} as const;
+
+function catalogEntry(
+  id: AgentCatalogId,
+  displayName: string,
+  officialLinks: AgentCatalogEntry["officialLinks"],
+): AgentCatalogEntry {
+  return {
+    id,
+    variantId: agentVariantById[id],
+    displayName,
+    description: `${displayName} catalog fixture`,
+    officialLinks,
+    capabilities: agentCapabilityIds.map((capabilityId) => ({
+      id: capabilityId,
+      mode:
+        capabilityId === "product.open" && id === "codex"
+          ? "unsupported"
+          : capabilityId === "app.detect" || capabilityId === "app.launch"
+            ? "unverified"
+            : "direct",
+      reasonCode:
+        capabilityId === "product.open" && id === "codex"
+          ? "no_catalog_product_link"
+          : capabilityId === "app.detect" || capabilityId === "app.launch"
+            ? "trusted_runtime_identity_unavailable"
+            : "dedicated_native_contract",
+      evidenceIds: ["p0_scope"],
+    })),
+  };
+}
 
 function catalogFixture(): AgentCatalogResult {
   return {
-    contractVersion: 2,
+    contractVersion: 3,
     reviewedAt: "2026-08-14",
     agents: [
-      {
-        id: "qoderwork",
-        displayName: "QoderWork CN",
-        description: "QoderWork catalog fixture",
-        officialLinks: [
-          {
-            id: "product",
-            label: "打开 QoderWork 官方页面",
-            url: "https://qoder.com.cn/qoderwork",
-          },
-        ],
-        status: "pending_verification",
-        actions: {
-          browse: capability("available"),
-          observe: capability("pending_verification"),
-          install: capability("assisted"),
-          configure: capability("assisted"),
+      catalogEntry("qoderwork", "QoderWork CN", [
+        {
+          id: "product",
+          label: "打开 QoderWork 官方页面",
+          url: "https://qoder.com.cn/qoderwork",
         },
-        evidenceLabel: "QoderWork fixture evidence",
-      },
-      {
-        id: "trae-work",
-        displayName: "TRAE Work",
-        description: "TRAE Work catalog fixture",
-        officialLinks: [
-          {
-            id: "product",
-            label: "打开 TRAE Work 官方页面",
-            url: "https://work.trae.cn/",
-          },
-        ],
-        status: "pending_verification",
-        actions: {
-          browse: capability("available"),
-          observe: capability("pending_verification"),
-          install: capability("assisted"),
-          configure: capability("assisted"),
+      ]),
+      catalogEntry("trae-work", "TRAE Work", [
+        {
+          id: "product",
+          label: "打开 TRAE Work 官方页面",
+          url: "https://work.trae.cn/",
         },
-        evidenceLabel: "TRAE Work fixture evidence",
-      },
-      {
-        id: "workbuddy",
-        displayName: "WorkBuddy",
-        description: "WorkBuddy catalog fixture",
-        officialLinks: [
-          {
-            id: "product",
-            label: "打开 WorkBuddy 官方页面",
-            url: "https://www.workbuddy.cn/",
-          },
-        ],
-        status: "manual_install",
-        actions: {
-          browse: capability("available"),
-          observe: capability("available"),
-          install: capability("assisted"),
-          configure: capability("available"),
+      ]),
+      catalogEntry("workbuddy", "WorkBuddy", [
+        {
+          id: "product",
+          label: "打开 WorkBuddy 官方页面",
+          url: "https://www.workbuddy.cn/",
         },
-        evidenceLabel: "WorkBuddy fixture evidence",
-      },
-      {
-        id: "codex",
-        displayName: "Codex",
-        description: "Codex catalog fixture",
-        officialLinks: [],
-        status: "managed_install",
-        actions: {
-          browse: capability("not_supported"),
-          observe: capability("available"),
-          install: capability("available"),
-          configure: capability("available"),
+      ]),
+      catalogEntry("codex", "Codex", []),
+      catalogEntry("claude-code", "Claude Code", [
+        {
+          id: "cli",
+          label: "Claude Code CLI",
+          url: "https://docs.anthropic.com/en/docs/claude-code/getting-started",
         },
-        evidenceLabel: "Codex fixture evidence",
-      },
-      {
-        id: "claude-code",
-        displayName: "Claude Code",
-        description: "Claude Code catalog fixture",
-        officialLinks: [
-          {
-            id: "cli",
-            label: "Claude Code CLI",
-            url: "https://docs.anthropic.com/en/docs/claude-code/getting-started",
-          },
-          {
-            id: "desktop",
-            label: "Claude Desktop",
-            url: "https://claude.com/download",
-          },
-        ],
-        status: "manual_install",
-        actions: {
-          browse: capability("available"),
-          observe: capability("available"),
-          install: capability("assisted"),
-          configure: capability("available"),
+        {
+          id: "desktop",
+          label: "Claude Desktop",
+          url: "https://claude.com/download",
         },
-        evidenceLabel: "Claude fixture evidence",
-      },
+      ]),
     ],
   };
 }
@@ -200,6 +186,44 @@ describe("V2 feature ports", () => {
   it("keeps native observations unavailable in browsers and rejects writes", async () => {
     const ports = createBrowserFeaturePorts();
     await expect(ports.catalog.get()).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.externalAgents.getStatus("qoderwork")).resolves.toEqual({
+      agentId: "qoderwork",
+      detected: null,
+      running: null,
+      version: null,
+      installSource: null,
+      capabilities: [
+        {
+          id: "app.detect",
+          state: "unverified",
+          reasonCode: "trusted_runtime_identity_unavailable",
+        },
+        {
+          id: "app.launch",
+          state: "unverified",
+          reasonCode: "trusted_runtime_identity_unavailable",
+        },
+      ],
+    });
+    await expect(
+      ports.externalAgents.launch("qoderwork", "home"),
+    ).resolves.toMatchObject({ state: "unverified" });
+    await expect(ports.qoderwork.getHooks()).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      ports.externalMcp.validate("qoderwork", { mcpServers: {} }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      ports.traeWork.validateModelConfig({
+        apiFormat: "openai_chat_completions",
+        urlMode: "base_url",
+        url: "https://example.test/v1",
+        modelId: "model-a",
+        apiKey: "secret",
+        allowNoApiKey: false,
+        allowLoopback: false,
+        allowPrivateNetwork: false,
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(ports.codexDesktop.getLocalStatus()).rejects.toThrow(
       NATIVE_ONLY_ERROR,
     );
@@ -376,7 +400,7 @@ describe("V2 feature ports", () => {
     ).rejects.toThrow("Provider public summary is unavailable");
   });
 
-  it("decodes only the exact Agent catalog v2 wire contract", async () => {
+  it("decodes only the exact Agent catalog v3 wire contract", async () => {
     const { createTauriFeaturePorts } = await import(
       "@/v2/shared/platform/tauri/features"
     );
@@ -388,8 +412,12 @@ describe("V2 feature ports", () => {
     const invalidPayloads: unknown[] = [];
 
     const legacy = structuredClone(expected);
-    Object.assign(legacy, { contractVersion: 1 });
+    Object.assign(legacy, { contractVersion: 2 });
     invalidPayloads.push(legacy);
+
+    const future = structuredClone(expected);
+    Object.assign(future, { contractVersion: 4 });
+    invalidPayloads.push(future);
 
     const invalidDate = structuredClone(expected);
     Object.assign(invalidDate, { reviewedAt: "2026-02-30" });
@@ -403,15 +431,44 @@ describe("V2 feature ports", () => {
     wrongAgentOrder.agents.reverse();
     invalidPayloads.push(wrongAgentOrder);
 
-    const unknownStatus = structuredClone(expected);
-    Object.assign(unknownStatus.agents[3], { status: "installed" });
-    invalidPayloads.push(unknownStatus);
+    const unknownVariant = structuredClone(expected);
+    Object.assign(unknownVariant.agents[0], { variantId: "qoderwork-global" });
+    invalidPayloads.push(unknownVariant);
 
-    const unknownActionState = structuredClone(expected);
-    Object.assign(unknownActionState.agents[0].actions.browse, {
-      state: "enabled",
+    const unknownCapabilityMode = structuredClone(expected);
+    Object.assign(unknownCapabilityMode.agents[0].capabilities[0], {
+      mode: "available",
     });
-    invalidPayloads.push(unknownActionState);
+    invalidPayloads.push(unknownCapabilityMode);
+
+    const unknownCapability = structuredClone(expected);
+    Object.assign(unknownCapability.agents[0].capabilities[0], {
+      id: "models.execute",
+    });
+    invalidPayloads.push(unknownCapability);
+
+    const unknownReason = structuredClone(expected);
+    Object.assign(unknownReason.agents[0].capabilities[0], {
+      reasonCode: "legacy_reason",
+    });
+    invalidPayloads.push(unknownReason);
+
+    const unknownEvidence = structuredClone(expected);
+    Object.assign(unknownEvidence.agents[0].capabilities[0], {
+      evidenceIds: ["unknown_evidence"],
+    });
+    invalidPayloads.push(unknownEvidence);
+
+    const duplicateEvidence = structuredClone(expected);
+    duplicateEvidence.agents[0].capabilities[0].evidenceIds = [
+      "p0_scope",
+      "p0_scope",
+    ];
+    invalidPayloads.push(duplicateEvidence);
+
+    const extraEntryKey = structuredClone(expected);
+    Object.assign(extraEntryKey.agents[0], { status: "legacy" });
+    invalidPayloads.push(extraEntryKey);
 
     const emptyLabel = structuredClone(expected);
     emptyLabel.agents[0].officialLinks[0].label = "";
@@ -454,11 +511,189 @@ describe("V2 feature ports", () => {
     }
   });
 
+  it("uses exact runtime and Qoder Hooks IPC and rejects excess wire fields", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/v2/shared/platform/tauri/features"
+    );
+    const status = {
+      agentId: "qoderwork",
+      detected: null,
+      running: null,
+      version: null,
+      installSource: null,
+      capabilities: [
+        {
+          id: "app.detect",
+          state: "unverified",
+          reasonCode: "trusted_runtime_identity_unavailable",
+        },
+        {
+          id: "app.launch",
+          state: "unverified",
+          reasonCode: "trusted_runtime_identity_unavailable",
+        },
+      ],
+    };
+    const launch = {
+      agentId: "qoderwork",
+      destination: "hooks",
+      state: "unverified",
+      reasonCode: "trusted_runtime_identity_unavailable",
+    };
+    const snapshot: QoderWorkHooksSnapshot = {
+      revision: "opaque-revision",
+      exists: true,
+      groups: [
+        {
+          event: "PreToolUse",
+          matcher: "Bash",
+          hooks: [{ type: "command", command: "review-command", timeout: 30 }],
+        },
+      ],
+      restartRequired: true,
+      supportedStructure: true,
+    };
+    invoke
+      .mockResolvedValueOnce(status)
+      .mockResolvedValueOnce(launch)
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce({ state: "saved", snapshot });
+    const ports = createTauriFeaturePorts();
+    const request: SaveQoderWorkHooksRequest = {
+      expectedRevision: "opaque-revision",
+      groups: snapshot.groups,
+    };
+
+    await expect(ports.externalAgents.getStatus("qoderwork")).resolves.toEqual(
+      status,
+    );
+    await expect(
+      ports.externalAgents.launch("qoderwork", "hooks"),
+    ).resolves.toEqual(launch);
+    await expect(ports.qoderwork.getHooks()).resolves.toEqual(snapshot);
+    await expect(ports.qoderwork.saveHooks(request)).resolves.toEqual({
+      state: "saved",
+      snapshot,
+    });
+    expect(invoke.mock.calls).toEqual([
+      ["get_external_agent_status", { agentId: "qoderwork" }],
+      ["launch_external_agent", { agentId: "qoderwork", destination: "hooks" }],
+      ["get_qoderwork_hooks"],
+      ["save_qoderwork_hooks", { request }],
+    ]);
+
+    invoke.mockResolvedValueOnce({ ...status, executable: "QoderWork.exe" });
+    await expect(ports.externalAgents.getStatus("qoderwork")).rejects.toThrow(
+      "External agent status is unavailable",
+    );
+    invoke.mockResolvedValueOnce({
+      ...snapshot,
+      groups: [{ ...snapshot.groups[0], event: "UnknownEvent" }],
+    });
+    await expect(ports.qoderwork.getHooks()).rejects.toThrow(
+      "QoderWork Hooks are unavailable",
+    );
+  });
+
+  it("uses exact MCP and two-stage TRAE IPC while keeping validation results secret-free", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/v2/shared/platform/tauri/features"
+    );
+    const requestId = "123e4567-e89b-42d3-a456-426614174000";
+    const sentinel = "MCP-SECRET-SENTINEL-814";
+    const config = {
+      mcpServers: {
+        demo: {
+          command: "demo",
+          env: { DEMO_TOKEN: sentinel },
+        },
+      },
+    };
+    const mcpResult = {
+      agentId: "trae-work",
+      valid: true,
+      findings: [
+        {
+          serverId: "demo",
+          transport: "stdio",
+          reasonCodes: ["TRAE_MCP_SERVER_VALID"],
+          executableAvailable: true,
+          hasSecrets: true,
+        },
+      ],
+      redactedTemplate: {
+        mcpServers: {
+          demo: { command: "demo", env: { DEMO_TOKEN: "<redacted>" } },
+        },
+      },
+    };
+    const request = {
+      apiFormat: "openai_chat_completions",
+      urlMode: "base_url",
+      url: "https://gateway.example.test/v1",
+      modelId: "model-a",
+      apiKey: "short-lived-key",
+      allowNoApiKey: false,
+      allowLoopback: false,
+      allowPrivateNetwork: false,
+    } as const;
+    const validation = {
+      requestId,
+      state: "valid",
+      reasonCode: "TRAE_MODEL_CONFIG_VALID",
+      durationBucket: "lt_1s",
+      statusClass: null,
+    };
+    const probe = {
+      requestId,
+      state: "reachable",
+      reasonCode: "TRAE_ENDPOINT_REACHABLE",
+      durationBucket: "1s_to_3s",
+      statusClass: "2xx",
+    };
+    const cancel = { requestId, cancelled: true };
+    invoke
+      .mockResolvedValueOnce(mcpResult)
+      .mockResolvedValueOnce(validation)
+      .mockResolvedValueOnce(probe)
+      .mockResolvedValueOnce(cancel);
+    const ports = createTauriFeaturePorts();
+
+    const sanitized = await ports.externalMcp.validate("trae-work", config);
+    await expect(ports.traeWork.validateModelConfig(request)).resolves.toEqual(
+      validation,
+    );
+    await expect(
+      ports.traeWork.testModelEndpoint(requestId, request),
+    ).resolves.toEqual(probe);
+    await expect(
+      ports.traeWork.cancelModelEndpoint(requestId),
+    ).resolves.toEqual(cancel);
+    expect(JSON.stringify(sanitized)).not.toContain(sentinel);
+    expect(invoke.mock.calls).toEqual([
+      ["validate_external_mcp_config", { agentId: "trae-work", config }],
+      ["validate_traework_model_config", { request }],
+      ["test_traework_model_endpoint", { requestId, request }],
+      ["cancel_traework_model_endpoint", { requestId }],
+    ]);
+
+    invoke.mockResolvedValueOnce({
+      ...mcpResult,
+      redactedTemplate: config,
+    });
+    await expect(
+      ports.externalMcp.validate("trae-work", config),
+    ).rejects.toThrow("External MCP validation result is unavailable");
+
+    invoke.mockResolvedValueOnce({ ...probe, state: "future_state" });
+    await expect(
+      ports.traeWork.testModelEndpoint(requestId, request),
+    ).rejects.toThrow("TRAE endpoint result is unavailable");
+  });
+
   it("validates Codex Desktop results and uses only the exact installer IPC", async () => {
     const unlisten = vi.fn();
-    let eventHandler:
-      | ((event: { payload: unknown }) => void)
-      | undefined;
+    let eventHandler: ((event: { payload: unknown }) => void) | undefined;
     listen.mockImplementation(
       async (
         _eventName: string,
@@ -618,6 +853,11 @@ describe("V2 feature ports", () => {
         hermes: false,
       },
     };
+    const skillApps = {
+      ...server.apps,
+      qoderwork: false,
+      "trae-work": false,
+    };
     await ports.skills.getInstalled();
     await ports.skills.getBackups();
     await ports.skills.deleteBackup("backup-a");
@@ -627,7 +867,7 @@ describe("V2 feature ports", () => {
     await ports.skills.toggleApp("skill-a", "codex", true);
     await ports.skills.scanUnmanaged();
     await ports.skills.importFromApps([
-      { directory: "skill-a", apps: server.apps },
+      { directory: "skill-a", apps: skillApps },
     ]);
     await ports.skills.discover();
     await ports.skills.checkUpdates();
@@ -657,7 +897,7 @@ describe("V2 feature ports", () => {
       ["scan_unmanaged_skills"],
       [
         "import_skills_from_apps",
-        { imports: [{ directory: "skill-a", apps: server.apps }] },
+        { imports: [{ directory: "skill-a", apps: skillApps }] },
       ],
       ["discover_available_skills"],
       ["check_skill_updates"],

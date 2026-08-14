@@ -3,7 +3,7 @@ import type {
   InstalledSkill,
   McpServer,
   McpServerSpec,
-  SupportedAppId,
+  SkillTargetId,
 } from "./types";
 
 export function errorMessage(error: unknown): string {
@@ -200,7 +200,7 @@ export async function runSequentialBulk<T>(
   return { successes, failures };
 }
 
-export function supportedFoundIn(foundIn: readonly string[]): SupportedAppId[] {
+export function supportedFoundIn(foundIn: readonly string[]): SkillTargetId[] {
   const normalized = new Set(foundIn.map((value) => value.toLowerCase()));
   return [
     "claude",
@@ -209,5 +209,7 @@ export function supportedFoundIn(foundIn: readonly string[]): SupportedAppId[] {
     "grokbuild",
     "opencode",
     "hermes",
-  ].filter((id): id is SupportedAppId => normalized.has(id));
+    "qoderwork",
+    "trae-work",
+  ].filter((id): id is SkillTargetId => normalized.has(id));
 }

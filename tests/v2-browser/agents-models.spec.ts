@@ -5,6 +5,7 @@ import {
   expectNoHorizontalOverflow,
   monitorPageHealth,
   openV2Page,
+  requiredBox,
 } from "./support";
 import {
   featureFixtureCalls,
@@ -44,7 +45,7 @@ function agentItem(
   name: (typeof agentOrder)[number],
 ): Locator {
   return agentSelector(page)
-    .locator(".fy-agent-selector-item")
+    .locator(".fy-catalog-list-item")
     .filter({ has: page.getByText(name, { exact: true }) });
 }
 
@@ -70,7 +71,7 @@ test("Agent catalog keeps exact native order and accessible master-detail select
   await expect(
     page.getByRole("heading", { level: 1, name: "Agent 目录" }),
   ).toBeVisible();
-  const items = agentSelector(page).locator(".fy-agent-selector-item");
+  const items = agentSelector(page).locator(".fy-catalog-list-item");
   await expect(items).toHaveCount(5);
   expect(
     await items.evaluateAll((elements) =>
@@ -99,9 +100,11 @@ test("Agent catalog keeps exact native order and accessible master-detail select
   await expect(
     page.getByRole("region", { name: "QoderWork CN 详情" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("img", { name: "QoderWork CN 图标" }),
-  ).toBeVisible();
+  const qoderDetailArtwork = page
+    .getByRole("region", { name: "QoderWork CN 详情" })
+    .locator('[data-size="detail"] img');
+  await expect(qoderDetailArtwork).toHaveAttribute("alt", "");
+  await expect(qoderDetailArtwork).toHaveAttribute("aria-hidden", "true");
 
   await items.first().focus();
   await page.keyboard.press("Tab");
@@ -111,18 +114,153 @@ test("Agent catalog keeps exact native order and accessible master-detail select
   await expect(
     page.getByRole("region", { name: "TRAE Work 详情" }),
   ).toBeVisible();
-  const traeDetailIcon = page.getByRole("img", { name: "TRAE Work 图标" });
+  const traeDetail = page.getByRole("region", { name: "TRAE Work 详情" });
+  const traeDetailFrame = traeDetail.locator('[data-size="detail"]');
   expect(
-    await traeDetailIcon.evaluate((image: HTMLImageElement) => ({
-      naturalWidth: image.naturalWidth,
-      renderedWidth: image.getBoundingClientRect().width,
-      renderedHeight: image.getBoundingClientRect().height,
-    })),
-  ).toEqual({ naturalWidth: 48, renderedWidth: 48, renderedHeight: 48 });
+    await traeDetailFrame.evaluate((frame) => {
+      const image = frame.querySelector("img") as HTMLImageElement;
+      return {
+        naturalWidth: image.naturalWidth,
+        frameWidth: frame.getBoundingClientRect().width,
+        frameHeight: frame.getBoundingClientRect().height,
+        artworkWidth: image.getBoundingClientRect().width,
+        artworkHeight: image.getBoundingClientRect().height,
+      };
+    }),
+  ).toEqual({
+    naturalWidth: 48,
+    frameWidth: 64,
+    frameHeight: 64,
+    artworkWidth: 48,
+    artworkHeight: 48,
+  });
   await expect(items.locator('[aria-current="true"]')).toHaveCount(0);
   await expect(
     agentSelector(page).locator('[aria-current="true"]'),
   ).toHaveCount(1);
+
+  await expectNoHorizontalOverflow(page);
+  await expectHealthyPage(page, health);
+});
+
+test("Agents and Models share exact catalog geometry, stable gutters, and the 760px stack", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  const health = monitorPageHealth(page);
+  await openV2Page(page, "/agents");
+
+  const agentRail = agentSelector(page);
+  const agentRows = agentRail.locator(".fy-catalog-list-item");
+  await expect(agentRows).toHaveCount(5);
+  const agentRailBox = await requiredBox(agentRail, "Agent catalog rail");
+  const agentRowGeometry = await agentRows.evaluateAll((rows) =>
+    rows.map((row) => {
+      const frame = row.querySelector('[data-size="list"]');
+      const rowBox = row.getBoundingClientRect();
+      const frameBox = frame?.getBoundingClientRect();
+      return {
+        rowHeight: rowBox.height,
+        frameWidth: frameBox?.width ?? 0,
+        frameHeight: frameBox?.height ?? 0,
+      };
+    }),
+  );
+  const agentRowHeights = agentRowGeometry.map(({ rowHeight }) => rowHeight);
+  expect(Math.min(...agentRowHeights)).toBeGreaterThanOrEqual(56);
+  expect(
+    Math.max(...agentRowHeights) - Math.min(...agentRowHeights),
+  ).toBeLessThanOrEqual(1);
+  for (const geometry of agentRowGeometry) {
+    expect(geometry.frameWidth).toBe(36);
+    expect(geometry.frameHeight).toBe(36);
+  }
+
+  const railHeightBeforeSelection = agentRailBox.height;
+  await agentItem(page, "Codex").click();
+  const railAfterSelection = await requiredBox(
+    agentRail,
+    "selected Agent rail",
+  );
+  const detailAfterSelection = await requiredBox(
+    page.getByRole("region", { name: "Codex 详情" }),
+    "Codex detail",
+  );
+  expect(
+    Math.abs(railAfterSelection.height - railHeightBeforeSelection),
+  ).toBeLessThanOrEqual(1);
+  expect(detailAfterSelection.height).toBeGreaterThan(
+    railAfterSelection.height,
+  );
+
+  await openV2Page(page, "/models");
+  const modelRail = page.getByRole("complementary", {
+    name: "模型配置目标",
+  });
+  const modelRows = modelRail.locator(".fy-catalog-list-item");
+  await expect(modelRows).toHaveCount(5);
+  const modelRailBox = await requiredBox(modelRail, "Models catalog rail");
+  expect(Math.abs(modelRailBox.x - agentRailBox.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(modelRailBox.width - agentRailBox.width)).toBeLessThanOrEqual(
+    1,
+  );
+  expect(
+    await page
+      .getByTestId("content-viewport")
+      .evaluate((viewport) => getComputedStyle(viewport).scrollbarGutter),
+  ).toContain("stable");
+
+  const modelRowGeometry = await modelRows.evaluateAll((rows) =>
+    rows.map((row) => {
+      const frame = row.querySelector('[data-size="list"]');
+      const rowBox = row.getBoundingClientRect();
+      const frameBox = frame?.getBoundingClientRect();
+      return {
+        rowHeight: rowBox.height,
+        frameWidth: frameBox?.width ?? 0,
+        frameHeight: frameBox?.height ?? 0,
+      };
+    }),
+  );
+  expect(modelRowGeometry).toEqual(agentRowGeometry);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(
+    await modelRows.first().evaluate((row) => {
+      const style = getComputedStyle(row);
+      return {
+        animationDuration: style.animationDuration,
+        transitionDuration: style.transitionDuration,
+      };
+    }),
+  ).toEqual({ animationDuration: "0s", transitionDuration: "0s" });
+
+  await page.setViewportSize({ width: 760, height: 900 });
+  await openV2Page(page, "/models");
+  const stackedRail = page.getByRole("complementary", {
+    name: "模型配置目标",
+  });
+  const stackedDetail = page.getByRole("region", {
+    name: "QoderWork CN 模型与能力入口",
+  });
+  const stackedRailBox = await requiredBox(stackedRail, "760px rail");
+  const stackedDetailBox = await requiredBox(stackedDetail, "760px detail");
+  expect(Math.abs(stackedRailBox.x - stackedDetailBox.x)).toBeLessThanOrEqual(
+    1,
+  );
+  expect(stackedDetailBox.y).toBeGreaterThan(stackedRailBox.y);
+
+  await page.setViewportSize({ width: 761, height: 900 });
+  await openV2Page(page, "/models");
+  const splitRailBox = await requiredBox(
+    page.getByRole("complementary", { name: "模型配置目标" }),
+    "761px rail",
+  );
+  const splitDetailBox = await requiredBox(
+    page.getByRole("region", { name: "QoderWork CN 模型与能力入口" }),
+    "761px detail",
+  );
+  expect(splitDetailBox.x).toBeGreaterThan(splitRailBox.x + splitRailBox.width);
 
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);
@@ -138,14 +276,15 @@ test("Agent catalog links invoke exact official URLs and Codex has no external a
   const qoderDetail = page.getByRole("region", {
     name: "QoderWork CN 详情",
   });
-  await expect(qoderDetail.getByRole("button")).toHaveCount(1);
   await qoderDetail
     .getByRole("button", { name: "打开 QoderWork 官方页面" })
     .click();
 
   await agentItem(page, "TRAE Work").click();
   const traeDetail = page.getByRole("region", { name: "TRAE Work 详情" });
-  await expect(traeDetail.getByRole("button")).toHaveCount(1);
+  await expect(
+    traeDetail.getByRole("button", { name: "启动应用" }),
+  ).toHaveCount(0);
   await traeDetail
     .getByRole("button", { name: "打开 TRAE Work 官方页面" })
     .click();
@@ -407,7 +546,7 @@ test("Agent catalog failure stays explicit and never falls back to a static supp
   await expectHealthyPage(page, health);
 });
 
-test("Models keeps the five exact targets and third-party notes transient", async ({
+test("Models keeps five targets and runs only the bounded TRAE preflight", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
@@ -457,22 +596,36 @@ test("Models keeps the five exact targets and third-party notes transient", asyn
     "true",
   );
   await expect(
-    page.getByRole("region", { name: "QoderWork CN 官方辅助设置" }),
+    page.getByRole("region", { name: "QoderWork CN 模型与能力入口" }),
   ).toBeVisible();
 
   await page.getByTestId("model-target-qoderwork").click();
-  await page.getByLabel("端点备注").fill("https://transient.example.test/v1");
-  await page.getByLabel("模型备注").fill("transient-qoder-model");
-  await expect(modelPage).toContainText("FyAgent 不会写入这些值");
+  await expect(page.getByLabel("端点备注")).toHaveCount(0);
+  await expect(page.getByLabel("模型备注")).toHaveCount(0);
+  await expect(modelPage).toContainText("厂商内置模型");
   await page.getByRole("button", { name: "打开官方设置" }).click();
   await page.getByTestId("model-target-trae").click();
-  await page.getByLabel("端点备注").fill("transient-trae-endpoint");
-  await page.getByLabel("模型备注").fill("transient-trae-model");
-  await page.getByRole("button", { name: "打开官方设置" }).click();
+  const apiKey = "browser-trae-secret-sentinel";
+  await page
+    .getByRole("textbox", { name: "Base URL" })
+    .fill("https://gateway.example.test/v1");
+  await page.getByLabel("模型 ID").fill("fixture-model");
+  await page.getByRole("textbox", { name: "API Key" }).fill(apiKey);
+  await page.getByRole("checkbox", { name: "同意发起一次网络预检" }).click();
+  await page.getByRole("button", { name: "验证并测试连接" }).click();
+  await expect(page.getByText("FyAgent 本次连接预检可达")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "API Key" })).toHaveValue("");
+  await expect(page.locator("body")).not.toContainText(apiKey);
+  await page.getByRole("button", { name: "打开 TRAE 官方模型设置" }).click();
   await page.getByTestId("model-target-qoderwork").click();
-  await expect(page.getByLabel("端点备注")).toHaveValue("");
-  await expect(page.getByLabel("模型备注")).toHaveValue("");
   await expect(modelPage).not.toContainText("配置成功");
+  expect(page.url()).not.toContain(apiKey);
+  const secretSurfaces = await page.evaluate(() => ({
+    hash: location.hash,
+    localStorage: JSON.stringify(localStorage),
+    sessionStorage: JSON.stringify(sessionStorage),
+  }));
+  expect(Object.values(secretSurfaces).join("\n")).not.toContain(apiKey);
 
   const calls = await featureFixtureCalls(page);
   expect(calls.filter((call) => call.command === "open_external")).toEqual([
@@ -485,6 +638,12 @@ test("Models keeps the five exact targets and third-party notes transient", asyn
       payload: { url: "https://work.trae.cn/" },
     },
   ]);
+  expect(
+    calls.filter((call) => call.command === "validate_traework_model_config"),
+  ).toHaveLength(1);
+  expect(
+    calls.filter((call) => call.command === "test_traework_model_endpoint"),
+  ).toHaveLength(1);
   expect(
     calls.filter((call) =>
       [

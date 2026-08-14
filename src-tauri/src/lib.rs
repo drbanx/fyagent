@@ -1607,6 +1607,8 @@ pub fn run() {
             // 初始化 SkillService
             let skill_service = SkillService::new();
             app.manage(commands::skill::SkillServiceState(Arc::new(skill_service)));
+            app.manage(services::qoderwork::QoderHooksState::new());
+            app.manage(services::traework::TraeEndpointProbeState::default());
 
             // 初始化 CopilotAuthManager
             {
@@ -1811,6 +1813,14 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_agent_catalog,
+            commands::get_external_agent_status,
+            commands::launch_external_agent,
+            commands::get_qoderwork_hooks,
+            commands::save_qoderwork_hooks,
+            commands::validate_traework_model_config,
+            commands::test_traework_model_endpoint,
+            commands::cancel_traework_model_endpoint,
+            commands::validate_external_mcp_config,
             commands::get_providers,
             commands::get_current_provider,
             commands::get_provider_summary,

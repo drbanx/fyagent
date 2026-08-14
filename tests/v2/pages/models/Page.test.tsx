@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -26,20 +32,32 @@ function renderPage(ports: FeaturePorts, target?: string) {
 }
 
 function catalog(): AgentCatalogResult {
-  const capability = {
-    state: "assisted" as const,
-    reason: "测试仅允许打开官方入口。",
-  };
-  const browseCapability = {
-    state: "available" as const,
-    reason: "测试允许打开官方入口。",
-  };
+  const capabilities: AgentCatalogResult["agents"][number]["capabilities"] = [
+    "product.open",
+    "app.detect",
+    "app.launch",
+    "skills.read",
+    "skills.write",
+    "hooks.read",
+    "hooks.write",
+    "models.validate",
+    "models.write",
+    "mcp.validate",
+    "mcp.write",
+  ].map((id) => ({
+    id: id as AgentCatalogResult["agents"][number]["capabilities"][number]["id"],
+    mode: id === "product.open" ? "direct" : "assisted",
+    reasonCode:
+      id === "product.open" ? "official_link_reviewed" : "vendor_ui_required",
+    evidenceIds: ["p0_scope"],
+  }));
   return {
-    contractVersion: 2,
+    contractVersion: 3,
     reviewedAt: "2026-08-14",
     agents: [
       {
         id: "qoderwork",
+        variantId: "qoderwork-cn",
         displayName: "QoderWork CN",
         description: "QoderWork CN 官方辅助设置",
         officialLinks: [
@@ -49,17 +67,11 @@ function catalog(): AgentCatalogResult {
             url: "https://qoder.com.cn/qoderwork",
           },
         ],
-        status: "pending_verification",
-        actions: {
-          browse: browseCapability,
-          observe: capability,
-          install: capability,
-          configure: capability,
-        },
-        evidenceLabel: "测试目录合同",
+        capabilities,
       },
       {
         id: "trae-work",
+        variantId: "trae-work-cn",
         displayName: "TRAE Work",
         description: "TRAE Work 官方辅助设置",
         officialLinks: [
@@ -74,14 +86,7 @@ function catalog(): AgentCatalogResult {
             url: "https://work.trae.cn/",
           },
         ],
-        status: "pending_verification",
-        actions: {
-          browse: browseCapability,
-          observe: capability,
-          install: capability,
-          configure: capability,
-        },
-        evidenceLabel: "测试目录合同",
+        capabilities,
       },
     ],
   };
@@ -118,8 +123,8 @@ describe("V2 Models page", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN官方辅助设置",
-      "TRAE Work官方辅助设置",
+      "QoderWork CN内置模型 / Hooks / MCP",
+      "TRAE Work模型连接预检",
       "WorkBuddy专用模型配置",
       "CodexProvider 快速配置",
       "Claude CodeProvider 快速配置",
@@ -137,13 +142,14 @@ describe("V2 Models page", () => {
       expect(icon).toHaveAttribute("src", expectedIcons[index]);
       expect(icon).toHaveAttribute("alt", "");
       expect(icon).toHaveAttribute("aria-hidden", "true");
+      expect(button.querySelector('[data-size="list"]')).toBeInTheDocument();
     });
     expect(screen.getByTestId("model-target-qoderwork")).toHaveAttribute(
       "aria-current",
       "true",
     );
     expect(
-      screen.getByRole("region", { name: "QoderWork CN 官方辅助设置" }),
+      screen.getByRole("region", { name: "QoderWork CN 模型与能力入口" }),
     ).toBeVisible();
   });
 
@@ -155,7 +161,7 @@ describe("V2 Models page", () => {
     renderPage(ports, "trae");
 
     await user.click(
-      await screen.findByRole("button", { name: "打开官方设置" }),
+      await screen.findByRole("button", { name: "打开 TRAE 官方模型设置" }),
     );
     expect(ports.settings.openExternal).toHaveBeenCalledWith(
       "https://work.trae.cn/",
@@ -163,6 +169,143 @@ describe("V2 Models page", () => {
     expect(ports.settings.openExternal).not.toHaveBeenCalledWith(
       "https://ignored.example.test/trae",
     );
+  });
+
+  it("requires explicit consent, validates first, probes once, and clears the TRAE key", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.catalog.get = vi.fn(async () => catalog());
+    const requestId = "123e4567-e89b-42d3-a456-426614174000";
+    const secret = "TRAE-UI-SECRET-SENTINEL-814";
+    ports.traeWork.validateModelConfig = vi.fn<
+      FeaturePorts["traeWork"]["validateModelConfig"]
+    >(async () => ({
+      requestId,
+      state: "valid",
+      reasonCode: "TRAE_MODEL_CONFIG_VALID",
+      durationBucket: "lt_1s",
+      statusClass: null,
+    }));
+    ports.traeWork.testModelEndpoint = vi.fn<
+      FeaturePorts["traeWork"]["testModelEndpoint"]
+    >(async () => ({
+      requestId,
+      state: "reachable",
+      reasonCode: "TRAE_ENDPOINT_REACHABLE",
+      durationBucket: "1s_to_3s",
+      statusClass: "2xx",
+    }));
+    ports.traeWork.cancelModelEndpoint = vi.fn();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    localStorage.clear();
+    sessionStorage.clear();
+    renderPage(ports, "trae");
+
+    await user.type(
+      await screen.findByLabelText("Base URL"),
+      "https://gateway.example.test/v1",
+    );
+    await user.type(screen.getByLabelText("模型 ID"), "model-a");
+    await user.type(screen.getByLabelText("API Key"), secret);
+    await user.click(
+      screen.getByRole("checkbox", { name: "同意发起一次网络预检" }),
+    );
+    await user.click(screen.getByRole("button", { name: "验证并测试连接" }));
+
+    const request = {
+      apiFormat: "openai_chat_completions",
+      urlMode: "base_url",
+      url: "https://gateway.example.test/v1",
+      modelId: "model-a",
+      apiKey: secret,
+      allowNoApiKey: false,
+      allowLoopback: false,
+      allowPrivateNetwork: false,
+    } as const;
+    await waitFor(() =>
+      expect(ports.traeWork.validateModelConfig).toHaveBeenCalledWith(request),
+    );
+    expect(ports.traeWork.testModelEndpoint).toHaveBeenCalledWith(
+      requestId,
+      request,
+    );
+    expect(await screen.findByText("FyAgent 本次连接预检可达")).toBeVisible();
+    expect(screen.getByText(/不表示 TRAE 已保存配置/)).toBeVisible();
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(document.body.innerHTML).not.toContain(secret);
+    expect(window.location.hash).not.toContain(secret);
+    expect(JSON.stringify(localStorage)).not.toContain(secret);
+    expect(JSON.stringify(sessionStorage)).not.toContain(secret);
+    expect(JSON.stringify(logSpy.mock.calls)).not.toContain(secret);
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(secret);
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("cancels an active TRAE probe and clears its key before terminal completion", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.catalog.get = vi.fn(async () => catalog());
+    const requestId = "123e4567-e89b-42d3-a456-426614174000";
+    ports.traeWork.validateModelConfig = vi.fn<
+      FeaturePorts["traeWork"]["validateModelConfig"]
+    >(async () => ({
+      requestId,
+      state: "valid",
+      reasonCode: "TRAE_MODEL_CONFIG_VALID",
+      durationBucket: "lt_1s",
+      statusClass: null,
+    }));
+    let finishProbe!: (result: {
+      requestId: string;
+      state: "cancelled";
+      reasonCode: "TRAE_ENDPOINT_CANCELLED";
+      durationBucket: "lt_1s";
+      statusClass: null;
+    }) => void;
+    ports.traeWork.testModelEndpoint = vi.fn<
+      FeaturePorts["traeWork"]["testModelEndpoint"]
+    >(
+      () =>
+        new Promise((resolve) => {
+          finishProbe = resolve;
+        }),
+    );
+    ports.traeWork.cancelModelEndpoint = vi.fn(async () => ({
+      requestId,
+      cancelled: true,
+    }));
+    renderPage(ports, "trae");
+
+    await user.type(
+      await screen.findByLabelText("Base URL"),
+      "https://gateway.example.test/v1",
+    );
+    await user.type(screen.getByLabelText("模型 ID"), "model-a");
+    await user.type(screen.getByLabelText("API Key"), "cancel-secret");
+    await user.click(
+      screen.getByRole("checkbox", { name: "同意发起一次网络预检" }),
+    );
+    await user.click(screen.getByRole("button", { name: "验证并测试连接" }));
+    await waitFor(() =>
+      expect(ports.traeWork.testModelEndpoint).toHaveBeenCalledTimes(1),
+    );
+    await user.click(screen.getByRole("button", { name: "取消预检" }));
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(ports.traeWork.cancelModelEndpoint).toHaveBeenCalledWith(requestId);
+
+    finishProbe({
+      requestId,
+      state: "cancelled",
+      reasonCode: "TRAE_ENDPOINT_CANCELLED",
+      durationBucket: "lt_1s",
+      statusClass: null,
+    });
+    expect(await screen.findByText("连接预检已取消")).toBeVisible();
+    expect(document.body.innerHTML).not.toContain("cancel-secret");
   });
 
   it("freezes the WorkBuddy overwrite request, rereads authority, and clears credentials", async () => {
@@ -667,23 +810,25 @@ describe("V2 Models page", () => {
     expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
 
-  it("clears credentials and third-party notes whenever their target unmounts", async () => {
+  it("removes placeholder notes and clears the TRAE key whenever its target unmounts", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
     ports.catalog.get = vi.fn(async () => catalog());
-    renderPage(ports, "workbuddy");
+    const view = renderPage(ports, "trae");
 
-    await screen.findByText("已发现配置文件");
-    await user.type(screen.getByLabelText("API Key"), "target-only-secret");
+    await screen.findByRole("region", { name: "TRAE Work 模型连接预检" });
+    const keyInput = screen.getByLabelText("API Key");
+    expect(keyInput).toHaveAttribute("type", "password");
+    await user.type(keyInput, "target-only-secret");
+
     await user.click(screen.getByTestId("model-target-qoderwork"));
-    await screen.findByRole("heading", { name: "QoderWork CN" });
-    await user.type(screen.getByLabelText("端点备注"), "transient-endpoint");
-    await user.type(screen.getByLabelText("模型备注"), "transient-model");
+    expect(document.body).not.toHaveTextContent("target-only-secret");
+    expect(screen.queryByLabelText("端点备注")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("模型备注")).not.toBeInTheDocument();
 
-    await user.click(screen.getByTestId("model-target-workbuddy"));
+    await user.click(screen.getByTestId("model-target-trae"));
     expect(await screen.findByLabelText("API Key")).toHaveValue("");
-    await user.click(screen.getByTestId("model-target-qoderwork"));
-    expect(await screen.findByLabelText("端点备注")).toHaveValue("");
-    expect(screen.getByLabelText("模型备注")).toHaveValue("");
+    view.unmount();
+    expect(document.body).not.toHaveTextContent("target-only-secret");
   });
 });

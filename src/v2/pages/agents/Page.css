@@ -1,107 +1,3 @@
-.fy-agent-layout {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.7fr);
-  align-items: start;
-  gap: 14px;
-  min-width: 0;
-}
-
-.fy-agent-catalog,
-.fy-agent-detail {
-  min-width: 0;
-}
-
-.fy-agent-catalog-heading {
-  display: grid;
-  gap: 4px;
-}
-
-.fy-agent-catalog-heading span {
-  color: var(--fy-text-secondary);
-  font-size: 12px;
-}
-
-.fy-agent-selector {
-  display: grid;
-  gap: 7px;
-  margin-top: 14px;
-}
-
-.fy-agent-selector-item {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-width: 0;
-  min-height: 58px;
-  padding: 9px 11px;
-  border: 1px solid transparent;
-  border-radius: 11px;
-  color: var(--fy-text);
-  text-align: left;
-  background: transparent;
-  cursor: pointer;
-  transition:
-    border-color 130ms ease-out,
-    background-color 130ms ease-out,
-    transform 130ms ease-out;
-}
-
-.fy-agent-selector-item:hover:not(:disabled) {
-  background: rgba(229, 246, 255, 0.1);
-}
-
-.fy-agent-selector-item:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.fy-agent-selector-item[aria-current="true"] {
-  border-color: var(--fy-selected-border);
-  background: var(--fy-selected);
-}
-
-.fy-agent-selector-item:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-.fy-agent-selector-icon,
-.fy-agent-detail-icon {
-  display: block;
-  object-fit: contain;
-}
-
-.fy-agent-selector-icon {
-  width: 34px;
-  height: 34px;
-  padding: 3px;
-  border-radius: 9px;
-}
-
-.fy-agent-selector-copy {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.fy-agent-selector-copy strong,
-.fy-agent-selector-copy span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.fy-agent-selector-copy span {
-  color: var(--fy-text-secondary);
-  font-size: 11px;
-}
-
-.fy-agent-selector-state {
-  color: var(--fy-text-tertiary);
-  font-size: 10px;
-}
-
 .fy-agent-detail {
   display: grid;
   align-content: start;
@@ -113,19 +9,6 @@
   grid-template-columns: 64px minmax(0, 1fr);
   align-items: center;
   gap: 14px;
-}
-
-.fy-agent-detail-icon {
-  width: 62px;
-  height: 62px;
-  padding: 6px;
-  border-radius: 16px;
-}
-
-.fy-agent-detail-icon-native-size {
-  width: 48px;
-  height: 48px;
-  margin: 7px;
 }
 
 .fy-agent-identity-copy {
@@ -156,6 +39,26 @@
 .fy-agent-section h3 {
   margin: 0;
   font-size: 14px;
+}
+
+.fy-agent-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.fy-agent-section-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.fy-agent-section-heading p {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .fy-agent-capabilities {
@@ -358,51 +261,109 @@
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 760px) {
-  .fy-agent-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.fy-agent-hooks-editor,
+.fy-agent-hook-group,
+.fy-agent-hooks-preview,
+.fy-agent-mcp-result {
+  display: grid;
+  gap: 10px;
+}
 
-  .fy-agent-selector {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.fy-agent-hook-group {
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(226, 243, 255, 0.05);
+}
 
-  .fy-agent-selector > :last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
+.fy-agent-hook-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fy-agent-hook-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 0.28fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.fy-agent-hook-timeout {
+  min-width: 0;
+}
+
+.fy-agent-hooks-preview > div {
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(9, 29, 48, 0.16);
+}
+
+.fy-agent-hooks-preview span {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-agent-hooks-preview ul,
+.fy-agent-mcp-result ul {
+  margin: 7px 0 0;
+  padding-left: 19px;
+}
+
+.fy-agent-mcp-textarea {
+  min-height: 150px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  line-height: 1.5;
+}
+
+.fy-agent-mcp-result {
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(226, 243, 255, 0.05);
+}
+
+.fy-agent-mcp-result > ul {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+}
+
+.fy-agent-mcp-result li > span {
+  display: block;
+  margin-top: 3px;
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-agent-mcp-result pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 9px;
+  background: rgba(9, 29, 48, 0.2);
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 520px) {
-  .fy-agent-selector,
   .fy-agent-capabilities,
   .fy-agent-observation-grid,
   .fy-codex-installer-versions {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .fy-agent-selector > :last-child:nth-child(odd) {
-    grid-column: auto;
-  }
-
-  .fy-agent-identity {
-    grid-template-columns: 52px minmax(0, 1fr);
-  }
-
-  .fy-agent-detail-icon {
-    width: 50px;
-    height: 50px;
-    border-radius: 13px;
-  }
-
-  .fy-agent-detail-icon-native-size {
-    width: 48px;
-    height: 48px;
-    margin: 1px;
+  .fy-agent-hook-grid,
+  .fy-agent-hook-command-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fy-agent-selector-item,
   .fy-codex-installer-progress-track span {
     transition: none;
   }

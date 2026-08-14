@@ -23,13 +23,13 @@ import {
   useUnmanagedSkills,
 } from "../../shared/features/queries";
 import {
-  createAssignments,
-  SUPPORTED_APPS,
+  createSkillAssignments,
+  SKILL_TARGETS,
   type DiscoverableSkill,
   type InstalledSkill,
   type SkillBackupEntry,
   type SkillRepo,
-  type SupportedAppId,
+  type SkillTargetId,
 } from "../../shared/features/types";
 import {
   Badge,
@@ -74,7 +74,7 @@ function Detail({
   skill: InstalledSkill;
   update?: { remoteHash: string };
   busy: boolean;
-  onToggle: (app: SupportedAppId, enabled: boolean) => void;
+  onToggle: (app: SkillTargetId, enabled: boolean) => void;
   onUpdate: () => void;
   onUninstall: () => void;
   onOpen: (url: string) => void;
@@ -142,6 +142,7 @@ function Detail({
             disabled={busy}
             labelSuffix="Skill 分配"
             onToggle={onToggle}
+            targets={SKILL_TARGETS}
           />
         </div>
       )}
@@ -237,7 +238,7 @@ export function SkillsPage() {
   };
   const toggle = (
     skill: InstalledSkill,
-    app: SupportedAppId,
+    app: SkillTargetId,
     enabled: boolean,
   ) =>
     write("分配已更新", async () => {
@@ -272,7 +273,7 @@ export function SkillsPage() {
           `${result.failures.length} 项失败，${result.successes.length} 项成功`,
         );
     });
-  const bulkAssign = (app: SupportedAppId, enabled: boolean) =>
+  const bulkAssign = (app: SkillTargetId, enabled: boolean) =>
     write("批量分配完成", async () => {
       const ids = installed
         .filter((skill) => Boolean(skill.apps[app]) !== enabled)
@@ -517,10 +518,11 @@ export function SkillsPage() {
                         onToggle={(app, enabled) =>
                           toggle(selected, app, enabled)
                         }
+                        targets={SKILL_TARGETS}
                       />
                       <hr />
                       <h3>全量分配</h3>
-                      {SUPPORTED_APPS.map((app) => (
+                      {SKILL_TARGETS.map((app) => (
                         <div key={app.id} className="fy-feature-assignment">
                           <span>{app.label}</span>
                           <span>
@@ -623,8 +625,8 @@ function Discovery({
   setDialog,
   onInstall,
 }: {
-  installTarget: SupportedAppId;
-  setInstallTarget: (app: SupportedAppId) => void;
+  installTarget: SkillTargetId;
+  setInstallTarget: (app: SkillTargetId) => void;
   busy: boolean;
   setDialog: (name: DialogName) => void;
   onInstall: (skill: DiscoverableSkill) => Promise<void>;
@@ -684,10 +686,10 @@ function Discovery({
           aria-label="安装目标"
           value={installTarget}
           onChange={(event) =>
-            setInstallTarget(event.target.value as SupportedAppId)
+            setInstallTarget(event.target.value as SkillTargetId)
           }
         >
-          {SUPPORTED_APPS.map((app) => (
+          {SKILL_TARGETS.map((app) => (
             <option key={app.id} value={app.id}>
               安装到 {app.label}
             </option>
@@ -892,7 +894,7 @@ function Discovery({
                   >
                     {isInstalled
                       ? "已安装"
-                      : `安装到 ${SUPPORTED_APPS.find((app) => app.id === installTarget)?.label}`}
+                      : `安装到 ${SKILL_TARGETS.find((app) => app.id === installTarget)?.label}`}
                   </Button>
                 </footer>
               </article>
@@ -932,7 +934,7 @@ function AuxiliaryDialogs({
 }: {
   name: DialogName;
   close: () => void;
-  installTarget: SupportedAppId;
+  installTarget: SkillTargetId;
   busy: boolean;
   write: (title: string, operation: () => Promise<void>) => Promise<void>;
   setConfirm: (
@@ -955,7 +957,7 @@ function AuxiliaryDialogs({
     "auto" | "symlink" | "copy" | null
   >(null);
   const [importApps, setImportApps] = useState<
-    Record<string, ReturnType<typeof createAssignments>>
+    Record<string, ReturnType<typeof createSkillAssignments>>
   >({});
   const [migrationTarget, setMigrationTarget] = useState<
     "fyagent" | "unified" | null
@@ -1008,7 +1010,9 @@ function AuxiliaryDialogs({
                         directory: skill.directory,
                         apps:
                           importApps[skill.directory] ??
-                          createAssignments(supportedFoundIn(skill.foundIn)),
+                          createSkillAssignments(
+                            supportedFoundIn(skill.foundIn),
+                          ),
                       })),
                   );
                   close();
@@ -1055,22 +1059,22 @@ function AuxiliaryDialogs({
                 </label>
                 <p>{skill.path}</p>
                 <div className="fy-feature-check-grid">
-                  {SUPPORTED_APPS.map((app) => (
+                  {SKILL_TARGETS.map((app) => (
                     <label key={app.id} className="fy-feature-check">
                       <Checkbox
                         label={`${skill.name} 分配到 ${app.label}`}
                         checked={Boolean(
                           (importApps[skill.directory] ??
-                            createAssignments(supportedFoundIn(skill.foundIn)))[
-                            app.id
-                          ],
+                            createSkillAssignments(
+                              supportedFoundIn(skill.foundIn),
+                            ))[app.id],
                         )}
                         onCheckedChange={(checked) =>
                           setImportApps((current) => ({
                             ...current,
                             [skill.directory]: {
                               ...(current[skill.directory] ??
-                                createAssignments(
+                                createSkillAssignments(
                                   supportedFoundIn(skill.foundIn),
                                 )),
                               [app.id]: checked,
@@ -1094,7 +1098,7 @@ function AuxiliaryDialogs({
       <Dialog
         open
         title="备份恢复"
-        description={`恢复时安装到 ${SUPPORTED_APPS.find((app) => app.id === installTarget)?.label}`}
+        description={`恢复时安装到 ${SKILL_TARGETS.find((app) => app.id === installTarget)?.label}`}
         onOpenChange={(open) => !open && !busy && close()}
         actions={
           <Button onClick={close} disabled={busy}>

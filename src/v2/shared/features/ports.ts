@@ -6,6 +6,7 @@ import type {
 
 import type {
   AgentCatalogResult,
+  AgentCatalogId,
   DiscoverableSkill,
   FeatureSettings,
   ImportSkillSelection,
@@ -17,7 +18,8 @@ import type {
   SkillRepo,
   SkillsShSearchResult,
   SkillUpdateInfo,
-  SupportedAppId,
+  McpTargetId,
+  SkillTargetId,
   UnmanagedSkill,
   ProviderAppId,
   ProviderQuickSetupRequest,
@@ -30,10 +32,55 @@ import type {
   WorkBuddySaveModelsRequest,
   WorkBuddySaveModelsResult,
   WorkBuddyStatus,
+  ExternalAgentLaunchDestination,
+  ExternalAgentLaunchResult,
+  ExternalAgentRuntimeStatus,
+  QoderWorkHooksSnapshot,
+  SaveQoderWorkHooksRequest,
+  SaveQoderWorkHooksResult,
+  ExternalMcpAgentId,
+  ExternalMcpValidationResult,
+  TraeWorkModelRequest,
+  TraeModelValidationResult,
+  TraeModelProbeResult,
+  CancelTraeModelProbeResult,
 } from "./types";
 
 export interface AgentCatalogPort {
   get(): Promise<AgentCatalogResult>;
+}
+
+export interface ExternalAgentsPort {
+  getStatus(agentId: AgentCatalogId): Promise<ExternalAgentRuntimeStatus>;
+  launch(
+    agentId: AgentCatalogId,
+    destination: ExternalAgentLaunchDestination,
+  ): Promise<ExternalAgentLaunchResult>;
+}
+
+export interface QoderWorkPort {
+  getHooks(): Promise<QoderWorkHooksSnapshot>;
+  saveHooks(
+    request: SaveQoderWorkHooksRequest,
+  ): Promise<SaveQoderWorkHooksResult>;
+}
+
+export interface ExternalMcpPort {
+  validate(
+    agentId: ExternalMcpAgentId,
+    config: Record<string, unknown>,
+  ): Promise<ExternalMcpValidationResult>;
+}
+
+export interface TraeWorkPort {
+  validateModelConfig(
+    request: TraeWorkModelRequest,
+  ): Promise<TraeModelValidationResult>;
+  testModelEndpoint(
+    requestId: string,
+    request: TraeWorkModelRequest,
+  ): Promise<TraeModelProbeResult>;
+  cancelModelEndpoint(requestId: string): Promise<CancelTraeModelProbeResult>;
 }
 
 export interface CodexDesktopPort {
@@ -74,18 +121,14 @@ export interface SkillsPort {
   deleteBackup(backupId: string): Promise<boolean>;
   install(
     skill: DiscoverableSkill,
-    currentApp: SupportedAppId,
+    currentApp: SkillTargetId,
   ): Promise<InstalledSkill>;
   uninstall(id: string): Promise<{ backupPath?: string }>;
   restoreBackup(
     backupId: string,
-    currentApp: SupportedAppId,
+    currentApp: SkillTargetId,
   ): Promise<InstalledSkill>;
-  toggleApp(
-    id: string,
-    app: SupportedAppId,
-    enabled: boolean,
-  ): Promise<boolean>;
+  toggleApp(id: string, app: SkillTargetId, enabled: boolean): Promise<boolean>;
   scanUnmanaged(): Promise<UnmanagedSkill[]>;
   importFromApps(imports: ImportSkillSelection[]): Promise<InstalledSkill[]>;
   discover(): Promise<DiscoverableSkill[]>;
@@ -103,7 +146,7 @@ export interface SkillsPort {
   pickZip(): Promise<string | null>;
   installFromZip(
     filePath: string,
-    currentApp: SupportedAppId,
+    currentApp: SkillTargetId,
   ): Promise<InstalledSkill[]>;
 }
 
@@ -113,7 +156,7 @@ export interface McpPort {
   delete(id: string): Promise<boolean>;
   toggleApp(
     serverId: string,
-    app: SupportedAppId,
+    app: McpTargetId,
     enabled: boolean,
   ): Promise<void>;
   importFromApps(): Promise<number>;
@@ -127,6 +170,10 @@ export interface SettingsPort {
 
 export interface FeaturePorts {
   catalog: AgentCatalogPort;
+  externalAgents: ExternalAgentsPort;
+  qoderwork: QoderWorkPort;
+  externalMcp: ExternalMcpPort;
+  traeWork: TraeWorkPort;
   codexDesktop: CodexDesktopPort;
   providers: ProvidersPort;
   workbuddy: WorkBuddyPort;

@@ -14,6 +14,45 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     catalog: {
       get: rejectNativeOnly,
     },
+    externalAgents: {
+      getStatus: async (agentId) => ({
+        agentId,
+        detected: null,
+        running: null,
+        version: null,
+        installSource: null,
+        capabilities: [
+          {
+            id: "app.detect",
+            state: "unverified",
+            reasonCode: "trusted_runtime_identity_unavailable",
+          },
+          {
+            id: "app.launch",
+            state: "unverified",
+            reasonCode: "trusted_runtime_identity_unavailable",
+          },
+        ],
+      }),
+      launch: async (agentId, destination) => ({
+        agentId,
+        destination,
+        state: "unverified",
+        reasonCode: "trusted_runtime_identity_unavailable",
+      }),
+    },
+    qoderwork: {
+      getHooks: rejectNativeOnly,
+      saveHooks: rejectNativeOnly,
+    },
+    externalMcp: {
+      validate: rejectNativeOnly,
+    },
+    traeWork: {
+      validateModelConfig: rejectNativeOnly,
+      testModelEndpoint: rejectNativeOnly,
+      cancelModelEndpoint: rejectNativeOnly,
+    },
     codexDesktop: {
       getLocalStatus: rejectNativeOnly,
       checkLatest: rejectNativeOnly,

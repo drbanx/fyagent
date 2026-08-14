@@ -2,83 +2,9 @@
   gap: 16px;
 }
 
-.fy-models-layout {
-  display: grid;
-  grid-template-columns: minmax(190px, 0.58fr) minmax(0, 1.82fr);
-  gap: 14px;
-  min-width: 0;
-}
-
-.fy-models-target-panel,
-.fy-models-config-panel {
-  min-width: 0;
-  padding: 15px;
-  border: 1px solid var(--fy-border);
-  border-radius: 15px;
-  background: var(--fy-surface-soft);
-}
-
-.fy-models-target-panel h2,
 .fy-models-config-panel h2,
 .fy-models-config-panel h3 {
   margin: 0;
-}
-
-.fy-models-target-list {
-  display: grid;
-  gap: 7px;
-  margin-top: 12px;
-}
-
-.fy-models-target {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  align-items: center;
-  column-gap: 10px;
-  width: 100%;
-  min-width: 0;
-  min-height: 52px;
-  padding: 10px 11px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: var(--fy-text);
-  text-align: left;
-  background: transparent;
-  cursor: pointer;
-}
-
-.fy-models-target-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  object-fit: contain;
-}
-
-.fy-models-target-copy {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.fy-models-target:hover {
-  background: rgba(229, 246, 255, 0.1);
-}
-
-.fy-models-target[aria-current="true"] {
-  border-color: var(--fy-selected-border);
-  background: var(--fy-selected);
-}
-
-.fy-models-target-copy strong,
-.fy-models-target-copy > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.fy-models-target-copy > span {
-  color: var(--fy-text-secondary);
-  font-size: 11px;
 }
 
 .fy-models-config-panel {
@@ -193,39 +119,28 @@
   padding-left: 18px;
 }
 
-.fy-models-guidance-fields {
+.fy-models-consent-list {
   display: grid;
-  gap: 12px;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--fy-border);
+  border-radius: 11px;
+  background: rgba(16, 40, 64, 0.18);
 }
 
 @media (max-width: 900px) {
-  .fy-models-layout {
-    grid-template-columns: minmax(170px, 0.54fr) minmax(0, 1.46fr);
-  }
-
   .fy-models-status-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 760px) {
-  .fy-models-layout,
   .fy-models-form {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .fy-models-target-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .fy-models-form-wide,
   .fy-models-actions {
     grid-column: auto;
-  }
-}
-
-@media (max-width: 480px) {
-  .fy-models-target-list {
-    grid-template-columns: minmax(0, 1fr);
   }
 }

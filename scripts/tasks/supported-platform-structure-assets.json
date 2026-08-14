@@ -119,7 +119,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "ab8c3111a23f3ffb11ff4fe409d4e191b8a51abd9d36d2bba3702603466d965f"
+      "e02cd0e833d6170c6f7264ccfdc1bd89b61ed46684b3f5499a942dfe6b4aa17f"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -170,6 +170,10 @@
       "5dc1c38e80f977e39a7fdd4d2b63cde9f4c581808a053f874da3d405cf6872c1"
     ],
     [
+      "src-tauri/src/services/qoderwork.rs",
+      "7ea870d76e2d6c96b78ac89f7582de8d7d3724831796aa148b631e5851997d7d"
+    ],
+    [
       "src-tauri/src/services/session_usage_codex.rs",
       "57a37f57356d47f7bcdcbf39a178c23ee670c7810e49d9a20a575531a377d27e"
     ],
@@ -179,7 +183,7 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "a3f960fe53c3883b8496618d74f4ad1ddcdfc2953515e2e202145e3e780e991f"
+      "91554a3eaa4c79ecd2af4ede3708328d022b9c8663cddcbee8b70cdc2d310892"
     ],
     [
       "src-tauri/src/services/subscription.rs",

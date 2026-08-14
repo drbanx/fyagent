@@ -1,10 +1,10 @@
 //! Skills 命令层
 //!
 //! v3.10.0+ 统一管理架构：
-//! - 支持三应用开关（Claude/Codex/Gemini）
+//! - 使用 Skills 专用的八目标开关；QoderWork/TRAE Work 不进入通用 AppType 域
 //! - SSOT 存储在 ~/.fyagent/skills/
 
-use crate::app_config::{AppType, InstalledSkill, UnmanagedSkill};
+use crate::app_config::{InstalledSkill, SkillTargetId, UnmanagedSkill};
 use crate::error::format_skill_error;
 use crate::services::skill::{
     DiscoverableSkill, ImportSkillSelection, MigrationResult, Skill, SkillBackupEntry, SkillRepo,
@@ -19,9 +19,9 @@ use tauri::State;
 /// SkillService 状态包装
 pub struct SkillServiceState(pub Arc<SkillService>);
 
-/// 解析 app 参数为 AppType
-fn parse_app_type(app: &str) -> Result<AppType, String> {
-    AppType::from_str(app).map_err(|e| e.to_string())
+/// 解析 Skills 专用目标；QoderWork/TRAE Work 不进入广义 AppType 域。
+fn parse_skill_target(app: &str) -> Result<SkillTargetId, String> {
+    SkillTargetId::from_str(app).map_err(|e| e.to_string())
 }
 
 // ========== 统一管理命令 ==========
@@ -55,7 +55,7 @@ pub async fn install_skill_unified(
     service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
 ) -> Result<InstalledSkill, String> {
-    let app_type = parse_app_type(&current_app)?;
+    let app_type = parse_skill_target(&current_app)?;
 
     service
         .0
@@ -79,8 +79,8 @@ pub fn restore_skill_backup(
     current_app: String,
     app_state: State<'_, AppState>,
 ) -> Result<InstalledSkill, String> {
-    let app_type = parse_app_type(&current_app)?;
-    SkillService::restore_from_backup(&app_state.db, &backup_id, &app_type)
+    let app_type = parse_skill_target(&current_app)?;
+    SkillService::restore_from_backup_for_target(&app_state.db, &backup_id, &app_type)
         .map_err(|e| e.to_string())
 }
 
@@ -92,8 +92,9 @@ pub fn toggle_skill_app(
     enabled: bool,
     app_state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    let app_type = parse_app_type(&app)?;
-    SkillService::toggle_app(&app_state.db, &id, &app_type, enabled).map_err(|e| e.to_string())?;
+    let app_type = parse_skill_target(&app)?;
+    SkillService::toggle_target(&app_state.db, &id, &app_type, enabled)
+        .map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -202,7 +203,7 @@ pub async fn get_skills_for_app(
     app_state: State<'_, AppState>,
 ) -> Result<Vec<Skill>, String> {
     // 新版本不再区分应用，统一返回所有技能
-    let _ = parse_app_type(&app)?; // 验证 app 参数有效
+    let _ = parse_skill_target(&app)?; // 验证 app 参数有效
     get_skills(service, app_state).await
 }
 
@@ -224,7 +225,7 @@ pub async fn install_skill_for_app(
     service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    let app_type = parse_app_type(&app)?;
+    let app_type = parse_skill_target(&app)?;
 
     // 先获取技能信息
     let repos = app_state.db.get_skill_repos().map_err(|e| e.to_string())?;
@@ -277,7 +278,7 @@ pub fn uninstall_skill_for_app(
     directory: String,
     app_state: State<'_, AppState>,
 ) -> Result<SkillUninstallResult, String> {
-    let _ = parse_app_type(&app)?; // 验证参数
+    let _ = parse_skill_target(&app)?; // 验证参数
 
     // 通过 directory 找到对应的 skill id
     let skills = SkillService::get_all_installed(&app_state.db).map_err(|e| e.to_string())?;
@@ -333,7 +334,7 @@ pub fn install_skills_from_zip(
     current_app: String,
     app_state: State<'_, AppState>,
 ) -> Result<Vec<InstalledSkill>, String> {
-    let app_type = parse_app_type(&current_app)?;
+    let app_type = parse_skill_target(&current_app)?;
     let path = std::path::Path::new(&file_path);
 
     SkillService::install_from_zip(&app_state.db, path, &app_type).map_err(|e| e.to_string())

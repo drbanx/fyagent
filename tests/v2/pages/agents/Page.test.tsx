@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -10,39 +16,36 @@ import type {
 } from "@/v2/shared/features/ports";
 import { FeatureProvider } from "@/v2/shared/features/provider";
 import type {
-  AgentActionCapability,
+  AgentCapabilityId,
   AgentCatalogEntry,
   AgentCatalogId,
   AgentCatalogResult,
 } from "@/v2/shared/features/types";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
 
-const available: AgentActionCapability = {
-  state: "available",
-  reason: "由测试中的原生合同提供。",
-};
+const capabilityIds: readonly AgentCapabilityId[] = [
+  "product.open",
+  "app.detect",
+  "app.launch",
+  "skills.read",
+  "skills.write",
+  "hooks.read",
+  "hooks.write",
+  "models.validate",
+  "models.write",
+  "mcp.validate",
+  "mcp.write",
+];
 
-const assisted: AgentActionCapability = {
-  state: "assisted",
-  reason: "由厂商官方流程负责。",
-};
+const variantById = {
+  qoderwork: "qoderwork-cn",
+  "trae-work": "trae-work-cn",
+  workbuddy: "workbuddy",
+  codex: "codex",
+  "claude-code": "claude-code",
+} as const;
 
-const pending: AgentActionCapability = {
-  state: "pending_verification",
-  reason: "本地接入能力尚待验证。",
-};
-
-const notSupported: AgentActionCapability = {
-  state: "not_supported",
-  reason: "该动作不受支持。",
-};
-
-function entry(
-  id: AgentCatalogId,
-  displayName: string,
-  status: AgentCatalogEntry["status"],
-): AgentCatalogEntry {
-  const officialOnly = id === "qoderwork" || id === "trae-work";
+function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
   const officialLinks: AgentCatalogEntry["officialLinks"] =
     id === "codex"
       ? []
@@ -73,30 +76,39 @@ function entry(
           ];
   return {
     id,
+    variantId: variantById[id],
     displayName,
     description: `${displayName} 的目录说明`,
     officialLinks,
-    status,
-    actions: {
-      browse: id === "codex" ? notSupported : available,
-      observe: officialOnly ? pending : available,
-      install: id === "codex" ? available : assisted,
-      configure: officialOnly ? assisted : available,
-    },
-    evidenceLabel: `${displayName} 测试证据`,
+    capabilities: capabilityIds.map((capabilityId) => ({
+      id: capabilityId,
+      mode:
+        capabilityId === "product.open" && id === "codex"
+          ? "unsupported"
+          : capabilityId === "app.detect" || capabilityId === "app.launch"
+            ? "unverified"
+            : "direct",
+      reasonCode:
+        capabilityId === "product.open" && id === "codex"
+          ? "no_catalog_product_link"
+          : capabilityId === "app.detect" || capabilityId === "app.launch"
+            ? "trusted_runtime_identity_unavailable"
+            : "dedicated_native_contract",
+      evidenceIds: ["p0_scope"],
+    })),
   };
 }
 
 function catalog(): AgentCatalogResult {
   return {
-    contractVersion: 2,
+    contractVersion: 3,
     reviewedAt: "2026-08-14",
     agents: [
-      entry("qoderwork", "QoderWork CN", "pending_verification"),
-      entry("trae-work", "TRAE Work", "pending_verification"),
-      entry("workbuddy", "WorkBuddy", "manual_install"),
-      entry("codex", "Codex", "managed_install"),
-      entry("claude-code", "Claude Code", "manual_install"),
+      entry("qoderwork", "QoderWork CN"),
+      entry("trae-work", "TRAE Work"),
+      entry("workbuddy", "WorkBuddy"),
+      entry("codex", "Codex"),
+      entry("claude-code", "Claude Code"),
     ],
   };
 }
@@ -183,16 +195,26 @@ describe("V2 Agent directory", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN能力待验证",
-      "TRAE Work能力待验证",
-      "WorkBuddy手动安装",
-      "Codex内置安装",
-      "Claude Code手动安装",
+      "QoderWork CN9 项直连 · 0 项协助",
+      "TRAE Work9 项直连 · 0 项协助",
+      "WorkBuddy9 项直连 · 0 项协助",
+      "Codex8 项直连 · 0 项协助",
+      "Claude Code9 项直连 · 0 项协助",
     ]);
     expect(buttons[0]).toHaveAttribute("aria-current", "true");
     expect(
       screen.getByRole("region", { name: "QoderWork CN 详情" }),
     ).toBeVisible();
+    const listArtwork = buttons[0].querySelector('[data-size="list"] img');
+    expect(listArtwork).toHaveAttribute("alt", "");
+    expect(listArtwork).toHaveAttribute("aria-hidden", "true");
+    const detail = screen.getByRole("region", {
+      name: "QoderWork CN 详情",
+    });
+    expect(detail.querySelector('[data-size="detail"] img')).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
 
     await user.tab();
     expect(buttons[0]).toHaveFocus();
@@ -366,6 +388,202 @@ describe("V2 Agent directory", () => {
     expect(document.body).not.toHaveTextContent("sk-super-secret");
     expect(observation).not.toHaveTextContent("未安装");
     expect(observation).not.toHaveTextContent("已验证");
+  });
+
+  it("previews Qoder Hooks, retries once with the overwrite token, and requires restart", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    const initialSnapshot = {
+      revision: "revision-1",
+      exists: true,
+      groups: [
+        {
+          event: "PreToolUse" as const,
+          matcher: "Bash",
+          hooks: [
+            { type: "command" as const, command: "old-command", timeout: 30 },
+          ],
+        },
+      ],
+      restartRequired: true as const,
+      supportedStructure: true,
+    };
+    ports.qoderwork.getHooks = vi.fn(async () => initialSnapshot);
+    ports.qoderwork.saveHooks = vi
+      .fn()
+      .mockResolvedValueOnce({
+        state: "overwrite_confirmation_required",
+        token: "one-time-overwrite-token",
+      })
+      .mockResolvedValueOnce({
+        state: "saved",
+        snapshot: {
+          ...initialSnapshot,
+          revision: "revision-2",
+          groups: [
+            {
+              ...initialSnapshot.groups[0],
+              hooks: [
+                {
+                  type: "command" as const,
+                  command: "new-command",
+                  timeout: 30,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    renderPage(ports);
+
+    const hooksRegion = await screen.findByRole("region", {
+      name: "QoderWork Hooks 配置",
+    });
+    const commandInput = within(hooksRegion).getByLabelText("Command");
+    await user.clear(commandInput);
+    await user.type(commandInput, "new-command");
+    await user.click(
+      within(hooksRegion).getByRole("button", { name: "预览保存" }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "确认保存 QoderWork Hooks" }),
+    ).toBeVisible();
+    expect(screen.getByText("new-command")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "确认保存" }));
+
+    const firstRequest = {
+      expectedRevision: "revision-1",
+      groups: [
+        {
+          event: "PreToolUse",
+          matcher: "Bash",
+          hooks: [{ type: "command", command: "new-command", timeout: 30 }],
+        },
+      ],
+    };
+    await waitFor(() =>
+      expect(ports.qoderwork.saveHooks).toHaveBeenNthCalledWith(
+        1,
+        firstRequest,
+      ),
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: "使用一次性令牌确认覆盖",
+      }),
+    );
+    await waitFor(() =>
+      expect(ports.qoderwork.saveHooks).toHaveBeenNthCalledWith(2, {
+        ...firstRequest,
+        overwriteToken: "one-time-overwrite-token",
+      }),
+    );
+    expect(
+      await screen.findByText(/Hooks 文件已保存。必须重启 QoderWork/),
+    ).toHaveTextContent("不声称当前运行时已生效");
+    expect(
+      screen.queryByRole("button", { name: "使用一次性令牌确认覆盖" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps MCP config local and removes secrets after success, error, target change, and unmount", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    ports.qoderwork.getHooks = vi.fn(async () => ({
+      revision: null,
+      exists: false,
+      groups: [],
+      restartRequired: true as const,
+      supportedStructure: true,
+    }));
+    const firstSecret = "MCP-UI-SECRET-SENTINEL-814";
+    const secondSecret = "MCP-UI-ERROR-SENTINEL-814";
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    ports.externalMcp.validate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        agentId: "qoderwork",
+        valid: true,
+        findings: [
+          {
+            serverId: "demo",
+            transport: "stdio",
+            reasonCodes: ["TRAE_MCP_SERVER_VALID"],
+            executableAvailable: true,
+            hasSecrets: true,
+          },
+        ],
+        redactedTemplate: {
+          mcpServers: {
+            demo: { command: "demo", env: { TOKEN: "<redacted>" } },
+          },
+        },
+      })
+      .mockRejectedValueOnce(new Error(secondSecret));
+    localStorage.clear();
+    sessionStorage.clear();
+    const view = renderPage(ports);
+    const mcpRegion = await screen.findByRole("region", {
+      name: "MCP 配置预检",
+    });
+    const textarea = within(mcpRegion).getByLabelText("mcpServers JSON");
+    const firstConfig = JSON.stringify({
+      mcpServers: {
+        demo: { command: "demo", env: { TOKEN: firstSecret } },
+      },
+    });
+    fireEvent.change(textarea, { target: { value: firstConfig } });
+    await user.click(
+      within(mcpRegion).getByRole("button", { name: "执行静态预检" }),
+    );
+
+    await waitFor(() =>
+      expect(ports.externalMcp.validate).toHaveBeenNthCalledWith(
+        1,
+        "qoderwork",
+        {
+          mcpServers: {
+            demo: { command: "demo", env: { TOKEN: firstSecret } },
+          },
+        },
+      ),
+    );
+    expect(textarea).toHaveValue("");
+    expect(document.body.innerHTML).not.toContain(firstSecret);
+    expect(window.location.hash).not.toContain(firstSecret);
+    expect(JSON.stringify(localStorage)).not.toContain(firstSecret);
+    expect(JSON.stringify(sessionStorage)).not.toContain(firstSecret);
+
+    const secondConfig = JSON.stringify({
+      mcpServers: {
+        demo: { command: "demo", env: { TOKEN: secondSecret } },
+      },
+    });
+    fireEvent.change(textarea, { target: { value: secondConfig } });
+    await user.click(
+      within(mcpRegion).getByRole("button", { name: "执行静态预检" }),
+    );
+    expect(
+      await within(mcpRegion).findByText(/敏感配置值与原始错误均未保留/),
+    ).toBeVisible();
+    expect(textarea).toHaveValue("");
+    expect(document.body.innerHTML).not.toContain(secondSecret);
+
+    await user.click(screen.getByRole("button", { name: /TRAE Work/ }));
+    expect(document.body.innerHTML).not.toContain(firstSecret);
+    expect(document.body.innerHTML).not.toContain(secondSecret);
+    view.unmount();
+    expect(document.body.innerHTML).not.toContain(firstSecret);
+    expect(window.location.hash).not.toContain(secondSecret);
+    expect(JSON.stringify(logSpy.mock.calls)).not.toMatch(/MCP-UI-.*SENTINEL/);
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toMatch(
+      /MCP-UI-.*SENTINEL/,
+    );
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
   it("mounts the native installer only for Codex and cleans up on selection change", async () => {

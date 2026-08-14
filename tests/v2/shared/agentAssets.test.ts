@@ -5,8 +5,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  agentBrandById,
   agentIconById,
   agentIconIds,
+  getAgentBrand,
   getAgentIcon,
 } from "@/v2/shared/assets/agents";
 
@@ -65,10 +67,20 @@ describe("V2 Agent catalog assets", () => {
       "claude-code",
     ]);
     expect(Object.keys(agentIconById)).toEqual(agentIconIds);
+    expect(Object.keys(agentBrandById)).toEqual(agentIconIds);
 
     for (const id of agentIconIds) {
       expect(getAgentIcon(id)).toBe(agentIconById[id]);
       expect(getAgentIcon(id)).toMatch(/^\/src\/v2\/shared\/assets\/agents\//);
+      expect(getAgentBrand(id)).toBe(agentBrandById[id]);
+      expect(getAgentBrand(id).iconUrl).toBe(getAgentIcon(id));
+      for (const size of ["list", "detail"] as const) {
+        const optics = getAgentBrand(id)[size];
+        expect(optics.opticalScale).toBeGreaterThan(0);
+        expect(optics.opticalScale).toBeLessThanOrEqual(1);
+        expect(["transparent", "surface"]).toContain(optics.background);
+        expect(["none", "soft", "rounded"]).toContain(optics.corner);
+      }
     }
   });
 
