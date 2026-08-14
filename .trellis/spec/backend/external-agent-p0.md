@@ -77,9 +77,13 @@ may convert to `AppType` or participate in direct MCP assignment.
   never converts unknown to false or infers installation from a settings path.
 - Launch is positive only through a trusted executable/bundle/signing adapter.
   Without one it returns a controlled `unverified` or `unavailable` result.
-- Tauri permissions remain split into observe, launch, Qoder write, and
-  endpoint probe sets for the main local window. They do not grant generic
-  filesystem/shell IPC or any local command to remote content.
+- Tauri permissions keep observe, launch, Qoder write, and endpoint probe as
+  separate sets. Because defining the first application ACL manifest makes
+  Tauri enforce ACL for every application command, the local `main` capability
+  also carries an explicit compatibility set covering the complete pre-ACL
+  handler surface. The compatibility and feature-specific sets are disjoint,
+  their union must equal the registered handler commands, no remote origin is
+  granted, and no generic filesystem/shell permission is introduced.
 
 ### Skills and persistence
 
@@ -197,6 +201,11 @@ union/no-execute/redaction. Renderer tests must assert exact command/payload
 wires, eight Skills versus six MCP targets, secret cleanup on every terminal or
 lifecycle path, catalog geometry at the maintained viewports and 760/761px,
 keyboard/focus behavior, and browser non-authority.
+
+The host permission test must derive the registered `generate_handler!`
+commands and require exact equality with the disjoint union of all active app
+permission manifests. Checking only the newly added commands is insufficient:
+a partial app ACL silently revokes every unrelated application command.
 
 Automated fixtures prove only their executed layer. They never upgrade real
 vendor detection, launch, configuration acceptance, restart effectiveness, or

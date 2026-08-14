@@ -916,7 +916,9 @@ mod tests {
     }
 
     #[test]
-    fn external_agent_permissions_are_local_narrow_and_command_scoped() {
+    fn application_acl_covers_every_registered_command_without_remote_access() {
+        use std::collections::BTreeSet;
+
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../../capabilities/default.json"))
                 .expect("default capability parses");
@@ -924,6 +926,7 @@ mod tests {
             .as_array()
             .expect("default capability has permissions");
         for expected in [
+            "allow-legacy-application-commands",
             "allow-external-agent-observe",
             "allow-external-agent-launch",
             "allow-qoderwork-hooks-write",
@@ -940,26 +943,49 @@ mod tests {
         }
         assert!(capability.get("remote").is_none());
 
-        let manifest = include_str!("../../permissions/external-agent-p0.toml");
-        for command in [
-            "get_agent_catalog",
-            "get_external_agent_status",
-            "launch_external_agent",
-            "get_qoderwork_hooks",
-            "save_qoderwork_hooks",
-            "validate_traework_model_config",
-            "test_traework_model_endpoint",
-            "cancel_traework_model_endpoint",
-            "validate_external_mcp_config",
-        ] {
-            assert_eq!(
-                manifest.matches(&format!("\"{command}\"")).count(),
-                1,
-                "command {command} must belong to exactly one narrow permission"
-            );
+        fn allowed_commands(manifest: &str) -> BTreeSet<String> {
+            let value: toml::Value = toml::from_str(manifest).expect("permission TOML parses");
+            value["permission"]
+                .as_array()
+                .expect("permission manifest contains permission entries")
+                .iter()
+                .flat_map(|permission| {
+                    permission["commands"]["allow"]
+                        .as_array()
+                        .expect("permission contains commands.allow")
+                })
+                .map(|command| {
+                    command
+                        .as_str()
+                        .expect("allowed command is a string")
+                        .to_owned()
+                })
+                .collect()
         }
-        for prohibited in ["fs:", "shell:", "opener:", "http:", "process:"] {
-            assert!(!manifest.contains(prohibited));
-        }
+
+        let legacy_manifest = include_str!("../../permissions/legacy-application-commands.toml");
+        let external_manifest = include_str!("../../permissions/external-agent-p0.toml");
+        let legacy_commands = allowed_commands(legacy_manifest);
+        let external_commands = allowed_commands(external_manifest);
+        assert!(legacy_commands.is_disjoint(&external_commands));
+
+        let mut allowed = legacy_commands;
+        allowed.extend(external_commands);
+
+        let handler = include_str!("../lib.rs");
+        let registered = handler
+            .lines()
+            .skip_while(|line| !line.contains(".invoke_handler(tauri::generate_handler!["))
+            .filter_map(|line| {
+                let line = line.trim();
+                line.strip_prefix("commands::")
+                    .and_then(|command| command.strip_suffix(','))
+                    .or_else(|| (line == "update_tray_menu,").then_some("update_tray_menu"))
+                    .map(str::to_owned)
+            })
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(registered.len(), 327, "review intentional handler changes");
+        assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }
