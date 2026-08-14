@@ -560,7 +560,7 @@ function stripDistributionFileRedirect(indexHtml) {
 
 function addStandaloneBootstrap(indexHtml) {
   const bootstrap = `
-    <meta name="fyagent-preview" content="standalone-v2-prototype" />
+    <meta name="fyagent-preview" content="standalone-v2-native-preview" />
     <script>
       window.__FYAGENT_STANDALONE_PREVIEW__ = true;
       if (!window.location.hash) window.location.hash = "#/prompts";

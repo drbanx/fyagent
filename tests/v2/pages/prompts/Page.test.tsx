@@ -1,410 +1,418 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, Link, RouterProvider } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
 
 import { PromptsPage } from "@/v2/pages/prompts/Page";
+import type { FeaturePorts } from "@/v2/shared/features/ports";
+import { FeatureProvider } from "@/v2/shared/features/provider";
+import {
+  PROMPT_APP_IDS,
+  type ManagedPrompt,
+  type PromptAppId,
+} from "@/v2/shared/features/types";
+import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
 
-function PromptTestRoute() {
-  return (
-    <>
-      <PromptsPage />
-      <Link to="/memory">离开提示词</Link>
-    </>
-  );
+function prompt(
+  id: string,
+  name: string,
+  enabled = false,
+  content = `${name} content`,
+): ManagedPrompt {
+  return {
+    id,
+    name,
+    description: `${name} description`,
+    content,
+    enabled,
+    createdAt: 1_700_000_000,
+    updatedAt: 1_700_000_100,
+  };
 }
 
-function renderPrompts() {
+function emptyStores(): Record<PromptAppId, ManagedPrompt[]> {
+  return {
+    claude: [],
+    codex: [],
+    gemini: [],
+    grokbuild: [],
+    opencode: [],
+    openclaw: [],
+    hermes: [],
+  };
+}
+
+function clonePrompt(value: ManagedPrompt): ManagedPrompt {
+  return { ...value };
+}
+
+function statefulPorts(
+  initial: Partial<Record<PromptAppId, ManagedPrompt[]>> = {},
+) {
+  const stores: Record<PromptAppId, ManagedPrompt[]> = emptyStores();
+  for (const app of PROMPT_APP_IDS) {
+    stores[app] = (initial[app] ?? []).map(clonePrompt);
+  }
+  const liveFiles: Record<PromptAppId, string | null> = Object.fromEntries(
+    PROMPT_APP_IDS.map((app) => [app, null]),
+  ) as Record<PromptAppId, string | null>;
+  const ports = createBrowserFeaturePorts();
+  ports.prompts.getAll = vi.fn(async (app: PromptAppId) =>
+    stores[app].map(clonePrompt),
+  );
+  ports.prompts.getCurrentFileContent = vi.fn(
+    async (app: PromptAppId) => liveFiles[app],
+  );
+  ports.prompts.upsert = vi.fn(async (app: PromptAppId, value: ManagedPrompt) => {
+    const current = stores[app];
+    const index = current.findIndex((candidate) => candidate.id === value.id);
+    if (index >= 0) current[index] = clonePrompt(value);
+    else current.unshift(clonePrompt(value));
+    if (value.enabled) liveFiles[app] = value.content;
+    else if (!current.some((candidate) => candidate.enabled)) liveFiles[app] = null;
+  });
+  ports.prompts.enable = vi.fn(async (app: PromptAppId, id: string) => {
+    stores[app] = stores[app].map((candidate) => ({
+      ...candidate,
+      enabled: candidate.id === id,
+    }));
+    liveFiles[app] =
+      stores[app].find((candidate) => candidate.id === id)?.content ?? null;
+  });
+  ports.prompts.delete = vi.fn(async (app: PromptAppId, id: string) => {
+    stores[app] = stores[app].filter((candidate) => candidate.id !== id);
+  });
+  ports.prompts.importFromFile = vi.fn(async (app: PromptAppId) => {
+    const imported = prompt(`${app}-imported`, `${app} imported`);
+    stores[app].unshift(imported);
+    return imported.id;
+  });
+  return { ports, stores, liveFiles };
+}
+
+function renderPrompts(ports: FeaturePorts) {
   const router = createMemoryRouter(
     [
-      { path: "/prompts", element: <PromptTestRoute /> },
+      { path: "/prompts", element: <PromptsPage /> },
       { path: "/memory", element: <h1>记忆目标页</h1> },
     ],
     { initialEntries: ["/prompts"] },
   );
-
-  render(<RouterProvider router={router} />);
+  render(
+    <FeatureProvider ports={ports}>
+      <RouterProvider router={router} />
+    </FeatureProvider>,
+  );
   return router;
 }
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+describe("PromptsPage native business management", () => {
+  it("loads Claude by default and keeps all seven applications independent", async () => {
+    const { ports } = statefulPorts({
+      claude: [prompt("claude-one", "Claude rule", true)],
+      codex: [prompt("codex-one", "Codex rule")],
+    });
+    const user = userEvent.setup();
+    renderPrompts(ports);
 
-describe("PromptsPage local-agent prototype", () => {
-  it("renders nine grounded rules, canonical resources, and truthful prototype copy", () => {
-    renderPrompts();
-
-    expect(screen.getByRole("heading", { name: "提示词" })).toBeVisible();
-    expect(screen.getByText("在前端预览中组合长期规则")).toBeVisible();
-    expect(screen.getByText("前端原型 · 未读取或写入本机文件")).toBeVisible();
-    expect(screen.queryByText("同一应用仅启用一条")).not.toBeInTheDocument();
-    expect(screen.getByText("2 条已启用")).toBeVisible();
-    expect(screen.getByTestId("prompt-library")).toBeVisible();
-    expect(screen.getByTestId("prompt-editor")).toBeVisible();
-    expect(screen.getByTestId("prompt-inspector")).toBeVisible();
-
-    const promptList = screen.getByRole("list", { name: "提示词列表" });
-    expect(within(promptList).getAllByRole("listitem")).toHaveLength(9);
-    expect(screen.getAllByRole("checkbox")).toHaveLength(7);
-    expect(screen.getAllByText("启用时创建")).toHaveLength(3);
-    expect(screen.getByText("7 个目标文件")).toBeVisible();
-    expect(screen.getByText("8 个 Agent")).toBeVisible();
     expect(
-      screen.getByText(
-        "接入真实同步后，同一路径只执行一次，并保护托管区块外内容",
-      ),
+      await screen.findByRole("heading", { name: "Claude rule" }),
     ).toBeVisible();
     expect(screen.getByTestId("prompts-page")).toHaveAttribute(
       "data-data-source",
-      "prototype",
+      "native",
     );
+    expect(screen.queryByText(/前端原型|注入目标|已保存到前端预览/)).not.toBeInTheDocument();
+    const app = screen.getByRole("combobox", { name: "当前应用" });
+    expect(app).toHaveValue("claude");
+    expect(within(app).getAllByRole("option")).toHaveLength(7);
+
+    await user.selectOptions(app, "codex");
+    expect(
+      await screen.findByRole("heading", { name: "Codex rule" }),
+    ).toBeVisible();
+    expect(screen.queryByText("Claude rule")).not.toBeInTheDocument();
+    await user.selectOptions(app, "claude");
+    expect(
+      await screen.findByRole("heading", { name: "Claude rule" }),
+    ).toBeVisible();
   });
 
-  it("allows several rule bundles to stay enabled at the same time", async () => {
-    const user = userEvent.setup();
-    renderPrompts();
-
-    expect(
-      screen.getByRole("switch", { name: "停用中文与回复风格" }),
-    ).toBeChecked();
-    expect(
-      screen.getByRole("switch", { name: "停用目标、边界与完成证据" }),
-    ).toBeChecked();
-
-    await user.click(screen.getByRole("switch", { name: "启用代码审查" }));
-
-    expect(screen.getByRole("switch", { name: "停用代码审查" })).toBeChecked();
-    expect(
-      screen.getByRole("switch", { name: "停用中文与回复风格" }),
-    ).toBeChecked();
-    expect(
-      screen.getByRole("switch", { name: "停用目标、边界与完成证据" }),
-    ).toBeChecked();
-    expect(screen.getByText("3 条已启用")).toBeVisible();
-  });
-
-  it("toggles a different saved rule without disturbing the current dirty editor", async () => {
-    const user = userEvent.setup();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-    renderPrompts();
-
-    const content = screen.getByRole<HTMLTextAreaElement>("textbox", {
-      name: "内容",
+  it("searches authoritative records and distinguishes no results", async () => {
+    const { ports } = statefulPorts({
+      claude: [
+        prompt("review", "Review rule", false, "inspect regressions"),
+        prompt("reply", "Reply rule", false, "answer briefly"),
+      ],
     });
-    await user.type(content, "\n未保存的当前规则补充");
-    await user.click(screen.getByRole("switch", { name: "启用代码审查" }));
-
-    expect(confirm).not.toHaveBeenCalled();
-    expect(screen.getByRole("switch", { name: "停用代码审查" })).toBeChecked();
-    expect(content.value).toContain("未保存的当前规则补充");
-    expect(
-      screen.getByRole("button", {
-        name: /^中文与回复风格/,
-        pressed: true,
-      }),
-    ).toBeVisible();
-    expect(screen.getByText("3 条已启用")).toBeVisible();
-  });
-
-  it("keeps an unsaved new prompt while toggling a different saved rule", async () => {
     const user = userEvent.setup();
-    renderPrompts();
-
-    await user.click(screen.getByRole("button", { name: "新建提示词" }));
-    const name = screen.getByRole("textbox", { name: "名称" });
-    await user.clear(name);
-    await user.type(name, "仍可保存的新规则");
-    await user.click(screen.getByRole("switch", { name: "启用代码审查" }));
-
-    expect(
-      screen.getByRole("button", { name: /^未命名提示词/, pressed: true }),
-    ).toBeVisible();
-    expect(name).toHaveValue("仍可保存的新规则");
-    await user.click(screen.getByRole("checkbox", { name: "注入到Codex全局" }));
-    await user.click(screen.getByRole("button", { name: "保存" }));
-
-    expect(
-      screen.getByRole("button", { name: /^仍可保存的新规则/ }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("switch", { name: "启用仍可保存的新规则" }),
-    ).toBeVisible();
-  });
-
-  it("saves target sets and reports canonical file and instance counts", async () => {
-    const user = userEvent.setup();
-    renderPrompts();
-
-    await user.click(screen.getByRole("button", { name: /^代码审查/ }));
-    const openClawDefault = screen.getByRole("checkbox", {
-      name: "注入到OpenClaw默认工作区 · main + utility",
-    });
-    expect(openClawDefault).not.toBeChecked();
-
-    await user.click(openClawDefault);
-    expect(screen.getByText("5 个目标文件")).toBeVisible();
-    expect(screen.getByText("6 个 Agent")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "保存" }));
-
-    expect(screen.getByText("已保存到前端预览；未写入本机文件")).toBeVisible();
-    expect(
-      screen.getByRole("checkbox", {
-        name: "取消注入到OpenClaw默认工作区 · main + utility",
-      }),
-    ).toBeChecked();
-
-    await user.click(screen.getByRole("button", { name: /^中文与回复风格/ }));
-    expect(screen.getByText("7 个目标文件")).toBeVisible();
-    expect(screen.getByText("8 个 Agent")).toBeVisible();
-
-    await user.click(screen.getByRole("button", { name: /^代码审查/ }));
-    expect(
-      screen.getByRole("checkbox", {
-        name: "取消注入到OpenClaw默认工作区 · main + utility",
-      }),
-    ).toBeChecked();
-    expect(screen.getByText("5 个目标文件")).toBeVisible();
-    expect(screen.getByText("6 个 Agent")).toBeVisible();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Review rule" });
 
     await user.type(
       screen.getByRole("searchbox", { name: "搜索提示词" }),
-      "心跳",
+      "regressions",
     );
-    const promptList = screen.getByRole("list", { name: "提示词列表" });
-    expect(within(promptList).getByText("定时任务与心跳边界")).toBeVisible();
-    expect(
-      within(promptList).queryByText("中文与回复风格"),
-    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("Review rule").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Reply rule")).not.toBeInTheDocument();
+    await user.clear(screen.getByRole("searchbox", { name: "搜索提示词" }));
+    await user.type(screen.getByRole("searchbox", { name: "搜索提示词" }), "missing");
+    expect(screen.getByText("没有匹配的提示词")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "清空搜索" }));
+    expect(await screen.findByText("Reply rule")).toBeVisible();
   });
 
-  it("requires a transient prompt to be saved before it can be enabled", async () => {
+  it("creates and edits through the shared dialog with legacy ids and timestamps", async () => {
+    const { ports, stores } = statefulPorts({ claude: [prompt("existing", "Existing")] });
     const user = userEvent.setup();
-    renderPrompts();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Existing" });
 
     await user.click(screen.getByRole("button", { name: "新建提示词" }));
-    await user.click(screen.getByRole("switch", { name: "启用未命名提示词" }));
-    expect(screen.getByText("请先保存当前提示词，再启用")).toBeVisible();
+    const createDialog = screen.getByRole("dialog", { name: "新建 Claude 提示词" });
+    await user.type(within(createDialog).getByRole("textbox", { name: "名称" }), "New rule");
+    await user.type(within(createDialog).getByRole("textbox", { name: "描述" }), "New description");
+    await user.type(within(createDialog).getByRole("textbox", { name: "内容" }), "New content");
+    await user.click(within(createDialog).getByRole("button", { name: "保存" }));
 
-    await user.click(screen.getByRole("checkbox", { name: "注入到Codex全局" }));
-    await user.click(screen.getByRole("switch", { name: "启用未命名提示词" }));
-    expect(screen.getByText("请先保存当前提示词，再启用")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "New rule" })).toBeVisible();
+    const created = stores.claude.find((candidate) => candidate.name === "New rule");
+    expect(created?.id).toMatch(/^prompt-\d+$/);
+    expect(created?.createdAt).toEqual(expect.any(Number));
+    expect(created?.updatedAt).toEqual(expect.any(Number));
+    expect(created?.enabled).toBe(false);
 
-    await user.click(screen.getByRole("button", { name: "保存" }));
-    await user.click(screen.getByRole("switch", { name: "启用未命名提示词" }));
-    expect(
-      screen.getByRole("switch", { name: "停用未命名提示词" }),
-    ).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const editDialog = screen.getByRole("dialog", { name: "编辑 New rule" });
+    const description = within(editDialog).getByRole("textbox", { name: "描述" });
+    await user.clear(description);
+    await user.type(description, "Updated description");
+    await user.click(within(editDialog).getByRole("button", { name: "保存" }));
+    expect((await screen.findAllByText("Updated description")).length).toBeGreaterThan(0);
+    expect(stores.claude.find((candidate) => candidate.id === created?.id)?.description).toBe(
+      "Updated description",
+    );
   });
 
-  it("uses the last saved targets when validating enable", async () => {
-    const user = userEvent.setup();
-    renderPrompts();
-
-    await user.click(screen.getByRole("button", { name: "新建提示词" }));
-    await user.click(screen.getByRole("button", { name: "保存" }));
-    await user.click(screen.getByRole("switch", { name: "启用未命名提示词" }));
-    expect(screen.getByText("请先选择并保存至少一个注入目标")).toBeVisible();
-
-    const codexTarget = screen.getByRole("checkbox", {
-      name: "注入到Codex全局",
+  it("imports, enables mutually, rereads the live file, disables, and deletes", async () => {
+    const { ports, stores } = statefulPorts({
+      claude: [prompt("first", "First", true, "first live"), prompt("second", "Second")],
     });
-    await user.click(codexTarget);
-    await user.click(screen.getByRole("switch", { name: "启用未命名提示词" }));
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "First" });
 
-    expect(codexTarget).toBeChecked();
-    expect(
-      screen.getByRole("switch", { name: "启用未命名提示词" }),
-    ).not.toBeChecked();
-    expect(screen.getByText("请先选择并保存至少一个注入目标")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /^Second / }));
+    await user.click(screen.getByRole("switch", { name: "启用Second" }));
+    expect(await screen.findByRole("switch", { name: "停用Second" })).toBeChecked();
+    expect(stores.claude.find((candidate) => candidate.id === "first")?.enabled).toBe(false);
+    expect(screen.getByRole("textbox", { name: "实际生效文件内容" })).toHaveValue(
+      "Second content",
+    );
+
+    await user.click(screen.getByRole("switch", { name: "停用Second" }));
+    expect(await screen.findByRole("switch", { name: "启用Second" })).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "删除" }));
+    const confirm = screen.getByRole("dialog", { name: "删除 Second" });
+    await user.click(within(confirm).getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(screen.queryByText("Second")).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "从文件导入" }));
+    expect(await screen.findByRole("heading", { name: "claude imported" })).toBeVisible();
+    expect(ports.prompts.importFromFile).toHaveBeenCalledWith("claude");
   });
 
-  it("keeps the final target on an enabled rule", async () => {
+  it("rejects deleting an enabled prompt before invoking the backend", async () => {
+    const { ports } = statefulPorts({ claude: [prompt("active", "Active", true)] });
     const user = userEvent.setup();
-    renderPrompts();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Active" });
 
-    await user.click(
-      screen.getByRole("button", { name: /^定时任务与心跳边界/ }),
-    );
-    await user.click(
-      screen.getByRole("checkbox", {
-        name: "取消注入到OpenClaw自定义工作区 · secondary",
+    await user.click(screen.getByRole("button", { name: "删除" }));
+    expect(screen.getByText("已启用提示词不能删除，请先停用后再删除")).toBeVisible();
+    expect(ports.prompts.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps a missing import-file failure visible without inventing a record", async () => {
+    const { ports } = statefulPorts();
+    ports.prompts.importFromFile = vi.fn(async () => {
+      throw new Error("提示词文件不存在");
+    });
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByText("Claude 还没有提示词");
+
+    await user.click(screen.getAllByRole("button", { name: "从文件导入" })[0]);
+
+    expect(
+      await screen.findByText("提示词已从文件导入失败：提示词文件不存在"),
+    ).toBeVisible();
+    expect(screen.getByText("Claude 还没有提示词")).toBeVisible();
+    expect(screen.queryByText("提示词已从文件导入", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("locks duplicate submissions until the authoritative reread completes", async () => {
+    let resolveWrite!: () => void;
+    const pendingWrite = new Promise<void>((resolve) => {
+      resolveWrite = resolve;
+    });
+    const { ports } = statefulPorts({ claude: [prompt("existing", "Existing")] });
+    ports.prompts.upsert = vi.fn(() => pendingWrite);
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Existing" });
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const dialog = screen.getByRole("dialog", { name: "编辑 Existing" });
+    const save = within(dialog).getByRole("button", { name: "保存" });
+
+    await user.click(save);
+    expect(within(dialog).getByRole("button", { name: "保存中…" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存中…" }));
+    expect(ports.prompts.upsert).toHaveBeenCalledTimes(1);
+    resolveWrite();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "编辑 Existing" })).not.toBeInTheDocument());
+  });
+
+  it("keeps cached data and reports uncertainty when a post-write refresh fails", async () => {
+    const { ports } = statefulPorts({ claude: [prompt("existing", "Existing")] });
+    let reads = 0;
+    ports.prompts.getAll = vi.fn(async () => {
+      reads += 1;
+      if (reads === 1) return [prompt("existing", "Existing")];
+      throw new Error("refresh unavailable");
+    });
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Existing" });
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const dialog = screen.getByRole("dialog", { name: "编辑 Existing" });
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    expect(
+      await screen.findByText(/写入可能已完成，但状态刷新失败。已保留上一次成功读取的数据/, undefined, {
+        timeout: 5_000,
       }),
-    );
-    await user.click(screen.getByRole("button", { name: "保存" }));
-    await user.click(
-      screen.getByRole("switch", { name: "启用定时任务与心跳边界" }),
-    );
+    ).toBeVisible();
+    expect(screen.getAllByText("Existing").length).toBeGreaterThan(0);
+    expect(screen.queryByText("提示词已保存")).not.toBeInTheDocument();
+  });
 
-    const finalTarget = screen.getByRole("checkbox", {
-      name: "取消注入到OpenClaw默认工作区 · main + utility",
+  it("does not show success or replace the baseline after a failed save", async () => {
+    const { ports } = statefulPorts({ claude: [prompt("existing", "Existing")] });
+    ports.prompts.upsert = vi.fn(async () => {
+      throw new Error("save rejected");
     });
-    await user.click(finalTarget);
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Existing" });
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const dialog = screen.getByRole("dialog", { name: "编辑 Existing" });
+    const name = within(dialog).getByRole("textbox", { name: "名称" });
+    await user.clear(name);
+    await user.type(name, "Changed");
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
 
-    expect(finalTarget).toBeChecked();
+    expect(await screen.findByText("提示词已保存失败：save rejected")).toBeVisible();
+    expect(screen.getByRole("dialog", { name: "编辑 Existing" })).toBeVisible();
+    expect(name).toHaveValue("Changed");
+    expect(screen.queryByText("提示词已保存", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("uses the shared confirm dialog before discarding an app-switch draft", async () => {
+    const { ports } = statefulPorts({
+      claude: [prompt("claude-one", "Claude rule")],
+      codex: [prompt("codex-one", "Codex rule")],
+    });
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Claude rule" });
+    const appSelect = screen.getByRole("combobox", { name: "当前应用" });
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.type(screen.getByRole("textbox", { name: "描述" }), " dirty");
+
+    fireEvent.change(appSelect, {
+      target: { value: "codex" },
+    });
+    const confirm = screen.getByRole("dialog", { name: "放弃未保存的提示词更改" });
+    await user.click(within(confirm).getByRole("button", { name: "取消" }));
+    expect(appSelect).toHaveValue("claude");
+    expect(screen.getByRole("dialog", { name: "编辑 Claude rule" })).toBeVisible();
+
+    fireEvent.change(appSelect, {
+      target: { value: "codex" },
+    });
+    await user.click(
+      within(screen.getByRole("dialog", { name: "放弃未保存的提示词更改" })).getByRole(
+        "button",
+        { name: "确认" },
+      ),
+    );
     expect(
-      screen.getByText("已启用规则至少保留一个目标；请先停用再清空范围"),
+      await screen.findByRole("heading", { name: "Codex rule" }),
     ).toBeVisible();
   });
 
-  it("keeps an existing-rule draft on cancel and restores its saved baseline after discard", async () => {
+  it("blocks route navigation with the same dirty-state confirmation", async () => {
+    const { ports } = statefulPorts({ claude: [prompt("existing", "Existing")] });
+    const router = renderPrompts(ports);
     const user = userEvent.setup();
-    const confirm = vi
-      .spyOn(window, "confirm")
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
-    renderPrompts();
+    await screen.findByRole("heading", { name: "Existing" });
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.type(screen.getByRole("textbox", { name: "内容" }), " dirty");
 
-    await user.click(screen.getByRole("button", { name: /^代码审查/ }));
-    const description = screen.getByRole("textbox", { name: "描述" });
-    const openClawDefault = screen.getByRole("checkbox", {
-      name: "注入到OpenClaw默认工作区 · main + utility",
+    await act(async () => {
+      await router.navigate("/memory");
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
-
-    await user.type(description, " · 尚未保存");
-    await user.click(openClawDefault);
-    await user.click(screen.getByRole("button", { name: /^中文与回复风格/ }));
-
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
-      "代码审查",
-    );
-    expect(description).toHaveValue(
-      "优先发现正确性、回归与数据风险 · 尚未保存",
-    );
-    expect(openClawDefault).toBeChecked();
-
-    await user.click(screen.getByRole("button", { name: /^中文与回复风格/ }));
-    expect(confirm).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
-      "中文与回复风格",
-    );
-
-    await user.click(screen.getByRole("button", { name: /^代码审查/ }));
-    expect(screen.getByRole("textbox", { name: "描述" })).toHaveValue(
-      "优先发现正确性、回归与数据风险",
-    );
-    expect(
-      screen.getByRole("checkbox", {
-        name: "注入到OpenClaw默认工作区 · main + utility",
-      }),
-    ).not.toBeChecked();
-    expect(screen.getByText("4 个目标文件")).toBeVisible();
-    expect(screen.getByText("4 个 Agent")).toBeVisible();
-  });
-
-  it("commits a clean enabled toggle without creating route dirtiness", async () => {
-    const user = userEvent.setup();
-    const confirm = vi.spyOn(window, "confirm");
-    renderPrompts();
-
-    await user.click(
-      screen.getByRole("switch", { name: "停用中文与回复风格" }),
-    );
-    await user.click(screen.getByRole("link", { name: "离开提示词" }));
-
-    expect(
-      await screen.findByRole("heading", { name: "记忆目标页" }),
-    ).toBeVisible();
-    expect(confirm).not.toHaveBeenCalled();
-  });
-
-  it("preserves dirty fields across a toggle and preserves the committed toggle on discard", async () => {
-    const user = userEvent.setup();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-    renderPrompts();
-
-    const openCodeTarget = screen.getByRole("checkbox", {
-      name: "取消注入到OpenCode全局",
-    });
-    await user.type(
-      screen.getByRole("textbox", { name: "描述" }),
-      " · 尚未保存",
-    );
-    await user.click(openCodeTarget);
-    await user.click(
-      screen.getByRole("switch", { name: "停用中文与回复风格" }),
-    );
-
-    expect(screen.getByRole("textbox", { name: "描述" })).toHaveValue(
-      "中文优先、先说结论、减少空话 · 尚未保存",
-    );
-    expect(openCodeTarget).not.toBeChecked();
-    await user.click(screen.getByRole("button", { name: /^代码审查/ }));
-    await user.click(screen.getByRole("button", { name: /^中文与回复风格/ }));
-
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("textbox", { name: "描述" })).toHaveValue(
-      "中文优先、先说结论、减少空话",
-    );
-    expect(
-      screen.getByRole("switch", { name: "启用中文与回复风格" }),
-    ).not.toBeChecked();
-    expect(
-      screen.getByRole("checkbox", {
-        name: "取消注入到OpenCode全局",
-      }),
-    ).toBeChecked();
-  });
-
-  it("treats a new row as dirty and removes it when discard is confirmed", async () => {
-    const user = userEvent.setup();
-    const confirm = vi
-      .spyOn(window, "confirm")
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
-    renderPrompts();
-
-    await user.click(screen.getByRole("button", { name: "新建提示词" }));
-    await user.click(screen.getByRole("button", { name: /^代码审查/ }));
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
-      "未命名提示词",
-    );
-
-    await user.click(screen.getByRole("button", { name: /^代码审查/ }));
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
-      "代码审查",
-    );
-    expect(
-      screen.queryByRole("switch", { name: "启用未命名提示词" }),
-    ).not.toBeInTheDocument();
-    expect(confirm).toHaveBeenCalledTimes(2);
-  });
-
-  it("cancels and then proceeds through a dirty pathname change", async () => {
-    const user = userEvent.setup();
-    const confirm = vi
-      .spyOn(window, "confirm")
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
-    const router = renderPrompts();
-
-    await user.type(screen.getByRole("textbox", { name: "描述" }), "尚未保存");
-    await user.click(screen.getByRole("link", { name: "离开提示词" }));
-
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    const confirm = await screen.findByRole("dialog", { name: "放弃未保存的提示词更改" });
+    await user.click(within(confirm).getByRole("button", { name: "取消" }));
     expect(router.state.location.pathname).toBe("/prompts");
-    expect(screen.getByRole("heading", { name: "提示词" })).toBeVisible();
-
-    await user.click(screen.getByRole("link", { name: "离开提示词" }));
-    expect(
-      await screen.findByRole("heading", { name: "记忆目标页" }),
-    ).toBeVisible();
-    expect(confirm).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await router.navigate("/memory");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await user.click(
+      within(await screen.findByRole("dialog", { name: "放弃未保存的提示词更改" })).getByRole(
+        "button",
+        { name: "确认" },
+      ),
+    );
+    expect(await screen.findByRole("heading", { name: "记忆目标页" })).toBeVisible();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
   });
 
-  it("leaves without confirmation after saving a dirty draft", async () => {
-    const user = userEvent.setup();
-    const confirm = vi.spyOn(window, "confirm");
-    renderPrompts();
-
-    await user.type(screen.getByRole("textbox", { name: "描述" }), "已确认");
-    await user.click(screen.getByRole("button", { name: "保存" }));
-    await user.click(screen.getByRole("link", { name: "离开提示词" }));
-
+  it("distinguishes browser native-only, real empty data, and read errors", async () => {
+    const nativePorts = createBrowserFeaturePorts();
+    renderPrompts(nativePorts);
     expect(
-      await screen.findByRole("heading", { name: "记忆目标页" }),
+      await screen.findByText("桌面能力不可用", undefined, { timeout: 5_000 }),
     ).toBeVisible();
-    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Claude rule|示例/)).not.toBeInTheDocument();
+    cleanup();
+
+    const empty = statefulPorts();
+    renderPrompts(empty.ports);
+    expect(await screen.findByText("Claude 还没有提示词")).toBeVisible();
+    cleanup();
+
+    const failing = statefulPorts();
+    failing.ports.prompts.getAll = vi.fn(async () => {
+      throw new Error("database unavailable");
+    });
+    renderPrompts(failing.ports);
+    expect(
+      await screen.findByText("无法加载 Claude 提示词", undefined, { timeout: 5_000 }),
+    ).toBeVisible();
+    expect(screen.getByText("database unavailable")).toBeVisible();
   });
 });

@@ -40,6 +40,7 @@ Before changing renderer code:
 | [V2 Shell Contract](./v2-shell.md)                                         | Isolated V2 routes, styles, layer/platform boundaries, lifecycle, and V2-only gates.                     |
 | [V2 Agent and Models Contract](./v2-agent-models.md)                       | Catalog v3/runtime, shared geometry, Qoder/TRAE preflight, Codex installer, WorkBuddy, Provider quick setup, and secrets. |
 | [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md)                   | Eight Skill targets, six direct MCP targets, authoritative state, secret handling, and responsive UI.    |
+| [V2 Prompts and Memory Native Business Contract](./v2-prompts-memory.md)    | Seven Prompt applications, four fixed long-term memory resources, OpenClaw daily memory, native-only browser behavior, and data safety. |
 | [External Agent P0 Safety](../backend/external-agent-p0.md)                | Cross-layer QoderWork/TRAE Work native command, persistence, network, permission, and evidence boundary.  |
 | [Directory Structure](./directory-structure.md)                            | Selecting the existing frontend layer and test location.                                                 |
 | [Component Guidelines](./component-guidelines.md)                          | UI primitives, props, styling, translation, and form composition.                                        |
@@ -54,10 +55,11 @@ Before changing renderer code:
 | [WorkBuddy Configuration](../backend/workbuddy-configuration.md)           | Top-level navigation, query isolation, model selection, overwrite confirmation, and credential lifetime. |
 
 The integrated V2 shell has six non-empty product routes: Agents, Models,
-Skills, MCP, Prompts, and Memory. Agents/Models use native feature ports;
-Prompts/Memory remain explicitly bounded local-only prototypes until a future
-backend contract is reviewed. A merge commit does not replace post-merge
-shell/browser validation.
+Skills, MCP, Prompts, and Memory. All six use bounded feature ports. Prompts
+manages the seven existing native prompt applications; Memory manages four
+fixed OpenClaw/Hermes long-term resources plus OpenClaw daily memory. Browser
+preview is explicitly native-only and contains no seeded business data. A merge
+commit does not replace post-merge shell/browser validation.
 
 ## Quality Check
 

@@ -44,6 +44,14 @@ import type {
   TraeModelValidationResult,
   TraeModelProbeResult,
   CancelTraeModelProbeResult,
+  DailyMemoryFileInfo,
+  DailyMemorySearchResult,
+  HermesMemoryKind,
+  HermesMemoryLimits,
+  ManagedPrompt,
+  MemoryDocumentId,
+  OpenClawDirectory,
+  PromptAppId,
 } from "./types";
 
 export interface AgentCatalogPort {
@@ -168,6 +176,28 @@ export interface SettingsPort {
   openExternal(url: string): Promise<void>;
 }
 
+export interface PromptsPort {
+  getAll(app: PromptAppId): Promise<ManagedPrompt[]>;
+  getCurrentFileContent(app: PromptAppId): Promise<string | null>;
+  upsert(app: PromptAppId, prompt: ManagedPrompt): Promise<void>;
+  delete(app: PromptAppId, id: string): Promise<void>;
+  enable(app: PromptAppId, id: string): Promise<void>;
+  importFromFile(app: PromptAppId): Promise<string>;
+}
+
+export interface MemoryPort {
+  readDocument(id: MemoryDocumentId): Promise<string | null>;
+  writeDocument(id: MemoryDocumentId, content: string): Promise<void>;
+  getHermesLimits(): Promise<HermesMemoryLimits>;
+  setHermesEnabled(kind: HermesMemoryKind, enabled: boolean): Promise<void>;
+  listDailyFiles(): Promise<DailyMemoryFileInfo[]>;
+  readDailyFile(filename: string): Promise<string | null>;
+  writeDailyFile(filename: string, content: string): Promise<void>;
+  deleteDailyFile(filename: string): Promise<void>;
+  searchDailyFiles(query: string): Promise<DailyMemorySearchResult[]>;
+  openOpenClawDirectory(subdir: OpenClawDirectory): Promise<void>;
+}
+
 export interface FeaturePorts {
   catalog: AgentCatalogPort;
   externalAgents: ExternalAgentsPort;
@@ -179,5 +209,7 @@ export interface FeaturePorts {
   workbuddy: WorkBuddyPort;
   skills: SkillsPort;
   mcp: McpPort;
+  prompts: PromptsPort;
+  memory: MemoryPort;
   settings: SettingsPort;
 }

@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { useFeatures } from "./provider";
+import type { MemoryDocumentId, PromptAppId } from "./types";
 import type { ProviderAppId } from "./types";
 
 export const featureKeys = {
@@ -16,6 +17,17 @@ export const featureKeys = {
   skillUnmanaged: ["v2", "skills", "unmanaged"] as const,
   skillUpdates: ["v2", "skills", "updates"] as const,
   mcp: ["v2", "mcp"] as const,
+  prompts: (app: PromptAppId) => ["v2", "prompts", app, "list"] as const,
+  promptLiveFile: (app: PromptAppId) =>
+    ["v2", "prompts", app, "live-file"] as const,
+  memoryDocument: (id: MemoryDocumentId) =>
+    ["v2", "memory", "document", id] as const,
+  hermesMemoryLimits: ["v2", "memory", "hermes-limits"] as const,
+  dailyMemoryFiles: ["v2", "memory", "daily", "list"] as const,
+  dailyMemoryFile: (filename: string) =>
+    ["v2", "memory", "daily", "file", filename] as const,
+  dailyMemorySearch: (query: string) =>
+    ["v2", "memory", "daily", "search", query] as const,
   settings: ["v2", "settings"] as const,
 };
 
@@ -112,6 +124,57 @@ export function useSkillsShSearch(query: string, page: number) {
 export function useMcpServers() {
   const { ports } = useFeatures();
   return useQuery({ queryKey: featureKeys.mcp, queryFn: ports.mcp.getAll });
+}
+export function usePrompts(app: PromptAppId) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.prompts(app),
+    queryFn: () => ports.prompts.getAll(app),
+  });
+}
+export function usePromptLiveFile(app: PromptAppId) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.promptLiveFile(app),
+    queryFn: () => ports.prompts.getCurrentFileContent(app),
+  });
+}
+export function useMemoryDocument(id: MemoryDocumentId) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.memoryDocument(id),
+    queryFn: () => ports.memory.readDocument(id),
+  });
+}
+export function useHermesMemoryLimits() {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.hermesMemoryLimits,
+    queryFn: ports.memory.getHermesLimits,
+  });
+}
+export function useDailyMemoryFiles() {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.dailyMemoryFiles,
+    queryFn: ports.memory.listDailyFiles,
+  });
+}
+export function useDailyMemoryFile(filename: string | null) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.dailyMemoryFile(filename ?? ""),
+    queryFn: () => ports.memory.readDailyFile(filename ?? ""),
+    enabled: filename !== null,
+  });
+}
+export function useDailyMemorySearch(query: string) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.dailyMemorySearch(query),
+    queryFn: () => ports.memory.searchDailyFiles(query),
+    enabled: query.length > 0,
+  });
 }
 export function useFeatureSettings(enabled = false) {
   const { ports } = useFeatures();

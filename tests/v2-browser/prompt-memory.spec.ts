@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { expect, test, type Dialog, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import {
   expectHealthyPage,
@@ -10,219 +10,226 @@ import {
   openV2Page,
 } from "./support";
 
-function primaryNavigation(page: Page) {
+const navigationContract = [
+  { path: "/agents", label: "Agent 目录" },
+  { path: "/models", label: "模型" },
+  { path: "/skills", label: "Skills" },
+  { path: "/mcp", label: "MCP" },
+  { path: "/prompts", label: "提示词" },
+  { path: "/memory", label: "记忆" },
+] as const;
+
+const retiredPrototypeCopy = [
+  "前端原型",
+  "未读取或写入本机文件",
+  "注入目标",
+  "同步预览任务",
+  "会话记录",
+  "提炼为长期记忆",
+  "Claude Code · 长期记忆",
+  "已保存到前端预览",
+] as const;
+
+function primaryNavigation(page: Page): Locator {
   return page.getByRole("navigation", { name: "主导航" });
 }
 
-function handleNextDialog(
-  page: Page,
-  action: "accept" | "dismiss",
-): Promise<void> {
-  let resolveHandled: () => void;
-  const handled = new Promise<void>((resolve) => {
-    resolveHandled = resolve;
-  });
-
-  page.once("dialog", async (dialog: Dialog) => {
-    expect(dialog.message()).toContain("尚未保存");
-    if (action === "accept") {
-      await dialog.accept();
-    } else {
-      await dialog.dismiss();
-    }
-    resolveHandled();
-  });
-
-  return handled;
+function escapedRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-test("persists Prompt targets, keeps several rules enabled, and guards dirty navigation", async ({
+function monitorReactWarnings(page: Page): string[] {
+  const warnings: string[] = [];
+  page.on("console", (message) => {
+    const text = message.text();
+    if (
+      message.type() === "warning" &&
+      /react|warning:|maximum update depth|error boundary/i.test(text)
+    ) {
+      warnings.push(text);
+    }
+  });
+  return warnings;
+}
+
+async function expectNoReactWarnings(warnings: readonly string[]) {
+  expect(
+    warnings,
+    `Unexpected React console warnings:\n${warnings.join("\n")}`,
+  ).toEqual([]);
+}
+
+async function expectReachable(control: Locator): Promise<void> {
+  await control.scrollIntoViewIfNeeded();
+  await expect(control).toBeVisible();
+  await expect(control).toBeInViewport();
+}
+
+async function expectNoRetiredPrototype(page: Page): Promise<void> {
+  for (const copy of retiredPrototypeCopy) {
+    await expect(page.getByText(copy, { exact: false })).toHaveCount(0);
+  }
+  await expect(page.locator('[data-data-source="prototype"]')).toHaveCount(0);
+  await expect(page.getByTestId("memory-preview-tasks")).toHaveCount(0);
+}
+
+async function expectPromptNativeOnly(page: Page): Promise<void> {
+  const promptPage = page.getByTestId("prompts-page");
+  await expect(promptPage).toBeVisible();
+  await expect(promptPage).toHaveClass(/\bfy-feature-page\b/);
+  await expect(promptPage).toHaveClass(/\bfy-prompts-page\b/);
+  await expect(promptPage).toHaveAttribute("data-data-source", "native");
+  await expect(page.getByRole("heading", { name: "提示词", level: 1 })).toBeVisible();
+  await expect(page.getByText("桌面能力不可用", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("浏览器预览不会加载模拟或本机提示词", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".fy-control-empty")).toBeVisible();
+  await expect(page.getByRole("button", { name: "新建提示词" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "从文件导入" })).toBeDisabled();
+  await expect(page.getByRole("searchbox", { name: "搜索提示词" })).toBeDisabled();
+  await expect(page.locator('section[aria-label="提示词列表"]')).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "提示词内容" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "实际生效文件内容" })).toHaveCount(0);
+  await expectNoRetiredPrototype(page);
+}
+
+async function expectMemoryNativeOnly(
+  page: Page,
+  feature: "长期记忆" | "每日记忆",
+): Promise<void> {
+  const memoryPage = page.getByTestId("memory-page");
+  await expect(memoryPage).toBeVisible();
+  await expect(memoryPage).toHaveClass(/\bfy-feature-page\b/);
+  await expect(memoryPage).toHaveClass(/\bfy-memory-page\b/);
+  await expect(page.getByRole("heading", { name: "记忆", level: 1 })).toBeVisible();
+  await expect(page.getByText("需要 FyAgent 桌面应用", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      `${feature}来自本机 OpenClaw 与 Hermes 配置，浏览器预览不会加载或模拟这些数据。`,
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".fy-control-empty")).toBeVisible();
+  await expect(page.locator('section[aria-label="长期记忆资源"]')).toHaveCount(0);
+  await expect(page.locator('section[aria-label="每日记忆列表"]')).toHaveCount(0);
+  await expect(page.locator(".fy-memory-editor-textarea")).toHaveCount(0);
+  await expectNoRetiredPrototype(page);
+}
+
+test("shows truthful native-only Prompt and Memory states without seeded data", async ({
   page,
 }) => {
   const health = monitorPageHealth(page);
+  const reactWarnings = monitorReactWarnings(page);
   await openV2Page(page, "/prompts");
 
+  await expectPromptNativeOnly(page);
   await expectNoHorizontalOverflow(page);
-  await expect(page.getByText("前端原型 · 未读取或写入本机文件")).toBeVisible();
-  await expect(page.getByText("2 条已启用")).toBeVisible();
-  await expect(page.getByText("7 个目标文件")).toBeVisible();
-  await expect(page.getByText("8 个 Agent")).toBeVisible();
 
-  await page.getByRole("button", { name: /^代码审查/ }).click();
-  const openClawDefault = page.getByRole("checkbox", {
-    name: "注入到OpenClaw默认工作区 · main + utility",
-  });
-  await openClawDefault.click();
-  await expect(page.getByText("5 个目标文件")).toBeVisible();
-  await expect(page.getByText("6 个 Agent")).toBeVisible();
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-
-  await page.getByRole("button", { name: /^中文与回复风格/ }).click();
-  await page.getByRole("button", { name: /^代码审查/ }).click();
-  await expect(
-    page.getByRole("checkbox", {
-      name: "取消注入到OpenClaw默认工作区 · main + utility",
-    }),
-  ).toBeChecked();
-
-  await page.getByRole("switch", { name: "启用代码审查" }).click();
-  await expect(page.getByText("3 条已启用")).toBeVisible();
-  await expect(
-    page.getByRole("switch", { name: "停用中文与回复风格" }),
-  ).toBeChecked();
-  await expect(
-    page.getByRole("switch", { name: "停用目标、边界与完成证据" }),
-  ).toBeChecked();
-
-  const description = page.getByRole("textbox", { name: "描述" });
-  await description.fill("仍在编辑的浏览器草稿");
-  const memoryLink = primaryNavigation(page).getByRole("link", {
-    name: "记忆",
-    exact: true,
-  });
-
-  const dismissed = handleNextDialog(page, "dismiss");
-  await Promise.all([dismissed, memoryLink.click()]);
-  await expect(page).toHaveURL(/#\/prompts$/);
-  await expect(description).toHaveValue("仍在编辑的浏览器草稿");
-
-  const accepted = handleNextDialog(page, "accept");
-  await Promise.all([accepted, memoryLink.click()]);
-  await expect(page).toHaveURL(/#\/memory$/);
-  await expect(page.getByTestId("memory-page")).toBeVisible();
-
-  await expectHealthyPage(page, health);
-});
-
-test("creates saved Memory revisions and only pending per-target preview tasks", async ({
-  page,
-}) => {
-  const health = monitorPageHealth(page);
-  await openV2Page(page, "/memory");
-
-  await expectNoHorizontalOverflow(page);
-  await expect(page.getByText("前端原型 · 未读取或写入本机文件")).toBeVisible();
-  await page.getByRole("button", { name: /Claude Code · 长期记忆/ }).click();
-  await expect(page.getByRole("checkbox")).toHaveCount(4);
-
-  const content = page.getByRole("textbox", { name: "记忆内容" });
-  await content.fill(`${await content.inputValue()}\n- 浏览器验收经验`);
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("r2")).toBeVisible();
-
-  await page
-    .getByRole("checkbox", {
-      name: "同步到OpenClaw默认工作区 · main + utility",
-    })
+  await primaryNavigation(page)
+    .getByRole("link", { name: "记忆", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "生成 2 个同步预览任务" }),
-  ).toBeDisabled();
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("r3")).toBeVisible();
-  await page.getByRole("button", { name: "生成 2 个同步预览任务" }).click();
-
-  await expect(
-    page.getByText("前端预览：已生成 2 个待执行任务；未写入本机文件"),
-  ).toBeVisible();
-  const tasks = page.getByTestId("memory-preview-tasks");
-  await expect(tasks.getByRole("listitem")).toHaveCount(2);
-  for (const task of await tasks.getByRole("listitem").all()) {
-    await expect(task).toHaveAttribute("data-preview-state", "pending");
-    await expect(task).toHaveAttribute("data-durable-state", "not-run");
-    await expect(task).toContainText("待执行 · 未写入");
-    await expect(task).toContainText("基于修订 r3");
-  }
-  await expect(page.getByText("已同步")).toHaveCount(0);
-
-  const title = page.getByRole("textbox", { name: "记忆标题" });
-  await title.fill("未保存的浏览器标题");
-  const promptLink = primaryNavigation(page).getByRole("link", {
-    name: "提示词",
-    exact: true,
-  });
-  const dismissed = handleNextDialog(page, "dismiss");
-  await Promise.all([dismissed, promptLink.click()]);
   await expect(page).toHaveURL(/#\/memory$/);
-  await expect(title).toHaveValue("未保存的浏览器标题");
+  await expectMemoryNativeOnly(page, "长期记忆");
 
-  const accepted = handleNextDialog(page, "accept");
-  await Promise.all([accepted, promptLink.click()]);
-  await expect(page).toHaveURL(/#\/prompts$/);
+  await page.getByRole("tab", { name: "每日记忆" }).click();
+  await expect(
+    page.getByRole("tab", { name: "每日记忆", selected: true }),
+  ).toBeVisible();
+  await expectMemoryNativeOnly(page, "每日记忆");
+  await expectNoHorizontalOverflow(page);
 
   await expectHealthyPage(page, health);
+  await expectNoReactWarnings(reactWarnings);
 });
 
-test("promotes a read-only Daily source with complete visible provenance", async ({
+test("uses the shared feature and control visual language without page-local theme colors", async () => {
+  const sourceRoot = path.resolve(process.cwd(), "src/v2/pages");
+  const [promptSource, memorySource, promptStyles, memoryStyles] =
+    await Promise.all([
+      readFile(path.join(sourceRoot, "prompts/Page.tsx"), "utf8"),
+      readFile(path.join(sourceRoot, "memory/Page.tsx"), "utf8"),
+      readFile(path.join(sourceRoot, "prompts/page.css"), "utf8"),
+      readFile(path.join(sourceRoot, "memory/page.css"), "utf8"),
+    ]);
+
+  for (const source of [promptSource, memorySource]) {
+    expect(source).toContain("fy-feature-page");
+    expect(source).toMatch(/fy-feature-(?:header|tabs|toolbar|master|panel)/);
+    expect(source).toMatch(/fy-control-(?:field|select|textarea|button)/);
+    expect(source).not.toContain('data-data-source="prototype"');
+  }
+
+  const pageLocalThemeLiteral =
+    /(?:linear|radial)-gradient|#[0-9a-f]{3,8}\b|rgba?\s*\(/i;
+  for (const styles of [promptStyles, memoryStyles]) {
+    expect(styles).not.toMatch(pageLocalThemeLiteral);
+  }
+});
+
+test("switches all six routes and keeps Prompt and Memory controls reachable", async ({
   page,
 }) => {
   const health = monitorPageHealth(page);
-  await openV2Page(page, "/memory");
+  const reactWarnings = monitorReactWarnings(page);
+  await openV2Page(page, "/prompts");
 
-  await page.getByRole("tab", { name: "每日记录" }).click();
-  await expect(page.getByRole("textbox", { name: "记忆内容" })).toHaveAttribute(
-    "readonly",
-  );
-  await expect(page.getByRole("button", { name: "只读来源" })).toBeDisabled();
-  await page.getByRole("button", { name: "提炼为长期记忆" }).click();
+  const navigation = primaryNavigation(page);
+  for (const { path: routePath, label } of navigationContract) {
+    const link = navigation.getByRole("link", { name: label, exact: true });
+    await expectReachable(link);
+    await link.click();
+    await expect(page).toHaveURL(
+      new RegExp(`${escapedRegularExpression(`#${routePath}`)}$`),
+    );
+    await expect(link).toHaveAttribute("aria-current", "page");
+    await expect(navigation.locator('a[aria-current="page"]')).toHaveCount(1);
+    await expectNoHorizontalOverflow(page);
+  }
 
-  await expect(
-    page.getByRole("tab", { name: "长期记忆", selected: true }),
-  ).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "记忆标题" })).toHaveValue(
-    "OpenClaw · 今日记录 · 提炼草稿",
-  );
-  await expect(page.getByText("前端草稿 · 未创建文件")).toBeVisible();
-  await expect(page.getByText("r0")).toBeVisible();
-  await expect(
-    page.getByText("已生成长期记忆草稿；原始记录保持不变"),
-  ).toBeVisible();
+  await navigation.getByRole("link", { name: "提示词", exact: true }).click();
+  await expectPromptNativeOnly(page);
+  for (const control of [
+    page.getByRole("combobox", { name: "当前应用" }),
+    page.getByRole("searchbox", { name: "搜索提示词" }),
+    page.getByRole("button", { name: "从文件导入" }),
+    page.getByRole("button", { name: "新建提示词" }),
+    page.getByText("桌面能力不可用", { exact: true }),
+  ]) {
+    await expectReachable(control);
+  }
+  await expectNoHorizontalOverflow(page);
 
-  const provenance = page.getByTestId("memory-provenance");
-  await expect(provenance).toContainText("OpenClaw · 今日记录");
-  await expect(provenance).toContainText("ID: openclaw-daily-latest");
-  await expect(provenance).toContainText("toolId: openclaw");
-  await expect(provenance).toContainText("targetId: openclaw-default");
-  await expect(provenance).toContainText(
-    "~/.openclaw/workspace/memory/<date>.md",
-  );
-  await expect(provenance).toContainText("提炼时间");
-  await expect(page.getByRole("checkbox")).toHaveCount(4);
-  await expect(
-    page.getByRole("button", { name: "生成 0 个同步预览任务" }),
-  ).toBeDisabled();
-
-  await page.getByRole("checkbox", { name: "同步到Claude Code全局" }).click();
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("r1")).toBeVisible();
-  await page.getByRole("button", { name: "生成 1 个同步预览任务" }).click();
-  const tasks = page.getByTestId("memory-preview-tasks");
-  await expect(tasks.getByRole("listitem")).toHaveCount(1);
-  await expect(tasks.getByRole("listitem")).toHaveAttribute(
-    "data-preview-state",
-    "pending",
-  );
-  await expect(tasks.getByRole("listitem")).toHaveAttribute(
-    "data-durable-state",
-    "not-run",
-  );
-  await expect(tasks).toContainText("基于修订 r1");
-
-  await page.getByRole("tab", { name: "会话记录" }).click();
-  await expect(page.getByRole("textbox", { name: "记忆内容" })).toHaveAttribute(
-    "readonly",
-  );
-  await expect(page.getByRole("button", { name: "只读来源" })).toBeDisabled();
+  await navigation.getByRole("link", { name: "记忆", exact: true }).click();
+  await expectMemoryNativeOnly(page, "长期记忆");
+  for (const control of [
+    page.getByRole("tab", { name: "长期记忆" }),
+    page.getByRole("tab", { name: "每日记忆" }),
+    page.getByText("需要 FyAgent 桌面应用", { exact: true }),
+  ]) {
+    await expectReachable(control);
+  }
+  await page.getByRole("tab", { name: "每日记忆" }).click();
+  await expectMemoryNativeOnly(page, "每日记忆");
+  await expectReachable(page.getByText("需要 FyAgent 桌面应用", { exact: true }));
+  await expectNoHorizontalOverflow(page);
 
   await expectHealthyPage(page, health);
+  await expectNoReactWarnings(reactWarnings);
 });
 
-test("opens the generated standalone from file and leaves no local entry requests", async ({
+test("opens both native-only pages from the self-contained standalone file", async ({
   page,
 }) => {
   const health = monitorPageHealth(page);
+  const reactWarnings = monitorReactWarnings(page);
   const previewPath = path.resolve(process.cwd(), "FyAgent-前端交互预览.html");
+  const previewUrl = pathToFileURL(previewPath).href;
   const previewHtml = await readFile(previewPath, "utf8");
+  const externalRequests: string[] = [];
 
   expect(previewHtml).not.toMatch(/<script\b[^>]*\bsrc\s*=/i);
   expect(previewHtml).not.toMatch(
@@ -230,55 +237,37 @@ test("opens the generated standalone from file and leaves no local entry request
   );
   expect(previewHtml).not.toMatch(/(?:\.\/)?dist\/assets\//i);
 
-  await page.goto(pathToFileURL(previewPath).href, { waitUntil: "load" });
+  page.on("request", (request) => {
+    const requestUrl = request.url();
+    if (
+      requestUrl !== previewUrl &&
+      !requestUrl.startsWith("data:") &&
+      !requestUrl.startsWith("blob:")
+    ) {
+      externalRequests.push(requestUrl);
+    }
+  });
+
+  await page.goto(previewUrl, { waitUntil: "load" });
   await expect(page).toHaveURL(/FyAgent-.*\.html#\/prompts$/);
-  await expect(page.getByTestId("prompts-page")).toBeVisible();
+  await expectPromptNativeOnly(page);
   await expectNoHorizontalOverflow(page);
 
   await primaryNavigation(page)
     .getByRole("link", { name: "记忆", exact: true })
     .click();
   await expect(page).toHaveURL(/#\/memory$/);
-  await expect(page.getByTestId("memory-page")).toBeVisible();
+  await expectMemoryNativeOnly(page, "长期记忆");
+  await page.getByRole("tab", { name: "每日记忆" }).click();
+  await expectMemoryNativeOnly(page, "每日记忆");
   await expectNoHorizontalOverflow(page);
-
-  await expectHealthyPage(page, health);
-});
-
-test("keeps critical Prompt and Memory controls reachable at every configured viewport", async ({
-  page,
-}) => {
-  const health = monitorPageHealth(page);
-  await openV2Page(page, "/prompts");
-
-  await expectNoHorizontalOverflow(page);
-  for (const control of [
-    page.getByRole("button", { name: "新建提示词" }),
-    page.getByRole("searchbox", { name: "搜索提示词" }),
-    page.getByRole("textbox", { name: "名称" }),
-    page.getByRole("button", { name: "保存" }),
-    page.getByRole("checkbox", { name: "取消注入到Codex全局" }),
-  ]) {
-    await control.scrollIntoViewIfNeeded();
-    await expect(control).toBeVisible();
-    await expect(control).toBeInViewport();
-  }
 
   await primaryNavigation(page)
-    .getByRole("link", { name: "记忆", exact: true })
+    .getByRole("link", { name: "提示词", exact: true })
     .click();
-  await expectNoHorizontalOverflow(page);
-  for (const control of [
-    page.getByRole("button", { name: "重新扫描本机" }),
-    page.getByRole("tab", { name: "每日记录" }),
-    page.getByRole("searchbox", { name: "搜索长期记忆" }),
-    page.getByRole("button", { name: /Codex · 派生记忆/ }),
-    page.getByRole("textbox", { name: "记忆内容" }),
-  ]) {
-    await control.scrollIntoViewIfNeeded();
-    await expect(control).toBeVisible();
-    await expect(control).toBeInViewport();
-  }
+  await expectPromptNativeOnly(page);
+  expect(externalRequests).toEqual([]);
 
   await expectHealthyPage(page, health);
+  await expectNoReactWarnings(reactWarnings);
 });

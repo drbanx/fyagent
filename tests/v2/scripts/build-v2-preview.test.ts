@@ -183,6 +183,9 @@ describe("V2 standalone preview builder", () => {
     const standalone = await readFile(fixture.outputPath, "utf8");
 
     expect(result.stylesheetEntryCount).toBe(0);
+    expect(standalone).toContain(
+      '<meta name="fyagent-preview" content="standalone-v2-native-preview" />',
+    );
     expect(standalone).toContain("window.__FYAGENT_STANDALONE_PREVIEW__ = true");
     expect(standalone).toContain("window.currentGraphLoaded");
     expect(standalone).toContain('"large.js"');

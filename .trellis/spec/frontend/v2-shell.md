@@ -25,6 +25,8 @@ The approved Skills and MCP exception follows the dedicated
 [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md).
 Agent directory and model quick setup follow the dedicated
 [V2 Agent and Models Contract](./v2-agent-models.md).
+Prompt and Memory native business integration follows the dedicated
+[V2 Prompts and Memory Native Business Contract](./v2-prompts-memory.md).
 The Codex detail may additionally consume the narrow renderer-neutral
 `src/shared/codex-desktop/**` contract described by
 [Codex Desktop Installer](../backend/codex-desktop-installer.md); this is not a
@@ -83,8 +85,9 @@ The navigation source contains exactly these entries in this order:
   `aria-current="page"`; do not maintain a second `currentView` state.
 - Put each production page element below its matching `pages/<route>/` folder.
   All six routes render their approved business surfaces. Prompts and Memory
-  remain bounded local-only prototypes and must not claim native persistence or
-  backend synchronization.
+  use bounded native feature ports and must not widen the existing command,
+  filesystem, or synchronization scope. Browser preview reports these features
+  as native-only and never seeds business data.
 - Register the UI Lab only when `import.meta.env.DEV` is true. Production must
   not expose `#/__dev/ui-lab`.
 - React keyboard order is the six navigation links followed by Search,
@@ -193,6 +196,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Neutral Codex shared code imports React, Tauri, platform, or legacy UI | Architecture test fails; move the side effect behind the V2 port                   |
 | A route's rendered state disagrees with its dedicated feature contract | Shell/content test fails                                                           |
 | Prompts or Memory becomes empty after integration                      | Final task acceptance fails; validate the resolved tree rather than merge messages |
+| Browser Prompts/Memory exposes seeded or private records               | Native-only/preview contract test fails                                             |
 | A supported viewport overflows or overlaps                             | Playwright geometry gate fails                                                     |
 
 ## 5. Good / Base / Bad Cases

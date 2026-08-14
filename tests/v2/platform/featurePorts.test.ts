@@ -11,11 +11,16 @@ import {
   createBrowserFeaturePorts,
   NATIVE_ONLY_ERROR,
 } from "@/v2/shared/platform/browser/features";
+import { PROMPT_APP_IDS } from "@/v2/shared/features/types";
 import type {
   AgentCapabilityId,
   AgentCatalogEntry,
   AgentCatalogId,
   AgentCatalogResult,
+  HermesMemoryKind,
+  ManagedPrompt,
+  MemoryDocumentId,
+  PromptAppId,
   QoderWorkHooksSnapshot,
   SaveQoderWorkHooksRequest,
 } from "@/v2/shared/features/types";
@@ -183,6 +188,42 @@ describe("V2 feature ports", () => {
     listen.mockReset();
   });
 
+  it("partitions Prompt and Memory query keys by authoritative resource", async () => {
+    const { featureKeys } = await import("@/v2/shared/features/queries");
+    expect(featureKeys.prompts("claude")).toEqual([
+      "v2",
+      "prompts",
+      "claude",
+      "list",
+    ]);
+    expect(featureKeys.prompts("codex")).not.toEqual(
+      featureKeys.prompts("claude"),
+    );
+    expect(featureKeys.promptLiveFile("claude")).toEqual([
+      "v2",
+      "prompts",
+      "claude",
+      "live-file",
+    ]);
+    expect(featureKeys.memoryDocument("openclaw-memory")).not.toEqual(
+      featureKeys.memoryDocument("hermes-memory"),
+    );
+    expect(featureKeys.dailyMemoryFile("2026-08-14.md")).toEqual([
+      "v2",
+      "memory",
+      "daily",
+      "file",
+      "2026-08-14.md",
+    ]);
+    expect(featureKeys.dailyMemorySearch("release")).toEqual([
+      "v2",
+      "memory",
+      "daily",
+      "search",
+      "release",
+    ]);
+  });
+
   it("keeps native observations unavailable in browsers and rejects writes", async () => {
     const ports = createBrowserFeaturePorts();
     await expect(ports.catalog.get()).rejects.toThrow(NATIVE_ONLY_ERROR);
@@ -259,6 +300,41 @@ describe("V2 feature ports", () => {
     );
     await expect(ports.skills.getInstalled()).resolves.toEqual([]);
     await expect(ports.mcp.getAll()).resolves.toEqual({});
+    await expect(ports.prompts.getAll("claude")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.prompts.getCurrentFileContent("codex")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(
+      ports.prompts.upsert("gemini", {
+        id: "prompt-a",
+        name: "Prompt A",
+        content: "content",
+        enabled: false,
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.prompts.delete("grokbuild", "prompt-a")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.prompts.enable("opencode", "prompt-a")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.prompts.importFromFile("openclaw")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.memory.readDocument("openclaw-memory")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.memory.getHermesLimits()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.memory.listDailyFiles()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.memory.searchDailyFiles("release")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
     await expect(ports.settings.get()).resolves.toEqual({});
     await expect(
       ports.providers.applyQuickSetupWithResult(
@@ -923,6 +999,283 @@ describe("V2 feature ports", () => {
       ["get_settings"],
       ["save_settings", { settings: { skillSyncMethod: "copy" } }],
     ]);
+  });
+
+  it("uses exact Prompt commands for every supported application and parses authoritative data", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/v2/shared/platform/tauri/features"
+    );
+    const prompt: ManagedPrompt = {
+      id: "prompt-a",
+      name: "Prompt A",
+      content: "Keep answers concise.",
+      description: "Shared fixture",
+      enabled: false,
+      createdAt: 1_700_000_000,
+      updatedAt: 1_700_000_100,
+    };
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "get_prompts") return { [prompt.id]: prompt };
+      if (command === "get_current_prompt_file_content") return "live prompt";
+      if (command === "import_prompt_from_file") return "imported-1";
+      return undefined;
+    });
+
+    const ports = createTauriFeaturePorts();
+    for (const app of PROMPT_APP_IDS) {
+      await expect(ports.prompts.getAll(app)).resolves.toEqual([prompt]);
+      await expect(ports.prompts.getCurrentFileContent(app)).resolves.toBe(
+        "live prompt",
+      );
+      await ports.prompts.upsert(app, prompt);
+      await ports.prompts.delete(app, prompt.id);
+      await ports.prompts.enable(app, prompt.id);
+      await expect(ports.prompts.importFromFile(app)).resolves.toBe(
+        "imported-1",
+      );
+    }
+
+    expect(invoke.mock.calls).toEqual(
+      PROMPT_APP_IDS.flatMap((app) => [
+        ["get_prompts", { app }],
+        ["get_current_prompt_file_content", { app }],
+        ["upsert_prompt", { app, id: prompt.id, prompt }],
+        ["delete_prompt", { app, id: prompt.id }],
+        ["enable_prompt", { app, id: prompt.id }],
+        ["import_prompt_from_file", { app }],
+      ]),
+    );
+  });
+
+  it("rejects invalid Prompt identifiers and malformed native payloads", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/v2/shared/platform/tauri/features"
+    );
+    const ports = createTauriFeaturePorts();
+
+    await expect(
+      ports.prompts.getAll("claude-desktop" as PromptAppId),
+    ).rejects.toThrow("application");
+    await expect(ports.prompts.delete("claude", " prompt-a")).rejects.toThrow(
+      "identifier",
+    );
+    await expect(
+      ports.prompts.upsert("claude", {
+        id: "prompt-a",
+        name: "   ",
+        content: "content",
+        enabled: false,
+      }),
+    ).rejects.toThrow("name");
+    expect(invoke).not.toHaveBeenCalled();
+
+    invoke.mockResolvedValueOnce({
+      "prompt-a": {
+        id: "different-id",
+        name: "Prompt A",
+        content: "content",
+        enabled: false,
+      },
+    });
+    await expect(ports.prompts.getAll("claude")).rejects.toThrow();
+
+    invoke.mockResolvedValueOnce({
+      "prompt-a": {
+        id: "prompt-a",
+        name: "Prompt A",
+        content: "content",
+        enabled: false,
+        updatedAt: "yesterday",
+      },
+    });
+    await expect(ports.prompts.getAll("claude")).rejects.toThrow("unavailable");
+
+    invoke.mockResolvedValueOnce(42);
+    await expect(ports.prompts.getCurrentFileContent("claude")).rejects.toThrow(
+      "live file",
+    );
+
+    invoke.mockResolvedValueOnce("");
+    await expect(ports.prompts.importFromFile("claude")).rejects.toThrow(
+      "Imported",
+    );
+  });
+
+  it("maps the four Memory documents and daily resources to exact existing commands", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/v2/shared/platform/tauri/features"
+    );
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "read_workspace_file") return null;
+      if (command === "get_hermes_memory") return "Hermes memory";
+      if (command === "get_hermes_memory_limits") {
+        return {
+          memory: 2200,
+          user: 1375,
+          memoryEnabled: true,
+          userEnabled: false,
+        };
+      }
+      if (command === "list_daily_memory_files") {
+        return [
+          {
+            filename: "2026-08-14.md",
+            date: "2026-08-14",
+            sizeBytes: 128,
+            modifiedAt: 1_700_000_000,
+            preview: "Daily preview",
+          },
+        ];
+      }
+      if (command === "read_daily_memory_file") return "Daily content";
+      if (command === "search_daily_memory_files") {
+        return [
+          {
+            filename: "2026-08-14.md",
+            date: "2026-08-14",
+            sizeBytes: 128,
+            modifiedAt: 1_700_000_000,
+            snippet: "Daily result",
+            matchCount: 1,
+          },
+        ];
+      }
+      if (command === "open_workspace_directory") return true;
+      return undefined;
+    });
+
+    const ports = createTauriFeaturePorts();
+    await expect(
+      ports.memory.readDocument("openclaw-memory"),
+    ).resolves.toBeNull();
+    await expect(
+      ports.memory.readDocument("openclaw-user"),
+    ).resolves.toBeNull();
+    await expect(ports.memory.readDocument("hermes-memory")).resolves.toBe(
+      "Hermes memory",
+    );
+    await expect(ports.memory.readDocument("hermes-user")).resolves.toBe(
+      "Hermes memory",
+    );
+    await ports.memory.writeDocument("openclaw-memory", "OpenClaw M");
+    await ports.memory.writeDocument("openclaw-user", "OpenClaw U");
+    await ports.memory.writeDocument("hermes-memory", "Hermes M");
+    await ports.memory.writeDocument("hermes-user", "Hermes U");
+    await expect(ports.memory.getHermesLimits()).resolves.toEqual({
+      memory: 2200,
+      user: 1375,
+      memoryEnabled: true,
+      userEnabled: false,
+    });
+    await ports.memory.setHermesEnabled("memory", false);
+    await ports.memory.setHermesEnabled("user", true);
+    await expect(ports.memory.listDailyFiles()).resolves.toHaveLength(1);
+    await expect(ports.memory.readDailyFile("2026-08-14.md")).resolves.toBe(
+      "Daily content",
+    );
+    await ports.memory.writeDailyFile("2026-08-14.md", "Daily update");
+    await ports.memory.deleteDailyFile("2026-08-14.md");
+    await expect(ports.memory.searchDailyFiles("Daily")).resolves.toHaveLength(
+      1,
+    );
+    await ports.memory.openOpenClawDirectory("workspace");
+    await ports.memory.openOpenClawDirectory("memory");
+
+    expect(invoke.mock.calls).toEqual([
+      ["read_workspace_file", { filename: "MEMORY.md" }],
+      ["read_workspace_file", { filename: "USER.md" }],
+      ["get_hermes_memory", { kind: "memory" }],
+      ["get_hermes_memory", { kind: "user" }],
+      [
+        "write_workspace_file",
+        { filename: "MEMORY.md", content: "OpenClaw M" },
+      ],
+      ["write_workspace_file", { filename: "USER.md", content: "OpenClaw U" }],
+      ["set_hermes_memory", { kind: "memory", content: "Hermes M" }],
+      ["set_hermes_memory", { kind: "user", content: "Hermes U" }],
+      ["get_hermes_memory_limits"],
+      ["set_hermes_memory_enabled", { kind: "memory", enabled: false }],
+      ["set_hermes_memory_enabled", { kind: "user", enabled: true }],
+      ["list_daily_memory_files"],
+      ["read_daily_memory_file", { filename: "2026-08-14.md" }],
+      [
+        "write_daily_memory_file",
+        { filename: "2026-08-14.md", content: "Daily update" },
+      ],
+      ["delete_daily_memory_file", { filename: "2026-08-14.md" }],
+      ["search_daily_memory_files", { query: "Daily" }],
+      ["open_workspace_directory", { subdir: "workspace" }],
+      ["open_workspace_directory", { subdir: "memory" }],
+    ]);
+  });
+
+  it("rejects invalid Memory resources, dates, and malformed native payloads", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/v2/shared/platform/tauri/features"
+    );
+    const ports = createTauriFeaturePorts();
+
+    await expect(
+      ports.memory.readDocument("codex-memory" as MemoryDocumentId),
+    ).rejects.toThrow("document");
+    await expect(
+      ports.memory.setHermesEnabled("profile" as HermesMemoryKind, true),
+    ).rejects.toThrow("kind");
+    for (const filename of [
+      "../MEMORY.md",
+      "2026-2-03.md",
+      "2026-02-30.md",
+      "0000-01-01.md",
+    ]) {
+      await expect(ports.memory.readDailyFile(filename)).rejects.toThrow(
+        "filename",
+      );
+      await expect(
+        ports.memory.writeDailyFile(filename, "content"),
+      ).rejects.toThrow("filename");
+      await expect(ports.memory.deleteDailyFile(filename)).rejects.toThrow(
+        "filename",
+      );
+    }
+    expect(invoke).not.toHaveBeenCalled();
+
+    invoke.mockResolvedValueOnce({
+      memory: 2200,
+      user: -1,
+      memoryEnabled: true,
+      userEnabled: true,
+    });
+    await expect(ports.memory.getHermesLimits()).rejects.toThrow("limits");
+
+    invoke.mockResolvedValueOnce([
+      {
+        filename: "2026-02-30.md",
+        date: "2026-02-30",
+        sizeBytes: 1,
+        modifiedAt: 1,
+        preview: "bad date",
+      },
+    ]);
+    await expect(ports.memory.listDailyFiles()).rejects.toThrow("filename");
+
+    invoke.mockResolvedValueOnce([
+      {
+        filename: "2026-08-14.md",
+        date: "2026-08-13",
+        sizeBytes: 1,
+        modifiedAt: 1,
+        snippet: "mismatch",
+        matchCount: 1,
+      },
+    ]);
+    await expect(ports.memory.searchDailyFiles("query")).rejects.toThrow(
+      "search",
+    );
+
+    invoke.mockResolvedValueOnce(false);
+    await expect(
+      ports.memory.openOpenClawDirectory("workspace"),
+    ).rejects.toThrow("could not be opened");
   });
 
   it("rejects non-http external URLs before invoking native code", async () => {
