@@ -32,7 +32,7 @@ accepts exactly stable `vX.Y.Z` with no prerelease, build metadata, missing
 component, or leading zero.
 
 - `workflow_dispatch` is an optional full three-target diagnostic preflight for
-  the current trusted `main` HEAD. It may build and package native targets,
+  the current trusted `dev/laiyongjie` HEAD. It may build and package native targets,
   prove and seal Windows bytes, create workflow artifacts, and attest candidate
   bytes, but it can never create or update a GitHub Release and is not a
   release-closure prerequisite.
@@ -58,10 +58,10 @@ Eligibility is the sole producer of these values:
 ```text
 app_version   = canonical Cargo stable version
 release_tag   = "v" + app_version
-source_sha    = current remote main HEAD
+source_sha    = current remote dev/laiyongjie HEAD (preflight) | main HEAD (formal)
 workflow_sha  = source_sha
 release_mode  = preflight | formal
-ci_run_id     = exact successful main push CI run
+ci_run_id     = exact successful push CI run for the mode's authority branch
 ci_attempt    = exact successful attempt of that run
 ```
 
@@ -70,10 +70,10 @@ attestation, and publication step consumes these values unchanged. Downstream
 jobs must not strip a ref, reread a second version source, select a newer CI
 attempt, or substitute a different source/workflow SHA.
 
-Both modes bind the same exact successful `main` push CI. Preflight is an
-optional diagnostic for the same source that may later be tagged, not release
-authority or a closure gate. Formal mode additionally binds the remote
-annotated tag.
+Preflight binds the exact current `dev/laiyongjie` HEAD and its successful push
+CI. Formal mode independently binds the exact current `main` HEAD, its
+successful push CI, and the remote annotated tag. Preflight is artifact-producing
+diagnostic evidence, not formal release authority or a closure gate.
 
 The frozen output has exact keys:
 
@@ -106,9 +106,9 @@ Eligibility fails closed unless all of these facts agree:
 2. the workflow is `Release` at `.github/workflows/release.yml` and its
    workflow SHA equals the candidate source;
 3. the canonical version is stable `X.Y.Z` and the tag is exactly `vX.Y.Z`;
-4. the live `refs/heads/main` target equals candidate, event, workflow, and
-   checkout source SHA;
-5. preflight event/ref/workflow ref are the `main` branch and its explicit
+4. the live authority branch target (`dev/laiyongjie` for preflight, `main` for
+   formal) equals candidate, event, workflow, and checkout source SHA;
+5. preflight event/ref/workflow ref are the `dev/laiyongjie` branch and its explicit
    `source_sha` input equals the frozen source; remote tag evidence is absent;
 6. formal event/ref/workflow ref are the same version tag, the remote ref
    points to a Git `tag` object rather than directly to a commit, the annotated
@@ -116,7 +116,7 @@ Eligibility fails closed unless all of these facts agree:
 7. the CI workflow belongs to the same repository, is active, is named `CI`,
    and has path `.github/workflows/ci.yml`;
 8. among exact-source `push` runs whose head repository is the same repository
-   and whose head branch is `main`, the latest run number/attempt is
+   and whose head branch is the mode's authority branch, the latest run number/attempt is
    completed successfully; an older green run cannot mask a later failed,
    cancelled, timed-out, or running attempt;
 9. the selected attempt contains exactly one completed/successful
@@ -387,10 +387,10 @@ never called private or successful.
 
 | Condition                                                                                                                   | Required result                                              |
 | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Candidate/version/tag/event/workflow/main HEAD differs                                                                      | Fail before native builds.                                   |
+| Candidate/version/tag/event/workflow/authority-branch HEAD differs                                                          | Fail before native builds.                                   |
 | Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                      | Fail before native builds; require exact `fy-agent/fyagent`. |
 | Formal tag is lightweight, points elsewhere, or changes                                                                     | Fail; never repair or move the tag.                          |
-| Exact-source main CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
+| Exact-source authority-branch CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
 | Preflight reaches a publish path or provider secret                                                                         | Static/remote gate fails.                                    |
 | Native runner, architecture, toolchain, or source drifts                                                                   | Fail that target; no fallback.                               |
 | Pinned build input ID/digest/manifest/file set drifts                                                                       | Fail before provider or trusted consumption.                 |
@@ -429,8 +429,9 @@ evidence outside this Release closure. Closure requires, in order:
 4. any later optional bookkeeping push is a new `main` HEAD and must satisfy
    its own CI requirements; it is not part of the release transaction.
 
-A same-SHA dispatch preflight may be run for diagnosis, but closure neither
-requires nor infers success from it.
+A successful `dev/laiyongjie` dispatch preflight may be run to produce and
+attest candidate installers, but formal closure neither requires nor infers
+success from it.
 
 `windows-11-arm` remains public preview and may block the run. Unsigned Windows
 installers may trigger trust prompts; disclosure, SHA-256, and attestation make

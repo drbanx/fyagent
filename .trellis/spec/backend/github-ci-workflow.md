@@ -35,9 +35,10 @@ merge_group:
 workflow_dispatch:
 ```
 
-- every `main` push remains a full CI run;
-- every `dev/laiyongjie` push is a full CI run and is the only CI event that
-  can satisfy the dev-release eligibility contract;
+- every `main` push remains a full CI run and can satisfy formal-release
+  eligibility for the exact current `main` HEAD;
+- every `dev/laiyongjie` push is a full CI run and can satisfy preflight
+  eligibility for the exact current dev HEAD;
 - PR and `merge_group` runs execute only affected domains;
 - `workflow_dispatch` is a full diagnostic run and is never release evidence
   because its event is not `push`.
@@ -198,7 +199,8 @@ exceeds the bound must add complete pagination in the same change.
 - a native GitHub rerun remains the same run identity with a later attempt and
   keeps the original `GITHUB_SHA`/`GITHUB_REF` semantics.
 - release eligibility accepts a successful rerun only while that original SHA
-  is still the current remote `dev/laiyongjie` HEAD.
+  is still the current remote authority-branch HEAD (`dev/laiyongjie` for
+  preflight, `main` for formal publication).
 
 ## 7. Job and toolchain contracts
 
@@ -380,5 +382,5 @@ Correct:
 ```text
 explicit base/head -> repository classifier -> requested domains
 requested success + authorized skip + REST conclusion -> CI / Required
-exact dev push SHA + successful CI / Required -> release eligibility
+exact authority-branch push SHA + successful CI / Required -> mode-specific release eligibility
 ```

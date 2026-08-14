@@ -38,7 +38,7 @@ function releaseIdentity(mode: "preflight" | "formal"): ReleaseIdentity {
     workflowRef:
       mode === "formal"
         ? "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0"
-        : "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+        : "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
     workflowSha: sourceSha,
     runId: "123456",
     runAttempt: "2",

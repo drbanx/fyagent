@@ -1490,9 +1490,12 @@ export function validateArchiveEntry(root, relativePath, io = fs, indexMode) {
     (payload.length === 1 ||
       (payload.length === 2 && payload[0] === "research"));
   const extension = path.posix.extname(fileName).toLowerCase();
+  const researchJson =
+    extension === ".json" && payload.length === 2 && payload[0] === "research";
   const validDocument =
     extension === ".md" ||
     (extension === ".json" && fileName === "task.json") ||
+    researchJson ||
     (extension === ".jsonl" &&
       (fileName === "check.jsonl" || fileName === "implement.jsonl"));
   if (!validLocation || !validDocument) {
@@ -1512,6 +1515,9 @@ export function validateArchiveEntry(root, relativePath, io = fs, indexMode) {
   }
   if ((stat.mode & 0o111) !== 0) {
     throw new Error(`Archive payload must not be executable: ${relativePath}`);
+  }
+  if (researchJson) {
+    JSON.parse(textFromBuffer(io.readFileSync(absolute), relativePath));
   }
   // The canonical archive identity and historical document names are part of
   // the user-approved historical exclusion. Structure, file type, symlink,

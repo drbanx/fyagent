@@ -837,14 +837,14 @@ describe("FyAgent release workflow", () => {
     ).rejects.toThrow(/Unexpected trusted build input entry/u);
   });
 
-  it("supports an immutable main preflight and stable tag candidates without publishing dispatches", () => {
+  it("supports an immutable dev preflight and stable tag candidates without publishing dispatches", () => {
     const trigger = source.slice(0, source.indexOf("\npermissions:"));
     expect(trigger).toContain('      - "v*.*.*"');
     expect(trigger).not.toContain('      - "v*"');
     expect(trigger).not.toMatch(/^\s+- ["']v\d+\.\d+\.\d+["']\s*$/mu);
     expect(trigger).toContain("workflow_dispatch:");
     expect(trigger).toContain("source_sha:");
-    expect(trigger).toContain("main HEAD SHA");
+    expect(trigger).toContain("dev/laiyongjie HEAD SHA");
     expect(trigger).toContain("required: true");
     expect(source).toContain("release_mode='preflight'");
     expect(source).toContain("release_mode='formal'");
@@ -1197,7 +1197,7 @@ describe("FyAgent release workflow", () => {
     );
   });
 
-  it("binds repository, main HEAD, annotated formal tag, and exact Required CI through the repository-owned verifier", () => {
+  it("binds the dev preflight, formal tag, and exact authority-branch Required CI through the repository-owned verifier", () => {
     const eligibility = source.slice(
       source.indexOf("\n  eligibility:\n"),
       source.indexOf("\n  build-windows:\n"),
@@ -1209,8 +1209,7 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain("path: candidate-source");
     expect(eligibility).not.toContain("installer-actions");
     expect(eligibility).not.toContain("pnpm install");
-    expect(eligibility).toContain("refs/heads/main");
-    expect(eligibility).not.toContain("refs/heads/dev/laiyongjie");
+    expect(eligibility).toContain("refs/heads/dev/laiyongjie");
     expect(eligibility).toContain('"refs/tags/$GITHUB_REF_NAME"');
     expect(eligibility).toContain('release_tag="v$app_version"');
     expect(eligibility).toContain('check --tag "$release_tag"');
@@ -1253,11 +1252,11 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain("checks: read");
     expect(eligibility).not.toContain("merge-base --is-ancestor");
     expect(eligibility).not.toContain("refs/remotes/origin/main");
-    expect(eligibility).not.toContain("branch=dev/laiyongjie");
+    expect(eligibility).not.toContain("branch=main");
     expect(
       namedStepBlock(
         eligibility,
-        "Bind remote main, tag, and successful Required CI evidence",
+        "Bind remote authority branch, tag, and successful Required CI evidence",
       ),
     ).not.toContain("\n        if:");
   });

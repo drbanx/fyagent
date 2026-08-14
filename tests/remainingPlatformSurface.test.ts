@@ -1239,7 +1239,7 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes the decoded and visually reviewed raster inventory by path and digest", () => {
     const currentPaths = checker.listCurrentFiles(ROOT);
-    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(167);
+    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(150);
     expect(checker.validateRasterAssetInventory(currentPaths)).toEqual([]);
 
     const first = checker.RASTER_ASSET_CONTRACT[0];
@@ -1451,7 +1451,7 @@ describe("durable supported-platform surface contract", () => {
         ),
       );
       fs.writeFileSync(manifestPath, JSON.stringify(current));
-      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(167);
+      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(150);
 
       fs.writeFileSync(
         manifestPath,
@@ -1604,6 +1604,19 @@ describe("durable supported-platform surface contract", () => {
       expect(() => checker.validateArchiveEntry(root, manifest)).toThrow(
         /standard task document/,
       );
+      const researchJson = `${base}/research/evidence.json`;
+      fs.mkdirSync(path.dirname(path.join(root, researchJson)), {
+        recursive: true,
+      });
+      fs.writeFileSync(path.join(root, researchJson), '{"reviewed":true}\n');
+      expect(
+        checker.validateArchiveEntry(root, researchJson, fs, "100644"),
+      ).toEqual([]);
+      fs.writeFileSync(path.join(root, researchJson), "{");
+      expect(() =>
+        checker.validateArchiveEntry(root, researchJson, fs, "100644"),
+      ).toThrow(SyntaxError);
+
       expect(() =>
         checker.validateArchiveEntry(
           root,

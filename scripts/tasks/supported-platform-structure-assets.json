@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "0d8c13c5d1cb1c313cf78890aaca3ac9db5be4fc2663662954a4b4dd8c94d3cc"
+      "48a2bddad2e447e09f86d1fef4503e2bb4ac759abff3da8c00adb0aa48c7782d"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -171,7 +171,7 @@
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
-      "7ea870d76e2d6c96b78ac89f7582de8d7d3724831796aa148b631e5851997d7d"
+      "6c587d547b7fae6adac402781a50776886572faa65ad17ab4c16cc153309b882"
     ],
     [
       "src-tauri/src/services/session_usage_codex.rs",
@@ -311,11 +311,11 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "04d2142fef361aa3d35c9f03c04c96ab820309bde915341e77f7bb159d7a0d38"
+      "52a24858520c982122aee77c536a71b185177a36d65c625bbce87bca2cbd9c11"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "d1a0d081a046cdd9a13e45361a914fc3906f0fa723e989478c97b52d9e7c2ca7"
+      "d02aea3ea1010ce4d3f5394577b4db71c2afd9d1624fd43a5d008f2107360f3c"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

@@ -11,6 +11,7 @@ import { basename, join } from "node:path";
 export const PRODUCT_NAME = "FyAgent";
 export const EXPECTED_REPOSITORY = "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID = "1313497021";
+export const PREFLIGHT_BRANCH = "dev/laiyongjie";
 export const RELEASE_BRANCH = "main";
 export const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";
 export const CI_WORKFLOW_PATH = ".github/workflows/ci.yml";
@@ -487,8 +488,8 @@ export function buildBuildMetadata({
   } else {
     assert(
       identity.workflowRef ===
-        `${workflowRefPrefix}refs/heads/${RELEASE_BRANCH}`,
-      `Preflight must use the trusted ${RELEASE_BRANCH} workflow ref`,
+        `${workflowRefPrefix}refs/heads/${PREFLIGHT_BRANCH}`,
+      `Preflight must use the trusted ${PREFLIGHT_BRANCH} workflow ref`,
     );
   }
   assert(/^[1-9]\d*$/.test(String(identity.runId)), "runId must be numeric");

@@ -18,6 +18,7 @@ import {
   DOWNLOAD_MANIFEST_NAME,
   EXPECTED_INSTALLERS_BY_TARGET,
   EXPECTED_TARGETS,
+  PREFLIGHT_BRANCH,
   RELEASE_BRANCH,
   WINDOWS_SIGNING_FRAGMENTS_BY_TARGET,
   WINDOWS_SIGNING_STATUS_NAME,
@@ -64,7 +65,8 @@ const identity: ReleaseIdentity = {
   repository: "fy-agent/fyagent",
   repositoryId: "1313497021",
   workflowPath: ".github/workflows/release.yml",
-  workflowRef: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+  workflowRef:
+    "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
   workflowSha: "b".repeat(40),
   runId: "123456",
   runAttempt: "2",
@@ -207,6 +209,7 @@ describe("release asset and metadata contract", () => {
 
   it("freezes four installers, seven subjects, and eight attachments", () => {
     const installers = expectedInstallerNames("0.3.0");
+    expect(PREFLIGHT_BRANCH).toBe("dev/laiyongjie");
     expect(RELEASE_BRANCH).toBe("main");
     expect(installers).toEqual([
       "FyAgent-0.3.0-macOS.dmg",
@@ -373,7 +376,7 @@ describe("release asset and metadata contract", () => {
         runAttempt: "2",
         event: "workflow_dispatch",
         mode: "preflight",
-        ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+        ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
         sha: "b".repeat(40),
       },
       requiredCi: {
@@ -470,7 +473,7 @@ describe("release asset and metadata contract", () => {
         workflowRef:
           "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/other",
       },
-      /Preflight must use the trusted main workflow ref/,
+      /Preflight must use the trusted dev\/laiyongjie workflow ref/,
     ],
     [
       "CI workflow",

@@ -9,10 +9,13 @@ use std::{
     collections::HashMap,
     fmt, fs,
     io::{self, Read, Seek, SeekFrom, Write},
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     sync::{Mutex as StdMutex, MutexGuard as StdMutexGuard},
     time::{Duration, Instant},
 };
+
+#[cfg(target_os = "windows")]
+use std::path::Component;
 
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
