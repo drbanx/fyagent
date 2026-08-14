@@ -719,6 +719,17 @@ mod tests {
 
         assert!(source.contains("IShellWindows"));
         assert!(source.contains("FindWindowSW"));
+        assert!(source.contains("SWC_DESKTOP"));
+        assert!(!source.contains("SWC_EXPLORER"));
+        assert!(source.contains("IUnknown_QueryService"));
+        assert!(source.contains("QueryActiveShellView"));
+        assert!(source.contains("SVGIO_BACKGROUND"));
+        assert!(source.contains("let background_dispatch: IDispatch"));
+        assert!(source.contains("background_dispatch"));
+        assert!(source.contains("folder_view.Application()"));
+        assert_eq!(source.matches("COINIT_DISABLE_OLE1DDE").count(), 3);
+        assert_eq!(source.matches("SW_SHOWNORMAL").count(), 2);
+        assert!(source.contains("ShellExecute(&target, &arguments, &empty, &empty, &show)",));
         assert!(source.contains("ShellExecute"));
         assert!(!source.contains("Command::new"));
         assert!(!source.contains("ShellExecuteW"));

@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "066a1749d91123f40b61139cbf382d249985fbbd2b3756f97070be6e1d4df508"
+      "0d8c13c5d1cb1c313cf78890aaca3ac9db5be4fc2663662954a4b4dd8c94d3cc"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -143,7 +143,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "9eddd3c29ec31e15bccdc9facbae876f3bf78f779eaac359133117770d65bec6"
+      "b6fc904a8cddad84862fc1cc1ea3c7b7bfdee5509e5f2eafe8a770f5c6a4445c"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
@@ -311,7 +311,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "8942e3a70a321a7510d3d09eea3909b0927d82f5105c3fca7c50b1708367836f"
+      "c46c7e17454a7c4892ae9b96f494a046dcbd774607c1c6de4bbbcf7113291f5a"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

@@ -11,11 +11,14 @@ contracts and must not be folded into the Agent capability catalog.
 
 The product boundary is deliberately asymmetric:
 
-- QoderWork CN and TRAE Work are visible `pending_verification` candidates with
-  official assisted links only.
-- WorkBuddy uses its dedicated revision-checked configuration domain.
-- Codex and Claude Code use a bounded quick-setup-specific Provider operation.
-- Browser preview never impersonates authoritative desktop state.
+- QoderWork CN, TRAE Work, and WorkBuddy each expose one catalog-owned product
+  link; Claude Code exposes separate CLI and Desktop links.
+- WorkBuddy additionally uses its dedicated revision-checked configuration
+  domain.
+- Codex exposes no catalog link. Its detail owns the FyAgent-managed desktop
+  installer while Codex and Claude Code retain bounded Provider quick setup.
+- Browser preview never impersonates authoritative desktop state or installer
+  success.
 
 ## 2. Signatures
 
@@ -29,15 +32,26 @@ type AgentCatalogId =
   | "codex"
   | "claude-code";
 
+type AgentOfficialLinkId = "product" | "cli" | "desktop";
+
+type AgentOfficialLink = {
+  id: AgentOfficialLinkId;
+  label: string;
+  url: string;
+};
+
 type AgentCatalogResult = {
-  contractVersion: 1;
+  contractVersion: 2;
   reviewedAt: string;
   agents: Array<{
     id: AgentCatalogId;
     displayName: string;
     description: string;
-    officialUrl: string;
-    status: "pending_verification" | "manual_install";
+    officialLinks: AgentOfficialLink[];
+    status:
+      | "pending_verification"
+      | "manual_install"
+      | "managed_install";
     actions: Record<
       "browse" | "observe" | "install" | "configure",
       {
@@ -97,8 +111,7 @@ type ProviderMutationResult<T> = {
   liveConfigChanged: boolean;
   app: ProviderAppId;
   warningCodes?: Array<
-    | "CODEX_WEBSOCKET_NON_GPT_MODEL"
-    | "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED"
+    "CODEX_WEBSOCKET_NON_GPT_MODEL" | "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED"
   >;
 };
 ```
@@ -113,6 +126,14 @@ mutation arguments only and never query keys or query data.
 
 - `get_agent_catalog` is deterministic, non-networking, non-secret, and ordered
   exactly: QoderWork CN, TRAE Work, WorkBuddy, Codex, Claude Code.
+- The v2 link matrix is exact: QoderWork CN, TRAE Work, and WorkBuddy each own
+  one `product` link; Claude Code owns `cli` then `desktop`; Codex owns an empty
+  list, `browse: not_supported`, `install: available`, and
+  `status: managed_install`. Link IDs are unique per entry, labels are nonempty,
+  and URLs are absolute HTTPS values owned by Rust.
+- V1 `officialUrl` payloads and unknown contract versions fail closed in the
+  Tauri adapter. The renderer never guesses a legacy shape or carries a second
+  URL table.
 - The UI renders the catalog's status/action reasons; it does not derive
   capability from the display name, icon, URL, installed files, or a duplicate
   frontend matrix.
@@ -128,9 +149,16 @@ mutation arguments only and never query keys or query data.
 
 - Render a keyboard-accessible left selector and right detail. The selected
   button owns `aria-current`; initial selection follows native catalog order.
-- QoderWork/TRAE actions call only `settings.openExternal(officialUrl)` from the
-  catalog. They do not inspect login state, download packages, read private
-  config, persist notes, accept an API key, or emit configuration success.
+- QoderWork/TRAE/WorkBuddy and Claude link actions call only
+  `settings.openExternal(link.url)` from the catalog. Models selects an explicit
+  `product` link when it needs product guidance; it never depends on array
+  position. These actions do not inspect login state, download packages, read
+  private config, persist notes, accept an API key, or emit configuration
+  success.
+- The Agent detail keeps one external-open lock and one pending link ID. A
+  failure renders fixed text without echoing the URL. Codex renders no official
+  link region and mounts the managed installer panel only while Codex is
+  selected; leaving Codex releases its event subscription.
 - WorkBuddy status and Provider summaries are lazy/bounded observations. A read
   failure is `unknown/unavailable`, never `not installed`, `not configured`, or
   verified absence.
@@ -211,30 +239,37 @@ mutation arguments only and never query keys or query data.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Catalog version/order/ID/URL/action state drifts | Exact Rust/V2 contract test fails |
-| QoderWork/TRAE selected | Only transient guidance and exact catalog official link are available |
-| Native observation fails | Show controlled unavailable/unknown; never infer absence |
-| Models target missing or unknown | Select QoderWork CN; issue no write |
-| Any selector lacks a local icon | Asset mapping/unit/browser gate fails |
-| WorkBuddy remote/local ID contains a complete API key | Generic fail-closed error before DTO/cache/DOM/write |
-| WorkBuddy revision or overwrite token drifts | Write nothing; reread before claiming state |
-| Provider Base URL has userinfo/query/fragment or a credential component | Reject before DB/current/live mutation |
-| Provider request is empty, generic, wrong-ID, or has public/secret collision | Reject in Rust; no state mutation |
-| Concurrent Provider/live writer | Serialize or detect conflict; never return a split DB/current/live state |
-| Required atomic step fails and compensation succeeds | Return `APPLY_FAILED_ROLLED_BACK`; UI may say rollback confirmed |
-| Compensation is incomplete | Return `ROLLBACK_PARTIAL_STATE_UNKNOWN`; stop writes and state that authority is unknown |
-| Mutation succeeds but sanitized reread fails/mismatches | Show the atomic apply result as unconfirmed; never claim fixed-ID activation |
-| Mutation succeeds and another serialized request replaces the reserved row | Keep this request's guard-time warnings; reread may confirm only fixed-ID activation, never exact bytes |
-| Browser preview calls authoritative read/write | Return native-only unavailable; never return production-looking fake state |
-| API key appears in URL/storage/query/log/error/DOM/snapshot | Security regression test fails |
+| Condition                                                                                  | Required result                                                                                         |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Catalog version/order/ID/link/action state drifts                                          | Exact Rust/V2 contract test fails                                                                       |
+| V1 `officialUrl`, unknown link ID, duplicate link ID, non-HTTPS URL, or Codex link arrives | Runtime parse fails; catalog is unavailable                                                             |
+| Codex is selected                                                                          | Show the managed installer and no official-link button                                                  |
+| A non-Codex entry is selected                                                              | Do not read or subscribe to the Codex installer                                                         |
+| Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
+| QoderWork/TRAE selected                                                                    | Only transient guidance and exact catalog official link are available                                   |
+| Native observation fails                                                                   | Show controlled unavailable/unknown; never infer absence                                                |
+| Models target missing or unknown                                                           | Select QoderWork CN; issue no write                                                                     |
+| Any selector lacks a local icon                                                            | Asset mapping/unit/browser gate fails                                                                   |
+| WorkBuddy remote/local ID contains a complete API key                                      | Generic fail-closed error before DTO/cache/DOM/write                                                    |
+| WorkBuddy revision or overwrite token drifts                                               | Write nothing; reread before claiming state                                                             |
+| Provider Base URL has userinfo/query/fragment or a credential component                    | Reject before DB/current/live mutation                                                                  |
+| Provider request is empty, generic, wrong-ID, or has public/secret collision               | Reject in Rust; no state mutation                                                                       |
+| Concurrent Provider/live writer                                                            | Serialize or detect conflict; never return a split DB/current/live state                                |
+| Required atomic step fails and compensation succeeds                                       | Return `APPLY_FAILED_ROLLED_BACK`; UI may say rollback confirmed                                        |
+| Compensation is incomplete                                                                 | Return `ROLLBACK_PARTIAL_STATE_UNKNOWN`; stop writes and state that authority is unknown                |
+| Mutation succeeds but sanitized reread fails/mismatches                                    | Show the atomic apply result as unconfirmed; never claim fixed-ID activation                            |
+| Mutation succeeds and another serialized request replaces the reserved row                 | Keep this request's guard-time warnings; reread may confirm only fixed-ID activation, never exact bytes |
+| Browser preview calls authoritative read/write                                             | Return native-only unavailable; never return production-looking fake state                              |
+| API key appears in URL/storage/query/log/error/DOM/snapshot                                | Security regression test fails                                                                          |
 
 ## 5. Good / Base / Bad Cases
 
 - Good: `/models` opens on QoderWork CN at the top, all five local icons render,
-  and the page offers only official assisted guidance until a native-supported
-  target is explicitly selected.
+  and the page resolves the catalog's explicit `product` link when assisted
+  guidance is requested.
+- Good: Claude Code renders independent CLI and Desktop actions, while Codex
+  renders no link and reuses the existing native installer contract through a
+  V2 port.
 - Good: a Codex quick setup passes one minimum request to Rust, applies under the
   shared config lock, returns request-attributed non-secret warnings/live-change
   state, clears the key, and describes a matching `currentId` reread only as
@@ -263,10 +298,12 @@ mise run rust:test
 
 Required focused coverage includes:
 
-- exact catalog version/order/status/action/HTTPS and command registration;
+- exact catalog v2 version/order/status/action/link ID/label/HTTPS matrix,
+  Claude CLI/Desktop order, Codex zero-link behavior, and command registration;
 - five local assets, official Qoder/TRAE digests/passive formats, Qoder default,
   exact Models order, master/detail keyboard/ARIA, four maintained viewports;
-- exact official-link IPC and negative download/login/config behavior;
+- exact official-link IPC, per-link lock/error behavior, Codex negative-link
+  behavior, and negative download/login/config behavior;
 - normal browser native-only reads/writes and rich fake-Tauri test isolation;
 - WorkBuddy discovery success/truncation/failure/duplicate lock, revision,
   frozen overwrite, expired token, external-edit TOCTOU, authoritative reread,
@@ -313,4 +350,19 @@ const summary = await ports.providers.getSummary(app);
 if (summary.currentId !== QUICK_SETUP_PROVIDER_IDS[app]) {
   showUnconfirmedState();
 }
+```
+
+Wrong: read the first catalog URL or manufacture a Codex website action in the
+renderer.
+
+```ts
+await ports.settings.openExternal(entry.officialLinks[0].url);
+```
+
+Correct: select the semantic product link only for targets that own one, and
+let Codex use the managed installer port.
+
+```ts
+const productLink = entry.officialLinks.find((link) => link.id === "product");
+if (productLink) await ports.settings.openExternal(productLink.url);
 ```

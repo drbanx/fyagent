@@ -966,6 +966,9 @@ function GuidancePanel({ target }: { target: "qoderwork" | "trae" }) {
   const entry = catalogQuery.data?.agents.find(
     (agent) => agent.id === catalogId,
   );
+  const productLink = entry?.officialLinks.find(
+    (link) => link.id === "product",
+  );
   const label = target === "trae" ? "TRAE Work" : "QoderWork CN";
 
   useEffect(() => {
@@ -977,12 +980,12 @@ function GuidancePanel({ target }: { target: "qoderwork" | "trae" }) {
   }, []);
 
   const openOfficial = async () => {
-    if (!entry || openLock.current) return;
+    if (!productLink || openLock.current) return;
     openLock.current = true;
     setOpening(true);
     setNotice(null);
     try {
-      await ports.settings.openExternal(entry.officialUrl);
+      await ports.settings.openExternal(productLink.url);
     } catch {
       if (mountedRef.current) {
         setNotice({
@@ -1050,7 +1053,11 @@ function GuidancePanel({ target }: { target: "qoderwork" | "trae" }) {
       )}
       <div className="fy-models-actions">
         <Button
-          disabled={!entry || opening}
+          disabled={
+            !productLink ||
+            entry?.actions.browse.state !== "available" ||
+            opening
+          }
           onClick={() => void openOfficial()}
         >
           {opening ? "正在打开…" : "打开官方设置"}

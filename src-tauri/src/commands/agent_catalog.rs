@@ -1,13 +1,30 @@
 use serde::Serialize;
 
-const AGENT_CATALOG_CONTRACT_VERSION: u16 = 1;
-const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-13";
+const AGENT_CATALOG_CONTRACT_VERSION: u16 = 2;
+const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-14";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentCatalogStatus {
     PendingVerification,
     ManualInstall,
+    ManagedInstall,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentOfficialLinkId {
+    Product,
+    Cli,
+    Desktop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentOfficialLink {
+    pub id: AgentOfficialLinkId,
+    pub label: &'static str,
+    pub url: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -41,7 +58,7 @@ pub struct AgentCatalogEntry {
     pub id: &'static str,
     pub display_name: &'static str,
     pub description: &'static str,
-    pub official_url: &'static str,
+    pub official_links: &'static [AgentOfficialLink],
     pub status: AgentCatalogStatus,
     pub actions: AgentCatalogActions,
     pub evidence_label: &'static str,
@@ -59,12 +76,51 @@ const fn capability(state: AgentActionState, reason: &'static str) -> AgentActio
     AgentActionCapability { state, reason }
 }
 
+const fn official_link(
+    id: AgentOfficialLinkId,
+    label: &'static str,
+    url: &'static str,
+) -> AgentOfficialLink {
+    AgentOfficialLink { id, label, url }
+}
+
+const QODERWORK_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
+    AgentOfficialLinkId::Product,
+    "打开 QoderWork 官方页面",
+    "https://qoder.com.cn/qoderwork",
+)];
+
+const TRAE_WORK_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
+    AgentOfficialLinkId::Product,
+    "打开 TRAE Work 官方页面",
+    "https://work.trae.cn/",
+)];
+
+const WORKBUDDY_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
+    AgentOfficialLinkId::Product,
+    "打开 WorkBuddy 官方页面",
+    "https://www.workbuddy.cn/",
+)];
+
+const CLAUDE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
+    official_link(
+        AgentOfficialLinkId::Cli,
+        "Claude Code CLI",
+        "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+    ),
+    official_link(
+        AgentOfficialLinkId::Desktop,
+        "Claude Desktop",
+        "https://claude.com/download",
+    ),
+];
+
 const AGENT_CATALOG: [AgentCatalogEntry; 5] = [
     AgentCatalogEntry {
         id: "qoderwork",
         display_name: "QoderWork CN",
         description: "Qoder 家族的桌面工作助手；当前仅提供官方入口。",
-        official_url: "https://qoder.com.cn/qoderwork",
+        official_links: &QODERWORK_OFFICIAL_LINKS,
         status: AgentCatalogStatus::PendingVerification,
         actions: AgentCatalogActions {
             browse: capability(
@@ -90,7 +146,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 5] = [
         id: "trae-work",
         display_name: "TRAE Work",
         description: "TRAE 的多端工作助手；当前仅提供官方入口。",
-        official_url: "https://www.trae.cn/",
+        official_links: &TRAE_WORK_OFFICIAL_LINKS,
         status: AgentCatalogStatus::PendingVerification,
         actions: AgentCatalogActions {
             browse: capability(
@@ -116,7 +172,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 5] = [
         id: "workbuddy",
         display_name: "WorkBuddy",
         description: "可通过 FyAgent 读取并保存受限的模型配置。",
-        official_url: "https://www.workbuddy.cn/",
+        official_links: &WORKBUDDY_OFFICIAL_LINKS,
         status: AgentCatalogStatus::ManualInstall,
         actions: AgentCatalogActions {
             browse: capability(
@@ -141,28 +197,34 @@ const AGENT_CATALOG: [AgentCatalogEntry; 5] = [
     AgentCatalogEntry {
         id: "codex",
         display_name: "Codex",
-        description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
-        official_url: "https://chatgpt.com/codex",
-        status: AgentCatalogStatus::ManualInstall,
+        description: "可通过 FyAgent 安装或更新 Codex Desktop，并管理受限的 Provider 配置。",
+        official_links: &[],
+        status: AgentCatalogStatus::ManagedInstall,
         actions: AgentCatalogActions {
-            browse: capability(AgentActionState::Available, "可打开 Codex 官方产品入口。"),
+            browse: capability(
+                AgentActionState::NotSupported,
+                "FyAgent 内置安装不依赖外部产品链接。",
+            ),
             observe: capability(
                 AgentActionState::Available,
                 "可读取 FyAgent 中的 Provider 汇总和当前选择。",
             ),
-            install: capability(AgentActionState::Assisted, "安装由 Codex 官方流程负责。"),
+            install: capability(
+                AgentActionState::Available,
+                "可通过 FyAgent 的内置 Codex Desktop 安装器安装或更新。",
+            ),
             configure: capability(
                 AgentActionState::Available,
                 "可通过现有 Provider 保存与切换合同配置。",
             ),
         },
-        evidence_label: "Codex Provider 读取、保存与切换命令",
+        evidence_label: "Codex Desktop 安装器与 Provider 配置命令",
     },
     AgentCatalogEntry {
         id: "claude-code",
         display_name: "Claude Code",
         description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
-        official_url: "https://www.anthropic.com/claude-code",
+        official_links: &CLAUDE_OFFICIAL_LINKS,
         status: AgentCatalogStatus::ManualInstall,
         actions: AgentCatalogActions {
             browse: capability(
@@ -211,11 +273,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_catalog_freezes_version_order_urls_and_capabilities() {
+    fn agent_catalog_freezes_v2_order_links_labels_and_capabilities() {
         let catalog = get_agent_catalog();
 
-        assert_eq!(catalog.contract_version, 1);
-        assert_eq!(catalog.reviewed_at, "2026-08-13");
+        assert_eq!(catalog.contract_version, 2);
+        assert_eq!(catalog.reviewed_at, "2026-08-14");
         assert_eq!(
             catalog
                 .agents
@@ -248,47 +310,130 @@ mod tests {
             catalog
                 .agents
                 .iter()
-                .map(|entry| entry.official_url)
+                .map(|entry| entry.evidence_label)
                 .collect::<Vec<_>>(),
             [
-                "https://qoder.com.cn/qoderwork",
-                "https://www.trae.cn/",
-                "https://www.workbuddy.cn/",
-                "https://chatgpt.com/codex",
-                "https://www.anthropic.com/claude-code",
+                "官方产品入口；本地接入能力待验证",
+                "官方产品入口；本地接入能力待验证",
+                "WorkBuddy 专用状态与模型配置命令",
+                "Codex Desktop 安装器与 Provider 配置命令",
+                "Claude Provider 读取、保存与切换命令",
+            ]
+        );
+
+        let official_links = catalog
+            .agents
+            .iter()
+            .map(|entry| {
+                entry
+                    .official_links
+                    .iter()
+                    .map(|link| (link.id, link.label, link.url))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            official_links,
+            [
+                vec![(
+                    AgentOfficialLinkId::Product,
+                    "打开 QoderWork 官方页面",
+                    "https://qoder.com.cn/qoderwork",
+                )],
+                vec![(
+                    AgentOfficialLinkId::Product,
+                    "打开 TRAE Work 官方页面",
+                    "https://work.trae.cn/",
+                )],
+                vec![(
+                    AgentOfficialLinkId::Product,
+                    "打开 WorkBuddy 官方页面",
+                    "https://www.workbuddy.cn/",
+                )],
+                vec![],
+                vec![
+                    (
+                        AgentOfficialLinkId::Cli,
+                        "Claude Code CLI",
+                        "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+                    ),
+                    (
+                        AgentOfficialLinkId::Desktop,
+                        "Claude Desktop",
+                        "https://claude.com/download",
+                    ),
+                ],
             ]
         );
 
         for entry in &catalog.agents {
-            let url = url::Url::parse(entry.official_url).expect("official URL must parse");
-            assert_eq!(url.scheme(), "https");
-            assert!(url.host_str().is_some());
-            assert!(url.username().is_empty());
-            assert!(url.password().is_none());
-            assert!(url.query().is_none());
-            assert!(url.fragment().is_none());
+            for link in entry.official_links {
+                assert!(!link.label.trim().is_empty());
+                let url = url::Url::parse(link.url).expect("official URL must parse");
+                assert_eq!(url.scheme(), "https");
+                assert!(url.host_str().is_some());
+                assert!(url.username().is_empty());
+                assert!(url.password().is_none());
+                assert!(url.query().is_none());
+                assert!(url.fragment().is_none());
+            }
         }
 
-        for entry in &catalog.agents[..2] {
-            assert_eq!(entry.status, AgentCatalogStatus::PendingVerification);
-            assert_eq!(entry.actions.browse.state, AgentActionState::Available);
-            assert_eq!(
-                entry.actions.observe.state,
-                AgentActionState::PendingVerification
-            );
-            assert_eq!(entry.actions.install.state, AgentActionState::Assisted);
-            assert_eq!(entry.actions.configure.state, AgentActionState::Assisted);
-            assert!(entry.actions.install.reason.contains("不下载或安装"));
-            assert!(entry.actions.configure.reason.contains("不写入配置"));
-        }
+        assert_eq!(
+            catalog
+                .agents
+                .iter()
+                .map(|entry| (
+                    entry.status,
+                    entry.actions.browse.state,
+                    entry.actions.observe.state,
+                    entry.actions.install.state,
+                    entry.actions.configure.state,
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    AgentCatalogStatus::PendingVerification,
+                    AgentActionState::Available,
+                    AgentActionState::PendingVerification,
+                    AgentActionState::Assisted,
+                    AgentActionState::Assisted,
+                ),
+                (
+                    AgentCatalogStatus::PendingVerification,
+                    AgentActionState::Available,
+                    AgentActionState::PendingVerification,
+                    AgentActionState::Assisted,
+                    AgentActionState::Assisted,
+                ),
+                (
+                    AgentCatalogStatus::ManualInstall,
+                    AgentActionState::Available,
+                    AgentActionState::Available,
+                    AgentActionState::Assisted,
+                    AgentActionState::Available,
+                ),
+                (
+                    AgentCatalogStatus::ManagedInstall,
+                    AgentActionState::NotSupported,
+                    AgentActionState::Available,
+                    AgentActionState::Available,
+                    AgentActionState::Available,
+                ),
+                (
+                    AgentCatalogStatus::ManualInstall,
+                    AgentActionState::Available,
+                    AgentActionState::Available,
+                    AgentActionState::Assisted,
+                    AgentActionState::Available,
+                ),
+            ]
+        );
 
-        for entry in &catalog.agents[2..] {
-            assert_eq!(entry.status, AgentCatalogStatus::ManualInstall);
-            assert_eq!(entry.actions.browse.state, AgentActionState::Available);
-            assert_eq!(entry.actions.observe.state, AgentActionState::Available);
-            assert_eq!(entry.actions.install.state, AgentActionState::Assisted);
-            assert_eq!(entry.actions.configure.state, AgentActionState::Available);
-        }
+        let codex = &catalog.agents[3];
+        assert!(codex.official_links.is_empty());
+        assert!(codex.actions.browse.reason.contains("不依赖外部产品链接"));
+        assert!(codex.actions.install.reason.contains("FyAgent"));
     }
 
     #[test]
@@ -308,10 +453,16 @@ mod tests {
                     "displayName",
                     "evidenceLabel",
                     "id",
-                    "officialUrl",
+                    "officialLinks",
                     "status",
                 ]
             );
+            for link in entry["officialLinks"]
+                .as_array()
+                .expect("officialLinks must be an array")
+            {
+                assert_eq!(sorted_object_keys(link), ["id", "label", "url"]);
+            }
             assert_eq!(
                 sorted_object_keys(&entry["actions"]),
                 ["browse", "configure", "install", "observe"]
@@ -332,6 +483,17 @@ mod tests {
             serde_json::to_value(AgentCatalogStatus::ManualInstall).unwrap(),
             "manual_install"
         );
+        assert_eq!(
+            serde_json::to_value(AgentCatalogStatus::ManagedInstall).unwrap(),
+            "managed_install"
+        );
+        for (id, expected) in [
+            (AgentOfficialLinkId::Product, "product"),
+            (AgentOfficialLinkId::Cli, "cli"),
+            (AgentOfficialLinkId::Desktop, "desktop"),
+        ] {
+            assert_eq!(serde_json::to_value(id).unwrap(), expected);
+        }
         for (state, expected) in [
             (AgentActionState::Available, "available"),
             (AgentActionState::Assisted, "assisted"),

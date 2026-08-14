@@ -231,8 +231,7 @@ const DIRECTORY_PATH_RULE = Object.freeze({
 });
 
 const ARCHIVE_PREFIX = ".trellis/tasks/archive/";
-export const GENERATED_STANDALONE_PREVIEW_PATH =
-  "FyAgent-前端交互预览.html";
+export const GENERATED_STANDALONE_PREVIEW_PATH = "FyAgent-前端交互预览.html";
 // The standalone preview is deterministic compiled output. Exclude only its
 // generated body; its exact root filename is still inspected, while the V2
 // source tree and build generator remain in the ordinary text scan.
@@ -242,14 +241,6 @@ const TEXT_EXCLUSIONS = new Set([
   GENERATED_STANDALONE_PREVIEW_PATH,
 ]);
 export const ACTIVE_TASK_ENV = "FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK";
-
-export const EXPECTED_ACTIVE_TASK = [
-  ".trellis",
-  "tasks",
-  ["08", "12", "remove", SURFACE_MARKERS.kernel, "support"].join("-"),
-].join("/");
-
-const ACTIVE_TASK_ID = ["remove", SURFACE_MARKERS.kernel, "support"].join("-");
 const UNSUPPORTED_CFG =
   '#[cfg(not(any(target_os = "windows", target_os = "macos")))]';
 const TESTABLE_UNSUPPORTED_CFG =
@@ -628,6 +619,20 @@ function isArchivePath(relativePath) {
   return relativePath.startsWith(ARCHIVE_PREFIX);
 }
 
+function activeTaskIdFromPath(value) {
+  normalizeRepositoryPath(value);
+  const match =
+    /^\.trellis\/tasks\/(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])-([a-z0-9]+(?:-[a-z0-9]+)*)$/u.exec(
+      value,
+    );
+  if (!match) {
+    throw new Error(
+      "The temporary exclusion must be a canonical .trellis/tasks/MM-DD-<id> direct child",
+    );
+  }
+  return match[1];
+}
+
 export function validateActiveTaskExclusion(
   value,
   {
@@ -637,12 +642,7 @@ export function validateActiveTaskExclusion(
     runner = spawnSync,
   } = {},
 ) {
-  if (value !== EXPECTED_ACTIVE_TASK) {
-    throw new Error(
-      `The temporary exclusion must be exactly ${EXPECTED_ACTIVE_TASK}`,
-    );
-  }
-  normalizeRepositoryPath(value);
+  const activeTaskId = activeTaskIdFromPath(value);
 
   const taskRoot = path.join(root, ".trellis", "tasks");
   const taskDirectory = path.join(root, ...value.split("/"));
@@ -670,11 +670,13 @@ export function validateActiveTaskExclusion(
   }
   const metadata = JSON.parse(io.readFileSync(metadataPath, "utf8"));
   if (
-    metadata.id !== ACTIVE_TASK_ID ||
-    metadata.name !== ACTIVE_TASK_ID ||
+    metadata.id !== activeTaskId ||
+    metadata.name !== activeTaskId ||
     metadata.status !== "in_progress"
   ) {
-    throw new Error("The temporary exclusion is not the exact active task");
+    throw new Error(
+      "The temporary exclusion metadata does not match its canonical in-progress task path",
+    );
   }
   const authoritative = sessionResolver(root, runner);
   if (authoritative !== value) {

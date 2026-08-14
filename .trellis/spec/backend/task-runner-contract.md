@@ -103,57 +103,61 @@ read those values, parse variadic shell-escaped lists into argv arrays, validate
 SemVer/package/tag/enum/path inputs, and spawn a command without a shell.
 Arguments must never be concatenated into a command string.
 
-### Prearchive exact-task verification
+### Prearchive active-task verification
 
-**Scope / trigger.** This is a task-specific lifecycle bridge for the
-checker-owned fixed change-task identity only. That tracked, in-progress task
-must describe markers that the canonical repository contract rejects.
-The bridge becomes intentionally unusable after this task is archived; it is
-not a reusable exception for future tasks. Ordinary local checks, CI, and
-post-archive verification use the canonical tasks without an exclusion. A
-future task needs a new explicit decision and contract rather than copying or
-broadening this path.
+**Scope / trigger.** This lifecycle bridge allows one directly active,
+in-progress Trellis task to be excluded while its own tracked planning markers
+are still present before archival. It is reusable across task names only
+because identity is derived and re-proved on every invocation; it never means
+"skip active tasks" generally. Ordinary local checks, CI, and post-archive
+verification use canonical tasks without an exclusion.
 
 **Signatures.** `check:prearchive` and `check:contracts:prearchive` each require
 `--exclude-active-task <path>`. They delegate to
 `scripts/tasks/prearchive-check.mjs`, which selects only `check` or
 `check:contracts` and never forwards the usage argument to unrelated leaves.
 
-**Contracts.** The wrapper validates the exact repository-relative task path
-through the supported-platform checker before spawning nested mise. Validation
-must bind the path to Trellis's non-stale current-session pointer, require the
-canonical in-progress task metadata, reject symlink or realpath escape, and
-transport the validated path through the internal
-`FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK` environment entry. The leaf accepts
-that entry only as the same strict single exclusion it would accept from its
-direct CLI. Caller-preseeded, conflicting, duplicate, wildcard, archived, or
-non-current values fail closed. Default `check`, `check:contracts`, and
-`supported-platform:check` never infer or apply an active-task exclusion.
+**Contracts.** The accepted path is exactly one repository-relative direct
+child matching `.trellis/tasks/MM-DD-<id>`. The checker resolves it below the
+canonical tasks root, rejects traversal, backslashes, nesting, archive paths,
+wildcards, symlinks, non-direct realpaths, a non-directory task, and a missing,
+symlinked, or non-regular `task.json`. It derives `<id>` from the path and
+requires `task.json.id` and `task.json.name` to equal it, with
+`status === "in_progress"`.
 
-**Error matrix.** Missing usage, unknown wrapper mode, missing/stale/wrong
-session pointer, metadata mismatch, caller-preseeded internal state, invalid
-path, or nested nonzero status must stop the wrapper. No failure may retry with
-a broader path or omit the platform check.
+The same canonical task path must be Trellis's current pointer with
+`stale === false` and a direct `source: "session:<id>"`; `session-fallback`, a
+different task, or any stale pointer fails closed. Validation transports the
+path through the private `FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK` entry only
+after proving that identity. The leaf accepts exactly one input channel: direct
+CLI, mise usage, or private environment. Caller-preseeded, conflicting, or
+duplicate channels fail. Default `check`, `check:contracts`, and
+`supported-platform:check` never infer or apply an exclusion.
 
-**Examples.** The positive acceptance binds the checker-owned exact task path
-to the current session and reaches exactly one selected composite. The base case runs
-canonical `check` with no internal entry. Negative fixtures cover a different
-task, a child path, archive path, symlink, stale pointer, dual CLI/environment
-sources, and an unrelated mode.
+**Error matrix.** Missing usage, unknown wrapper mode, malformed/noncanonical
+path, path/realpath/file-type escape, metadata ID/name/status mismatch,
+missing/stale/fallback/wrong session pointer, caller-preseeded internal state,
+multiple input channels, or nested nonzero status stops the wrapper. No failure
+may retry with a broader path or omit the platform check.
 
-**Tests required.** Durable pure tests freeze target selection, owned
-environment, exact fixed task identity, session-pointer validation, and
-caller-preseed rejection. This task's acceptance evidence must record real
-runs of both prearchive composites from the directly bound session plus a
-post-archive canonical run without an exclusion. The session-bound composite
-runs are lifecycle evidence, not a portable CI fixture; CI never receives the
-private exclusion environment entry.
+**Good/base/bad cases.** Good: two differently named canonical fixture tasks
+both validate when each is the direct current in-progress task. Base: canonical
+`check` runs with no internal entry. Bad: accepting a hard-coded historical ID,
+`session-fallback`, an archived/nested/symlinked task, or a second input source.
 
-**Wrong vs correct.** Wrong: broadcast the raw flag through every task, add an
-active-task glob, or teach canonical checks to skip `.trellis/tasks/**`.
-Correct: validate one session-bound task, transport it privately to one leaf,
-run the selected complete composite, archive, then rerun canonical checks with
-no exclusion.
+**Tests required.** Pure and integration tests cover two valid task identities;
+path/date/ID/traversal/backslash/archive/nesting failures; task-directory and
+metadata-file symlinks; ID/name/status mismatch; stale, fallback, and mismatched
+current pointers; and CLI/usage/private-environment duplication. Acceptance
+records a real prearchive composite from the directly bound session and a
+post-archive canonical run without an exclusion. The private environment entry
+is lifecycle evidence and is never provided to CI.
+
+**Wrong vs correct.** Wrong: freeze a historical task constant, broadcast the
+raw flag through every task, add a task glob, or teach canonical checks to skip
+`.trellis/tasks/**`. Correct: derive one canonical path/ID, prove exact direct
+session ownership and metadata, transport it privately to one leaf, archive,
+then rerun canonical checks with no exclusion.
 
 ### Supported-platform identity seals
 

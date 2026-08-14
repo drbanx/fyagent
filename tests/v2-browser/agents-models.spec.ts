@@ -128,7 +128,7 @@ test("Agent catalog keeps exact native order and accessible master-detail select
   await expectHealthyPage(page, health);
 });
 
-test("QoderWork and TRAE invoke only their exact official URLs", async ({
+test("Agent catalog links invoke exact official URLs and Codex has no external action", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
@@ -139,12 +139,35 @@ test("QoderWork and TRAE invoke only their exact official URLs", async ({
     name: "QoderWork CN 详情",
   });
   await expect(qoderDetail.getByRole("button")).toHaveCount(1);
-  await qoderDetail.getByRole("button", { name: "打开官方入口" }).click();
+  await qoderDetail
+    .getByRole("button", { name: "打开 QoderWork 官方页面" })
+    .click();
 
   await agentItem(page, "TRAE Work").click();
   const traeDetail = page.getByRole("region", { name: "TRAE Work 详情" });
   await expect(traeDetail.getByRole("button")).toHaveCount(1);
-  await traeDetail.getByRole("button", { name: "打开官方入口" }).click();
+  await traeDetail
+    .getByRole("button", { name: "打开 TRAE Work 官方页面" })
+    .click();
+
+  await agentItem(page, "WorkBuddy").click();
+  await page
+    .getByRole("region", { name: "WorkBuddy 详情" })
+    .getByRole("button", { name: "打开 WorkBuddy 官方页面" })
+    .click();
+
+  await agentItem(page, "Claude Code").click();
+  const claudeDetail = page.getByRole("region", {
+    name: "Claude Code 详情",
+  });
+  await claudeDetail.getByRole("button", { name: "Claude Code CLI" }).click();
+  await claudeDetail.getByRole("button", { name: "Claude Desktop" }).click();
+
+  await agentItem(page, "Codex").click();
+  const codexDetail = page.getByRole("region", { name: "Codex 详情" });
+  await expect(codexDetail.getByRole("button", { name: /官方/ })).toHaveCount(
+    0,
+  );
 
   await expect
     .poll(async () =>
@@ -159,7 +182,21 @@ test("QoderWork and TRAE invoke only their exact official URLs", async ({
       },
       {
         command: "open_external",
-        payload: { url: "https://www.trae.cn/" },
+        payload: { url: "https://work.trae.cn/" },
+      },
+      {
+        command: "open_external",
+        payload: { url: "https://www.workbuddy.cn/" },
+      },
+      {
+        command: "open_external",
+        payload: {
+          url: "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+        },
+      },
+      {
+        command: "open_external",
+        payload: { url: "https://claude.com/download" },
       },
     ]);
   const commands = (await featureFixtureCalls(page)).map(
@@ -168,6 +205,144 @@ test("QoderWork and TRAE invoke only their exact official URLs", async ({
   expect(commands).not.toContain("apply_provider_quick_setup_with_result");
   expect(commands).not.toContain("switch_provider_with_result");
   expect(commands).not.toContain("save_workbuddy_models");
+
+  await expectHealthyPage(page, health);
+});
+
+test("Codex Desktop fixture reads safely and starts only after the explicit install action", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  const health = monitorPageHealth(page);
+  await openV2Page(page, "/agents");
+
+  const callsBeforeCodex = await featureFixtureCalls(page);
+  expect(
+    callsBeforeCodex.filter(
+      (call) =>
+        call.command.startsWith("codex_desktop_") ||
+        call.payload.event === "codex-desktop-installer://job-updated",
+    ),
+  ).toEqual([]);
+  const codexCallStartIndex = callsBeforeCodex.length;
+
+  await agentItem(page, "Codex").click();
+  const installer = page.getByRole("region", {
+    name: "Codex Desktop 安装器",
+  });
+  const install = installer.getByRole("button", {
+    name: "安装 Codex Desktop",
+  });
+  await expect(install).toBeEnabled({ timeout: 10_000 });
+
+  await expect
+    .poll(async () => {
+      const commands = (await featureFixtureCalls(page))
+        .slice(codexCallStartIndex)
+        .map((call) => call.command);
+      return {
+        activeListeners:
+          commands.filter((command) => command === "plugin:event|listen")
+            .length -
+          commands.filter((command) => command === "plugin:event|unlisten")
+            .length,
+        jobReads: commands.filter(
+          (command) => command === "codex_desktop_get_job",
+        ).length,
+      };
+    })
+    .toEqual({ activeListeners: 1, jobReads: 1 });
+
+  const initializationCalls = (await featureFixtureCalls(page))
+    .slice(codexCallStartIndex)
+    .filter(
+      (call) =>
+        call.command.startsWith("codex_desktop_") ||
+        call.command.startsWith("plugin:event|"),
+    );
+  const allowedInitializationCommands = new Set([
+    "codex_desktop_get_local_status",
+    "codex_desktop_check_latest",
+    "codex_desktop_get_job",
+    "plugin:event|listen",
+    "plugin:event|unlisten",
+  ]);
+  expect(
+    initializationCalls.filter(
+      (call) => !allowedInitializationCommands.has(call.command),
+    ),
+  ).toEqual([]);
+
+  const localReads = initializationCalls.filter(
+    (call) => call.command === "codex_desktop_get_local_status",
+  );
+  const latestReads = initializationCalls.filter(
+    (call) => call.command === "codex_desktop_check_latest",
+  );
+  expect(localReads.length).toBeGreaterThanOrEqual(1);
+  expect(localReads.length).toBeLessThanOrEqual(2);
+  expect(latestReads.length).toBeGreaterThanOrEqual(1);
+  expect(latestReads.length).toBeLessThanOrEqual(2);
+  expect(
+    localReads.every((call) => Object.keys(call.payload).length === 0),
+  ).toBe(true);
+  expect(latestReads.map((call) => call.payload)).toEqual(
+    latestReads.map(() => ({ force: false })),
+  );
+
+  const activeListenerIds = new Set<number>();
+  for (const call of initializationCalls) {
+    if (call.command === "plugin:event|listen") {
+      expect(call.payload).toEqual({
+        event: "codex-desktop-installer://job-updated",
+        target: { kind: "Any" },
+        handler: expect.any(Number),
+      });
+      const handler = call.payload.handler as number;
+      expect(activeListenerIds.has(handler)).toBe(false);
+      activeListenerIds.add(handler);
+    }
+    if (call.command === "plugin:event|unlisten") {
+      expect(call.payload).toEqual({
+        event: "codex-desktop-installer://job-updated",
+        eventId: expect.any(Number),
+      });
+      const eventId = call.payload.eventId as number;
+      expect(activeListenerIds.delete(eventId)).toBe(true);
+    }
+    expect(activeListenerIds.size).toBeLessThanOrEqual(1);
+  }
+  expect(activeListenerIds.size).toBe(1);
+  expect(
+    initializationCalls.filter(
+      (call) => call.command === "codex_desktop_get_job",
+    ),
+  ).toEqual([{ command: "codex_desktop_get_job", payload: {} }]);
+  expect(initializationCalls.map((call) => call.command)).not.toContain(
+    "codex_desktop_start_install",
+  );
+
+  await install.click();
+  await expect
+    .poll(async () =>
+      (await featureFixtureCalls(page)).filter(
+        (call) => call.command === "codex_desktop_start_install",
+      ),
+    )
+    .toEqual([
+      {
+        command: "codex_desktop_start_install",
+        payload: {
+          request: { expectedReleaseId: `v1:${"a".repeat(64)}` },
+        },
+      },
+    ]);
+  const startPayload = (await featureFixtureCalls(page)).find(
+    (call) => call.command === "codex_desktop_start_install",
+  )?.payload;
+  expect(JSON.stringify(startPayload)).not.toMatch(
+    /url|path|hash|scope|bypass/i,
+  );
 
   await expectHealthyPage(page, health);
 });
@@ -307,7 +482,7 @@ test("Models keeps the five exact targets and third-party notes transient", asyn
     },
     {
       command: "open_external",
-      payload: { url: "https://www.trae.cn/" },
+      payload: { url: "https://work.trae.cn/" },
     },
   ]);
   expect(

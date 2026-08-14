@@ -1,3 +1,4 @@
+import { getSupportedAppIcon } from "../assets/apps";
 import type { SupportedAppId } from "../features/types";
 import { SUPPORTED_APPS } from "../features/types";
 import { Switch } from "./primitives";
@@ -18,7 +19,15 @@ export function AssignmentPanel({
       <h3>Agent 分配</h3>
       {SUPPORTED_APPS.map((app) => (
         <label key={app.id} className="fy-feature-assignment">
-          <span>{app.label}</span>
+          <span className="fy-feature-assignment-label">
+            <img
+              className="fy-feature-assignment-icon"
+              src={getSupportedAppIcon(app.id)}
+              alt=""
+              aria-hidden="true"
+            />
+            <span>{app.label}</span>
+          </span>
           <Switch
             checked={Boolean(apps[app.id])}
             onCheckedChange={(checked) => onToggle(app.id, checked)}

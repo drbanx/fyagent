@@ -25,6 +25,10 @@ The approved Skills and MCP exception follows the dedicated
 [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md).
 Agent directory and model quick setup follow the dedicated
 [V2 Agent and Models Contract](./v2-agent-models.md).
+The Codex detail may additionally consume the narrow renderer-neutral
+`src/shared/codex-desktop/**` contract described by
+[Codex Desktop Installer](../backend/codex-desktop-installer.md); this is not a
+general legacy-import exception.
 
 ## 2. Signatures
 
@@ -159,6 +163,14 @@ No V2 module may import legacy `src/App.tsx`, `src/main.tsx`,
 `src/index.css`. `pages`, `widgets`, and `app` must not import
 `@tauri-apps/**` directly.
 
+The sole cross-root shared exception is `@/shared/codex-desktop`. It contains
+only installer DTOs, unknown-input parsers, version/state/snapshot/progress
+derivations, and safe error projection. It may not import React, Tauri, legacy
+renderer modules, i18n, toast, clipboard, or platform adapters. V2 side effects
+still flow through `FeaturePorts.codexDesktop`, with Tauri imports confined to
+`src/v2/shared/platform/tauri/**`. Architecture tests allow this exact prefix
+only and continue rejecting every other `@/shared/**` or legacy import.
+
 The V2 renderer preserves only the minimum host activation handshake. It does
 not restore legacy deep-link consumption, database recovery UI, generalized
 model synchronization, or the complete startup contract. The bounded
@@ -177,6 +189,8 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Custom controls/drag region/frame port appears                         | Unit, architecture, or browser negative assertion fails                            |
 | V2 calls `setDecorations(false)`                                       | Static contract search and V2 tests fail                                           |
 | V2 imports legacy/upward code, or Tauri outside the platform boundary  | ESLint and executable architecture test fail                                       |
+| V2 imports neutral code outside `@/shared/codex-desktop`               | Architecture test fails; no broader shared-root allowlist                          |
+| Neutral Codex shared code imports React, Tauri, platform, or legacy UI | Architecture test fails; move the side effect behind the V2 port                   |
 | A route's rendered state disagrees with its dedicated feature contract | Shell/content test fails                                                           |
 | Prompts or Memory becomes empty after integration                      | Final task acceptance fails; validate the resolved tree rather than merge messages |
 | A supported viewport overflows or overlaps                             | Playwright geometry gate fails                                                     |
@@ -214,7 +228,9 @@ mise run build:renderer
   chrome/drag regions, six non-empty product pages, and idempotent ready behavior.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
-  window-frame contract.
+  window-frame contract. They positively allow only the exact neutral Codex
+  shared boundary and negatively prove that a neighboring shared path remains
+  forbidden.
 - Vitest may mock the third-party filter surface to isolate router and semantic
   behavior. Playwright must load the real production dependency.
 - Playwright runs at `900x600`, `1152x640`, `1232x700`, and `1440x900`. At each
@@ -267,4 +283,18 @@ bounded internal lens, and keep native window chrome outside React.
     isActive ? <LiquidGlassLens>{item.label}</LiquidGlassLens> : item.label
   }
 </NavLink>
+```
+
+Wrong: use the neutral-core exception as a route into a legacy Hook.
+
+```ts
+import { useCodexDesktopInstaller } from "@/hooks/useCodexDesktopInstaller";
+```
+
+Correct: import only pure Codex contracts and place native effects behind the
+V2 feature port.
+
+```ts
+import { deriveInstallerViewState } from "@/shared/codex-desktop";
+const local = await ports.codexDesktop.getLocalStatus();
 ```

@@ -30,18 +30,28 @@ function catalog(): AgentCatalogResult {
     state: "assisted" as const,
     reason: "测试仅允许打开官方入口。",
   };
+  const browseCapability = {
+    state: "available" as const,
+    reason: "测试允许打开官方入口。",
+  };
   return {
-    contractVersion: 1,
-    reviewedAt: "2026-08-13",
+    contractVersion: 2,
+    reviewedAt: "2026-08-14",
     agents: [
       {
         id: "qoderwork",
         displayName: "QoderWork CN",
         description: "QoderWork CN 官方辅助设置",
-        officialUrl: "https://qoder.com.cn/qoderwork",
+        officialLinks: [
+          {
+            id: "product",
+            label: "打开 QoderWork 官方页面",
+            url: "https://qoder.com.cn/qoderwork",
+          },
+        ],
         status: "pending_verification",
         actions: {
-          browse: capability,
+          browse: browseCapability,
           observe: capability,
           install: capability,
           configure: capability,
@@ -52,10 +62,21 @@ function catalog(): AgentCatalogResult {
         id: "trae-work",
         displayName: "TRAE Work",
         description: "TRAE Work 官方辅助设置",
-        officialUrl: "https://www.trae.cn/",
+        officialLinks: [
+          {
+            id: "desktop",
+            label: "非产品链接应被忽略",
+            url: "https://ignored.example.test/trae",
+          },
+          {
+            id: "product",
+            label: "打开 TRAE Work 官方页面",
+            url: "https://work.trae.cn/",
+          },
+        ],
         status: "pending_verification",
         actions: {
-          browse: capability,
+          browse: browseCapability,
           observe: capability,
           install: capability,
           configure: capability,
@@ -124,6 +145,24 @@ describe("V2 Models page", () => {
     expect(
       screen.getByRole("region", { name: "QoderWork CN 官方辅助设置" }),
     ).toBeVisible();
+  });
+
+  it("opens the explicit product link instead of relying on array position", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.catalog.get = vi.fn(async () => catalog());
+    ports.settings.openExternal = vi.fn(async () => undefined);
+    renderPage(ports, "trae");
+
+    await user.click(
+      await screen.findByRole("button", { name: "打开官方设置" }),
+    );
+    expect(ports.settings.openExternal).toHaveBeenCalledWith(
+      "https://work.trae.cn/",
+    );
+    expect(ports.settings.openExternal).not.toHaveBeenCalledWith(
+      "https://ignored.example.test/trae",
+    );
   });
 
   it("freezes the WorkBuddy overwrite request, rereads authority, and clears credentials", async () => {

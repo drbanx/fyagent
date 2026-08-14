@@ -38,8 +38,8 @@ Before changing renderer code:
 | Guide                                                                      | Use it for                                                                                               |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [V2 Shell Contract](./v2-shell.md)                                         | Isolated V2 routes, styles, layer/platform boundaries, lifecycle, and V2-only gates.                     |
-| [V2 Agent and Models Contract](./v2-agent-models.md)                       | Versioned catalog, local icons, official-only candidates, WorkBuddy, Provider quick setup, and secrets.  |
-| [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md)                   | Skills/MCP ports, authoritative state, secret handling, responsive UI, and feature-specific gates.       |
+| [V2 Agent and Models Contract](./v2-agent-models.md)                       | Catalog v2 links, local icons, Codex managed installer, WorkBuddy, Provider quick setup, and secrets.    |
+| [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md)                   | Skills/MCP ports, six-app local icon map, authoritative state, secret handling, and responsive UI.       |
 | [Directory Structure](./directory-structure.md)                            | Selecting the existing frontend layer and test location.                                                 |
 | [Component Guidelines](./component-guidelines.md)                          | UI primitives, props, styling, translation, and form composition.                                        |
 | [Hook Guidelines](./hook-guidelines.md)                                    | Naming, placement, effects, cleanup, and stateful hook APIs.                                             |

@@ -57,7 +57,6 @@ type SourceContract = { id: string; file: string; snippet: string };
 
 type CheckerModule = {
   ACTIVE_TASK_ENV: string;
-  EXPECTED_ACTIVE_TASK: string;
   GENERATED_STANDALONE_PREVIEW_PATH: string;
   MACOS_POSIX_CONTRACT: readonly SourceContract[];
   RUST_ALLOWANCE_CONTRACT: readonly RustAllowance[];
@@ -157,12 +156,12 @@ beforeAll(async () => {
   )) as CheckerModule;
 });
 
-function activeTaskFixture() {
+function activeTaskFixture(taskDirectoryName = "08-14-example-active-task") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-surface-"));
-  const relative = checker.EXPECTED_ACTIVE_TASK;
+  const relative = `.trellis/tasks/${taskDirectoryName}`;
   const directory = path.join(root, ...relative.split("/"));
   fs.mkdirSync(directory, { recursive: true });
-  const id = path.basename(directory).replace(/^\d+-\d+-/u, "");
+  const id = taskDirectoryName.replace(/^\d+-\d+-/u, "");
   fs.writeFileSync(
     path.join(directory, "task.json"),
     `${JSON.stringify({ id, name: id, status: "in_progress" })}\n`,
@@ -494,11 +493,53 @@ describe("durable supported-platform surface contract", () => {
           fixture.relative,
         ),
       ).toBe(true);
+    } finally {
+      fs.rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts any canonical task identity bound to the direct current session", () => {
+    for (const taskName of [
+      "01-02-first-valid-task",
+      "12-31-second-valid-task",
+    ]) {
+      const fixture = activeTaskFixture(taskName);
+      try {
+        expect(
+          checker.validateActiveTaskExclusion(fixture.relative, {
+            root: fixture.root,
+            sessionResolver: () => fixture.relative,
+          }),
+        ).toBe(fixture.relative);
+      } finally {
+        fs.rmSync(fixture.root, { recursive: true, force: true });
+      }
+    }
+
+    const currentTask = ".trellis/tasks/08-14-agent-catalog-interactions";
+    expect(
+      checker.validateActiveTaskExclusion(currentTask, {
+        root: ROOT,
+        sessionResolver: () => currentTask,
+      }),
+    ).toBe(currentTask);
+  });
+
+  it("rejects noncanonical, nested, linked, mismatched, and completed tasks", () => {
+    const fixture = activeTaskFixture();
+    const directSession = () => fixture.relative;
+    const metadataPath = path.join(fixture.directory, "task.json");
+    const id = path.basename(fixture.directory).replace(/^\d+-\d+-/u, "");
+    try {
       for (const invalid of [
         ".trellis/tasks/*",
         `${fixture.relative}/child`,
+        `${fixture.relative}/../08-14-other-task`,
         fixture.relative.split("/").join("\\"),
         `.trellis/tasks/archive/${path.basename(fixture.relative)}`,
+        ".trellis/tasks/00-14-invalid-month",
+        ".trellis/tasks/08-32-invalid-day",
+        ".trellis/tasks/08-14-Uppercase",
       ]) {
         expect(() =>
           checker.validateActiveTaskExclusion(invalid, {
@@ -508,27 +549,81 @@ describe("durable supported-platform surface contract", () => {
         ).toThrow();
       }
 
+      const taskSymlinkIo = {
+        ...fs,
+        lstatSync(target: fs.PathLike) {
+          if (
+            path.resolve(String(target)) === path.resolve(fixture.directory)
+          ) {
+            return {
+              isDirectory: () => true,
+              isFile: () => false,
+              isSymbolicLink: () => true,
+            };
+          }
+          return fs.lstatSync(target);
+        },
+      };
+      expect(() =>
+        checker.validateActiveTaskExclusion(fixture.relative, {
+          root: fixture.root,
+          io: taskSymlinkIo,
+          sessionResolver: directSession,
+        }),
+      ).toThrow(/real task directory/);
+
+      const metadataSymlinkIo = {
+        ...fs,
+        lstatSync(target: fs.PathLike) {
+          if (path.resolve(String(target)) === path.resolve(metadataPath)) {
+            return {
+              isDirectory: () => false,
+              isFile: () => true,
+              isSymbolicLink: () => true,
+            };
+          }
+          return fs.lstatSync(target);
+        },
+      };
+      expect(() =>
+        checker.validateActiveTaskExclusion(fixture.relative, {
+          root: fixture.root,
+          io: metadataSymlinkIo,
+          sessionResolver: directSession,
+        }),
+      ).toThrow(/regular task metadata/);
+
+      for (const metadata of [
+        { id, name: id, status: "complete" },
+        { id: "other-task", name: id, status: "in_progress" },
+        { id, name: "other-task", status: "in_progress" },
+      ]) {
+        fs.writeFileSync(metadataPath, `${JSON.stringify(metadata)}\n`);
+        expect(() =>
+          checker.validateActiveTaskExclusion(fixture.relative, {
+            root: fixture.root,
+            sessionResolver: directSession,
+          }),
+        ).toThrow(/metadata does not match/);
+      }
+
       fs.writeFileSync(
-        path.join(fixture.directory, "task.json"),
-        `${JSON.stringify({
-          id: path.basename(fixture.directory).replace(/^\d+-\d+-/u, ""),
-          name: path.basename(fixture.directory).replace(/^\d+-\d+-/u, ""),
-          status: "complete",
-        })}\n`,
+        metadataPath,
+        `${JSON.stringify({ id, name: id, status: "in_progress" })}\n`,
       );
       expect(() =>
         checker.validateActiveTaskExclusion(fixture.relative, {
           root: fixture.root,
-          sessionResolver: directSession,
+          sessionResolver: () => ".trellis/tasks/08-14-other-task",
         }),
-      ).toThrow(/exact active task/);
+      ).toThrow(/does not match the current session task/);
     } finally {
       fs.rmSync(fixture.root, { recursive: true, force: true });
     }
   });
 
   it("accepts only one explicit argument channel", () => {
-    const expected = checker.EXPECTED_ACTIVE_TASK;
+    const expected = ".trellis/tasks/08-14-example-active-task";
     expect(
       checker.parseArguments(["--exclude-active-task", expected], {}),
     ).toBe(expected);
@@ -554,7 +649,7 @@ describe("durable supported-platform surface contract", () => {
   });
 
   it("requires a direct current-session pointer for the active task", () => {
-    const expected = checker.EXPECTED_ACTIVE_TASK;
+    const expected = ".trellis/tasks/08-14-example-active-task";
     const run =
       (payload: unknown, status = 0) =>
       () => ({
@@ -585,6 +680,16 @@ describe("durable supported-platform surface contract", () => {
           current_task: { dir: expected },
           source: "session-fallback:codex_other",
           stale: false,
+        }),
+      ),
+    ).toThrow(/not directly active/);
+    expect(() =>
+      checker.resolveAuthoritativeActiveTask(
+        ROOT,
+        run({
+          current_task: { dir: expected },
+          source: "session:codex_expected",
+          stale: true,
         }),
       ),
     ).toThrow(/not directly active/);
@@ -1141,7 +1246,7 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes the decoded and visually reviewed raster inventory by path and digest", () => {
     const currentPaths = checker.listCurrentFiles(ROOT);
-    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(166);
+    expect(checker.RASTER_ASSET_CONTRACT).toHaveLength(167);
     expect(checker.validateRasterAssetInventory(currentPaths)).toEqual([]);
 
     const first = checker.RASTER_ASSET_CONTRACT[0];
@@ -1199,7 +1304,6 @@ describe("durable supported-platform surface contract", () => {
       return checker.validateStructureAssetInventory(currentPaths, indexModes, {
         root: ROOT,
         io,
-        activeTask: checker.EXPECTED_ACTIVE_TASK,
       });
     };
 
@@ -1264,7 +1368,6 @@ describe("durable supported-platform surface contract", () => {
     expect(() =>
       checker.validateStructureAssetInventory(currentPaths, wrongModes, {
         root: ROOT,
-        activeTask: checker.EXPECTED_ACTIVE_TASK,
       }),
     ).toThrow(/mode 100644/iu);
 
@@ -1279,7 +1382,6 @@ describe("durable supported-platform surface contract", () => {
         addedModes,
         {
           root: ROOT,
-          activeTask: checker.EXPECTED_ACTIVE_TASK,
           io: {
             lstatSync(absolutePath: fs.PathLike) {
               return absolutePath === addedAbsolute
@@ -1356,7 +1458,7 @@ describe("durable supported-platform surface contract", () => {
         ),
       );
       fs.writeFileSync(manifestPath, JSON.stringify(current));
-      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(166);
+      expect(checker.loadRasterAssetManifest(manifestPath)).toHaveLength(167);
 
       fs.writeFileSync(
         manifestPath,

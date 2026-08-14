@@ -146,13 +146,32 @@ export const AGENT_CATALOG_IDS = [
 
 export type AgentCatalogId = (typeof AGENT_CATALOG_IDS)[number];
 
-export type AgentCatalogStatus = "pending_verification" | "manual_install";
+export const AGENT_CATALOG_STATUSES = [
+  "pending_verification",
+  "manual_install",
+  "managed_install",
+] as const;
 
-export type AgentActionState =
-  | "available"
-  | "assisted"
-  | "not_supported"
-  | "pending_verification";
+export type AgentCatalogStatus = (typeof AGENT_CATALOG_STATUSES)[number];
+
+export const AGENT_ACTION_STATES = [
+  "available",
+  "assisted",
+  "not_supported",
+  "pending_verification",
+] as const;
+
+export type AgentActionState = (typeof AGENT_ACTION_STATES)[number];
+
+export const AGENT_OFFICIAL_LINK_IDS = ["product", "cli", "desktop"] as const;
+
+export type AgentOfficialLinkId = (typeof AGENT_OFFICIAL_LINK_IDS)[number];
+
+export interface AgentOfficialLink {
+  id: AgentOfficialLinkId;
+  label: string;
+  url: string;
+}
 
 export interface AgentActionCapability {
   state: AgentActionState;
@@ -170,14 +189,14 @@ export interface AgentCatalogEntry {
   id: AgentCatalogId;
   displayName: string;
   description: string;
-  officialUrl: string;
+  officialLinks: AgentOfficialLink[];
   status: AgentCatalogStatus;
   actions: AgentCatalogActions;
   evidenceLabel: string;
 }
 
 export interface AgentCatalogResult {
-  contractVersion: 1;
+  contractVersion: 2;
   reviewedAt: string;
   agents: AgentCatalogEntry[];
 }

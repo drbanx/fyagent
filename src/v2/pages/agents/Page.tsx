@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { getAgentIcon } from "../../shared/assets/agents";
+import { CodexDesktopInstallerPanel } from "../../shared/codex-desktop/CodexDesktopInstallerPanel";
 import { convergeSelection } from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
 import {
@@ -13,6 +14,7 @@ import type {
   AgentActionCapability,
   AgentCatalogEntry,
   AgentCatalogId,
+  AgentOfficialLink,
   ProviderAppId,
 } from "../../shared/features/types";
 import {
@@ -46,6 +48,7 @@ const actionStateLabels: Readonly<
 const catalogStatusLabels: Readonly<
   Record<AgentCatalogEntry["status"], string>
 > = {
+  managed_install: "内置安装",
   manual_install: "手动安装",
   pending_verification: "能力待验证",
 };
@@ -228,18 +231,25 @@ function modelTarget(id: AgentCatalogId): string | null {
   return null;
 }
 
+function officialLinkKey(
+  entry: AgentCatalogEntry,
+  link: AgentOfficialLink,
+): string {
+  return `${entry.id}:${link.id}`;
+}
+
 function AgentDetail({
   entry,
   contractVersion,
   reviewedAt,
-  opening,
+  openingKey,
   onOpenOfficial,
 }: {
   entry: AgentCatalogEntry;
   contractVersion: number;
   reviewedAt: string;
-  opening: boolean;
-  onOpenOfficial: () => void;
+  openingKey: string | null;
+  onOpenOfficial: (link: AgentOfficialLink) => void;
 }) {
   const navigate = useNavigate();
   const target = modelTarget(entry.id);
@@ -274,14 +284,25 @@ function AgentDetail({
 
       <AgentObservation selectedId={entry.id} />
 
+      {entry.id === "codex" && <CodexDesktopInstallerPanel />}
+
       <div className="fy-agent-action-row">
-        <Button
-          className={officialOnly ? "fy-control-button-primary" : undefined}
-          disabled={opening || entry.actions.browse.state !== "available"}
-          onClick={onOpenOfficial}
-        >
-          {opening ? "正在打开…" : officialOnly ? "打开官方入口" : "打开官网"}
-        </Button>
+        {entry.officialLinks.map((link) => {
+          const opening = openingKey === officialLinkKey(entry, link);
+          return (
+            <Button
+              key={link.id}
+              className={officialOnly ? "fy-control-button-primary" : undefined}
+              disabled={
+                openingKey !== null ||
+                entry.actions.browse.state !== "available"
+              }
+              onClick={() => onOpenOfficial(link)}
+            >
+              {opening ? "正在打开…" : link.label}
+            </Button>
+          );
+        })}
         {target && entry.actions.configure.state === "available" && (
           <Button
             className="fy-control-button-primary"
@@ -304,18 +325,21 @@ export function AgentsPage() {
   const { ports, notify } = useFeatures();
   const catalogQuery = useAgentCatalog();
   const [selectedId, setSelectedId] = useState<AgentCatalogId | null>(null);
-  const [openingId, setOpeningId] = useState<AgentCatalogId | null>(null);
+  const [openingKey, setOpeningKey] = useState<string | null>(null);
   const openLock = useRef(false);
   const entries = catalogQuery.data?.agents ?? [];
   const convergedId = convergeSelection(entries, selectedId);
   const selected = entries.find((entry) => entry.id === convergedId) ?? null;
 
-  const openOfficial = async (entry: AgentCatalogEntry) => {
+  const openOfficial = async (
+    entry: AgentCatalogEntry,
+    link: AgentOfficialLink,
+  ) => {
     if (openLock.current) return;
     openLock.current = true;
-    setOpeningId(entry.id);
+    setOpeningKey(officialLinkKey(entry, link));
     try {
-      await ports.settings.openExternal(entry.officialUrl);
+      await ports.settings.openExternal(link.url);
     } catch {
       notify({
         tone: "error",
@@ -323,7 +347,7 @@ export function AgentsPage() {
         description: "请稍后重试；FyAgent 未执行任何安装或配置操作。",
       });
     } finally {
-      setOpeningId(null);
+      setOpeningKey(null);
       openLock.current = false;
     }
   };
@@ -410,8 +434,8 @@ export function AgentsPage() {
             entry={selected}
             contractVersion={catalogQuery.data.contractVersion}
             reviewedAt={catalogQuery.data.reviewedAt}
-            opening={openingId !== null}
-            onOpenOfficial={() => void openOfficial(selected)}
+            openingKey={openingKey}
+            onOpenOfficial={(link) => void openOfficial(selected, link)}
           />
         </div>
       )}

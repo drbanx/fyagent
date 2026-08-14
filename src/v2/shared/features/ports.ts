@@ -1,4 +1,10 @@
 import type {
+  JobSnapshot,
+  LocalInstallStatus,
+  RemoteReleaseStatus,
+} from "@/shared/codex-desktop";
+
+import type {
   AgentCatalogResult,
   DiscoverableSkill,
   FeatureSettings,
@@ -28,6 +34,19 @@ import type {
 
 export interface AgentCatalogPort {
   get(): Promise<AgentCatalogResult>;
+}
+
+export interface CodexDesktopPort {
+  getLocalStatus(): Promise<LocalInstallStatus>;
+  checkLatest(force: boolean): Promise<RemoteReleaseStatus>;
+  getJob(): Promise<JobSnapshot | null>;
+  startInstall(expectedReleaseId: string): Promise<JobSnapshot>;
+  cancelInstall(jobId: string): Promise<JobSnapshot>;
+  launch(): Promise<void>;
+  openLogDirectory(): Promise<void>;
+  subscribeJobUpdates(
+    onSnapshot: (snapshot: JobSnapshot) => void,
+  ): Promise<() => void>;
 }
 
 export interface ProvidersPort {
@@ -108,6 +127,7 @@ export interface SettingsPort {
 
 export interface FeaturePorts {
   catalog: AgentCatalogPort;
+  codexDesktop: CodexDesktopPort;
   providers: ProvidersPort;
   workbuddy: WorkBuddyPort;
   skills: SkillsPort;

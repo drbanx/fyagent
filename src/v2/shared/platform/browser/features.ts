@@ -14,6 +14,16 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     catalog: {
       get: rejectNativeOnly,
     },
+    codexDesktop: {
+      getLocalStatus: rejectNativeOnly,
+      checkLatest: rejectNativeOnly,
+      getJob: rejectNativeOnly,
+      startInstall: rejectNativeOnly,
+      cancelInstall: rejectNativeOnly,
+      launch: rejectNativeOnly,
+      openLogDirectory: rejectNativeOnly,
+      subscribeJobUpdates: rejectNativeOnly,
+    },
     providers: {
       getSummary: rejectNativeOnly,
       applyQuickSetupWithResult: rejectNativeOnly,

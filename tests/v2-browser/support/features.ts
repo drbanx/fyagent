@@ -30,10 +30,14 @@ declare global {
         currentWindow: { label: string };
         currentWebview: { label: string; windowLabel: string };
       };
+      transformCallback: (callback: (event: unknown) => void) => number;
       invoke: (
         command: string,
         payload?: Record<string, unknown>,
       ) => Promise<unknown>;
+    };
+    __TAURI_EVENT_PLUGIN_INTERNALS__: {
+      unregisterListener: (event: string, eventId: number) => void;
     };
   }
 }
@@ -124,14 +128,20 @@ export async function installRichTauriFeatureFixture(
       reason: string,
     ) => ({ state, reason });
     const catalog = {
-      contractVersion: 1,
-      reviewedAt: "2026-08-13",
+      contractVersion: 2,
+      reviewedAt: "2026-08-14",
       agents: [
         {
           id: "qoderwork",
           displayName: "QoderWork CN",
           description: "Qoder 家族的桌面工作助手；当前仅提供官方入口。",
-          officialUrl: "https://qoder.com.cn/qoderwork",
+          officialLinks: [
+            {
+              id: "product",
+              label: "打开 QoderWork 官方页面",
+              url: "https://qoder.com.cn/qoderwork",
+            },
+          ],
           status: "pending_verification",
           actions: {
             browse: capability("available", "可打开 QoderWork 官方产品入口。"),
@@ -154,7 +164,13 @@ export async function installRichTauriFeatureFixture(
           id: "trae-work",
           displayName: "TRAE Work",
           description: "TRAE 的多端工作助手；当前仅提供官方入口。",
-          officialUrl: "https://www.trae.cn/",
+          officialLinks: [
+            {
+              id: "product",
+              label: "打开 TRAE Work 官方页面",
+              url: "https://work.trae.cn/",
+            },
+          ],
           status: "pending_verification",
           actions: {
             browse: capability("available", "可打开 TRAE Work 官方产品入口。"),
@@ -177,7 +193,13 @@ export async function installRichTauriFeatureFixture(
           id: "workbuddy",
           displayName: "WorkBuddy",
           description: "可通过 FyAgent 读取并保存受限的模型配置。",
-          officialUrl: "https://www.workbuddy.cn/",
+          officialLinks: [
+            {
+              id: "product",
+              label: "打开 WorkBuddy 官方页面",
+              url: "https://www.workbuddy.cn/",
+            },
+          ],
           status: "manual_install",
           actions: {
             browse: capability("available", "可打开 WorkBuddy 官方产品入口。"),
@@ -196,28 +218,46 @@ export async function installRichTauriFeatureFixture(
         {
           id: "codex",
           displayName: "Codex",
-          description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
-          officialUrl: "https://chatgpt.com/codex",
-          status: "manual_install",
+          description:
+            "可通过 FyAgent 安装或更新 Codex Desktop，并管理受限的 Provider 配置。",
+          officialLinks: [],
+          status: "managed_install",
           actions: {
-            browse: capability("available", "可打开 Codex 官方产品入口。"),
+            browse: capability(
+              "not_supported",
+              "FyAgent 内置安装不依赖外部产品链接。",
+            ),
             observe: capability(
               "available",
               "可读取 FyAgent 中的 Provider 汇总和当前选择。",
             ),
-            install: capability("assisted", "安装由 Codex 官方流程负责。"),
+            install: capability(
+              "available",
+              "可通过 FyAgent 的内置 Codex Desktop 安装器安装或更新。",
+            ),
             configure: capability(
               "available",
               "可通过现有 Provider 保存与切换合同配置。",
             ),
           },
-          evidenceLabel: "Codex Provider 读取、保存与切换命令",
+          evidenceLabel: "Codex Desktop 安装器与 Provider 配置命令",
         },
         {
           id: "claude-code",
           displayName: "Claude Code",
           description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
-          officialUrl: "https://www.anthropic.com/claude-code",
+          officialLinks: [
+            {
+              id: "cli",
+              label: "Claude Code CLI",
+              url: "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+            },
+            {
+              id: "desktop",
+              label: "Claude Desktop",
+              url: "https://claude.com/download",
+            },
+          ],
           status: "manual_install",
           actions: {
             browse: capability(
@@ -274,7 +314,43 @@ export async function installRichTauriFeatureFixture(
     let workBuddyRevision = "fixture-revision-1";
     let workBuddyModelIds = ["existing-model"];
     let workBuddySaveAttempts = 0;
+    const installerReleaseId = `v1:${"a".repeat(64)}`;
+    const installerRemote = {
+      releaseId: installerReleaseId,
+      displayVersion: "26.814.1000",
+      platformVersion: {
+        kind: "windows_msix",
+        major: 26,
+        minor: 814,
+        build: 1000,
+        revision: 0,
+      },
+      expectedSize: 1_048_576,
+      checkedAt: "2026-08-14T05:00:00Z",
+    };
+    const installerLocal = {
+      state: "not_installed",
+      platform: "windows",
+      architecture: "x86_64",
+    };
+    let installerSequence = 0;
+    let installerJob: Record<string, unknown> | null = null;
+    const makeInstallerJob = (
+      stage: "checking" | "cancelled",
+    ): Record<string, unknown> => ({
+      jobId: "fixture-job-001",
+      sequence: ++installerSequence,
+      stage,
+      release: structuredClone(installerRemote),
+      startedAt: "2026-08-14T05:00:01Z",
+      updatedAt: "2026-08-14T05:00:02Z",
+      progress: null,
+      cancellable: stage === "checking",
+      result: null,
+      error: null,
+    });
     const calls: FeatureFixtureCall[] = [];
+    let nextCallbackId = 1;
 
     const delay = async (milliseconds = 0) => {
       if (milliseconds <= 0) return;
@@ -284,11 +360,15 @@ export async function installRichTauriFeatureFixture(
     };
 
     window.__FYAGENT_FEATURE_FIXTURE__ = { calls };
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+      unregisterListener: () => undefined,
+    };
     window.__TAURI_INTERNALS__ = {
       metadata: {
         currentWindow: { label: "main" },
         currentWebview: { label: "main", windowLabel: "main" },
       },
+      transformCallback: () => nextCallbackId++,
       invoke: async (
         command: string,
         payload: Record<string, unknown> = {},
@@ -303,6 +383,21 @@ export async function installRichTauriFeatureFixture(
               throw new Error("fixture catalog unavailable");
             }
             return structuredClone(catalog);
+          case "codex_desktop_get_local_status":
+            return structuredClone(installerLocal);
+          case "codex_desktop_check_latest":
+            return structuredClone(installerRemote);
+          case "codex_desktop_get_job":
+            return structuredClone(installerJob);
+          case "codex_desktop_start_install":
+            installerJob = makeInstallerJob("checking");
+            return structuredClone(installerJob);
+          case "codex_desktop_cancel_install":
+            installerJob = makeInstallerJob("cancelled");
+            return structuredClone(installerJob);
+          case "codex_desktop_launch":
+          case "codex_desktop_open_log_directory":
+            return undefined;
           case "get_workbuddy_status":
             if (fixtureOptions.observationFailure === "workbuddy") {
               throw {
@@ -457,7 +552,10 @@ export async function installRichTauriFeatureFixture(
             return { skills: [], totalCount: 0, query: payload.query ?? "" };
           case "get_settings":
             return { skillSyncMethod: "auto", skillStorageLocation: "fyagent" };
+          case "plugin:event|listen":
+            return payload.handler;
           case "plugin:event|emit":
+          case "plugin:event|unlisten":
             return undefined;
           default:
             throw new Error(`Unexpected fixture command: ${command}`);

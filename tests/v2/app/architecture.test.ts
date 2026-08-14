@@ -5,6 +5,12 @@ import { describe, expect, it } from "vitest";
 
 const repositoryRoot = path.resolve(process.cwd());
 const v2Root = path.join(repositoryRoot, "src", "v2");
+const neutralCodexDesktopRoot = path.join(
+  repositoryRoot,
+  "src",
+  "shared",
+  "codex-desktop",
+);
 
 interface ModuleReference {
   file: string;
@@ -106,6 +112,12 @@ function isWithin(parent: string, candidate: string): boolean {
   );
 }
 
+function isAllowedV2RepositoryTarget(target: string): boolean {
+  return (
+    isWithin(v2Root, target) || isWithin(neutralCodexDesktopRoot, target)
+  );
+}
+
 function resolveRepositoryImport(
   importer: string,
   specifier: string,
@@ -144,12 +156,12 @@ const allowedLayerDependencies: Record<string, ReadonlySet<string>> = {
 };
 
 describe("FyAgent V2 architecture boundary", () => {
-  it("keeps every repository import inside src/v2", () => {
+  it("keeps repository imports inside V2 or the exact neutral Codex Desktop core", () => {
     const violations = parsedModules.flatMap(({ references }) =>
       references.flatMap(({ file, line, specifier }) => {
         const target = resolveRepositoryImport(file, specifier);
 
-        return target && !isWithin(v2Root, target)
+        return target && !isAllowedV2RepositoryTarget(target)
           ? [`${relativeV2Path(file)}:${line} imports ${specifier}`]
           : [];
       }),
@@ -159,6 +171,36 @@ describe("FyAgent V2 architecture boundary", () => {
       violations,
       `V2 imported legacy renderer code:\n${violations.join("\n")}`,
     ).toEqual([]);
+  });
+
+  it("does not generalize the neutral core exception to shared or legacy renderer code", () => {
+    const importer = path.join(v2Root, "shared", "fixture.ts");
+    const allowedSpecifiers = [
+      "@/shared/codex-desktop",
+      "@/shared/codex-desktop/parsers",
+    ];
+    const prohibitedSpecifiers = [
+      "@/shared",
+      "@/shared/another-core",
+      "@/shared/codex-desktop-legacy",
+      "@/components/CodexDesktopInstaller",
+      "@/hooks/useCodexDesktopInstaller",
+      "@/lib/api/codex-desktop",
+      "@/i18n",
+    ];
+
+    expect(
+      allowedSpecifiers.map((specifier) => {
+        const target = resolveRepositoryImport(importer, specifier);
+        return target ? isAllowedV2RepositoryTarget(target) : false;
+      }),
+    ).toEqual(allowedSpecifiers.map(() => true));
+    expect(
+      prohibitedSpecifiers.map((specifier) => {
+        const target = resolveRepositoryImport(importer, specifier);
+        return target ? isAllowedV2RepositoryTarget(target) : false;
+      }),
+    ).toEqual(prohibitedSpecifiers.map(() => false));
   });
 
   it("allows direct Tauri imports only in shared/platform/tauri", () => {

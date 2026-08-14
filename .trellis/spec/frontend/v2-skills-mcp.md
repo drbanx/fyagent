@@ -33,6 +33,10 @@ type SupportedAppId =
   | "opencode"
   | "hermes";
 
+const supportedAppIconById: Record<SupportedAppId, string>;
+
+function getSupportedAppIcon(id: SupportedAppId): string;
+
 interface SkillsPort {
   getInstalled(): Promise<InstalledSkill[]>;
   getBackups(): Promise<SkillBackupEntry[]>;
@@ -147,6 +151,14 @@ interface SettingsPort {
 
 - User-visible CSS is namespaced under `.fy-skills-*`, `.fy-mcp-*`, or
   `.fy-control-*` and consumes only `--fy-*` tokens.
+- The shared assignment panel resolves Claude, Codex, Gemini, Grok Build,
+  OpenCode, and Hermes through one exhaustive V2-owned
+  `Record<SupportedAppId, string>`. Runtime code must not import a legacy asset
+  path or a remote URL. A reviewed byte-for-byte local asset copy is acceptable
+  when V2 owns the resulting path and the asset inventory is updated.
+- Assignment icons are decorative beside the existing text:
+  `alt=""` and `aria-hidden="true"`. The switch keeps the sole accessible name
+  `${app.label} ${labelSuffix}`; an icon must not create a duplicate label.
 - At most one six-application assignment panel exists in the DOM and
   accessibility tree. Responsive layout changes whether it is the third
   column or a details section; CSS must not hide a duplicate semantic panel.
@@ -174,13 +186,16 @@ interface SettingsPort {
 | Imported shared ID has a different executable specification      | Reject that application's import without partial persistence          |
 | OpenCode/Hermes source entry has `enabled: false`                | Keep it disabled; do not create or activate a managed assignment      |
 | MCP live cleanup fails while disabling or deleting               | Retain the failed assignment and retryable authoritative record       |
+| A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image |
+| An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name |
 | Viewport changes between two- and three-column layouts           | Render exactly one assignment panel with six unique switches          |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** A user toggles Codex for one Skill. The UI invokes
   `toggle_skill_app` with `{ id, app: "codex", enabled }`, locks only
-  conflicting writes, then rereads installed Skills before settling.
+  conflicting writes, then rereads installed Skills before settling. The row
+  shows the V2-owned Codex icon decoratively without changing the switch name.
 - **Base:** A browser preview has no fixture. Both pages show their native-safe
   empty states; attempts to mutate reject instead of simulating persistence.
 - **Bad:** MCP search uses `JSON.stringify(server)`, a toast prints an invoke
@@ -208,7 +223,9 @@ git diff --check
   convergence, repository parsing, installed-key matching, pagination,
   env/header/args parsing, advanced JSON validation, and extension retention.
 - Component tests cover empty, loading, error, pending, write/refetch, dialogs,
-  assignment, destructive confirmation, and secret-safe presentation.
+  assignment, destructive confirmation, secret-safe presentation, an exhaustive
+  six-ID icon map, six decodable local assets, decorative icon semantics, and
+  the unchanged six unique switch names.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
   populated two-/three-column layouts, a single six-switch panel, no overflow,
   no secret rendering, exact invoke payloads, and authoritative refetch.
@@ -232,4 +249,17 @@ draft, and keep user-visible failure text secret-safe.
 const matches = searchMcpServers([server], query).length > 0;
 const next = { ...canonicalSpec, type, command, args, env };
 throw new Error("MCP 配置保存失败，请检查配置后重试");
+```
+
+Wrong: derive an icon URL dynamically or make its alt text repeat the app
+label.
+
+```tsx
+<img src={`https://icons.example/${app.id}.svg`} alt={app.label} />
+```
+
+Correct: use the exhaustive local V2 map and keep the image decorative.
+
+```tsx
+<img src={getSupportedAppIcon(app.id)} alt="" aria-hidden="true" />
 ```

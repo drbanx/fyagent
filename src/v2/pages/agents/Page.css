@@ -1,6 +1,7 @@
 .fy-agent-layout {
   display: grid;
   grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.7fr);
+  align-items: start;
   gap: 14px;
   min-width: 0;
 }
@@ -76,7 +77,6 @@
   height: 34px;
   padding: 3px;
   border-radius: 9px;
-  background: rgba(238, 249, 255, 0.86);
 }
 
 .fy-agent-selector-copy {
@@ -119,10 +119,7 @@
   width: 62px;
   height: 62px;
   padding: 6px;
-  border: 1px solid var(--fy-border);
   border-radius: 16px;
-  background: rgba(238, 249, 255, 0.9);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
 }
 
 .fy-agent-detail-icon-native-size {
@@ -257,6 +254,94 @@
   line-height: 1.55;
 }
 
+.fy-codex-installer-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fy-codex-installer-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.fy-codex-installer-heading p,
+.fy-codex-installer-status,
+.fy-codex-installer-download {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fy-codex-installer-body {
+  display: grid;
+  gap: 11px;
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(226, 243, 255, 0.06);
+}
+
+.fy-codex-installer-versions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.fy-codex-installer-versions div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: rgba(9, 29, 48, 0.16);
+}
+
+.fy-codex-installer-versions dt {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-codex-installer-versions dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.fy-codex-installer-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-codex-installer-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(226, 243, 255, 0.12);
+}
+
+.fy-codex-installer-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fy-accent);
+  transition: width 130ms ease-out;
+}
+
+.fy-codex-installer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .fy-agent-action-row {
   display: flex;
   flex-wrap: wrap;
@@ -290,7 +375,8 @@
 @media (max-width: 520px) {
   .fy-agent-selector,
   .fy-agent-capabilities,
-  .fy-agent-observation-grid {
+  .fy-agent-observation-grid,
+  .fy-codex-installer-versions {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -316,7 +402,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fy-agent-selector-item {
+  .fy-agent-selector-item,
+  .fy-codex-installer-progress-track span {
     transition: none;
   }
 }

@@ -38,6 +38,28 @@ No ordinary command accepts a URL, path, hash, identity, installer scope, or
 validation-bypass flag. Windows has no pre-runtime headless/runas installer
 mode and no all-users control/job schema.
 
+V2 mirrors those commands through one platform port:
+
+```ts
+interface CodexDesktopPort {
+  getLocalStatus(): Promise<LocalInstallStatus>;
+  checkLatest(force: boolean): Promise<RemoteReleaseStatus>;
+  getJob(): Promise<JobSnapshot | null>;
+  startInstall(expectedReleaseId: string): Promise<JobSnapshot>;
+  cancelInstall(jobId: string): Promise<JobSnapshot>;
+  launch(): Promise<void>;
+  openLogDirectory(): Promise<void>;
+  subscribeJobUpdates(
+    onSnapshot: (snapshot: JobSnapshot) => void,
+  ): Promise<() => void>;
+}
+```
+
+The Tauri adapter parses every unknown response/event through
+`src/shared/codex-desktop` before returning it. The browser adapter returns a
+fixed native-only error for every installer read, write, and subscription; it
+does not provide a production-looking fixture.
+
 The bundled Windows-only helper accepts exactly:
 
     fyagent-user-helper.exe codex-msix-install \
@@ -354,6 +376,33 @@ comparison value.
   produced-equivalent to Rust DTO serialization and parsed by the TypeScript
   contract test.
 
+### Shared renderer core and V2 controller
+
+- `src/shared/codex-desktop/**` is a renderer-neutral pure contract. It owns the
+  DTOs, strict unknown-input parsers, version projections, installer view/action
+  derivations, monotonic snapshot admission, download-speed/progress projection,
+  and safe error DTO projection. It imports no React, Tauri, platform adapter,
+  legacy UI, i18n, toast, or clipboard code.
+- Legacy import paths may re-export this pure core, but legacy and V2 consumers
+  must not maintain divergent state rules. The V2 shell permits only the exact
+  `@/shared/codex-desktop` prefix and routes every side effect through
+  `FeaturePorts.codexDesktop`.
+- V2 subscribes before recovering `getJob()` and merges both sources with the
+  shared `jobId`/monotonic-sequence rule. React StrictMode and async subscription
+  setup must leave exactly one active listener, and unmount must eventually
+  call its cleanup exactly once.
+- One synchronous operation lock prevents same-tick duplicate or conflicting
+  actions. Install/update submits only the already parsed remote `releaseId`.
+  `METADATA_CHANGED` refreshes authoritative state and requires a separate user
+  action; it never auto-retries installation.
+- Terminal job outcomes trigger one bounded authoritative reread of local,
+  remote, and job state. Unknown exceptions and diagnostic fields remain
+  internal; the panel renders only fixed localized copy plus allowlisted safe
+  error-code fields. It offers no URL/path/hash/scope/bypass or clipboard input.
+- The panel mounts only for the selected Codex catalog entry. Non-Codex
+  selection must not call an installer port. Browser preview must report
+  native-only unavailability and never simulate a completed installation.
+
 ### Job lifecycle
 
 - At most one job may occupy the installer slot.
@@ -482,6 +531,17 @@ comparison value.
 - Renderer adds scope/URL/path/extra fields, or helper CLI adds/reorders/
   duplicates fields or uses a noncanonical ID/nonce -> reject before the
   privileged boundary.
+- Unknown local/remote/job/event payload enters V2 -> parser rejects before
+  Query/React state construction; do not coerce, default, or guess enum values.
+- Same or decreasing snapshot sequence, or an older job after a newer active
+  job -> ignore it; do not regress progress or download speed.
+- StrictMode setup/unmount races subscription resolution -> retain one listener
+  and invoke exactly one cleanup after resolution.
+- `METADATA_CHANGED` reaches V2 -> force an authoritative refresh, clear the
+  failed terminal presentation, and require a new explicit install/update
+  click; never retry within the same operation.
+- Non-Tauri browser calls the installer port -> fixed native-only rejection and
+  no synthetic authority state.
 
 Diagnostics may contain only the structured, redacted fields of
 InstallerErrorDto; never pass raw credential-bearing URLs, paths, cookies, or
@@ -504,6 +564,9 @@ Windows.
 
 Metadata is unavailable while a verified local app exists. The service reports
 the remote failure while the renderer retains the separate local Launch action.
+
+The normal browser preview selects Codex. The managed-installer area reports
+native unavailability and performs no IPC-shaped success mutation.
 
 ### Bad
 
@@ -544,6 +607,14 @@ such controls.
   sample recovers from the new baseline. `job_installing` with non-null
   current/total/speed values renders the percentage without any byte or `/s`
   label.
+- V2 TypeScript: strict parsers cover every local/remote/job enum and malformed
+  payload branch; feature-port tests freeze the exact seven commands, camelCase
+  payloads, event name, unsubscribe behavior, and native-only browser rejection.
+  Controller/panel tests cover subscribe-before-recover, stale/out-of-order
+  snapshots, StrictMode cleanup, same-tick operation locking,
+  `METADATA_CHANGED` refresh-without-retry, terminal reread, download-only byte
+  rate, installation-unit labels, fixed safe errors, secret/path-negative DOM,
+  Codex-only mounting, and no link/clipboard/renderer download input.
 - Integration: static audit that ordinary IPC has no all-users, headless,
   runas, URL/path/scope, or custom-command surface, and each ordinary command
   remains registered exactly once.
@@ -656,6 +727,21 @@ run_pinned_user_helper(&context, job_id, pinned, bridge, progress, deadlines)?;
 Likewise, do not merely inspect the installer job before a delayed restart:
 claim the shared job-store mutex first, so a new worker cannot start during the
 response/re-exec window.
+
+### Wrong
+
+```ts
+// A V2 component that invokes Tauri and parses ad hoc creates a second,
+// renderer-controlled installer boundary.
+await invoke("codex_desktop_start_install", { request: remote });
+```
+
+### Correct
+
+```ts
+// The adapter owns exact IPC/parsing; the controller supplies only release ID.
+await ports.codexDesktop.startInstall(remote.releaseId);
+```
 
 ### Wrong
 
