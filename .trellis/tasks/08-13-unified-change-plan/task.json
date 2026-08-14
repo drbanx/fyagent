@@ -21,7 +21,8 @@
   "children": [
     "08-13-unified-change-plan-prd",
     "08-13-unified-change-plan-architecture",
-    "08-13-unified-change-plan-frontend"
+    "08-13-unified-change-plan-frontend",
+    "08-14-unified-change-plan-codex-switch"
   ],
   "parent": null,
   "relatedFiles": [],
