@@ -231,11 +231,11 @@ use `*-latest`, restore candidate-controlled release caches, or execute mise.
 Node is established before pnpm. pnpm and Rust Action caches are explicitly
 disabled.
 
-| Target          | Runner/build environment                                | Exact installer output             |
-| --------------- | ------------------------------------------------------- | ---------------------------------- |
-| Windows x64     | `windows-2025`, native `X64`                            | x64 NSIS setup EXE                 |
-| Windows ARM64   | `windows-11-arm`, native `ARM64`                        | ARM64 NSIS setup EXE               |
-| macOS universal | `macos-15`, both Apple targets                          | DMG and ZIP from one universal app |
+| Target          | Runner/build environment         | Exact installer output             |
+| --------------- | -------------------------------- | ---------------------------------- |
+| Windows x64     | `windows-2025`, native `X64`     | x64 NSIS setup EXE                 |
+| Windows ARM64   | `windows-11-arm`, native `ARM64` | ARM64 NSIS setup EXE               |
+| macOS universal | `macos-15`, both Apple targets   | DMG and ZIP from one universal app |
 
 Each target verifies documented `runner.os`/`runner.arch`, the requested
 runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. There is
@@ -289,12 +289,14 @@ unavailability blocks acceptance.
   same verified ad-hoc-sealed app and are re-opened to prove version and
   executable digest identity;
 - DMG creation removes its explicit output before the first attempt and after
-  every failed attempt. It retries the same `hdiutil create` arguments only
-  when the captured diagnostic contains `Resource busy`, with at most five
-  attempts and `2`, `4`, `8`, and `16` second delays. Any other diagnostic, an
-  exhausted retry budget, or inability to remove partial output returns the
-  original `hdiutil` status immediately. The workflow does not pipe `hdiutil`,
-  force-detach images, or kill disk-image helpers.
+  every failed attempt. DMG verification preserves the completed input across
+  attempts. Both operations retry the same arguments only when the captured
+  diagnostic contains `Resource busy` or `Resource temporarily unavailable`,
+  with at most five attempts and `2`, `4`, `8`, and `16` second delays. Any
+  other diagnostic, an exhausted retry budget, or inability to remove a
+  partial creation output returns the original `hdiutil` status immediately.
+  The workflow does not pipe `hdiutil`, force-detach images, or kill disk-image
+  helpers.
 
 ## 7. Assets, metadata, signing disclosure, and attestation
 
@@ -385,23 +387,23 @@ never called private or successful.
 
 ## 9. Failure matrix
 
-| Condition                                                                                                                   | Required result                                              |
-| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Candidate/version/tag/event/workflow/authority-branch HEAD differs                                                          | Fail before native builds.                                   |
-| Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                      | Fail before native builds; require exact `fy-agent/fyagent`. |
-| Formal tag is lightweight, points elsewhere, or changes                                                                     | Fail; never repair or move the tag.                          |
+| Condition                                                                                                                               | Required result                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Candidate/version/tag/event/workflow/authority-branch HEAD differs                                                                      | Fail before native builds.                                   |
+| Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                                  | Fail before native builds; require exact `fy-agent/fyagent`. |
+| Formal tag is lightweight, points elsewhere, or changes                                                                                 | Fail; never repair or move the tag.                          |
 | Exact-source authority-branch CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
-| Preflight reaches a publish path or provider secret                                                                         | Static/remote gate fails.                                    |
-| Native runner, architecture, toolchain, or source drifts                                                                   | Fail that target; no fallback.                               |
-| Pinned build input ID/digest/manifest/file set drifts                                                                       | Fail before provider or trusted consumption.                 |
-| Signer configuration is partial/invalid or fresh signature proof fails                                                      | Fail; do not downgrade to unsigned.                          |
-| Windows proof/sealed binding or macOS identity fails                                                                        | Stop aggregation and publication.                            |
-| An intentional producer skip propagates past successful asset verification                                                  | Attestation still runs; abnormal direct needs fail visibly.  |
-| Four/seven/eight file allowlist or digest differs                                                                           | Stop verification, attestation, or publication.              |
-| Live main/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.        |
-| A draft/published Release already exists                                                                                    | Refuse update, replacement, or deletion.                     |
-| Upload/re-download/pre-PATCH verification fails                                                                             | Leave draft untouched and report it.                         |
-| Final PATCH is failed or ambiguous                                                                                          | Observe once; do not retry/delete or claim completion.       |
+| Preflight reaches a publish path or provider secret                                                                                     | Static/remote gate fails.                                    |
+| Native runner, architecture, toolchain, or source drifts                                                                                | Fail that target; no fallback.                               |
+| Pinned build input ID/digest/manifest/file set drifts                                                                                   | Fail before provider or trusted consumption.                 |
+| Signer configuration is partial/invalid or fresh signature proof fails                                                                  | Fail; do not downgrade to unsigned.                          |
+| Windows proof/sealed binding or macOS identity fails                                                                                    | Stop aggregation and publication.                            |
+| An intentional producer skip propagates past successful asset verification                                                              | Attestation still runs; abnormal direct needs fail visibly.  |
+| Four/seven/eight file allowlist or digest differs                                                                                       | Stop verification, attestation, or publication.              |
+| Live main/tag/CI identity changes during the transaction                                                                                | Stop before creating the draft or before final PATCH.        |
+| A draft/published Release already exists                                                                                                | Refuse update, replacement, or deletion.                     |
+| Upload/re-download/pre-PATCH verification fails                                                                                         | Leave draft untouched and report it.                         |
+| Final PATCH is failed or ambiguous                                                                                                      | Observe once; do not retry/delete or claim completion.       |
 
 ## 10. Validation and evidence boundary
 

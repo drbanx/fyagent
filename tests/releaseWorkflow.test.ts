@@ -1893,15 +1893,25 @@ jobs:
     expect(source).not.toContain("notarytool");
     expect(source).toContain("hdiutil attach");
     expect(source).toContain("-readonly");
-    expectExactLine(macJob, "          scripts/release/retry-hdiutil.sh \\");
-    expectExactLine(macJob, '            "$dmg_path" \\');
-    expectExactLine(macJob, "            -- \\");
+    for (const repeatedLine of [
+      "          scripts/release/retry-hdiutil.sh \\",
+      '            "$dmg_path" \\',
+      "            -- \\",
+    ]) {
+      expect(
+        macJob.split(/\r?\n/u).filter((line) => line === repeatedLine),
+      ).toHaveLength(2);
+    }
     expectExactLine(
       macJob,
       '            create -volname \'FyAgent\' -srcfolder "$stage" -ov -format UDZO "$dmg_path"',
     );
+    expectExactLine(macJob, '            verify "$dmg_path"');
     expect(hdiutilRetry).toContain("max_attempts=5");
     expect(hdiutilRetry).toContain("grep -Fq -- 'Resource busy'");
+    expect(hdiutilRetry).toContain(
+      "grep -Fq -- 'Resource temporarily unavailable'",
+    );
     expect(hdiutilRetry).toContain("delay=$((1 << attempt))");
     expect(hdiutilRetry).toContain('hdiutil "$@" >"$log_file" 2>&1');
     expect(hdiutilRetry).not.toContain(" | ");

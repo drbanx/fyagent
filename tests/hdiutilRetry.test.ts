@@ -79,14 +79,22 @@ for argument in "$@"; do
   printf '%s\n' "$argument" >> "$args_file"
 done
 
-if [ -e "$FYAGENT_FAKE_OUTPUT" ]; then
+operation="$1"
+if [ "$operation" = verify ]; then
+  if [ ! -f "$FYAGENT_FAKE_OUTPUT" ]; then
+    echo 'verify input disappeared' >&2
+    exit 96
+  fi
+elif [ -e "$FYAGENT_FAKE_OUTPUT" ]; then
   echo 'stale partial output reached hdiutil' >&2
   exit 97
 fi
 
-: > "$FYAGENT_FAKE_OUTPUT"
+if [ "$operation" != verify ]; then
+  : > "$FYAGENT_FAKE_OUTPUT"
+fi
 if [ "$attempt" -le "$FYAGENT_FAKE_BUSY_FAILURES" ]; then
-  echo 'hdiutil: create failed - Resource busy' >&2
+  echo "hdiutil: $operation failed - $FYAGENT_FAKE_TRANSIENT_DIAGNOSTIC" >&2
   exit 73
 fi
 if [ "$FYAGENT_FAKE_MODE" = fail ]; then
@@ -111,6 +119,7 @@ printf '%s\n' "$1" >> "$FYAGENT_FAKE_SLEEP_LOG"
     busyFailures: number,
     mode: "fail" | "succeed",
     hdiutilArguments: string[],
+    transientDiagnostic = "Resource busy",
   ) {
     fs.writeFileSync(outputPath, "stale output");
     return spawnSync(
@@ -136,6 +145,7 @@ printf '%s\n' "$1" >> "$FYAGENT_FAKE_SLEEP_LOG"
           FYAGENT_FAKE_OUTPUT: outputPath,
           FYAGENT_FAKE_SLEEP_LOG: sleepLog,
           FYAGENT_FAKE_STATE: statePath,
+          FYAGENT_FAKE_TRANSIENT_DIAGNOSTIC: transientDiagnostic,
         },
       },
     );
@@ -200,6 +210,23 @@ describe("hdiutil Resource busy retry", () => {
     expect(fixture.calls()).toEqual([args]);
     expect(fixture.sleeps()).toEqual([]);
     expect(fs.existsSync(fixture.outputPath)).toBe(false);
+  });
+
+  it("preserves a completed image while retrying transient verify failures", () => {
+    const fixture = createFixture();
+    const args = ["verify", fixture.outputPath];
+
+    const result = fixture.run(
+      2,
+      "succeed",
+      args,
+      "Resource temporarily unavailable",
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(fixture.calls()).toEqual([args, args, args]);
+    expect(fixture.sleeps()).toEqual(["2", "4"]);
+    expect(fs.readFileSync(fixture.outputPath, "utf8")).toBe("stale output");
   });
 
   it("stops after five Resource busy failures with bounded backoff", () => {
