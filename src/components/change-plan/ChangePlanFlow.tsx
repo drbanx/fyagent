@@ -119,6 +119,7 @@ export function ChangePlanFlow({
   const [outcome, setOutcome] = useState<ApplyChangePlanOutcome>();
   const [jobId, setJobId] = useState<string>();
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const notifiedTerminalRef = useRef<string>();
   const jobQuery = useChangeJob(jobId);
   const job = jobQuery.data ?? outcome?.job;
 
@@ -137,6 +138,9 @@ export function ChangePlanFlow({
 
   useEffect(() => {
     if (!job || !isTerminalChangeJob(job)) return;
+    const key = `${job.jobId}:${job.revision}`;
+    if (notifiedTerminalRef.current === key) return;
+    notifiedTerminalRef.current = key;
     void onTerminal?.(job);
   }, [job, onTerminal]);
 
