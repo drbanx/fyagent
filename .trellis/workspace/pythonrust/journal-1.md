@@ -648,3 +648,24 @@ Completed the V2 Agent catalog and Models quick-setup flow, integrated all curre
 ### Status
 
 [OK] **Completed**
+
+
+## Session 19: Agent catalog interactions and managed Codex install
+
+**Date**: 2026-08-14
+**Task**: Agent catalog interactions and managed Codex install
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Upgraded the V2 Agent catalog to structured official links, embedded the existing Codex Desktop installer contract, corrected Agent and assignment presentation, fixed Windows Explorer browser foreground handoff, synchronized executable specs, and passed the full prearchive gate; real Codex install and non-current-platform HIL remain unexecuted.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2324f4f9` | (see git log) |
+
+### Status
+
+[OK] **Completed**
