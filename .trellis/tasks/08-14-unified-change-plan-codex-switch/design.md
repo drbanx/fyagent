@@ -74,7 +74,7 @@ Provider by ID and rejects definition drift before calling the writer.
 - `resultCode`
 - bounded steps: `precheck|apply|readback|reconcile`
 - resource results for `provider_db_current`, `device_current`,
-  `codex_live_projection`
+  `target_definition`, and `codex_live_projection`
 - `restartRequirement`
 - `usageEvidence=not_observed`
 - recovery state and stable diagnostic code

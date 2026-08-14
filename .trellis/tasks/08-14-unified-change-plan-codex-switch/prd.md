@@ -209,5 +209,5 @@ or the complete SecretBackend product.
 
 ## Blocking open questions
 
-None. Implementation still requires explicit approval of this final planning
-summary in a subsequent user message.
+None. The user explicitly approved implementation and the current-host build
+closure gate on 2026-08-14.

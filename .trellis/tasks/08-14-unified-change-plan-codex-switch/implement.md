@@ -138,6 +138,12 @@ After all backend and frontend focused tests pass:
 - [x] Current code and PR #104 state inspected.
 - [x] Prior 18-commit feature-wave practice incorporated.
 - [x] Parent/child relationship established.
-- [ ] User approves the final planning summary in a subsequent message.
-- [ ] `task.py start` executed after approval.
-- [ ] `trellis-before-dev` spec reading completed in the implementation worktree.
+- [x] User approves the final planning summary in a subsequent message.
+- [x] `task.py start` executed after approval.
+- [x] `trellis-before-dev` spec reading completed in the implementation worktree.
+
+## Completion evidence
+
+All six implementation phases and the final current-host build/smoke gate are
+complete. Exact commands, acceptance-criterion mapping, artifact hashes, and
+evidence boundaries are recorded in [evidence.md](./evidence.md).
