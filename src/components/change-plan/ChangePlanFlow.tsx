@@ -162,19 +162,27 @@ export function ChangePlanFlow({
 
   const handleApply = async () => {
     if (!plan || expired) return;
-    const next = await applyPlan.mutateAsync({
-      planId: plan.planId,
-      planDigest: plan.planDigest,
-    });
-    setOutcome(next);
-    if (next.job) setJobId(next.job.jobId);
+    try {
+      const next = await applyPlan.mutateAsync({
+        planId: plan.planId,
+        planDigest: plan.planDigest,
+      });
+      setOutcome(next);
+      if (next.job) setJobId(next.job.jobId);
+    } catch {
+      // Mutation state owns the safe, localized failure surface.
+    }
   };
 
   const handleReplan = async () => {
     if (!targetProviderId) return;
     setOutcome(undefined);
     setJobId(undefined);
-    setPlan(await createPlan.mutateAsync(targetProviderId));
+    try {
+      setPlan(await createPlan.mutateAsync(targetProviderId));
+    } catch {
+      // Mutation state owns the safe, localized failure surface.
+    }
   };
 
   const canClose = !running;

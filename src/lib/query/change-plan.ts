@@ -22,7 +22,7 @@ export const changePlanKeys = {
 };
 
 export function isTerminalChangeJob(job?: ChangeJobSnapshot): boolean {
-  return !!job && ["succeeded", "warning", "failed"].includes(job.status);
+  return !!job && !["planned", "running"].includes(job.status);
 }
 
 export function changeJobRefetchInterval(
@@ -72,6 +72,7 @@ export function useApplyChangePlan() {
 export function useChangeJob(jobId?: string) {
   const queryClient = useQueryClient();
   const acceptedEventSeq = useRef(0);
+  const acceptedJobId = useRef<string>();
   const query = useQuery({
     queryKey: changePlanKeys.job(jobId ?? "none"),
     queryFn: () => changePlanApi.getJob(jobId!),
@@ -81,6 +82,10 @@ export function useChangeJob(jobId?: string) {
 
   useEffect(() => {
     if (!jobId) return;
+    if (acceptedJobId.current !== jobId) {
+      acceptedJobId.current = jobId;
+      acceptedEventSeq.current = 0;
+    }
     acceptedEventSeq.current = Math.max(
       acceptedEventSeq.current,
       query.data?.eventSeq ?? 0,
@@ -106,10 +111,12 @@ export function useChangeJob(jobId?: string) {
           queryKey: changePlanKeys.job(jobId),
         });
       }
-    }).then((release) => {
-      if (disposed) release();
-      else unlisten = release;
-    });
+    })
+      .then((release) => {
+        if (disposed) release();
+        else unlisten = release;
+      })
+      .catch(() => undefined);
     return () => {
       disposed = true;
       unlisten?.();

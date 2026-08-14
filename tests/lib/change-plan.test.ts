@@ -115,6 +115,11 @@ describe("change-plan API and decoder", () => {
       changeJobRefetchInterval({ state: { data: changeJobFixture } } as never),
     ).toBe(false);
     expect(
+      changeJobRefetchInterval({
+        state: { data: { ...changeJobFixture, status: "unknown" } },
+      } as never),
+    ).toBe(false);
+    expect(
       shouldInvalidateChangeJobEvent(
         { jobId: "job-1", eventSeq: 4 },
         "job-1",
