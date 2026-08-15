@@ -8,6 +8,7 @@ import {
   isDiscoverableInstalled,
   runSequentialBulk,
   supportedFoundIn,
+  UserFacingError,
 } from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
 import { useWideFeatureLayout } from "../../shared/features/responsive";
@@ -93,14 +94,6 @@ function Detail({
         <p className="fy-feature-description">{skill.description}</p>
       )}
       <dl className="fy-feature-definition">
-        <dt>ID</dt>
-        <dd>
-          <code className="fy-feature-code">{skill.id}</code>
-        </dd>
-        <dt>目录</dt>
-        <dd>
-          <code className="fy-feature-code">{skill.directory}</code>
-        </dd>
         {skill.repoOwner && skill.repoName && (
           <>
             <dt>仓库</dt>
@@ -115,25 +108,9 @@ function Detail({
             <dd>{skill.repoBranch}</dd>
           </>
         )}
-        {skill.contentHash && (
-          <>
-            <dt>内容哈希</dt>
-            <dd>
-              <code className="fy-feature-code">{skill.contentHash}</code>
-            </dd>
-          </>
-        )}
-        {update && (
-          <>
-            <dt>远端哈希</dt>
-            <dd>
-              <code className="fy-feature-code">{update.remoteHash}</code>
-            </dd>
-          </>
-        )}
       </dl>
       {skill.readmeUrl && (
-        <Button onClick={() => onOpen(skill.readmeUrl!)}>打开 README</Button>
+        <Button onClick={() => onOpen(skill.readmeUrl!)}>查看说明</Button>
       )}
       {showAssignment && (
         <div className="fy-feature-inline-assignment">
@@ -269,7 +246,7 @@ export function SkillsPage() {
         (done, total) => setProgress({ done, total }),
       );
       if (result.failures.length)
-        throw new Error(
+        throw new UserFacingError(
           `${result.failures.length} 项失败，${result.successes.length} 项成功`,
         );
     });
@@ -284,7 +261,7 @@ export function SkillsPage() {
         (done, total) => setProgress({ done, total }),
       );
       if (result.failures.length)
-        throw new Error(
+        throw new UserFacingError(
           `${result.failures.length} 项失败，${result.successes.length} 项成功`,
         );
     });
@@ -328,7 +305,7 @@ export function SkillsPage() {
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>Skills</h1>
-          <p>统一安装、更新并分配到支持的 Agent</p>
+          <p>安装、更新并分配 Skills 到所选应用。</p>
         </div>
         <div className="fy-feature-actions">
           {tab === "installed" && (
@@ -425,7 +402,7 @@ export function SkillsPage() {
           {installedQuery.isLoading ? (
             <EmptyState
               title="正在加载 Skills"
-              description="正在读取统一 Skills 数据"
+              description="正在读取已安装的 Skills"
             >
               <Spinner />
             </EmptyState>
@@ -442,7 +419,7 @@ export function SkillsPage() {
           ) : installed.length === 0 ? (
             <EmptyState
               title="还没有安装 Skill"
-              description="从发现页、ZIP 或现有 Agent 目录导入第一个 Skill"
+              description="从发现页、ZIP 或已安装的应用中导入第一个 Skill。"
               actions={
                 <Button
                   className="fy-control-button-primary"
@@ -458,7 +435,7 @@ export function SkillsPage() {
                 <Input
                   type="search"
                   aria-label="搜索已安装 Skills"
-                  placeholder="搜索名称、ID、目录或仓库"
+                  placeholder="搜索名称、说明或仓库"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
@@ -484,7 +461,7 @@ export function SkillsPage() {
                           onClick={() => setSelectedId(skill.id)}
                         >
                           <strong>{skill.name}</strong>
-                          <span>{skill.description || skill.directory}</span>
+                          <span>{skill.description || "暂无说明"}</span>
                         </button>
                       ))}
                     </div>
@@ -583,7 +560,7 @@ export function SkillsPage() {
         }
         description={
           confirm?.kind === "uninstall"
-            ? "将从统一管理和所有已启用 Agent 中移除。后端会按既有策略创建可恢复备份。"
+            ? "将从管理列表及已启用的应用中移除，并创建可恢复备份。"
             : confirm?.kind === "repo"
               ? "仅移除仓库来源，不会卸载已安装 Skills。"
               : "删除后无法从该备份恢复。"
@@ -989,7 +966,7 @@ function AuxiliaryDialogs({
       <Dialog
         open
         title="导入本地 Skills"
-        description="选择要纳入统一管理的 Skills；每项 Agent 分配按 foundIn 的支持交集初始化，并可单独修改。"
+        description="选择要管理的 Skills。系统会根据支持情况预设可用应用，你仍可逐项调整。"
         onOpenChange={(open) => !open && !busy && close()}
         actions={
           <>
@@ -1057,7 +1034,6 @@ function AuxiliaryDialogs({
                   />
                   <strong>{skill.name}</strong>
                 </label>
-                <p>{skill.path}</p>
                 <div className="fy-feature-check-grid">
                   {SKILL_TARGETS.map((app) => (
                     <label key={app.id} className="fy-feature-check">
@@ -1160,7 +1136,7 @@ function AuxiliaryDialogs({
       <Dialog
         open
         title="仓库管理"
-        description="接受 owner/repo 或完整 GitHub HTTPS 地址；移除仓库不卸载 Skills。"
+        description="填写 GitHub 仓库地址，支持简写或完整链接；移除仓库不会卸载已安装的 Skills。"
         onOpenChange={(open) => !open && !busy && close()}
         actions={
           <Button onClick={close} disabled={busy}>
@@ -1233,7 +1209,7 @@ function AuxiliaryDialogs({
       <Dialog
         open
         title="Skill 设置"
-        description="同步方式保存会合并到刚读取的完整设置；迁移仅调用后端迁移命令。"
+        description="选择同步方式，并将已安装的 Skills 迁移到所选位置。"
         onOpenChange={(open) => !open && !busy && close()}
         actions={
           <Button onClick={close} disabled={busy}>
@@ -1287,11 +1263,7 @@ function AuxiliaryDialogs({
             已迁移 {migrationResult.migratedCount}，跳过{" "}
             {migrationResult.skippedCount}
             {migrationResult.errors.length > 0 && (
-              <ul>
-                {migrationResult.errors.map((error) => (
-                  <li key={error}>{error}</li>
-                ))}
-              </ul>
+              <p>部分 Skills 未能迁移，请稍后重试。</p>
             )}
           </InlineNotice>
         )}
@@ -1301,8 +1273,8 @@ function AuxiliaryDialogs({
         title="确认迁移 Skill 存储"
         description={
           (installed.data?.length ?? 0) > 0
-            ? `当前有 ${installed.data?.length ?? 0} 个已安装 Skill。迁移期间请勿关闭应用；后端负责移动并持久化目标。`
-            : "当前没有已安装 Skill，仍将更新存储目标。"
+            ? `当前有 ${installed.data?.length ?? 0} 个已安装 Skill。迁移期间请勿关闭应用。`
+            : "当前没有已安装 Skill，仍会更新存储位置。"
         }
         pending={busy}
         onCancel={() => setMigrationTarget(null)}

@@ -53,38 +53,38 @@ const capabilityLabels: Readonly<Record<AgentCapabilityId, string>> = {
   "product.open": "官方入口",
   "app.detect": "应用识别",
   "app.launch": "应用启动",
-  "skills.read": "Skills 读取",
-  "skills.write": "Skills 同步",
-  "hooks.read": "Hooks 读取",
-  "hooks.write": "Hooks 保存",
-  "models.validate": "模型预检",
-  "models.write": "模型写入",
-  "mcp.validate": "MCP 预检",
-  "mcp.write": "MCP 写入",
+  "skills.read": "查看 Skills",
+  "skills.write": "管理 Skills",
+  "hooks.read": "查看 Hooks",
+  "hooks.write": "管理 Hooks",
+  "models.validate": "测试模型连接",
+  "models.write": "管理模型设置",
+  "mcp.validate": "检查 MCP 配置",
+  "mcp.write": "管理 MCP 配置",
 };
 
 const capabilityModeLabels: Readonly<Record<AgentCapabilityMode, string>> = {
-  direct: "FyAgent 直连",
-  assisted: "官方协助",
+  direct: "可在 FyAgent 中完成",
+  assisted: "请在对应应用中完成",
   unsupported: "不支持",
-  unverified: "未验证",
+  unverified: "暂无法确认",
 };
 
 const capabilityReasonLabels: Readonly<
   Record<AgentCapabilityReasonCode, string>
 > = {
-  official_link_reviewed: "官方入口已复核",
-  trusted_runtime_identity_unavailable: "缺少可信运行时身份，保持未验证",
-  dedicated_agent_flow: "由专用 Agent 流程处理",
-  fyagent_skill_synchronization: "使用 FyAgent Skills 同步合同",
-  fyagent_hook_management: "使用 FyAgent Qoder Hooks 安全文档合同",
-  fyagent_model_validation: "仅执行 FyAgent 模型连接预检",
-  fyagent_mcp_validation: "仅执行 FyAgent MCP 配置预检",
-  vendor_ui_required: "最终操作必须在厂商界面完成",
-  vendor_private_storage_unsupported: "不写入厂商私有存储",
-  dedicated_native_contract: "由独立原生命令合同处理",
-  capability_not_applicable: "当前能力不适用",
-  no_catalog_product_link: "目录不提供产品网页入口",
+  official_link_reviewed: "可前往官方网站",
+  trusted_runtime_identity_unavailable: "暂时无法确认",
+  dedicated_agent_flow: "请在对应设置中完成",
+  fyagent_skill_synchronization: "可在 FyAgent 中管理",
+  fyagent_hook_management: "可在 FyAgent 中管理",
+  fyagent_model_validation: "可在 FyAgent 中测试连接",
+  fyagent_mcp_validation: "可在 FyAgent 中检查配置",
+  vendor_ui_required: "请在对应应用中完成",
+  vendor_private_storage_unsupported: "此项暂不支持",
+  dedicated_native_contract: "可在 FyAgent 中管理",
+  capability_not_applicable: "不适用",
+  no_catalog_product_link: "暂无官方网站",
 };
 
 function capabilityTone(
@@ -102,7 +102,7 @@ function catalogSummary(entry: AgentCatalogEntry): string {
   const assisted = entry.capabilities.filter(
     (capability) => capability.mode === "assisted",
   ).length;
-  return `${direct} 项直连 · ${assisted} 项协助`;
+  return `${direct} 项可管理 · ${assisted} 项需在应用中完成`;
 }
 
 function capability(entry: AgentCatalogEntry, id: AgentCapabilityId) {
@@ -132,10 +132,8 @@ function CapabilityGrid({ entry }: { entry: AgentCatalogEntry }) {
 function ObservationFailure({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="fy-agent-observation-error">
-      <InlineNotice tone="warning">
-        当前无法读取本机状态。状态保持未知，不能据此判断是否安装、登录或可用。
-      </InlineNotice>
-      <p>可以重试读取，或继续打开官方入口查看厂商说明。</p>
+      <InlineNotice tone="warning">暂时无法读取当前状态，请重试。</InlineNotice>
+      <p>你也可以查看官方网站获取帮助。</p>
       <div>
         <Button onClick={onRetry}>重试读取</Button>
       </div>
@@ -157,8 +155,8 @@ function WorkBuddyObservation({ active }: { active: boolean }) {
   if (!active) return null;
 
   return (
-    <section className="fy-agent-section" aria-label="WorkBuddy 本机观察">
-      <h3>本机配置观察</h3>
+    <section className="fy-agent-section" aria-label="WorkBuddy 配置概览">
+      <h3>配置概览</h3>
       <div className="fy-agent-observation">
         {query.isPending ? (
           <ObservationLoading label="正在读取 WorkBuddy 配置状态" />
@@ -213,32 +211,31 @@ function ProviderObservation({
   return (
     <section
       className="fy-agent-section"
-      aria-label={`${app === "codex" ? "Codex" : "Claude Code"} Provider 观察`}
+      aria-label={`${app === "codex" ? "Codex" : "Claude Code"} 模型配置`}
     >
-      <h3>FyAgent Provider 观察</h3>
+      <h3>模型配置</h3>
       <div className="fy-agent-observation">
         {query.isPending ? (
-          <ObservationLoading label="正在读取 Provider 汇总" />
+          <ObservationLoading label="正在读取模型配置" />
         ) : query.isError || !query.data ? (
           <ObservationFailure onRetry={() => void query.refetch()} />
         ) : (
           <>
             <dl className="fy-agent-observation-grid">
               <div>
-                <dt>Provider 记录</dt>
+                <dt>已保存的配置</dt>
                 <dd>{providers.length}</dd>
               </div>
               <div>
-                <dt>当前选择</dt>
+                <dt>当前配置</dt>
                 <dd>
                   {current?.name ??
-                    (query.data.currentId ? "无法从汇总确认" : "尚未选择")}
+                    (query.data.currentId ? "暂时无法确认" : "尚未选择")}
                 </dd>
               </div>
             </dl>
             <p className="fy-feature-description">
-              这里只显示 FyAgent 内的脱敏 Provider 汇总，不代表 Agent
-              已安装、已登录或模型端点可用。
+              此处显示 FyAgent 中保存的模型配置，不代表应用已经安装或登录。
             </p>
           </>
         )}
@@ -306,23 +303,22 @@ function ExternalRuntimeObservation({
       if (!mountedRef.current) return;
       setLaunchNotice(
         result.state === "available"
-          ? "已将启动请求交给受信任的原生适配器。"
-          : "原生适配器未确认可启动；未执行猜测性进程操作。",
+          ? "已发送启动请求。"
+          : "暂时无法启动应用，请稍后重试。",
       );
     } catch {
-      if (mountedRef.current)
-        setLaunchNotice("启动请求失败；未执行猜测性进程操作。");
+      if (mountedRef.current) setLaunchNotice("暂时无法启动应用，请稍后重试。");
     } finally {
       if (mountedRef.current) setLaunching(false);
     }
   };
 
   return (
-    <section className="fy-agent-section" aria-label="本机运行状态">
-      <h3>本机运行状态</h3>
+    <section className="fy-agent-section" aria-label="应用状态">
+      <h3>应用状态</h3>
       <div className="fy-agent-observation">
         {pending ? (
-          <ObservationLoading label="正在读取受控运行状态" />
+          <ObservationLoading label="正在读取应用状态" />
         ) : failed || !status ? (
           <ObservationFailure onRetry={() => void refresh()} />
         ) : (
@@ -340,10 +336,6 @@ function ExternalRuntimeObservation({
                 <dt>版本</dt>
                 <dd>{status.version ?? "未验证"}</dd>
               </div>
-              <div>
-                <dt>安装来源</dt>
-                <dd>{status.installSource ?? "未验证"}</dd>
-              </div>
             </dl>
             {launchAvailable && (
               <div className="fy-agent-action-row">
@@ -358,10 +350,7 @@ function ExternalRuntimeObservation({
             )}
             {launchNotice && <InlineNotice>{launchNotice}</InlineNotice>}
             {status.detected === null && (
-              <p className="fy-feature-description">
-                未验证不等于未安装；FyAgent
-                不会根据产品名、配置目录或静态目录推断本机状态。
-              </p>
+              <p className="fy-feature-description">暂时无法确认安装状态。</p>
             )}
           </>
         )}
@@ -378,11 +367,10 @@ function AgentObservation({ selectedId }: { selectedId: AgentCatalogId }) {
       <ProviderObservation app="codex" active={selectedId === "codex"} />
       <ProviderObservation app="claude" active={selectedId === "claude-code"} />
       {(selectedId === "qoderwork" || selectedId === "trae-work") && (
-        <section className="fy-agent-section" aria-label="接入边界">
-          <h3>接入边界</h3>
+        <section className="fy-agent-section" aria-label="使用说明">
+          <h3>使用说明</h3>
           <InlineNotice tone="warning">
-            FyAgent
-            当前不会探测登录态、读取厂商私有配置、下载安装包或写入模型设置。
+            部分设置需要在对应应用中完成。
           </InlineNotice>
         </section>
       )}
@@ -493,16 +481,14 @@ function QoderHooksPanel() {
           setOverwriteToken(null);
           setNotice({
             tone: "info",
-            message:
-              "Hooks 文件已保存。必须重启 QoderWork 才能由厂商运行时重新加载；FyAgent 未执行 Hook command，也不声称当前运行时已生效。",
+            message: "Hooks 设置已保存。请重启 QoderWork 以应用更改。",
           });
           break;
         case "overwrite_confirmation_required":
           setOverwriteToken(result.token);
           setNotice({
             tone: "warning",
-            message:
-              "检测到需要再次确认的覆盖冲突。一次性令牌只用于当前已预览草稿。",
+            message: "配置已被其他更改覆盖，请确认是否继续保存。",
           });
           break;
         case "concurrent_modification":
@@ -518,7 +504,7 @@ function QoderHooksPanel() {
         setOverwriteToken(null);
         setNotice({
           tone: "error",
-          message: "Hooks 保存失败；未显示原始文件或命令内容。",
+          message: "无法保存 Hooks 设置，请重试。",
         });
       }
     } finally {
@@ -531,23 +517,23 @@ function QoderHooksPanel() {
       <div className="fy-agent-section-heading">
         <div>
           <h3>QoderWork Hooks</h3>
-          <p>只编辑受支持投影；验证和保存都不会执行 Hook command。</p>
+          <p>管理可安全编辑的 Hooks；保存后请重启 QoderWork 以应用更改。</p>
         </div>
         <Badge tone="warning">保存后需重启</Badge>
       </div>
 
       {loading ? (
-        <ObservationLoading label="正在读取 QoderWork Hooks" />
+        <ObservationLoading label="正在读取 Hooks 设置" />
       ) : !snapshot ? (
         <Button onClick={() => void load()}>重试读取 Hooks</Button>
       ) : !snapshot.supportedStructure ? (
         <InlineNotice tone="warning">
-          当前 hooks 包含无法无损投影的结构，结构化保存已禁用。
+          当前 Hooks 包含暂不支持的内容，请在 QoderWork 中编辑。
         </InlineNotice>
       ) : (
         <div className="fy-agent-hooks-editor">
           {groups.length === 0 && (
-            <p className="fy-feature-description">当前没有 Hook group。</p>
+            <p className="fy-feature-description">当前没有 Hooks 分组。</p>
           )}
           {groups.map((group, groupIndex) => (
             <article
@@ -556,7 +542,7 @@ function QoderHooksPanel() {
             >
               <div className="fy-agent-hook-grid">
                 <label className="fy-control-field">
-                  Event
+                  事件
                   <select
                     className="fy-control-input"
                     value={group.event}
@@ -576,7 +562,7 @@ function QoderHooksPanel() {
                   </select>
                 </label>
                 <label className="fy-control-field">
-                  Matcher（可选）
+                  匹配条件（可选）
                   <Input
                     value={group.matcher ?? ""}
                     onChange={(event) =>
@@ -595,7 +581,7 @@ function QoderHooksPanel() {
               {group.hooks.map((hook, hookIndex) => (
                 <div key={hookIndex} className="fy-agent-hook-command-row">
                   <label className="fy-control-field">
-                    Command
+                    命令
                     <Input
                       value={hook.command}
                       onChange={(event) =>
@@ -613,7 +599,7 @@ function QoderHooksPanel() {
                     />
                   </label>
                   <label className="fy-control-field fy-agent-hook-timeout">
-                    Timeout（秒）
+                    超时（秒）
                     <Input
                       type="number"
                       min={1}
@@ -647,7 +633,7 @@ function QoderHooksPanel() {
                       }))
                     }
                   >
-                    删除 command
+                    删除命令
                   </Button>
                 </div>
               ))}
@@ -663,7 +649,7 @@ function QoderHooksPanel() {
                     }))
                   }
                 >
-                  添加 command
+                  添加命令
                 </Button>
                 <Button
                   onClick={() =>
@@ -672,7 +658,7 @@ function QoderHooksPanel() {
                     )
                   }
                 >
-                  删除 group
+                  删除分组
                 </Button>
               </div>
             </article>
@@ -689,7 +675,7 @@ function QoderHooksPanel() {
                 ])
               }
             >
-              添加 Hook group
+              添加 Hooks 分组
             </Button>
             <Button
               className="fy-control-button-primary"
@@ -714,15 +700,15 @@ function QoderHooksPanel() {
           disabled={saving}
           onClick={() => void save(overwriteToken)}
         >
-          使用一次性令牌确认覆盖
+          确认覆盖
         </Button>
       )}
 
       <Dialog
         open={previewOpen}
         onOpenChange={(open) => !saving && setPreviewOpen(open)}
-        title="确认保存 QoderWork Hooks"
-        description="只替换 settings.json 的 hooks 键；保存不会执行任何命令。"
+        title="确认保存 Hooks 设置"
+        description="将更新 Hooks 设置，不会运行命令。"
         large
         actions={
           <>
@@ -741,13 +727,13 @@ function QoderHooksPanel() {
       >
         <div className="fy-agent-hooks-preview">
           {groups.length === 0 ? (
-            <p>将保存空 hooks 投影。</p>
+            <p>将清空并保存 Hooks 设置。</p>
           ) : (
             groups.map((group, index) => (
               <div key={`${group.event}-${index}`}>
                 <strong>{group.event}</strong>
                 <span>
-                  {group.matcher ? ` · ${group.matcher}` : " · 无 matcher"}
+                  {group.matcher ? ` · ${group.matcher}` : " · 未设置匹配条件"}
                 </span>
                 <ul>
                   {group.hooks.map((hook, hookIndex) => (
@@ -767,17 +753,17 @@ function QoderHooksPanel() {
 }
 
 const mcpFindingCopy: Readonly<Record<ExternalMcpFindingReasonCode, string>> = {
-  TRAE_MCP_SERVER_VALID: "服务器结构有效",
-  TRAE_MCP_UNKNOWN_FIELD: "包含不支持的字段",
-  TRAE_MCP_INVALID_COMMAND: "stdio command 无效",
-  TRAE_MCP_COMMAND_NOT_FOUND: "未找到 stdio executable",
-  TRAE_MCP_INVALID_ARGS: "stdio args 无效",
-  TRAE_MCP_INVALID_ENV: "stdio env 无效",
-  TRAE_MCP_INVALID_URL: "HTTP URL 无效",
-  TRAE_MCP_UNSAFE_ADDRESS: "HTTP 地址不符合安全策略",
-  TRAE_MCP_INVALID_HEADERS: "HTTP headers 无效",
-  TRAE_MCP_CONTROL_CHARACTER: "包含控制字符",
-  TRAE_MCP_LIMIT_EXCEEDED: "配置超过安全边界",
+  TRAE_MCP_SERVER_VALID: "配置可用",
+  TRAE_MCP_UNKNOWN_FIELD: "包含暂不支持的字段",
+  TRAE_MCP_INVALID_COMMAND: "启动命令无效",
+  TRAE_MCP_COMMAND_NOT_FOUND: "未找到启动程序",
+  TRAE_MCP_INVALID_ARGS: "启动参数无效",
+  TRAE_MCP_INVALID_ENV: "环境变量无效",
+  TRAE_MCP_INVALID_URL: "连接地址无效",
+  TRAE_MCP_UNSAFE_ADDRESS: "连接地址不符合安全要求",
+  TRAE_MCP_INVALID_HEADERS: "请求头无效",
+  TRAE_MCP_CONTROL_CHARACTER: "包含不可用字符",
+  TRAE_MCP_LIMIT_EXCEEDED: "配置内容过多",
 };
 
 function ExternalMcpValidationPanel({
@@ -825,7 +811,7 @@ function ExternalMcpValidationPanel({
     } catch {
       setNotice({
         tone: "error",
-        message: "请输入只包含 mcpServers object 的有效 JSON。",
+        message: "请输入有效的 MCP 配置。",
       });
       return;
     }
@@ -838,15 +824,15 @@ function ExternalMcpValidationPanel({
         setNotice({
           tone: next.valid ? "info" : "warning",
           message: next.valid
-            ? "FyAgent 已完成静态预检；未启动 server，也未写入厂商配置。"
-            : "静态预检发现问题；未启动 server，也未写入厂商配置。",
+            ? "配置检查通过。服务尚未启动，请在对应应用中保存。"
+            : "发现配置问题。请修正后重试。",
         });
       }
     } catch {
       if (mountedRef.current) {
         setNotice({
           tone: "error",
-          message: "MCP 配置预检失败；敏感配置值与原始错误均未保留。",
+          message: "无法检查 MCP 配置，请重试。",
         });
       }
     } finally {
@@ -865,7 +851,7 @@ function ExternalMcpValidationPanel({
       );
       setNotice({
         tone: "info",
-        message: "已复制脱敏模板；请在厂商界面补充敏感值并完成最终保存。",
+        message: "已复制配置模板。请在对应应用中补充凭据并保存。",
       });
     } catch {
       setNotice({ tone: "error", message: "无法复制脱敏模板。" });
@@ -873,16 +859,16 @@ function ExternalMcpValidationPanel({
   };
 
   return (
-    <section className="fy-agent-section" aria-label="MCP 配置预检">
+    <section className="fy-agent-section" aria-label="MCP 配置检查">
       <div className="fy-agent-section-heading">
         <div>
-          <h3>MCP 配置预检</h3>
-          <p>只验证 stdio/HTTP 结构与本机可解析性，不执行 server。</p>
+          <h3>MCP 配置检查</h3>
+          <p>检查格式和必要信息，不会启动服务。</p>
         </div>
-        <Badge tone="neutral">厂商 UI 完成</Badge>
+        <Badge tone="neutral">需在对应应用中保存</Badge>
       </div>
       <label className="fy-control-field">
-        mcpServers JSON
+        MCP 配置（JSON）
         <textarea
           className="fy-control-input fy-agent-mcp-textarea"
           value={configText}
@@ -902,7 +888,7 @@ function ExternalMcpValidationPanel({
           disabled={pending || configText.trim().length === 0}
           onClick={() => void validate()}
         >
-          {pending ? "正在预检…" : "执行静态预检"}
+          {pending ? "正在检查…" : "检查配置"}
         </Button>
       </div>
       {notice && (
@@ -915,7 +901,7 @@ function ExternalMcpValidationPanel({
               <li key={finding.serverId}>
                 <strong>{finding.serverId}</strong>
                 <span>
-                  {finding.transport} · executable{" "}
+                  {finding.transport} · 启动程序{" "}
                   {finding.executableAvailable === null
                     ? "不适用"
                     : finding.executableAvailable
@@ -933,10 +919,10 @@ function ExternalMcpValidationPanel({
           </ul>
           <pre>{JSON.stringify(result.redactedTemplate, null, 2)}</pre>
           <Button onClick={() => void copyRedactedTemplate()}>
-            复制脱敏模板
+            复制配置模板
           </Button>
           <p className="fy-feature-description">
-            FyAgent 不保存或执行该配置。请在厂商 UI 中补齐凭据、复核并最终保存。
+            请在对应应用中补充凭据、确认并保存。
           </p>
         </div>
       )}
@@ -959,14 +945,10 @@ function officialLinkKey(
 
 function AgentDetail({
   entry,
-  contractVersion,
-  reviewedAt,
   openingKey,
   onOpenOfficial,
 }: {
   entry: AgentCatalogEntry;
-  contractVersion: number;
-  reviewedAt: string;
   openingKey: string | null;
   onOpenOfficial: (link: AgentOfficialLink) => void;
 }) {
@@ -986,14 +968,13 @@ function AgentDetail({
         <div className="fy-agent-identity-copy">
           <div className="fy-agent-identity-title">
             <h2>{entry.displayName}</h2>
-            <Badge tone="neutral">{entry.variantId}</Badge>
           </div>
           <p className="fy-feature-description">{entry.description}</p>
         </div>
       </div>
 
-      <section className="fy-agent-section" aria-label="能力范围">
-        <h3>能力范围</h3>
+      <section className="fy-agent-section" aria-label="可用功能">
+        <h3>可用功能</h3>
         <CapabilityGrid entry={entry} />
       </section>
 
@@ -1037,8 +1018,7 @@ function AgentDetail({
       </div>
 
       <p className="fy-agent-evidence">
-        目录合同 v{contractVersion} · 复核于 {reviewedAt} ·{" "}
-        {entry.capabilities.length} 项封闭能力声明
+        支持 {entry.capabilities.length} 项操作
       </p>
     </CatalogDetail>
   );
@@ -1075,7 +1055,7 @@ export function AgentsPage() {
       notify({
         tone: "error",
         title: "无法打开官方入口",
-        description: "请稍后重试；FyAgent 未执行任何安装或配置操作。",
+        description: "请稍后重试。",
       });
     } finally {
       setOpeningKey(null);
@@ -1088,27 +1068,24 @@ export function AgentsPage() {
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>Agent 目录</h1>
-          <p>从同一份原生目录合同查看接入范围，并进入受支持的模型配置</p>
+          <p>查看已支持的应用及可管理的功能。</p>
         </div>
       </header>
 
       {catalogQuery.error && catalogQuery.data !== undefined && (
         <InlineNotice tone="warning">
-          目录刷新暂时失败，正在显示上一次成功读取的合同。
+          暂时无法刷新应用信息，正在显示已加载内容。
         </InlineNotice>
       )}
 
       {catalogQuery.isPending ? (
-        <EmptyState
-          title="正在加载 Agent 目录"
-          description="正在读取本机提供的版本化目录合同"
-        >
+        <EmptyState title="正在加载 Agent 目录" description="正在获取应用信息">
           <Spinner label="正在加载 Agent 目录" />
         </EmptyState>
       ) : catalogQuery.isError && catalogQuery.data === undefined ? (
         <EmptyState
           title="无法加载 Agent 目录"
-          description="当前目录合同不可用；页面不会使用静态能力列表代替原生事实。"
+          description="暂时无法获取应用信息，请重试。"
           actions={
             <Button onClick={() => void catalogQuery.refetch()}>重试</Button>
           }
@@ -1116,23 +1093,14 @@ export function AgentsPage() {
       ) : entries.length === 0 || !selected ? (
         <EmptyState
           title="Agent 目录暂不可用"
-          description="原生目录没有返回可展示条目；请重试读取。"
+          description="暂时没有可显示的应用，请重试。"
           actions={
             <Button onClick={() => void catalogQuery.refetch()}>重试</Button>
           }
         />
       ) : (
         <CatalogMasterDetail>
-          <CatalogRail
-            ariaLabel="Agent 选择"
-            title="选择 Agent"
-            meta={
-              <>
-                合同 v{catalogQuery.data.contractVersion} · 复核于{" "}
-                {catalogQuery.data.reviewedAt}
-              </>
-            }
-          >
+          <CatalogRail ariaLabel="Agent 选择" title="选择 Agent">
             <CatalogList>
               {entries.map((entry) => (
                 <CatalogListItem
@@ -1152,8 +1120,6 @@ export function AgentsPage() {
 
           <AgentDetail
             entry={selected}
-            contractVersion={catalogQuery.data.contractVersion}
-            reviewedAt={catalogQuery.data.reviewedAt}
             openingKey={openingKey}
             onOpenOfficial={(link) => void openOfficial(selected, link)}
           />

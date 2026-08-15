@@ -72,7 +72,7 @@ describe("V2 feature helpers", () => {
 
   it("rejects containers and preserves extensions during quick overlays", () => {
     expect(() => parseAdvancedServerJson('{"mcpServers":{}}')).toThrow(
-      "mcpServers",
+      "完整配置列表",
     );
     expect(
       overlayKnownMcpFields(
@@ -95,6 +95,6 @@ describe("V2 feature helpers", () => {
     const result = await runSequentialBulk(["a", "b", "c"], operation);
     expect(order).toEqual(["a", "b", "c"]);
     expect(result.successes).toEqual(["a", "c"]);
-    expect(result.failures).toEqual([{ id: "b", error: "failed" }]);
+    expect(result.failures).toEqual([{ id: "b", error: "请稍后重试。" }]);
   });
 });

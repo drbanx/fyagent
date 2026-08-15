@@ -78,11 +78,11 @@ export function validateQuickSetup(
   if (!value.apiKey) errors.apiKey = "请输入 API Key";
   if (!value.modelId) errors.modelId = "请输入模型 ID";
   if (value.apiKey && value.name.includes(value.apiKey))
-    errors.name = "配置名称不能包含敏感凭据";
+    errors.name = "配置名称不能包含 API Key";
   if (value.apiKey && value.modelId.includes(value.apiKey))
-    errors.modelId = "模型 ID 不能包含敏感凭据";
+    errors.modelId = "模型 ID 不能包含 API Key";
   if (target && QUICK_SETUP_PROVIDER_IDS[target].includes(value.apiKey))
-    errors.apiKey = "敏感凭据与保留标识冲突";
+    errors.apiKey = "API Key 不能使用该值";
   if (value.apiKey && isHttpUrl(value.baseUrl)) {
     const parsed = new URL(value.baseUrl);
     const pathCollision = parsed.pathname.split("/").some((segment) => {
@@ -97,7 +97,7 @@ export function validateQuickSetup(
       parsed.hostname.includes(value.apiKey.toLocaleLowerCase("en-US")) ||
       pathCollision
     )
-      errors.baseUrl = "地址不能包含敏感凭据";
+      errors.baseUrl = "服务地址不能包含 API Key";
   }
 
   return Object.keys(errors).length

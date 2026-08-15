@@ -22,7 +22,7 @@ describe("AssignmentPanel", () => {
       />,
     );
 
-    expect(screen.getAllByRole("heading", { name: "Agent 分配" })).toHaveLength(
+    expect(screen.getAllByRole("heading", { name: "应用分配" })).toHaveLength(
       1,
     );
     expect(screen.getAllByRole("switch")).toHaveLength(8);

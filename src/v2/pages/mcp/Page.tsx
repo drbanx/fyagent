@@ -10,6 +10,7 @@ import {
   parseKeyValueLines,
   runSequentialBulk,
   sanitizeMcpConfigurationError,
+  UserFacingError,
 } from "../../shared/features/helpers";
 import { mcpPresets } from "../../shared/features/presets";
 import { useFeatures } from "../../shared/features/provider";
@@ -130,13 +131,13 @@ function ServerDetail({
         {spec.env && (
           <>
             <dt>环境变量</dt>
-            <dd>{Object.keys(spec.env).length} 项（仅在编辑器中可见）</dd>
+            <dd>{Object.keys(spec.env).length} 项（仅在编辑时显示）</dd>
           </>
         )}
         {spec.headers && (
           <>
             <dt>请求头</dt>
-            <dd>{Object.keys(spec.headers).length} 项（仅在编辑器中可见）</dd>
+            <dd>{Object.keys(spec.headers).length} 项（仅在编辑时显示）</dd>
           </>
         )}
         {server.source && (
@@ -240,7 +241,7 @@ export function McpPage() {
         (done, total) => setProgress({ done, total }),
       );
       if (result.failures.length)
-        throw new Error(
+        throw new UserFacingError(
           `${result.failures.length} 项失败，${result.successes.length} 项成功`,
         );
     });
@@ -268,7 +269,7 @@ export function McpPage() {
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>MCP</h1>
-          <p>统一管理 MCP 服务与 Agent 分配</p>
+          <p>管理 MCP 服务及其应用分配。</p>
         </div>
         <div className="fy-feature-actions">
           <Button disabled={busy} onClick={() => void importExisting()}>
@@ -303,7 +304,7 @@ export function McpPage() {
         </InlineNotice>
       )}
       {query.isLoading ? (
-        <EmptyState title="正在加载 MCP" description="正在读取统一 MCP 数据">
+        <EmptyState title="正在加载 MCP" description="正在读取 MCP 服务">
           <Spinner />
         </EmptyState>
       ) : query.error && query.data === undefined ? (
@@ -342,7 +343,7 @@ export function McpPage() {
           {filtered.length === 0 ? (
             <EmptyState
               title="没有匹配的 MCP"
-              description="密钥和请求头不会参与搜索"
+              description="为保护敏感信息，密钥和请求头不会参与搜索。"
             />
           ) : (
             <div className="fy-feature-master">
@@ -440,7 +441,7 @@ export function McpPage() {
       <ConfirmDialog
         open={deleteTarget !== null}
         title={`删除 ${deleteTarget?.name ?? "MCP"}`}
-        description="将从统一管理及所有已启用 Agent 配置中删除。"
+        description="将从管理列表及已启用的应用中删除。"
         pending={busy}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={async () => {
@@ -553,14 +554,14 @@ function McpEditor({
     const envResult = parseKeyValueLines(env, "env");
     const headersResult = parseKeyValueLines(headers, "headers");
     if (envResult.errors.length || headersResult.errors.length)
-      throw new Error(
+      throw new UserFacingError(
         [
           ...envResult.errors.map((item) => `环境变量：${item}`),
           ...headersResult.errors.map((item) => `请求头：${item}`),
         ].join("；"),
       );
     if (transport === "stdio") {
-      if (!command.trim()) throw new Error("stdio 需要 command");
+      if (!command.trim()) throw new UserFacingError("请填写启动命令。");
       return {
         type: "stdio",
         command: command.trim(),
@@ -571,11 +572,11 @@ function McpEditor({
           : {}),
       };
     }
-    if (!url.trim()) throw new Error(`${transport} 需要 URL`);
+    if (!url.trim()) throw new UserFacingError("请填写连接地址。");
     try {
       new URL(url.trim());
     } catch {
-      throw new Error("URL 格式无效");
+      throw new UserFacingError("连接地址格式无效。");
     }
     return {
       type: transport,
@@ -640,7 +641,7 @@ function McpEditor({
       open
       onOpenChange={(next) => !next && !busy && onClose()}
       title={initial ? `编辑 ${initial.name}` : "添加 MCP"}
-      description="快速表单与高级 JSON 共享同一份 server 草稿；敏感字段仅在这里显示。"
+      description="可使用表单或 JSON 编辑服务配置。敏感信息仅在此窗口显示。"
       large
       actions={
         <>
@@ -675,7 +676,7 @@ function McpEditor({
               value={preset}
               onChange={(event) => applyPreset(event.target.value)}
             >
-              <option value="custom">Custom</option>
+              <option value="custom">自定义</option>
               {mcpPresets.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -748,7 +749,7 @@ function McpEditor({
             aria-selected={mode === "advanced"}
             onClick={() => switchMode("advanced")}
           >
-            高级 JSON
+            JSON 编辑
           </button>
         </div>
         {mode === "quick" ? (
@@ -825,7 +826,7 @@ function McpEditor({
           </>
         ) : (
           <label className="fy-control-field fy-feature-form-span">
-            单个 server JSON
+            单个服务配置（JSON）
             <textarea
               className="fy-control-textarea"
               rows={14}
@@ -836,7 +837,7 @@ function McpEditor({
           </label>
         )}
         <fieldset className="fy-feature-form-span">
-          <legend>初始 Agent 分配</legend>
+          <legend>初始应用分配</legend>
           <div className="fy-feature-check-grid">
             {MCP_TARGETS.map((app) => (
               <label key={app.id} className="fy-feature-check">

@@ -123,11 +123,11 @@ describe("V2 Models page", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN内置模型 / Hooks / MCP",
-      "TRAE Work模型连接预检",
-      "WorkBuddy专用模型配置",
-      "CodexProvider 快速配置",
-      "Claude CodeProvider 快速配置",
+      "QoderWork CN模型、Hooks 和 MCP",
+      "TRAE Work测试模型连接",
+      "WorkBuddy管理模型设置",
+      "Codex快速配置模型",
+      "Claude Code快速配置模型",
     ]);
 
     const expectedIcons = [
@@ -149,7 +149,7 @@ describe("V2 Models page", () => {
       "true",
     );
     expect(
-      screen.getByRole("region", { name: "QoderWork CN 模型与能力入口" }),
+      screen.getByRole("region", { name: "QoderWork CN 模型设置" }),
     ).toBeVisible();
   });
 
@@ -205,15 +205,13 @@ describe("V2 Models page", () => {
     renderPage(ports, "trae");
 
     await user.type(
-      await screen.findByLabelText("Base URL"),
+      await screen.findByLabelText("服务地址"),
       "https://gateway.example.test/v1",
     );
     await user.type(screen.getByLabelText("模型 ID"), "model-a");
     await user.type(screen.getByLabelText("API Key"), secret);
-    await user.click(
-      screen.getByRole("checkbox", { name: "同意发起一次网络预检" }),
-    );
-    await user.click(screen.getByRole("button", { name: "验证并测试连接" }));
+    await user.click(screen.getByRole("checkbox", { name: "同意连接测试" }));
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
 
     const request = {
       apiFormat: "openai_chat_completions",
@@ -232,8 +230,8 @@ describe("V2 Models page", () => {
       requestId,
       request,
     );
-    expect(await screen.findByText("FyAgent 本次连接预检可达")).toBeVisible();
-    expect(screen.getByText(/不表示 TRAE 已保存配置/)).toBeVisible();
+    expect(await screen.findByText("连接测试通过")).toBeVisible();
+    expect(screen.getByText("请返回 TRAE 保存设置后继续使用。")).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(document.body.innerHTML).not.toContain(secret);
     expect(window.location.hash).not.toContain(secret);
@@ -281,19 +279,17 @@ describe("V2 Models page", () => {
     renderPage(ports, "trae");
 
     await user.type(
-      await screen.findByLabelText("Base URL"),
+      await screen.findByLabelText("服务地址"),
       "https://gateway.example.test/v1",
     );
     await user.type(screen.getByLabelText("模型 ID"), "model-a");
     await user.type(screen.getByLabelText("API Key"), "cancel-secret");
-    await user.click(
-      screen.getByRole("checkbox", { name: "同意发起一次网络预检" }),
-    );
-    await user.click(screen.getByRole("button", { name: "验证并测试连接" }));
+    await user.click(screen.getByRole("checkbox", { name: "同意连接测试" }));
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
     await waitFor(() =>
       expect(ports.traeWork.testModelEndpoint).toHaveBeenCalledTimes(1),
     );
-    await user.click(screen.getByRole("button", { name: "取消预检" }));
+    await user.click(screen.getByRole("button", { name: "取消测试" }));
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(ports.traeWork.cancelModelEndpoint).toHaveBeenCalledWith(requestId);
 
@@ -304,7 +300,7 @@ describe("V2 Models page", () => {
       durationBucket: "lt_1s",
       statusClass: null,
     });
-    expect(await screen.findByText("连接预检已取消")).toBeVisible();
+    expect(await screen.findByText("连接测试已取消")).toBeVisible();
     expect(document.body.innerHTML).not.toContain("cancel-secret");
   });
 
@@ -329,7 +325,7 @@ describe("V2 Models page", () => {
 
     await screen.findByText("已发现配置文件");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://workbuddy.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "first-secret");
@@ -339,7 +335,7 @@ describe("V2 Models page", () => {
     const confirm = await screen.findByRole("button", { name: "确认覆盖" });
     expect(screen.getByLabelText("API Key")).toHaveValue("");
 
-    fireEvent.change(screen.getByLabelText("Base URL"), {
+    fireEvent.change(screen.getByLabelText("服务地址"), {
       target: { value: "https://changed.example/v1" },
     });
     fireEvent.change(screen.getByLabelText("API Key"), {
@@ -388,7 +384,7 @@ describe("V2 Models page", () => {
 
     await screen.findByText("已发现配置文件");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://fetch.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "fetch-secret");
@@ -404,7 +400,7 @@ describe("V2 Models page", () => {
     });
     resolveFetch({ models: ["model-a", "model-b"], truncated: true });
 
-    expect(await screen.findByText("模型列表已按安全上限截断")).toBeVisible();
+    expect(await screen.findByText("已达到可显示的模型数量上限")).toBeVisible();
     expect(screen.getByText("model-a")).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(document.body).not.toHaveTextContent("fetch-secret");
@@ -420,7 +416,7 @@ describe("V2 Models page", () => {
 
     await screen.findByText("已发现配置文件");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://failure.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "fetch-secret");
@@ -443,7 +439,7 @@ describe("V2 Models page", () => {
 
     await screen.findByText("已发现配置文件");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://hostile.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "fetch-secret");
@@ -464,7 +460,7 @@ describe("V2 Models page", () => {
 
     await screen.findByText("已发现配置文件");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://conflict.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "conflict-secret");
@@ -474,7 +470,7 @@ describe("V2 Models page", () => {
     );
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
 
-    expect(await screen.findByText("模型 ID 与敏感凭据冲突")).toBeVisible();
+    expect(await screen.findByText("模型 ID 不能包含 API Key")).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
   });
@@ -499,7 +495,7 @@ describe("V2 Models page", () => {
 
     await screen.findByText("已发现配置文件");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://conflict.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "conflict-secret");
@@ -507,9 +503,9 @@ describe("V2 Models page", () => {
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
 
     expect(
-      await screen.findByText("权威状态回读未完成；请刷新状态后再次提交。"),
+      await screen.findByText("暂时无法刷新当前设置，请刷新后再次提交。"),
     ).toBeVisible();
-    expect(document.body).not.toHaveTextContent("权威状态已重新读取");
+    expect(document.body).not.toHaveTextContent("权威状态");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
 
@@ -538,7 +534,7 @@ describe("V2 Models page", () => {
 
     await screen.findByText("已发现配置文件");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://expired.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "expired-secret");
@@ -548,9 +544,9 @@ describe("V2 Models page", () => {
 
     expect(await screen.findByText("覆盖确认已失效")).toBeVisible();
     expect(
-      screen.getByText("权威状态回读未完成；请刷新状态后重新提交。"),
+      screen.getByText("暂时无法刷新当前设置，请刷新后重新提交。"),
     ).toBeVisible();
-    expect(document.body).not.toHaveTextContent("权威状态已重新读取");
+    expect(document.body).not.toHaveTextContent("权威状态");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
 
@@ -567,7 +563,7 @@ describe("V2 Models page", () => {
 
     expect(
       await screen.findByText(
-        "WorkBuddy 状态暂不可用；这不代表未安装或未配置。",
+        "暂时无法读取 WorkBuddy 配置，请重试。",
         undefined,
         { timeout: 5_000 },
       ),
@@ -596,16 +592,16 @@ describe("V2 Models page", () => {
     >(() => pendingApply);
     renderPage(ports, "codex");
 
-    await screen.findByText("尚不存在，将新增");
+    await screen.findByTestId("provider-status");
     await user.clear(screen.getByLabelText("配置名称"));
     await user.type(screen.getByLabelText("配置名称"), "Codex Gateway");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://codex.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "codex-secret");
     await user.type(screen.getByLabelText("模型 ID"), "gpt-5");
-    const submit = screen.getByRole("button", { name: "保存并切换" });
+    const submit = screen.getByRole("button", { name: "保存并设为当前配置" });
     await user.click(submit);
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
@@ -618,9 +614,7 @@ describe("V2 Models page", () => {
       warningCodes: ["CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED"],
     });
 
-    await screen.findByText(
-      "本次配置已原子应用；固定 Quick Setup Provider ID 已确认激活",
-    );
+    await screen.findByText("模型设置已保存并设为当前配置");
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
       {
@@ -632,14 +626,12 @@ describe("V2 Models page", () => {
       "codex",
     );
     expect(
-      screen.getByText("当前代理可能不支持 WebSocket Upgrade。"),
+      screen.getByText("当前网络代理可能影响连接，请确认后使用。"),
     ).toBeVisible();
-    expect(screen.getByText(/Codex live 配置字节已更新/)).toBeVisible();
     expect(
-      screen.getByText(
-        /权威摘要回读仅确认固定 Provider ID 已激活，不验证本次配置内容字节/,
-      ),
+      screen.getByText("重启或新建会话后即可使用新的设置。"),
     ).toBeVisible();
+    expect(document.body).not.toHaveTextContent("Quick Setup Provider ID");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
   });
@@ -661,16 +653,18 @@ describe("V2 Models page", () => {
     });
     renderPage(ports, "claude");
 
-    await screen.findByText("已存在，将更新");
+    await screen.findByText("已有设置，将更新");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://claude.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "claude-secret");
     await user.type(screen.getByLabelText("模型 ID"), "claude-model");
-    await user.click(screen.getByRole("button", { name: "保存并切换" }));
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
 
-    await screen.findByText("Provider 状态未知，请停止继续写入");
+    await screen.findByText("无法确认当前设置");
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -685,7 +679,7 @@ describe("V2 Models page", () => {
     expect(document.body).not.toHaveTextContent("claude-secret");
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
     expect(
-      screen.getByRole("button", { name: "状态未知，已停止写入" }),
+      screen.getByRole("button", { name: "暂时无法确认当前设置" }),
     ).toBeDisabled();
   });
 
@@ -704,21 +698,23 @@ describe("V2 Models page", () => {
     });
     renderPage(ports, "codex");
 
-    await screen.findByText("尚不存在，将新增");
+    await screen.findByTestId("provider-status");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://partial.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "partial-secret");
     await user.type(screen.getByLabelText("模型 ID"), "gpt-partial");
-    await user.click(screen.getByRole("button", { name: "保存并切换" }));
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
 
-    await screen.findByText("Provider 状态未知，请停止继续写入");
+    await screen.findByText("无法确认当前设置");
     expect(document.body).not.toHaveTextContent("partial-secret");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
     const blockedButton = screen.getByRole("button", {
-      name: "状态未知，已停止写入",
+      name: "暂时无法确认当前设置",
     });
     expect(blockedButton).toBeDisabled();
     await user.click(blockedButton);
@@ -729,7 +725,7 @@ describe("V2 Models page", () => {
     await user.click(screen.getByTestId("model-target-codex"));
     expect(
       await screen.findByRole("button", {
-        name: "状态未知，已停止写入",
+        name: "暂时无法确认当前设置",
       }),
     ).toBeDisabled();
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
@@ -750,24 +746,22 @@ describe("V2 Models page", () => {
     }));
     renderPage(ports, "codex");
 
-    await screen.findByText("尚不存在，将新增");
+    await screen.findByTestId("provider-status");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://partial.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "partial-secret");
     await user.type(screen.getByLabelText("模型 ID"), "gpt-partial");
-    await user.click(screen.getByRole("button", { name: "保存并切换" }));
-
-    await screen.findByText(
-      "本次配置已原子应用；固定 Quick Setup Provider ID 已确认激活",
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
+
+    await screen.findByText("模型设置已保存并设为当前配置");
     expect(
-      screen.getByText(
-        "当前 WebSocket 配置包含非 GPT 模型，兼容性需要自行确认。",
-      ),
+      screen.getByText("当前模型可能与此连接方式不兼容，请确认后使用。"),
     ).toBeVisible();
-    expect(screen.getByText(/非关键投影未完成/)).toBeVisible();
+    expect(screen.getByText(/部分设置仍需确认/)).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(document.body).not.toHaveTextContent("partial-secret");
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
@@ -788,24 +782,20 @@ describe("V2 Models page", () => {
     }));
     renderPage(ports, "codex");
 
-    await screen.findByText("尚不存在，将新增");
+    await screen.findByTestId("provider-status");
     await user.type(
-      screen.getByLabelText("Base URL"),
+      screen.getByLabelText("服务地址"),
       "https://unconfirmed.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "unconfirmed-secret");
     await user.type(screen.getByLabelText("模型 ID"), "gpt-unconfirmed");
-    await user.click(screen.getByRole("button", { name: "保存并切换" }));
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
 
+    expect(await screen.findByText("模型设置已保存，待确认")).toBeVisible();
     expect(
-      await screen.findByText(
-        "本次配置已原子应用，但回读未确认固定 Quick Setup Provider ID 处于激活状态",
-      ),
-    ).toBeVisible();
-    expect(
-      screen.queryByText(
-        "本次配置已原子应用；固定 Quick Setup Provider ID 已确认激活",
-      ),
+      screen.queryByText("模型设置已保存并设为当前配置"),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
@@ -816,7 +806,7 @@ describe("V2 Models page", () => {
     ports.catalog.get = vi.fn(async () => catalog());
     const view = renderPage(ports, "trae");
 
-    await screen.findByRole("region", { name: "TRAE Work 模型连接预检" });
+    await screen.findByRole("region", { name: "TRAE Work 模型连接测试" });
     const keyInput = screen.getByLabelText("API Key");
     expect(keyInput).toHaveAttribute("type", "password");
     await user.type(keyInput, "target-only-secret");

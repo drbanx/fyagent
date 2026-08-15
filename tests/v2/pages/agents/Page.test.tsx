@@ -195,11 +195,11 @@ describe("V2 Agent directory", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN9 项直连 · 0 项协助",
-      "TRAE Work9 项直连 · 0 项协助",
-      "WorkBuddy9 项直连 · 0 项协助",
-      "Codex8 项直连 · 0 项协助",
-      "Claude Code9 项直连 · 0 项协助",
+      "QoderWork CN9 项可管理 · 0 项需在应用中完成",
+      "TRAE Work9 项可管理 · 0 项需在应用中完成",
+      "WorkBuddy9 项可管理 · 0 项需在应用中完成",
+      "Codex8 项可管理 · 0 项需在应用中完成",
+      "Claude Code9 项可管理 · 0 项需在应用中完成",
     ]);
     expect(buttons[0]).toHaveAttribute("aria-current", "true");
     expect(
@@ -330,7 +330,7 @@ describe("V2 Agent directory", () => {
 
     await user.click(screen.getByRole("button", { name: /WorkBuddy/ }));
     const observation = await screen.findByRole("region", {
-      name: "WorkBuddy 本机观察",
+      name: "WorkBuddy 配置概览",
     });
     expect(within(observation).getByText("3")).toBeVisible();
     expect(within(observation).getByText("数组格式")).toBeVisible();
@@ -355,11 +355,11 @@ describe("V2 Agent directory", () => {
       await screen.findByRole("button", { name: /Claude Code/ }),
     );
     const observation = await screen.findByRole("region", {
-      name: "Claude Code Provider 观察",
+      name: "Claude Code 模型配置",
     });
     expect(within(observation).getByText("claude current")).toBeVisible();
     expect(within(observation).getByText("1")).toBeVisible();
-    expect(observation).toHaveTextContent("不代表 Agent 已安装、已登录");
+    expect(observation).toHaveTextContent("不代表应用已经安装或登录");
     expect(ports.providers.getSummary).toHaveBeenCalledWith("claude");
 
     await user.click(screen.getByRole("button", { name: "配置模型" }));
@@ -378,10 +378,10 @@ describe("V2 Agent directory", () => {
 
     await user.click(await screen.findByRole("button", { name: /Codex/ }));
     const observation = await screen.findByRole("region", {
-      name: "Codex Provider 观察",
+      name: "Codex 模型配置",
     });
     expect(
-      await within(observation).findByText(/状态保持未知/, undefined, {
+      await within(observation).findByText(/暂时无法读取当前状态/, undefined, {
         timeout: 5_000,
       }),
     ).toBeVisible();
@@ -439,14 +439,14 @@ describe("V2 Agent directory", () => {
     const hooksRegion = await screen.findByRole("region", {
       name: "QoderWork Hooks 配置",
     });
-    const commandInput = within(hooksRegion).getByLabelText("Command");
+    const commandInput = within(hooksRegion).getByLabelText("命令");
     await user.clear(commandInput);
     await user.type(commandInput, "new-command");
     await user.click(
       within(hooksRegion).getByRole("button", { name: "预览保存" }),
     );
     expect(
-      screen.getByRole("heading", { name: "确认保存 QoderWork Hooks" }),
+      screen.getByRole("heading", { name: "确认保存 Hooks 设置" }),
     ).toBeVisible();
     expect(screen.getByText("new-command")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "确认保存" }));
@@ -469,7 +469,7 @@ describe("V2 Agent directory", () => {
     );
     await user.click(
       await screen.findByRole("button", {
-        name: "使用一次性令牌确认覆盖",
+        name: "确认覆盖",
       }),
     );
     await waitFor(() =>
@@ -479,10 +479,12 @@ describe("V2 Agent directory", () => {
       }),
     );
     expect(
-      await screen.findByText(/Hooks 文件已保存。必须重启 QoderWork/),
-    ).toHaveTextContent("不声称当前运行时已生效");
+      await screen.findByText(
+        "Hooks 设置已保存。请重启 QoderWork 以应用更改。",
+      ),
+    ).toBeVisible();
     expect(
-      screen.queryByRole("button", { name: "使用一次性令牌确认覆盖" }),
+      screen.queryByRole("button", { name: "确认覆盖" }),
     ).not.toBeInTheDocument();
   });
 
@@ -527,9 +529,9 @@ describe("V2 Agent directory", () => {
     sessionStorage.clear();
     const view = renderPage(ports);
     const mcpRegion = await screen.findByRole("region", {
-      name: "MCP 配置预检",
+      name: "MCP 配置检查",
     });
-    const textarea = within(mcpRegion).getByLabelText("mcpServers JSON");
+    const textarea = within(mcpRegion).getByLabelText("MCP 配置（JSON）");
     const firstConfig = JSON.stringify({
       mcpServers: {
         demo: { command: "demo", env: { TOKEN: firstSecret } },
@@ -537,7 +539,7 @@ describe("V2 Agent directory", () => {
     });
     fireEvent.change(textarea, { target: { value: firstConfig } });
     await user.click(
-      within(mcpRegion).getByRole("button", { name: "执行静态预检" }),
+      within(mcpRegion).getByRole("button", { name: "检查配置" }),
     );
 
     await waitFor(() =>
@@ -564,10 +566,10 @@ describe("V2 Agent directory", () => {
     });
     fireEvent.change(textarea, { target: { value: secondConfig } });
     await user.click(
-      within(mcpRegion).getByRole("button", { name: "执行静态预检" }),
+      within(mcpRegion).getByRole("button", { name: "检查配置" }),
     );
     expect(
-      await within(mcpRegion).findByText(/敏感配置值与原始错误均未保留/),
+      await within(mcpRegion).findByText("无法检查 MCP 配置，请重试。"),
     ).toBeVisible();
     expect(textarea).toHaveValue("");
     expect(document.body.innerHTML).not.toContain(secondSecret);

@@ -55,8 +55,8 @@ function statefulMemoryPorts(
   };
   const ports = createBrowserFeaturePorts();
 
-  ports.memory.readDocument = vi.fn(async (id: MemoryDocumentId) =>
-    stores.documents[id],
+  ports.memory.readDocument = vi.fn(
+    async (id: MemoryDocumentId) => stores.documents[id],
   );
   ports.memory.writeDocument = vi.fn(
     async (id: MemoryDocumentId, content: string) => {
@@ -68,25 +68,28 @@ function statefulMemoryPorts(
     if (kind === "memory") stores.limits.memoryEnabled = enabled;
     else stores.limits.userEnabled = enabled;
   });
-  ports.memory.listDailyFiles = vi.fn(async (): Promise<DailyMemoryFileInfo[]> =>
-    Object.entries(stores.daily)
-      .sort(([left], [right]) => right.localeCompare(left))
-      .map(([filename, content]) => ({
-        filename,
-        date: filename.slice(0, 10),
-        sizeBytes: content.length,
-        modifiedAt: 1_700_000_000_000,
-        preview: content.slice(0, 40),
-      })),
+  ports.memory.listDailyFiles = vi.fn(
+    async (): Promise<DailyMemoryFileInfo[]> =>
+      Object.entries(stores.daily)
+        .sort(([left], [right]) => right.localeCompare(left))
+        .map(([filename, content]) => ({
+          filename,
+          date: filename.slice(0, 10),
+          sizeBytes: content.length,
+          modifiedAt: 1_700_000_000_000,
+          preview: content.slice(0, 40),
+        })),
   );
   ports.memory.readDailyFile = vi.fn(async (filename: string) =>
     Object.prototype.hasOwnProperty.call(stores.daily, filename)
       ? stores.daily[filename]
       : null,
   );
-  ports.memory.writeDailyFile = vi.fn(async (filename: string, content: string) => {
-    stores.daily[filename] = content;
-  });
+  ports.memory.writeDailyFile = vi.fn(
+    async (filename: string, content: string) => {
+      stores.daily[filename] = content;
+    },
+  );
   ports.memory.deleteDailyFile = vi.fn(async (filename: string) => {
     delete stores.daily[filename];
   });
@@ -139,7 +142,9 @@ async function confirmDialog(
   const dialog = await screen.findByRole("dialog", { name: title });
   await user.click(within(dialog).getByRole("button", { name: "确认" }));
   await waitFor(() =>
-    expect(screen.queryByRole("dialog", { name: title })).not.toBeInTheDocument(),
+    expect(
+      screen.queryByRole("dialog", { name: title }),
+    ).not.toBeInTheDocument(),
   );
   await act(async () => {
     await new Promise((resolve) => window.setTimeout(resolve, 0));
@@ -153,7 +158,9 @@ async function cancelDialog(
   const dialog = await screen.findByRole("dialog", { name: title });
   await user.click(within(dialog).getByRole("button", { name: "取消" }));
   await waitFor(() =>
-    expect(screen.queryByRole("dialog", { name: title })).not.toBeInTheDocument(),
+    expect(
+      screen.queryByRole("dialog", { name: title }),
+    ).not.toBeInTheDocument(),
   );
   await act(async () => {
     await new Promise((resolve) => window.setTimeout(resolve, 0));
@@ -210,9 +217,7 @@ describe("MemoryPage native business management", () => {
     renderMemory(ports);
 
     expect(
-      await screen.findByText(
-        "此文件尚未创建。只有点击“保存”后才会写入本机。",
-      ),
+      await screen.findByText("此内容尚未创建。点击“保存”后即可创建。"),
     ).toBeVisible();
     expect(ports.memory.writeDocument).not.toHaveBeenCalled();
     expect(screen.getByRole("textbox", { name: "记忆内容" })).toHaveValue("");
@@ -229,9 +234,7 @@ describe("MemoryPage native business management", () => {
       await screen.findByText("OpenClaw · MEMORY.md 已保存"),
     ).toBeVisible();
     expect(
-      screen.queryByText(
-        "此文件尚未创建。只有点击“保存”后才会写入本机。",
-      ),
+      screen.queryByText("此内容尚未创建。点击“保存”后即可创建。"),
     ).not.toBeInTheDocument();
   });
 
@@ -256,9 +259,9 @@ describe("MemoryPage native business management", () => {
       await screen.findByRole("textbox", { name: "记忆内容" }),
     ).toHaveValue("123456");
     expect(
-      within(
-        screen.getByRole("region", { name: "长期记忆编辑器" }),
-      ).getByRole("status"),
+      within(screen.getByRole("region", { name: "长期记忆编辑器" })).getByRole(
+        "status",
+      ),
     ).toHaveTextContent(/超过 Hermes 的\s*5\s*字符上限/);
     expect(screen.getByText("6 / 5")).toBeVisible();
 
@@ -340,7 +343,10 @@ describe("MemoryPage native business management", () => {
     await user.type(editor, " dirty");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(await screen.findByText("保存长期记忆失败：save rejected")).toBeVisible();
+    expect(
+      await screen.findByText("保存长期记忆失败：请稍后重试。"),
+    ).toBeVisible();
+    expect(screen.queryByText("save rejected")).not.toBeInTheDocument();
     expect(editor).toHaveValue("baseline dirty");
     expect(screen.getByText("未保存")).toBeVisible();
     expect(
@@ -367,7 +373,7 @@ describe("MemoryPage native business management", () => {
 
     expect(
       await screen.findByText(
-        "写入可能已完成，但状态刷新失败：refresh unavailable",
+        "写入可能已完成，但状态刷新失败：请稍后重试。",
         undefined,
         { timeout: 5_000 },
       ),
@@ -447,11 +453,9 @@ describe("MemoryPage native business management", () => {
     await user.clear(search);
 
     await user.click(screen.getByRole("button", { name: "创建或打开今天" }));
+    expect(await screen.findByRole("heading", { name: today })).toBeVisible();
     expect(
-      await screen.findByRole("heading", { name: today }),
-    ).toBeVisible();
-    expect(
-      screen.getByText("今天的记录尚未创建。只有点击“保存”后才会写入本机。"),
+      screen.getByText("今天的记录尚未创建。点击“保存”后即可创建。"),
     ).toBeVisible();
     expect(ports.memory.writeDailyFile).not.toHaveBeenCalled();
 
@@ -563,9 +567,7 @@ describe("MemoryPage native business management", () => {
     const routeDialog = await screen.findByRole("dialog", {
       name: "放弃未保存的更改？",
     });
-    await user.click(
-      within(routeDialog).getByRole("button", { name: "取消" }),
-    );
+    await user.click(within(routeDialog).getByRole("button", { name: "取消" }));
     await waitFor(() => expect(routeDialog).not.toBeInTheDocument());
     expect(router.state.location.pathname).toBe("/memory");
   });
@@ -586,9 +588,7 @@ describe("MemoryPage native business management", () => {
     const routeDialog = await screen.findByRole("dialog", {
       name: "放弃未保存的更改？",
     });
-    await user.click(
-      within(routeDialog).getByRole("button", { name: "确认" }),
-    );
+    await user.click(within(routeDialog).getByRole("button", { name: "确认" }));
     expect(await screen.findByText("其他页面")).toBeVisible();
     expect(router.state.location.pathname).toBe("/other");
     await act(async () => {
@@ -637,7 +637,8 @@ describe("MemoryPage native business management", () => {
         timeout: 5_000,
       }),
     ).toBeVisible();
-    expect(screen.getByText("workspace unreadable")).toBeVisible();
+    expect(screen.getByText("请稍后重试。")).toBeVisible();
+    expect(screen.queryByText("workspace unreadable")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重试" })).toBeVisible();
     expect(screen.queryByText("需要 FyAgent 桌面应用")).not.toBeInTheDocument();
   });
@@ -652,9 +653,9 @@ describe("MemoryPage native business management", () => {
     await screen.findByRole("textbox", { name: "记忆内容" });
     await user.click(screen.getByRole("tab", { name: "每日记忆" }));
     expect(await screen.findByText("还没有每日记忆")).toBeVisible();
-    expect(screen.getAllByRole("button", { name: "创建或打开今天" })).toHaveLength(
-      2,
-    );
+    expect(
+      screen.getAllByRole("button", { name: "创建或打开今天" }),
+    ).toHaveLength(2);
   });
 
   it("shows native operation errors for daily search and directory open", async () => {
@@ -675,13 +676,14 @@ describe("MemoryPage native business management", () => {
     await screen.findByRole("textbox", { name: "每日记忆内容" });
 
     await user.click(screen.getByRole("button", { name: "打开记忆目录" }));
-    expect(await screen.findByText("无法打开目录：open rejected")).toBeVisible();
+    expect(await screen.findByText("无法打开目录：请稍后重试。")).toBeVisible();
+    expect(screen.queryByText("open rejected")).not.toBeInTheDocument();
     await user.type(
       screen.getByRole("searchbox", { name: "搜索每日记忆" }),
       "missing",
     );
     expect(
-      await screen.findByText("搜索失败：search unavailable", undefined, {
+      await screen.findByText("搜索失败：请稍后重试。", undefined, {
         timeout: 5_000,
       }),
     ).toBeVisible();

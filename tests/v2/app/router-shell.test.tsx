@@ -40,7 +40,7 @@ const navigationContract = [
   { path: "/memory", label: "记忆" },
 ] as const;
 
-const toolNames = ["Search", "Settings", "Avatar"] as const;
+const toolNames = ["搜索", "设置", "账户"] as const;
 const windowControlNames = ["最小化", "最大化/还原", "关闭"] as const;
 
 type TestRouter = ReturnType<typeof createMemoryRouter>;
@@ -112,7 +112,7 @@ describe("FyAgent V2 routing", () => {
       expect(
         within(navigation).getAllByTestId("liquid-glass-lens"),
       ).toHaveLength(1);
-      const content = screen.getByRole("main", { name: "内容承载区" });
+      const content = screen.getByRole("main", { name: "内容" });
       expect(content).not.toBeEmptyDOMElement();
     },
   );
@@ -125,7 +125,7 @@ describe("FyAgent V2 routing", () => {
         />,
       );
       expect(
-        screen.getByRole("main", { name: "内容承载区" }),
+        screen.getByRole("main", { name: "内容" }),
       ).not.toBeEmptyDOMElement();
       if (path === "/prompts") {
         expect(screen.getByTestId("prompts-page")).toBeVisible();
@@ -168,7 +168,9 @@ describe("FyAgent V2 routing", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Route failed");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "页面暂时无法打开",
+    );
     expect(screen.getByTestId("top-bar")).toBeVisible();
     expectSystemOwnedChrome();
   });
@@ -186,8 +188,8 @@ describe("FyAgent V2 shell accessibility", () => {
       screen.getByRole("button", { name }),
     );
 
-    expect(brand).toHaveAccessibleName("FyAgent 品牌");
-    expect(screen.getByRole("main", { name: "内容承载区" })).toBeVisible();
+    expect(brand).toHaveAccessibleName("FyAgent");
+    expect(screen.getByRole("main", { name: "内容" })).toBeVisible();
     expect(routeLinks.map((link) => link.textContent?.trim())).toEqual(
       navigationContract.map(({ label }) => label),
     );

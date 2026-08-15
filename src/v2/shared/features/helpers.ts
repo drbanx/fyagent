@@ -6,12 +6,30 @@ import type {
   SkillTargetId,
 } from "./types";
 
-export function errorMessage(error: unknown): string {
+function rawErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** A message composed locally from validated user input and safe to display. */
+export class UserFacingError extends Error {
+  override readonly name = "UserFacingError";
+}
+
+export function errorMessage(error: unknown): string {
+  const message = rawErrorMessage(error);
+  if (error instanceof UserFacingError) return message;
+  if (message.includes("仅在 FyAgent 桌面应用中可用")) {
+    return "此功能仅在 FyAgent 桌面应用中可用。";
+  }
+  return "请稍后重试。";
+}
+
+export function isNativeOnlyError(error: unknown): boolean {
+  return rawErrorMessage(error).includes("仅在 FyAgent 桌面应用中可用");
+}
+
 export function sanitizeMcpConfigurationError(error: unknown): string {
-  const message = errorMessage(error);
+  const message = rawErrorMessage(error);
   const importConflict = message.match(
     /配置冲突；未合并 (claude|codex|gemini|grokbuild|opencode|hermes) 分配/i,
   );
@@ -144,13 +162,13 @@ export function parseAdvancedServerJson(text: string): McpServerSpec {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error("JSON 格式无效");
+    throw new UserFacingError("JSON 格式无效。请检查后重试。");
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("JSON 必须是单个 MCP server 对象");
+    throw new UserFacingError("请填写单个 MCP 服务配置。");
   }
   if ("mcpServers" in parsed) {
-    throw new Error("请粘贴单个 server 对象，不要使用 mcpServers 容器");
+    throw new UserFacingError("请填写单个 MCP 服务配置，而不是完整配置列表。");
   }
   return parsed as McpServerSpec;
 }

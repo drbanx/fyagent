@@ -17,7 +17,7 @@ export function AssignmentPanel<T extends SkillTargetId>({
 }) {
   return (
     <div className="fy-feature-assignments">
-      <h3>Agent 分配</h3>
+      <h3>应用分配</h3>
       {targets.map((app) => (
         <label key={app.id} className="fy-feature-assignment">
           <span className="fy-feature-assignment-label">

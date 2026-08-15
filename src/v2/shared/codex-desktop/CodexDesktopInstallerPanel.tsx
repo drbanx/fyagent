@@ -8,17 +8,16 @@ import { Button, InlineNotice, Spinner } from "../ui/primitives";
 import { useCodexDesktopInstaller } from "./useCodexDesktopInstaller";
 
 const stateLabels: Readonly<Record<InstallerViewState, string>> = {
-  hidden: "当前平台暂不支持 Codex Desktop 内置安装。",
-  checking: "正在读取本机安装状态和最新版本。",
+  hidden: "当前平台暂不支持安装 Codex Desktop。",
+  checking: "正在检查安装状态和可用版本。",
   unsupported_architecture: "当前系统或处理器架构不受支持。",
-  ambiguous: "检测到多个可能的 Codex Desktop 安装，无法安全选择。",
+  ambiguous: "发现多个 Codex Desktop 安装，暂时无法确定要使用的版本。",
   ready_install: "Codex Desktop 尚未安装，可以开始安装。",
   ready_update: "有可用的新版本。",
   ready_launch: "Codex Desktop 已是最新版本。",
   local_newer: "本机版本比当前可用版本更新。",
   remote_unavailable: "暂时无法读取可安装版本。",
-  remote_unavailable_installed:
-    "暂时无法读取最新版本，仍可启动已验证的本机安装。",
+  remote_unavailable_installed: "暂时无法读取最新版本，仍可启动本机版本。",
   job_checking: "正在确认版本信息。",
   job_preflight: "正在执行安装前检查。",
   job_downloading: "正在下载 Codex Desktop。",
@@ -126,7 +125,7 @@ export function CodexDesktopInstallerPanel() {
       <div className="fy-codex-installer-heading">
         <div>
           <h3>Codex Desktop</h3>
-          <p>仅通过 FyAgent 的受控原生安装流程管理桌面应用。</p>
+          <p>在 FyAgent 中安装、更新或启动桌面应用。</p>
         </div>
         {(installer.state === "checking" || installer.isRefreshing) && (
           <Spinner label="正在读取 Codex Desktop 状态" />
@@ -136,7 +135,7 @@ export function CodexDesktopInstallerPanel() {
       <div className="fy-codex-installer-body" aria-live="polite">
         <p className="fy-codex-installer-status">
           {installer.authorityUnavailable
-            ? "当前环境无法读取原生安装状态。"
+            ? "暂时无法读取安装状态。"
             : stateLabels[installer.state]}
         </p>
 
@@ -179,19 +178,18 @@ export function CodexDesktopInstallerPanel() {
         {installer.error && (
           <InlineNotice tone="error">
             {installer.error.code === "METADATA_CHANGED"
-              ? "版本信息已变化，请先刷新版本，然后再次确认安装。"
-              : "安装操作未完成。"}{" "}
-            错误代码：{installer.error.code}
+              ? "版本信息已更新，请刷新后重新确认安装。"
+              : "安装未完成，请重试。"}
           </InlineNotice>
         )}
         {installer.operationFailed && !installer.error && (
           <InlineNotice tone="error">
-            操作未完成。未显示后端返回的原始错误内容，请重试或查看日志。
+            安装未完成，请重试。若问题持续，请查看日志。
           </InlineNotice>
         )}
         {installer.liveUpdatesUnavailable && (
           <InlineNotice tone="warning">
-            实时进度暂不可用；重新进入此页面后会再次读取当前任务。
+            暂时无法显示实时进度，请稍后刷新。
           </InlineNotice>
         )}
 

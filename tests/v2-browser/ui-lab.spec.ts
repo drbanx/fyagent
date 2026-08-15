@@ -47,10 +47,7 @@ async function readSurfaceTreatment(
   });
 }
 
-function expectGlassSurface(
-  treatment: SurfaceTreatment,
-  label: string,
-): void {
+function expectGlassSurface(treatment: SurfaceTreatment, label: string): void {
   expect(
     treatment.backgroundAlpha,
     `${label} must retain a visible CSS tint fallback`,
@@ -107,11 +104,8 @@ test("exercises UI Lab overlays, focus treatment, long labels, and glass fallbac
 
   const glassButton = page.getByTestId("ui-lab-glass-button");
   await expect(glassButton).toBeVisible();
-  await expect(glassButton).toHaveAccessibleName("玻璃按钮");
-  expectGlassSurface(
-    await readSurfaceTreatment(glassButton),
-    "Glass control",
-  );
+  await expect(glassButton).toHaveAccessibleName("开始管理");
+  expectGlassSurface(await readSurfaceTreatment(glassButton), "Glass control");
 
   const tooltipTrigger = page.getByTestId("ui-lab-tooltip-trigger");
   await tooltipTrigger.hover();
@@ -171,8 +165,7 @@ test("exercises UI Lab overlays, focus treatment, long labels, and glass fallbac
   const longLabels = page.getByTestId("ui-lab-long-labels");
   await expect(longLabels).toBeVisible();
   const longLabelText = (await longLabels.textContent()) ?? "";
-  expect(longLabelText).toMatch(/[A-Za-z]/);
-  expect(longLabelText).toMatch(/[\u3040-\u30ff\u31f0-\u31ff]/);
+  expect(longLabelText.length).toBeGreaterThan(24);
   expect(longLabelText).toMatch(/[\u4e00-\u9fff]/);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -182,7 +175,7 @@ test("exercises UI Lab overlays, focus treatment, long labels, and glass fallbac
     await readSurfaceTreatment(lenses),
     "Reduced-motion selected-lens specimen",
   );
-  await expect(page.getByRole("tab", { name: "稳定面" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "已启用" })).toHaveAttribute(
     "data-state",
     "active",
   );

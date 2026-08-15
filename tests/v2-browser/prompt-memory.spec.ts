@@ -79,20 +79,28 @@ async function expectPromptNativeOnly(page: Page): Promise<void> {
   await expect(promptPage).toHaveClass(/\bfy-feature-page\b/);
   await expect(promptPage).toHaveClass(/\bfy-prompts-page\b/);
   await expect(promptPage).toHaveAttribute("data-data-source", "native");
-  await expect(page.getByRole("heading", { name: "提示词", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "提示词", level: 1 }),
+  ).toBeVisible();
   await expect(page.getByText("桌面能力不可用", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("浏览器预览不会加载模拟或本机提示词", {
-      exact: false,
+    page.getByText("提示词管理仅在 FyAgent 桌面应用中可用。", {
+      exact: true,
     }),
   ).toBeVisible();
   await expect(page.locator(".fy-control-empty")).toBeVisible();
   await expect(page.getByRole("button", { name: "新建提示词" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "从文件导入" })).toBeDisabled();
-  await expect(page.getByRole("searchbox", { name: "搜索提示词" })).toBeDisabled();
+  await expect(
+    page.getByRole("searchbox", { name: "搜索提示词" }),
+  ).toBeDisabled();
   await expect(page.locator('section[aria-label="提示词列表"]')).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "提示词内容" })).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "实际生效文件内容" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "提示词内容" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("textbox", { name: "当前使用的内容" }),
+  ).toHaveCount(0);
   await expectNoRetiredPrototype(page);
 }
 
@@ -104,17 +112,24 @@ async function expectMemoryNativeOnly(
   await expect(memoryPage).toBeVisible();
   await expect(memoryPage).toHaveClass(/\bfy-feature-page\b/);
   await expect(memoryPage).toHaveClass(/\bfy-memory-page\b/);
-  await expect(page.getByRole("heading", { name: "记忆", level: 1 })).toBeVisible();
-  await expect(page.getByText("需要 FyAgent 桌面应用", { exact: true })).toBeVisible();
   await expect(
-    page.getByText(
-      `${feature}来自本机 OpenClaw 与 Hermes 配置，浏览器预览不会加载或模拟这些数据。`,
-      { exact: true },
-    ),
+    page.getByRole("heading", { name: "记忆", level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("需要 FyAgent 桌面应用", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(`${feature}仅在 FyAgent 桌面应用中可用。`, {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.locator(".fy-control-empty")).toBeVisible();
-  await expect(page.locator('section[aria-label="长期记忆资源"]')).toHaveCount(0);
-  await expect(page.locator('section[aria-label="每日记忆列表"]')).toHaveCount(0);
+  await expect(page.locator('section[aria-label="长期记忆资源"]')).toHaveCount(
+    0,
+  );
+  await expect(page.locator('section[aria-label="每日记忆列表"]')).toHaveCount(
+    0,
+  );
   await expect(page.locator(".fy-memory-editor-textarea")).toHaveCount(0);
   await expectNoRetiredPrototype(page);
 }
@@ -214,7 +229,9 @@ test("switches all six routes and keeps Prompt and Memory controls reachable", a
   }
   await page.getByRole("tab", { name: "每日记忆" }).click();
   await expectMemoryNativeOnly(page, "每日记忆");
-  await expectReachable(page.getByText("需要 FyAgent 桌面应用", { exact: true }));
+  await expectReachable(
+    page.getByText("需要 FyAgent 桌面应用", { exact: true }),
+  );
   await expectNoHorizontalOverflow(page);
 
   await expectHealthyPage(page, health);

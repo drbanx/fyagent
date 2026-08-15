@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker, type BlockerFunction } from "react-router-dom";
 
-import { errorMessage } from "../../shared/features/helpers";
+import { errorMessage, isNativeOnlyError } from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
 import {
   featureKeys,
@@ -90,10 +90,6 @@ function todayFilename(): string {
   return `${year}-${month}-${day}.md`;
 }
 
-function isNativeOnlyError(error: unknown): boolean {
-  return errorMessage(error).includes("仅在 FyAgent 桌面应用中可用");
-}
-
 function normalizeMemoryTimestamp(value: number): number {
   return value > 0 && value < 1_000_000_000_000 ? value * 1000 : value;
 }
@@ -127,7 +123,7 @@ function NativeOrErrorState({
       title={nativeOnly ? "需要 FyAgent 桌面应用" : `无法加载${feature}`}
       description={
         nativeOnly
-          ? `${feature}来自本机 OpenClaw 与 Hermes 配置，浏览器预览不会加载或模拟这些数据。`
+          ? `${feature}仅在 FyAgent 桌面应用中可用。`
           : errorMessage(error)
       }
       actions={nativeOnly ? undefined : <Button onClick={onRetry}>重试</Button>}
@@ -187,7 +183,7 @@ export function MemoryPage() {
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>记忆</h1>
-          <p>管理 OpenClaw 与 Hermes 的真实长期记忆和每日记录</p>
+          <p>管理 OpenClaw 与 Hermes 的长期记忆和每日记录。</p>
         </div>
       </header>
       <div className="fy-feature-tabs" role="tablist" aria-label="记忆类型">
@@ -393,9 +389,7 @@ function LongTermView({
                 onClick={() => selectDocument(document.id)}
               >
                 <strong>{document.title}</strong>
-                <span>
-                  {document.description} · {document.path}
-                </span>
+                <span>{document.description}</span>
               </button>
             ))}
           </div>
@@ -410,14 +404,10 @@ function LongTermView({
           onSave={save}
         />
         <section className="fy-feature-panel fy-feature-detail">
-          <h2>资源信息</h2>
+          <h2>记忆信息</h2>
           <dl className="fy-feature-definition">
             <dt>来源</dt>
             <dd>{selected.source}</dd>
-            <dt>目标文件</dt>
-            <dd>
-              <code className="fy-feature-code">{selected.path}</code>
-            </dd>
             <dt>状态</dt>
             <dd>{documentQuery.data === null ? "尚未创建" : "可编辑"}</dd>
           </dl>
@@ -509,14 +499,12 @@ function LongTermEditor({
         </dd>
       </dl>
       {missing && (
-        <InlineNotice>
-          此文件尚未创建。只有点击“保存”后才会写入本机。
-        </InlineNotice>
+        <InlineNotice>此内容尚未创建。点击“保存”后即可创建。</InlineNotice>
       )}
       {overLimit && (
         <InlineNotice tone="warning">
           当前内容为 {characterCount} 字符，超过 Hermes 的 {limit}
-          字符上限。仍可保存，但 Hermes 运行时可能截断内容。
+          字符上限。仍可保存，但部分内容可能无法被 Hermes 使用。
         </InlineNotice>
       )}
       <label className="fy-memory-editor-field">
@@ -713,10 +701,7 @@ function DailyView({
 
   if (listQuery.isLoading) {
     return (
-      <EmptyState
-        title="正在加载每日记忆"
-        description="正在读取 OpenClaw 每日记忆列表"
-      >
+      <EmptyState title="正在加载每日记忆" description="正在读取每日记录">
         <Spinner />
       </EmptyState>
     );
@@ -740,7 +725,7 @@ function DailyView({
         <Input
           type="search"
           aria-label="搜索每日记忆"
-          placeholder="全文搜索 OpenClaw 每日记忆"
+          placeholder="搜索每日记录"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
@@ -772,7 +757,7 @@ function DailyView({
       {(listQuery.data ?? []).length === 0 && !resolvedFile ? (
         <EmptyState
           title="还没有每日记忆"
-          description="打开今天的记录并保存后，才会创建对应文件。"
+          description="打开并保存今天的记录后会自动创建。"
           actions={
             <Button
               className="fy-control-button-primary"
@@ -788,7 +773,7 @@ function DailyView({
         rows.length === 0 ? (
         <EmptyState
           title="没有匹配的每日记忆"
-          description="尝试更换关键词；搜索不会创建或修改文件。"
+          description="请尝试其他关键词。"
         />
       ) : (
         <div className="fy-feature-master fy-memory-master">
@@ -858,27 +843,9 @@ function DailyView({
             </section>
           )}
           <section className="fy-feature-panel fy-feature-detail">
-            <h2>每日记忆范围</h2>
-            <dl className="fy-feature-definition">
-              <dt>来源</dt>
-              <dd>OpenClaw</dd>
-              <dt>目录</dt>
-              <dd>
-                <code className="fy-feature-code">workspace/memory</code>
-              </dd>
-              <dt>文件格式</dt>
-              <dd>
-                <code className="fy-feature-code">YYYY-MM-DD.md</code>
-              </dd>
-              {resolvedFile && (
-                <>
-                  <dt>当前文件</dt>
-                  <dd>{resolvedFile}</dd>
-                </>
-              )}
-            </dl>
+            <h2>使用说明</h2>
             <p className="fy-feature-description">
-              页面只能管理后端已限制的日期文件，不接受任意路径或文件名。
+              每日记忆按日期整理。选择记录后即可编辑、保存或删除。
             </p>
           </section>
         </div>
@@ -933,9 +900,7 @@ function DailyEditor({
         <dd>{characterCount}</dd>
       </dl>
       {missing && (
-        <InlineNotice>
-          今天的记录尚未创建。只有点击“保存”后才会写入本机。
-        </InlineNotice>
+        <InlineNotice>今天的记录尚未创建。点击“保存”后即可创建。</InlineNotice>
       )}
       <label className="fy-memory-editor-field">
         <span>每日记忆内容</span>

@@ -53,11 +53,11 @@ const TARGET_PRESENTATION: Record<
   ModelTarget,
   { label: string; summary: string }
 > = {
-  qoderwork: { label: "QoderWork CN", summary: "内置模型 / Hooks / MCP" },
-  trae: { label: "TRAE Work", summary: "模型连接预检" },
-  workbuddy: { label: "WorkBuddy", summary: "专用模型配置" },
-  codex: { label: "Codex", summary: "Provider 快速配置" },
-  claude: { label: "Claude Code", summary: "Provider 快速配置" },
+  qoderwork: { label: "QoderWork CN", summary: "模型、Hooks 和 MCP" },
+  trae: { label: "TRAE Work", summary: "测试模型连接" },
+  workbuddy: { label: "WorkBuddy", summary: "管理模型设置" },
+  codex: { label: "Codex", summary: "快速配置模型" },
+  claude: { label: "Claude Code", summary: "快速配置模型" },
 };
 
 const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
@@ -159,7 +159,7 @@ function WorkBuddyPanel() {
     if (!isHttpUrl(baseUrl.trim())) {
       setNotice({
         tone: "error",
-        title: "请输入有效的 Base URL",
+        title: "请输入有效的服务地址",
         description: "只接受不含账号信息的 HTTP(S) 地址。",
       });
       baseUrlInputRef.current?.focus();
@@ -186,7 +186,7 @@ function WorkBuddyPanel() {
       if (collision) {
         setNotice({
           tone: "error",
-          title: "Base URL 不能包含敏感凭据",
+          title: "服务地址不能包含 API Key",
         });
         baseUrlInputRef.current?.focus();
         return false;
@@ -222,9 +222,9 @@ function WorkBuddyPanel() {
       setNotice({
         tone: result.truncated ? "warning" : "info",
         title: result.truncated
-          ? "模型列表已按安全上限截断"
+          ? "已达到可显示的模型数量上限"
           : `已读取 ${result.models.length} 个模型`,
-        description: "尚未写入 WorkBuddy；请确认选择后再保存。",
+        description: "请确认选择后再保存。",
       });
     } catch {
       if (mountedRef.current)
@@ -288,12 +288,12 @@ function WorkBuddyPanel() {
             confirmed: {
               tone: "warning",
               title: "配置已被其他操作修改",
-              description: "权威状态已重新读取，请检查后再次提交。",
+              description: "已刷新当前设置，请检查后再次提交。",
             },
             unconfirmed: {
               tone: "warning",
               title: "配置已被其他操作修改",
-              description: "权威状态回读未完成；请刷新状态后再次提交。",
+              description: "暂时无法刷新当前设置，请刷新后再次提交。",
             },
           };
           break;
@@ -304,12 +304,12 @@ function WorkBuddyPanel() {
               confirmed: {
                 tone: "error",
                 title: "覆盖确认已失效",
-                description: "权威状态已重新读取，请重新提交。",
+                description: "已刷新当前设置，请重新提交。",
               },
               unconfirmed: {
                 tone: "error",
                 title: "覆盖确认已失效",
-                description: "权威状态回读未完成；请刷新状态后重新提交。",
+                description: "暂时无法刷新当前设置，请刷新后重新提交。",
               },
             };
           } else {
@@ -335,19 +335,19 @@ function WorkBuddyPanel() {
             confirmed: {
               tone: "error",
               title: "覆盖确认已失效",
-              description: "权威状态已重新读取，请重新提交。",
+              description: "已刷新当前设置，请重新提交。",
             },
             unconfirmed: {
               tone: "error",
               title: "覆盖确认已失效",
-              description: "权威状态回读未完成；请刷新状态后重新提交。",
+              description: "暂时无法刷新当前设置，请刷新后重新提交。",
             },
           };
         } else {
           setNotice({
             tone: "error",
             title: "保存失败",
-            description: "未显示后端原始详情；请刷新状态并检查输入后重试。",
+            description: "请刷新当前设置、检查输入后重试。",
           });
         }
       }
@@ -379,7 +379,7 @@ function WorkBuddyPanel() {
       clearApiKey();
       setNotice({
         tone: "error",
-        title: "模型 ID 与敏感凭据冲突",
+        title: "模型 ID 不能包含 API Key",
         description: "请检查模型 ID 后重试。",
       });
       manualModelsInputRef.current?.focus();
@@ -419,15 +419,14 @@ function WorkBuddyPanel() {
       <header className="fy-models-config-heading">
         <div>
           <h2>WorkBuddy</h2>
-          <p>通过专用后端读取、发现并按 revision 保存模型配置。</p>
+          <p>查看并管理 WorkBuddy 的模型设置。</p>
         </div>
-        <Badge tone="accent">原生 WorkBuddy 命令</Badge>
       </header>
 
       {loading && <Spinner label="正在读取 WorkBuddy 状态" />}
       {readFailed && (
         <InlineNotice tone="error">
-          WorkBuddy 状态暂不可用；这不代表未安装或未配置。
+          暂时无法读取 WorkBuddy 配置，请重试。
         </InlineNotice>
       )}
       {status && (
@@ -453,7 +452,7 @@ function WorkBuddyPanel() {
 
       <div className="fy-models-form">
         <label className="fy-control-field">
-          Base URL
+          服务地址
           <Input
             ref={baseUrlInputRef}
             id="workbuddy-base-url"
@@ -486,7 +485,7 @@ function WorkBuddyPanel() {
             label="允许无 API Key"
             disabled={busy !== null}
           />
-          <span>允许无 API Key（请求将完全省略 Authorization）</span>
+          <span>不使用 API Key</span>
         </div>
         <div className="fy-models-checkbox-row">
           <Checkbox
@@ -495,7 +494,7 @@ function WorkBuddyPanel() {
             label="清除已有模型的 API Key"
             disabled={busy !== null}
           />
-          <span>清除被更新模型中已有的 API Key</span>
+          <span>更新时清除已保存的 API Key</span>
         </div>
 
         <div className="fy-models-actions">
@@ -506,11 +505,11 @@ function WorkBuddyPanel() {
 
         {fetchedModels.length > 0 && (
           <div className="fy-models-form-wide">
-            <h3>远端模型</h3>
+            <h3>可用模型</h3>
             {truncated && (
-              <p className="fy-models-muted">列表已按后端安全上限截断。</p>
+              <p className="fy-models-muted">已达到可显示的模型数量上限。</p>
             )}
-            <ul className="fy-models-model-list" aria-label="远端模型列表">
+            <ul className="fy-models-model-list" aria-label="可用模型列表">
               {fetchedModels.map((modelId) => (
                 <li key={modelId}>
                   <label className="fy-models-model-option">
@@ -592,7 +591,7 @@ function WorkBuddyPanel() {
           </>
         }
       >
-        <p>确认后只会重放刚才冻结的请求，并使用一次性后端令牌。</p>
+        <p>确认后将使用当前选择覆盖已有模型。</p>
       </Dialog>
     </CatalogDetail>
   );
@@ -600,9 +599,9 @@ function WorkBuddyPanel() {
 
 const WARNING_COPY: Record<CodexProviderMutationWarning, string> = {
   CODEX_WEBSOCKET_NON_GPT_MODEL:
-    "当前 WebSocket 配置包含非 GPT 模型，兼容性需要自行确认。",
+    "当前模型可能与此连接方式不兼容，请确认后使用。",
   CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED:
-    "当前代理可能不支持 WebSocket Upgrade。",
+    "当前网络代理可能影响连接，请确认后使用。",
 };
 
 function sanitizeWarningCodes(
@@ -631,9 +630,7 @@ function ProviderPanel({
   const { ports } = useFeatures();
   const summaryQuery = useProviderSummary(app, true);
   const [name, setName] = useState(
-    app === "codex"
-      ? "FyAgent Codex Quick Setup"
-      : "FyAgent Claude Quick Setup",
+    app === "codex" ? "FyAgent Codex" : "FyAgent Claude",
   );
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKeyState] = useState("");
@@ -732,30 +729,29 @@ function ProviderPanel({
         !refreshed.isError &&
         refreshed.data?.currentId === providerId;
       const liveDescription = applyResult.liveConfigChanged
-        ? "本次原子应用期间，Codex live 配置字节已更新；重启或新建会话是独立步骤。"
-        : "本次原子应用期间，后端观察到 Codex live 配置字节未变化；未执行自动重启。";
+        ? "重启或新建会话后即可使用新的设置。"
+        : "请在应用中刷新或新建会话后查看更改。";
       if (!activeIdConfirmed) {
         setNotice({
           tone: "warning",
-          title:
-            "本次配置已原子应用，但回读未确认固定 Quick Setup Provider ID 处于激活状态",
+          title: "模型设置已保存，待确认",
           description:
             app === "codex"
-              ? `${liveDescription} 请刷新状态并确认固定 Provider ID 的当前选择。`
-              : "回读失败或未返回固定 Quick Setup Provider ID；请刷新状态确认。",
+              ? `${liveDescription} 请刷新状态后确认当前配置。`
+              : "请刷新状态后确认当前配置。",
         });
       } else {
         setNotice({
           tone: warnings.length || hasPartialWarning ? "warning" : "info",
-          title: "本次配置已原子应用；固定 Quick Setup Provider ID 已确认激活",
+          title: "模型设置已保存并设为当前配置",
           description:
             app === "codex"
               ? hasPartialWarning
-                ? `${liveDescription} 权威摘要回读仅确认固定 Provider ID 已激活；非关键投影未完成，将在后续同步时自愈。`
-                : `${liveDescription} 权威摘要回读仅确认固定 Provider ID 已激活，不验证本次配置内容字节。`
+                ? `${liveDescription} 部分设置仍需确认。`
+                : liveDescription
               : hasPartialWarning
-                ? "固定 Quick Setup Provider ID 已确认激活；非关键投影未完成，将在后续同步时自愈。"
-                : "权威摘要回读仅确认固定 Quick Setup Provider ID 已激活，不验证本次配置内容字节。",
+                ? "保存完成，但部分设置仍需确认。"
+                : "请在应用中刷新或新建会话后查看更改。",
         });
       }
     } catch (error) {
@@ -773,11 +769,11 @@ function ProviderPanel({
         setNotice({
           tone: "error",
           title: stateUnknown
-            ? "Provider 状态未知，请停止继续写入"
-            : "Provider 原子应用失败，已完成回滚",
+            ? "无法确认当前设置"
+            : "未能保存设置，已还原之前的状态",
           description: stateUnknown
-            ? "后端未能确认完整补偿；当前页面已停止后续写入。请重新进入页面并人工核对 Provider、live 配置与代理状态。原始错误已隐藏。"
-            : "后端已确认完整补偿；未显示可能包含敏感信息的原始错误，请以权威回读为准。",
+            ? "为避免覆盖现有设置，已暂停继续保存。请重新打开页面并检查当前配置。"
+            : "请检查输入后重试。",
         });
       }
     } finally {
@@ -800,35 +796,25 @@ function ProviderPanel({
       <header className="fy-models-config-heading">
         <div>
           <h2>{label}</h2>
-          <p>
-            通过单次原子命令保存并切换固定 quick-setup
-            Provider，再重新读取权威状态。
-          </p>
+          <p>配置服务地址、模型和 API Key，并设为当前配置。</p>
         </div>
-        <Badge tone="accent">原生 Provider 命令</Badge>
       </header>
 
-      {queryPending && <Spinner label={`正在读取 ${label} Provider`} />}
+      {queryPending && <Spinner label={`正在读取 ${label} 配置`} />}
       {queryUnavailable && (
         <InlineNotice tone="error">
-          Provider 汇总暂不可用；为避免重复创建，当前禁止提交。
+          暂时无法读取当前配置，请稍后重试。
         </InlineNotice>
       )}
       {!queryUnavailable && !queryPending && (
         <div className="fy-models-status-grid" data-testid="provider-status">
           <div className="fy-models-status-item">
-            <span>Quick Setup Provider</span>
-            <strong>
-              {providerExists ? "已存在，将更新" : "尚不存在，将新增"}
-            </strong>
+            <span>保存的配置</span>
+            <strong>{providerExists ? "已有设置，将更新" : "尚未设置"}</strong>
           </div>
           <div className="fy-models-status-item">
-            <span>当前 Provider</span>
-            <code>{currentId || "未观察到当前选择"}</code>
-          </div>
-          <div className="fy-models-status-item">
-            <span>固定 ID</span>
-            <code>{providerId}</code>
+            <span>当前配置</span>
+            <strong>{currentId ? "已设置" : "尚未设置"}</strong>
           </div>
         </div>
       )}
@@ -858,7 +844,7 @@ function ProviderPanel({
           )}
         </div>
         <div className="fy-control-field">
-          <label htmlFor={`${app}-quick-setup-base-url`}>Base URL</label>
+          <label htmlFor={`${app}-quick-setup-base-url`}>服务地址</label>
           <Input
             ref={baseUrlInputRef}
             id={`${app}-quick-setup-base-url`}
@@ -944,8 +930,8 @@ function ProviderPanel({
             {busy
               ? "配置中…"
               : writesBlocked
-                ? "状态未知，已停止写入"
-                : "保存并切换"}
+                ? "暂时无法确认当前设置"
+                : "保存并设为当前配置"}
           </Button>
         </div>
       </div>
@@ -953,7 +939,7 @@ function ProviderPanel({
       <NoticeView notice={notice} />
       {warningCodes.length > 0 && (
         <InlineNotice tone="warning">
-          <strong>Codex 配置警告</strong>
+          <strong>Codex 使用提示</strong>
           <ul className="fy-models-warning-list">
             {warningCodes.map((code) => (
               <li key={code}>{WARNING_COPY[code]}</li>
@@ -1003,7 +989,7 @@ function QoderGuidancePanel() {
         setNotice({
           tone: "error",
           title: "无法打开官方设置",
-          description: "请稍后重试；FyAgent 未执行任何配置写入。",
+          description: "请稍后重试。",
         });
       }
     } finally {
@@ -1015,21 +1001,19 @@ function QoderGuidancePanel() {
   return (
     <CatalogDetail
       className="fy-models-config-panel"
-      ariaLabel="QoderWork CN 模型与能力入口"
+      ariaLabel="QoderWork CN 模型设置"
     >
       <header className="fy-models-config-heading">
         <div>
           <h2>QoderWork CN</h2>
-          <p>
-            QoderWork 使用厂商内置模型能力；FyAgent 不写入未公开的模型私有存储。
-          </p>
+          <p>在 QoderWork 中选择模型，并在 FyAgent 中管理相关设置。</p>
         </div>
-        <Badge tone="neutral">厂商内置模型</Badge>
+        <Badge tone="neutral">在 QoderWork 中完成模型设置</Badge>
       </header>
 
       <InlineNotice>
-        可在 Agent 目录中读取/编辑 Qoder Hooks，并对 MCP JSON 做不执行 server
-        的静态预检。模型选择和最终 MCP 配置仍在 QoderWork 厂商界面完成。
+        可在应用目录中管理 Hooks 和检查 MCP 配置；模型设置请在 QoderWork
+        中完成。
       </InlineNotice>
 
       {catalogQuery.isLoading && (
@@ -1037,7 +1021,7 @@ function QoderGuidancePanel() {
       )}
       {catalogQuery.isError && (
         <InlineNotice tone="error">
-          目录暂不可用；为避免跳转到未经验证的地址，按钮已禁用。
+          暂时无法获取官方网站，请稍后重试。
         </InlineNotice>
       )}
       <div className="fy-models-actions">
@@ -1045,7 +1029,7 @@ function QoderGuidancePanel() {
           className="fy-control-button-primary"
           onClick={() => navigate("/agents?target=qoderwork")}
         >
-          管理 Hooks / 预检 MCP
+          管理 Hooks 和 MCP
         </Button>
         <Button
           disabled={
@@ -1072,34 +1056,33 @@ const traeProbeCopy: Readonly<
 > = {
   reachable: {
     tone: "info",
-    title: "FyAgent 本次连接预检可达",
-    description:
-      "这只证明本次受限请求通过 FyAgent 预检，不表示 TRAE 已保存配置、完全兼容或厂商最终检查会成功。请回到 TRAE 完成最终保存。",
+    title: "连接测试通过",
+    description: "请返回 TRAE 保存设置后继续使用。",
   },
   auth_rejected: {
     tone: "warning",
-    title: "端点拒绝了本次认证预检",
-    description: "API Key 已清除；请在 TRAE 厂商界面复核凭据后重试。",
+    title: "无法验证 API Key",
+    description: "请检查 API Key 后重试。",
   },
   model_rejected: {
     tone: "warning",
-    title: "端点拒绝了模型标识",
-    description: "API Key 已清除；请在 TRAE 厂商界面复核模型 ID。",
+    title: "无法使用该模型 ID",
+    description: "请检查模型 ID 后重试。",
   },
   network_rejected: {
     tone: "warning",
-    title: "连接被网络安全策略或远端响应拒绝",
-    description: "未回显地址或响应正文；请检查 HTTPS、代理、DNS 与网络授权。",
+    title: "无法连接到服务",
+    description: "请检查服务地址、网络和访问权限。",
   },
   timeout: {
     tone: "warning",
-    title: "连接预检超时",
-    description: "API Key 已清除；超时不代表 TRAE 已保存或端点不可用。",
+    title: "连接测试超时",
+    description: "请稍后重试。",
   },
   cancelled: {
     tone: "warning",
-    title: "连接预检已取消",
-    description: "API Key 已清除，未产生 TRAE 配置写入。",
+    title: "连接测试已取消",
+    description: "你可以调整设置后再次测试。",
   },
 };
 
@@ -1162,8 +1145,7 @@ function TraePreflightPanel() {
     if (!trimmedUrl || !trimmedModelId) {
       setNotice({
         tone: "error",
-        title: "请填写 URL 和模型 ID",
-        description: "结构校验不会把输入写入 URL、缓存或本地存储。",
+        title: "请填写服务地址和模型 ID",
       });
       return null;
     }
@@ -1181,25 +1163,25 @@ function TraePreflightPanel() {
     } catch {
       setNotice({
         tone: "error",
-        title: "URL 结构无效",
+        title: "服务地址无效",
         description:
-          "只接受无 userinfo、query、fragment 的 HTTP(S) URL；后端仍会执行 DNS 与地址安全校验。",
+          "请输入有效的 HTTP(S) 服务地址，且不要包含账号信息或额外参数。",
       });
       return null;
     }
     if (!allowNoApiKey && apiKeyRef.current.trim().length === 0) {
       setNotice({
         tone: "error",
-        title: "请填写 API Key 或明确允许无 Key 预检",
-        description: "API Key 只用于当前一次原生命令。",
+        title: "请填写 API Key 或选择不使用 API Key",
+        description: "API Key 仅用于本次连接测试，结束后不会保留。",
       });
       return null;
     }
     if (!probeConsent) {
       setNotice({
         tone: "error",
-        title: "需要明确同意本次网络预检",
-        description: "未同意时不会发起网络请求。",
+        title: "请确认后开始连接测试",
+        description: "确认后将测试一次连接。",
       });
       return null;
     }
@@ -1246,9 +1228,8 @@ function TraePreflightPanel() {
       if (mountedRef.current) {
         setNotice({
           tone: "error",
-          title: "TRAE 模型预检失败",
-          description:
-            "请求已终止，API Key 与原始错误已清除；FyAgent 未写入 TRAE 配置。",
+          title: "TRAE 连接测试失败",
+          description: "请检查输入后重试。",
         });
       }
     } finally {
@@ -1272,16 +1253,16 @@ function TraePreflightPanel() {
       if (mountedRef.current) {
         setNotice({
           tone: "warning",
-          title: "已发送取消请求",
-          description: "API Key 已立即清除，等待原生预检进入终态。",
+          title: "正在取消连接测试",
+          description: "请稍候。",
         });
       }
     } catch {
       if (mountedRef.current) {
         setNotice({
           tone: "warning",
-          title: "无法确认取消结果",
-          description: "API Key 已立即清除；离开页面会再次请求取消。",
+          title: "暂时无法确认取消结果",
+          description: "请稍候后重试。",
         });
       }
     }
@@ -1298,7 +1279,7 @@ function TraePreflightPanel() {
         setNotice({
           tone: "error",
           title: "无法打开 TRAE 官方设置",
-          description: "FyAgent 未执行任何配置写入。",
+          description: "请稍后重试。",
         });
       }
     } finally {
@@ -1310,21 +1291,19 @@ function TraePreflightPanel() {
   return (
     <CatalogDetail
       className="fy-models-config-panel"
-      ariaLabel="TRAE Work 模型连接预检"
+      ariaLabel="TRAE Work 模型连接测试"
     >
       <header className="fy-models-config-heading">
         <div>
           <h2>TRAE Work</h2>
-          <p>
-            结构校验后发起一次受限网络预检；最终模型保存仍在 TRAE 厂商界面完成。
-          </p>
+          <p>测试服务地址和模型是否可用。设置需在 TRAE 中保存。</p>
         </div>
-        <Badge tone="warning">FyAgent 预检</Badge>
+        <Badge tone="warning">连接测试</Badge>
       </header>
 
       <div className="fy-models-form">
         <label className="fy-control-field">
-          API Format
+          API 格式
           <select
             className="fy-control-input"
             value={apiFormat}
@@ -1351,12 +1330,12 @@ function TraePreflightPanel() {
             }
             disabled={pending}
           >
-            <option value="base_url">Base URL</option>
-            <option value="complete_url">完整 Endpoint URL</option>
+            <option value="base_url">服务地址</option>
+            <option value="complete_url">完整 API 地址</option>
           </select>
         </label>
         <label className="fy-control-field fy-models-form-wide">
-          {urlMode === "base_url" ? "Base URL" : "完整 Endpoint URL"}
+          {urlMode === "base_url" ? "服务地址" : "完整 API 地址"}
           <Input
             type="url"
             value={url}
@@ -1399,19 +1378,19 @@ function TraePreflightPanel() {
                 setAllowNoApiKey(checked);
                 if (checked) clearApiKey();
               }}
-              label="允许无 API Key 预检"
+              label="允许不使用 API Key"
               disabled={pending}
             />
-            允许无 API Key 预检
+            允许不使用 API Key
           </label>
           <label className="fy-models-checkbox-row">
             <Checkbox
               checked={allowLoopback}
               onCheckedChange={setAllowLoopback}
-              label="允许 loopback 地址"
+              label="允许本机地址"
               disabled={pending}
             />
-            我确认目标是本机 loopback 地址（如适用）
+            我确认目标是本机地址（如适用）
           </label>
           <label className="fy-models-checkbox-row">
             <Checkbox
@@ -1426,10 +1405,10 @@ function TraePreflightPanel() {
             <Checkbox
               checked={probeConsent}
               onCheckedChange={setProbeConsent}
-              label="同意发起一次网络预检"
+              label="同意连接测试"
               disabled={pending}
             />
-            我明确同意 FyAgent 发起一次受限网络预检
+            我同意发起一次连接测试
           </label>
         </div>
         <div className="fy-models-actions">
@@ -1438,10 +1417,10 @@ function TraePreflightPanel() {
             disabled={pending}
             onClick={() => void runProbe()}
           >
-            {pending ? "正在预检…" : "验证并测试连接"}
+            {pending ? "正在测试…" : "测试连接"}
           </Button>
           {pending && (
-            <Button onClick={() => void cancelProbe()}>取消预检</Button>
+            <Button onClick={() => void cancelProbe()}>取消测试</Button>
           )}
           <Button
             disabled={
@@ -1457,10 +1436,7 @@ function TraePreflightPanel() {
         </div>
       </div>
       <NoticeView notice={notice} />
-      <InlineNotice>
-        预检不会保存模型到 TRAE。即使本次可达，也必须回到 TRAE
-        厂商界面完成配置并接受厂商自己的最终检查。
-      </InlineNotice>
+      <InlineNotice>此测试不会保存设置。请返回 TRAE 完成配置。</InlineNotice>
     </CatalogDetail>
   );
 }
@@ -1510,14 +1486,12 @@ export function ModelsPage() {
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1 id="fy-models-title">模型快速配置</h1>
-          <p>
-            选择一个 Agent；所有写入都需要明确点击，并在完成后重新读取权威状态。
-          </p>
+          <p>选择一个应用，配置模型并保存设置。</p>
         </div>
       </header>
 
       <CatalogMasterDetail>
-        <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择 Agent">
+        <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择应用">
           <CatalogList>
             {targets.map((candidate) => {
               const presentation = TARGET_PRESENTATION[candidate];

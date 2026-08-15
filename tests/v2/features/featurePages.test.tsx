@@ -94,15 +94,15 @@ describe("V2 MCP management", () => {
       `SECRET_TOKEN=${secret}`,
     );
 
-    await user.click(within(dialog).getByRole("tab", { name: "高级 JSON" }));
-    const advanced = within(dialog).getByLabelText("单个 server JSON");
+    await user.click(within(dialog).getByRole("tab", { name: "JSON 编辑" }));
+    const advanced = within(dialog).getByLabelText("单个服务配置（JSON）");
     const advancedValue = JSON.parse((advanced as HTMLTextAreaElement).value);
     advancedValue.secondExtension = "preserved";
     fireEvent.change(advanced, {
       target: { value: JSON.stringify(advancedValue) },
     });
     await user.click(within(dialog).getByRole("tab", { name: "快速配置" }));
-    await user.click(within(dialog).getByRole("tab", { name: "高级 JSON" }));
+    await user.click(within(dialog).getByRole("tab", { name: "JSON 编辑" }));
     expect((advanced as HTMLTextAreaElement).value).toContain(
       "secondExtension",
     );
@@ -139,7 +139,8 @@ describe("V2 MCP management", () => {
       await screen.findByText(/刷新失败，正在显示上一次成功数据/, undefined, {
         timeout: 4_000,
       }),
-    ).toHaveTextContent("MCP refresh unavailable");
+    ).toHaveTextContent("请稍后重试。");
+    expect(document.body).not.toHaveTextContent("MCP refresh unavailable");
     expect(screen.getByText("还没有 MCP 服务")).toBeVisible();
     expect(screen.queryByText("无法加载 MCP")).not.toBeInTheDocument();
   });
@@ -176,7 +177,8 @@ describe("V2 MCP management", () => {
       await screen.findByText(/刷新失败，正在显示上一次成功数据/, undefined, {
         timeout: 4_000,
       }),
-    ).toHaveTextContent("MCP refresh unavailable");
+    ).toHaveTextContent("请稍后重试。");
+    expect(document.body).not.toHaveTextContent("MCP refresh unavailable");
     expect(screen.getByRole("heading", { name: "Docs server" })).toBeVisible();
     expect(assignment).toBeChecked();
     expect(screen.queryByText("无法加载 MCP")).not.toBeInTheDocument();
@@ -338,7 +340,8 @@ describe("V2 Skills management", () => {
         undefined,
         { timeout: 4_000 },
       ),
-    ).toHaveTextContent("Skills refresh unavailable");
+    ).toHaveTextContent("请稍后重试。");
+    expect(document.body).not.toHaveTextContent("Skills refresh unavailable");
     expect(screen.getByRole("heading", { name: "Review Skill" })).toBeVisible();
     expect(assignment).toBeChecked();
     expect(screen.queryByText("无法加载 Skills")).not.toBeInTheDocument();
@@ -455,7 +458,8 @@ describe("V2 Skills management", () => {
       await screen.findByRole("button", { name: "安装到 Claude" }),
     );
 
-    expect(await screen.findByText("partial install")).toBeVisible();
+    expect(await screen.findByText("请稍后重试。")).toBeVisible();
+    expect(screen.queryByText("partial install")).not.toBeInTheDocument();
     expect(
       await screen.findByRole("button", { name: "已安装" }),
     ).toBeDisabled();

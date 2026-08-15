@@ -247,9 +247,12 @@ describe("V2 Codex Desktop installer panel", () => {
     renderPanel(port);
 
     const refresh = await screen.findByRole("button", {
-      name: "刷新版本",
+      name: "刷新状态",
     });
-    expect(document.body).toHaveTextContent("错误代码：METADATA_CHANGED");
+    expect(document.body).toHaveTextContent(
+      "版本信息已更新，请刷新后重新确认安装。",
+    );
+    expect(document.body).not.toHaveTextContent("METADATA_CHANGED");
     expect(document.body).not.toHaveTextContent("secret.backend");
     expect(document.body).not.toHaveTextContent("C:/Users/private");
 
@@ -276,9 +279,7 @@ describe("V2 Codex Desktop installer panel", () => {
     });
     renderPanel(port);
 
-    expect(
-      await screen.findByText("当前环境无法读取原生安装状态。"),
-    ).toBeVisible();
+    expect(await screen.findByText("暂时无法读取安装状态。")).toBeVisible();
     expect(document.body).not.toHaveTextContent("sk-secret");
     expect(document.body).not.toHaveTextContent("C:/private");
     expect(screen.getByText("无法确认")).toBeVisible();

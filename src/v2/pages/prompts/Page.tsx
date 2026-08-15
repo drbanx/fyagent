@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useBlocker, type BlockerFunction } from "react-router-dom";
 
-import { errorMessage } from "../../shared/features/helpers";
+import { errorMessage, isNativeOnlyError } from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
 import {
   featureKeys,
@@ -45,7 +45,6 @@ const APP_LABELS: Record<PromptAppId, string> = {
   hermes: "Hermes",
 };
 
-const NATIVE_ONLY_MESSAGE = "此操作仅在 FyAgent 桌面应用中可用";
 const REFRESH_WARNING = "写入可能已完成，但状态刷新失败";
 
 interface PromptDraft {
@@ -324,8 +323,7 @@ export function PromptsPage() {
   };
 
   const nativeUnavailable =
-    promptsQuery.data === undefined &&
-    errorMessage(promptsQuery.error) === NATIVE_ONLY_MESSAGE;
+    promptsQuery.data === undefined && isNativeOnlyError(promptsQuery.error);
   const readFailed = promptsQuery.error && promptsQuery.data === undefined;
   const enabledCount = prompts.filter((prompt) => prompt.enabled).length;
 
@@ -338,7 +336,7 @@ export function PromptsPage() {
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>提示词</h1>
-          <p>按应用独立管理提示词库与当前实际生效文件</p>
+          <p>按应用管理提示词，并查看当前使用的内容。</p>
         </div>
         <div className="fy-feature-actions">
           <Button
@@ -406,12 +404,12 @@ export function PromptsPage() {
       {nativeUnavailable ? (
         <EmptyState
           title="桌面能力不可用"
-          description="提示词管理需要 FyAgent 桌面应用。浏览器预览不会加载模拟或本机提示词。"
+          description="提示词管理仅在 FyAgent 桌面应用中可用。"
         />
       ) : promptsQuery.isPending && promptsQuery.data === undefined ? (
         <EmptyState
           title={`正在加载 ${APP_LABELS[app]} 提示词`}
-          description="正在读取该应用的提示词库与生效文件"
+          description="正在读取该应用的提示词"
         >
           <Spinner />
         </EmptyState>
@@ -426,7 +424,7 @@ export function PromptsPage() {
       ) : prompts.length === 0 ? (
         <EmptyState
           title={`${APP_LABELS[app]} 还没有提示词`}
-          description="可以新建提示词，或显式从该应用当前提示词文件导入。"
+          description="可以新建提示词，或从当前文件导入。"
           actions={
             <>
               <Button disabled={busy} onClick={() => void importFromFile()}>
@@ -516,7 +514,7 @@ export function PromptsPage() {
               </label>
               <div className="fy-feature-assignment">
                 <span>
-                  {selected.enabled ? "当前已写入生效文件" : "启用此提示词"}
+                  {selected.enabled ? "当前正在使用此提示词" : "启用此提示词"}
                 </span>
                 <Switch
                   checked={selected.enabled}
@@ -552,26 +550,24 @@ export function PromptsPage() {
 
           <section
             className="fy-feature-panel fy-feature-detail"
-            aria-label="当前生效文件"
+            aria-label="当前使用的内容"
           >
             <div className="fy-feature-detail-title">
-              <h2>实际生效文件</h2>
+              <h2>当前使用的内容</h2>
               <Badge>{APP_LABELS[app]}</Badge>
             </div>
             {liveFileQuery.isPending && liveFileQuery.data === undefined ? (
-              <Spinner label="正在读取实际生效文件" />
+              <Spinner label="正在读取当前使用的内容" />
             ) : liveFileQuery.error && liveFileQuery.data === undefined ? (
               <InlineNotice tone="error">
-                无法读取实际生效文件：{errorMessage(liveFileQuery.error)}
+                暂时无法读取当前使用的内容：{errorMessage(liveFileQuery.error)}
               </InlineNotice>
             ) : liveFileQuery.data === null ? (
-              <p className="fy-feature-description">
-                当前没有实际生效文件内容。
-              </p>
+              <p className="fy-feature-description">当前没有使用中的内容。</p>
             ) : (
               <textarea
                 className="fy-control-textarea fy-prompts-live-content"
-                aria-label="实际生效文件内容"
+                aria-label="当前使用的内容"
                 value={liveFileQuery.data ?? ""}
                 readOnly
                 spellCheck={false}
@@ -579,7 +575,7 @@ export function PromptsPage() {
             )}
             {liveFileQuery.error && liveFileQuery.data !== undefined && (
               <InlineNotice tone="error">
-                生效文件刷新失败，正在显示上一次成功数据：
+                当前内容刷新失败，正在显示已加载内容：
                 {errorMessage(liveFileQuery.error)}
               </InlineNotice>
             )}
@@ -596,7 +592,7 @@ export function PromptsPage() {
               ? `新建 ${APP_LABELS[app]} 提示词`
               : `编辑 ${editor.prompt?.name ?? "提示词"}`
           }
-          description="保存后将回读该应用的提示词库与实际生效文件。保存本身不会自动启用提示词。"
+          description="保存后将刷新提示词和当前使用的内容。保存不会自动启用提示词。"
           onOpenChange={(open) => !open && requestEditorClose()}
           actions={
             <>

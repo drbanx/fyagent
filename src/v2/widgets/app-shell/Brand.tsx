@@ -5,7 +5,7 @@ export function Brand() {
     <div
       className="fy-brand"
       role="img"
-      aria-label="FyAgent 品牌"
+      aria-label="FyAgent"
       data-testid="brand"
     >
       <img

@@ -5,7 +5,7 @@ export function ContentViewport() {
     <div className="fy-content-frame">
       <main
         className="fy-content-viewport"
-        aria-label="内容承载区"
+        aria-label="内容"
         data-testid="content-viewport"
       >
         <Outlet />

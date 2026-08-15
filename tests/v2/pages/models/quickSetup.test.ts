@@ -84,17 +84,15 @@ describe("models quick setup helpers", () => {
     "rejects a trimmed %s containing the API key",
     (field) => {
       const result = validateQuickSetup({
-        name:
-          field === "name" ? " prefix-secret-key-suffix " : "Gateway",
+        name: field === "name" ? " prefix-secret-key-suffix " : "Gateway",
         baseUrl: "https://gateway.example/v1",
         apiKey: " secret-key ",
-        modelId:
-          field === "modelId" ? " prefix-secret-key-suffix " : "model-a",
+        modelId: field === "modelId" ? " prefix-secret-key-suffix " : "model-a",
       });
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.errors[field]).toContain("敏感凭据");
+        expect(result.errors[field]).toContain("API Key");
         expect(JSON.stringify(result.errors)).not.toContain("secret-key");
       }
     },
@@ -112,7 +110,7 @@ describe("models quick setup helpers", () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errors.apiKey).toContain("保留标识冲突");
+      expect(result.errors.apiKey).toContain("不能使用该值");
       expect(JSON.stringify(result.errors)).not.toContain(
         QUICK_SETUP_PROVIDER_IDS.codex,
       );
@@ -145,7 +143,7 @@ describe("models quick setup helpers", () => {
         modelId: "model-a",
       });
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.errors.baseUrl).toContain("敏感凭据");
+      if (!result.ok) expect(result.errors.baseUrl).toContain("API Key");
     },
   );
 

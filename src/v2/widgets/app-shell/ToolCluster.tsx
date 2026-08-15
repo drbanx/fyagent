@@ -14,22 +14,22 @@ export function ToolCluster() {
       aria-label="工具"
       data-testid="tool-cluster"
     >
-      <Tooltip label="Search">
-        <IconButton aria-label="Search" data-testid="search" onClick={noop}>
+      <Tooltip label="搜索">
+        <IconButton aria-label="搜索" data-testid="search" onClick={noop}>
           <MagnifyingGlassIcon size={19} weight="regular" aria-hidden />
         </IconButton>
       </Tooltip>
 
-      <Tooltip label="Settings">
-        <IconButton aria-label="Settings" data-testid="settings" onClick={noop}>
+      <Tooltip label="设置">
+        <IconButton aria-label="设置" data-testid="settings" onClick={noop}>
           <GearSixIcon size={19} weight="regular" aria-hidden />
         </IconButton>
       </Tooltip>
 
-      <Tooltip label="Avatar">
+      <Tooltip label="账户">
         <IconButton
           className="fy-avatar-button"
-          aria-label="Avatar"
+          aria-label="账户"
           data-testid="avatar"
           onClick={noop}
         >

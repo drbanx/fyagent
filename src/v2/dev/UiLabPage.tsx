@@ -9,22 +9,22 @@ export function UiLabPage() {
   return (
     <section className="fy-ui-lab" aria-labelledby="fy-ui-lab-title">
       <header className="fy-ui-lab-heading">
-        <p className="fy-ui-lab-eyebrow">Development surface</p>
-        <h1 id="fy-ui-lab-title">FyAgent UI Lab</h1>
+        <p className="fy-ui-lab-eyebrow">功能预览</p>
+        <h1 id="fy-ui-lab-title">FyAgent 功能概览</h1>
       </header>
 
       <div className="fy-ui-lab-grid">
         <article className="fy-ui-lab-card">
-          <h2>Controls</h2>
+          <h2>快速操作</h2>
           <div className="fy-ui-lab-row">
             <GlassButton data-testid="ui-lab-glass-button">
               <SparkleIcon size={18} weight="regular" aria-hidden />
-              玻璃按钮
+              开始管理
             </GlassButton>
 
-            <Tooltip label="Tooltip 已打开" testId="ui-lab-tooltip-content">
+            <Tooltip label="查看操作说明" testId="ui-lab-tooltip-content">
               <IconButton
-                aria-label="Tooltip 示例"
+                aria-label="查看操作说明"
                 data-testid="ui-lab-tooltip-trigger"
               >
                 <CheckIcon size={18} weight="regular" aria-hidden />
@@ -34,10 +34,10 @@ export function UiLabPage() {
             <PopoverPrimitive.Root>
               <PopoverPrimitive.Trigger asChild>
                 <GlassButton
-                  aria-label="打开 Popover"
+                  aria-label="查看功能说明"
                   data-testid="ui-lab-popover-trigger"
                 >
-                  打开 Popover
+                  查看说明
                 </GlassButton>
               </PopoverPrimitive.Trigger>
               <PopoverPrimitive.Portal>
@@ -46,34 +46,34 @@ export function UiLabPage() {
                   sideOffset={10}
                   data-testid="ui-lab-popover-content"
                 >
-                  Portal 内容位于内容面板之上。
+                  在此查看当前功能的使用说明。
                   <PopoverPrimitive.Arrow className="fy-popover-arrow" />
                 </PopoverPrimitive.Content>
               </PopoverPrimitive.Portal>
             </PopoverPrimitive.Root>
 
             <GlassButton data-testid="ui-lab-focus-target">
-              键盘焦点
+              浏览功能
             </GlassButton>
 
             <LiquidGlassLens className="fy-ui-lab-lens-specimen">
-              <span>Selected lens</span>
+              <span>推荐功能</span>
             </LiquidGlassLens>
           </div>
         </article>
 
         <article className="fy-ui-lab-card">
-          <h2>Tabs candidate</h2>
+          <h2>功能信息</h2>
           <TabsPrimitive.Root className="fy-lab-tabs" defaultValue="one">
-            <TabsPrimitive.List aria-label="UI Lab Tabs">
-              <TabsPrimitive.Trigger value="one">稳定面</TabsPrimitive.Trigger>
-              <TabsPrimitive.Trigger value="two">透明面</TabsPrimitive.Trigger>
+            <TabsPrimitive.List aria-label="功能状态">
+              <TabsPrimitive.Trigger value="one">已启用</TabsPrimitive.Trigger>
+              <TabsPrimitive.Trigger value="two">待设置</TabsPrimitive.Trigger>
             </TabsPrimitive.List>
             <TabsPrimitive.Content value="one">
-              Radix keyboard behavior with FyAgent-owned tokens.
+              已启用的功能会显示在这里。
             </TabsPrimitive.Content>
             <TabsPrimitive.Content value="two">
-              Glass remains restrained and readable.
+              完成设置后即可开始使用。
             </TabsPrimitive.Content>
           </TabsPrimitive.Root>
         </article>
@@ -82,23 +82,21 @@ export function UiLabPage() {
           className="fy-ui-lab-card fy-ui-lab-token-surface"
           data-testid="ui-lab-token-surface"
         >
-          <h2>Token surface</h2>
-          <div className="fy-ui-lab-swatches" aria-label="语义化颜色">
+          <h2>账户信息</h2>
+          <div className="fy-ui-lab-swatches" aria-label="账户状态">
             <span className="fy-swatch fy-swatch-accent" />
             <span className="fy-swatch fy-swatch-surface" />
             <span className="fy-swatch fy-swatch-border" />
           </div>
-          <div className="fy-ui-lab-avatar" aria-label="Avatar 占位">
+          <div className="fy-ui-lab-avatar" aria-label="账户">
             FY
           </div>
         </article>
 
         <article className="fy-ui-lab-card fy-ui-lab-copy">
-          <h2>Long-label pressure</h2>
+          <h2>使用提示</h2>
           <p data-testid="ui-lab-long-labels">
-            Agent catalogue and workspace orchestration controls ·
-            エージェントカタログとワークスペースオーケストレーション ·
-            智能体目录与工作区编排控制
+            在 FyAgent 中集中管理应用、模型、Skills、MCP 服务、提示词和记忆。
           </p>
         </article>
       </div>
