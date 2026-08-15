@@ -68,8 +68,8 @@
 - [x] 对照 PRD 每条验收标准检查 diff、测试和 HIL/剩余风险证据。
 - [x] 运行 `trellis-update-spec`，只更新长期有效的安装器责任规范，不记录临时调试过程。
 - [x] 确认没有持久化 schema、Skills/MCP/配置内容校验或无关重构变化；如出现则回滚该部分。
-- [ ] 创建聚焦代码变更的 commit，并记录验证结果。
-- [ ] 运行 Trellis finish/archive 流程，将任务归档；归档前不宣称任务完成。
+- [x] 创建聚焦代码变更的 commit，并记录验证结果。
+- [x] 运行 Trellis finish/archive 流程，将任务归档；归档前不宣称任务完成。
 
 ## 回滚点
 
