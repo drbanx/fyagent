@@ -973,7 +973,19 @@ export function validateStructureAssetInventory(
       continue;
     }
     const absolute = path.join(root, ...relativePath.split("/"));
-    const stat = io.lstatSync(absolute);
+    let stat;
+    try {
+      stat = io.lstatSync(absolute);
+    } catch (error) {
+      // `git ls-files --cached` includes tracked deletions until the caller
+      // stages them. Treat an absent working-tree path as deleted; a deleted
+      // sealed candidate still fails below when the candidate inventory no
+      // longer matches the reviewed manifest.
+      if (error && typeof error === "object" && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
     if (!stat.isFile() || stat.isSymbolicLink()) {
       throw new Error(
         `Executable structure source must be a regular file: ${relativePath}`,

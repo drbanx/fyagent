@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "48a2bddad2e447e09f86d1fef4503e2bb4ac759abff3da8c00adb0aa48c7782d"
+      "7c11ed5f2e1f0ae9b2b2d3c9dd8851007f70ddfc8e8ec81df9aedd9084a504df"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -63,27 +63,27 @@
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
-      "dcec17c1903bacfe9803e0ea798e4f6366e50f34a40b5b2cd3a8f2e0db359688"
+      "d5254b0d7f72e595c2a0bc5b24290b4b193dd1cbfcb0b7d12d9e44e9c6672aa4"
     ],
     [
       "src-tauri/src/codex_desktop/download.rs",
-      "7765fcf9ea12496da6525eafb85f352dfe0c725213694621a826926439140bad"
+      "3e220b9c88f5e08373716e6a0424c7756d13da2efbc4590236330919768549c7"
     ],
     [
       "src-tauri/src/codex_desktop/platform.rs",
-      "62b4f2e383b21f3d33e0dc0cb9410c726c71dfb782bd811fec17c5bf113567e0"
+      "e234eb6fa61b2b35465b9dd543a942617a691bef878c0eb7e286f7477d211761"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/mod.rs",
-      "d32eab415fc947817623412a4cb940d5e6ff60664aad8311dd41643976c8870d"
+      "072e184bec48374669b2a27b67aa237115c754734422a0c61b3e85061e75fe34"
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/deployment.rs",
-      "fe8a7814d1d234a36bb190d2e0d3e005729619d094223ab9d2dc678f539a00bc"
+      "4b2b6f12e81c6af0701f5def6c51f5b66152439e45dcf98284822c559eaa97e4"
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
-      "3743bb57631907462cb88c7c968c2b90065d6c812f84929252a2f0f4dc65a3dd"
+      "b127f33866a60df5b0b23a35a447c64b4642183f2e0fbc55e5ff6a2ad81bdcaf"
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
@@ -91,7 +91,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/types.rs",
-      "398178bcf9d3522b9563fbe1eed46ebd08908ad2ac053a07f11f3616df5c9809"
+      "28f34ed7751f6238267ffed6fbcb17e14b0b37236ca8dd4022f3e2629a9ede59"
     ],
     [
       "src-tauri/src/codex_history_migration.rs",
@@ -119,7 +119,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "e02cd0e833d6170c6f7264ccfdc1bd89b61ed46684b3f5499a942dfe6b4aa17f"
+      "bd6bf44b4db74a7d4771d5188f18032c2bbaeca33a0a00c0640218e27fb951b5"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -291,7 +291,7 @@
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "daa0feef89fa7c7180c532ef7fe72fd5d6c455b8558f0d7b840cea047c415d5c"
+      "348ba3411c89d86dfd1df3f7b651137e0b79257af985025f24a0391a557bf2f7"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",

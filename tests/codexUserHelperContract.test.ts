@@ -855,7 +855,7 @@ describe("Codex current-user helper static contract", () => {
     const preflight = section(
       windowsAdapter,
       "fn preflight(\n",
-      "\nfn validate_package",
+      "\nfn install_current_user",
     );
     expect(preflight).toContain("validate_release_for_host");
     expect(preflight).toContain("temp_root.is_dir()");

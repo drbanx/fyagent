@@ -66,7 +66,7 @@ use windows::{
 };
 
 use super::{
-    package_bridge::ProtectedPackageBridge, PlatformProgressSink, VerifiedPackage,
+    package_bridge::ProtectedPackageBridge, PlatformProgressSink, PreparedInstallPackage,
     WindowsContextRevalidator, WindowsFilePinFactory, WindowsHelperDeadlines,
     WindowsPackageFileIdentity, WindowsUserHelperRunner, WindowsVerifiedFilePin,
 };
@@ -97,7 +97,7 @@ pub(super) struct SystemWindowsFilePinFactory;
 impl WindowsFilePinFactory for SystemWindowsFilePinFactory {
     fn open(
         &self,
-        package: &VerifiedPackage,
+        package: &PreparedInstallPackage,
     ) -> Result<Box<dyn WindowsVerifiedFilePin>, InstallerError> {
         VerifiedFilePin::open(package).map(|pin| Box::new(pin) as Box<dyn WindowsVerifiedFilePin>)
     }
@@ -127,25 +127,18 @@ struct VerifiedFilePin {
 }
 
 impl VerifiedFilePin {
-    fn open(package: &VerifiedPackage) -> Result<Self, InstallerError> {
+    fn open(package: &PreparedInstallPackage) -> Result<Self, InstallerError> {
         let mut file = package.open_artifact_for_pinning()?;
-        let identity = checked_file_identity(
-            HANDLE(file.as_raw_handle()),
-            package.locked_release().expected_size,
-        )?;
-        verify_reader(
-            &mut file,
-            package.locked_release().expected_size,
-            &package.locked_release().expected_sha256,
-        )?;
+        let identity = checked_file_identity(HANDLE(file.as_raw_handle()), package.actual_size())?;
+        verify_reader(&mut file, package.actual_size(), package.local_sha256())?;
         if checked_file_identity(HANDLE(file.as_raw_handle()), identity.size)? != identity {
             return Err(package_pin_error());
         }
         Ok(Self {
             file: Mutex::new(file),
             identity,
-            expected_size: package.locked_release().expected_size,
-            expected_sha256: package.locked_release().expected_sha256.clone(),
+            expected_size: package.actual_size(),
+            expected_sha256: package.local_sha256().to_owned(),
         })
     }
 }
@@ -1568,7 +1561,7 @@ mod tests {
     }
 
     #[test]
-    fn package_downgrade_requires_metadata_refresh() {
+    fn native_package_downgrade_result_remains_structured() {
         let error = map_helper_error(HelperErrorCode::PackageDowngrade);
         let dto = error.to_dto();
         assert_eq!(dto.code, InstallerErrorCode::MetadataChanged);

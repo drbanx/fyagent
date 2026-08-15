@@ -41,7 +41,7 @@ const installerRemote: RemoteReleaseStatus = {
     build: 1000,
     revision: 0,
   },
-  expectedSize: 1_048_576,
+  downloadSizeHint: 1_048_576,
   checkedAt: "2026-08-14T05:00:00Z",
 };
 const installerLocal: LocalInstallStatus = {

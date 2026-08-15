@@ -22,7 +22,6 @@ const stateLabels: Readonly<Record<InstallerViewState, string>> = {
   job_checking: "正在确认版本信息。",
   job_preflight: "正在执行安装前检查。",
   job_downloading: "正在下载 Codex Desktop。",
-  job_verifying_download: "正在验证下载内容。",
   job_installing: "正在安装 Codex Desktop。",
   job_verifying_installation: "正在验证安装结果。",
   succeeded: "Codex Desktop 已安装完成。",

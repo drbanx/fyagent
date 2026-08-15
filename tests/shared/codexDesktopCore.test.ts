@@ -17,6 +17,7 @@ import {
   deriveLocalVersionState,
   deriveRemoteVersionState,
   displayPlatformVersion,
+  parseJobSnapshot,
   projectInstallerProgress,
   shouldAcceptJobSnapshot,
   updateDownloadSpeedState,
@@ -35,7 +36,7 @@ const remote: RemoteReleaseStatus = {
     build: 0,
     revision: 0,
   },
-  expectedSize: 8 * 1024 * 1024,
+  downloadSizeHint: 8 * 1024 * 1024,
   checkedAt: "2026-08-14T00:00:00.000Z",
 };
 
@@ -208,6 +209,19 @@ describe("neutral Codex Desktop core", () => {
     expect(
       projectInstallerProgress(otherJob, state)?.bytesPerSecond,
     ).toBeNull();
+  });
+
+  it("accepts progress after actual bytes exceed a remote size hint", () => {
+    const job = makeDownloadJob(2, 9 * 1024 * 1024, "2026-08-14T00:00:02.000Z", {
+      progress: {
+        phase: "download",
+        completedBytes: 9 * 1024 * 1024,
+        totalBytes: 8 * 1024 * 1024,
+        percent: 100,
+      },
+    });
+
+    expect(parseJobSnapshot(job).progress).toEqual(job.progress);
   });
 
   it("clears speed outside download and retains a valid stalled sample as baseline", () => {

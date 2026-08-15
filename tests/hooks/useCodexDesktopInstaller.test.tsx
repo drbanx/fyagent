@@ -76,7 +76,7 @@ const remote: RemoteReleaseStatus = {
     build: 0,
     revision: 0,
   },
-  expectedSize: 1024,
+  downloadSizeHint: 1024,
   checkedAt: "2026-07-29T00:00:00.000Z",
 };
 

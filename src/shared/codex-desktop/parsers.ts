@@ -44,7 +44,6 @@ const jobStages: Readonly<Record<JobStage, true>> = {
   checking: true,
   preflight: true,
   downloading: true,
-  verifying_download: true,
   installing: true,
   verifying_installation: true,
   succeeded: true,
@@ -79,7 +78,6 @@ const installerErrorCodes: Readonly<Record<InstallerErrorCode, true>> = {
   DOWNLOAD_TIMEOUT: true,
   DOWNLOAD_CANCELLED: true,
   INSUFFICIENT_DISK_SPACE: true,
-  CHECKSUM_MISSING: true,
   CHECKSUM_MISMATCH: true,
   PACKAGE_PARSE_FAILED: true,
   PACKAGE_IDENTITY_MISMATCH: true,
@@ -93,8 +91,6 @@ const installerErrorCodes: Readonly<Record<InstallerErrorCode, true>> = {
   MAC_DMG_MOUNT_FAILED: true,
   MAC_APP_NOT_FOUND: true,
   MAC_BUNDLE_ID_MISMATCH: true,
-  MAC_TEAM_ID_MISMATCH: true,
-  MAC_GATEKEEPER_REJECTED: true,
   MAC_APP_RUNNING: true,
   MAC_MULTIPLE_INSTALLATIONS: true,
   MAC_TARGET_PATH_CONFLICT: true,
@@ -377,14 +373,17 @@ export function parseRemoteReleaseStatus(value: unknown): RemoteReleaseStatus {
     "releaseId",
     "displayVersion",
     "platformVersion",
-    "expectedSize",
+    "downloadSizeHint",
     "checkedAt",
   ]);
   return {
     releaseId: releaseId(record.releaseId),
     displayVersion: string(record.displayVersion, true),
     platformVersion: parsePlatformVersion(record.platformVersion),
-    expectedSize: safeInteger(record.expectedSize, 1),
+    downloadSizeHint:
+      record.downloadSizeHint === null
+        ? null
+        : safeInteger(record.downloadSizeHint, 1),
     checkedAt: timestamp(record.checkedAt),
   };
 }
@@ -398,12 +397,6 @@ function parseJobProgress(value: unknown): JobProgress {
   ]);
   const completedBytes = nullableSafeInteger(record.completedBytes);
   const totalBytes = nullableSafeInteger(record.totalBytes);
-  if (
-    completedBytes !== null &&
-    totalBytes !== null &&
-    completedBytes > totalBytes
-  )
-    return invalidPayload();
   return {
     phase: knownString(record.phase, progressPhases),
     completedBytes,

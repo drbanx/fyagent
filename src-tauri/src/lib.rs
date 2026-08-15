@@ -3480,7 +3480,7 @@ mod tests {
             CodexDesktopExitProtection::ConfirmCancellation
         );
         assert_eq!(
-            classify_codex_desktop_exit_protection(Some((JobStage::VerifyingDownload, false,))),
+            classify_codex_desktop_exit_protection(Some((JobStage::Downloading, false,))),
             CodexDesktopExitProtection::WaitForCancellation
         );
         assert_eq!(

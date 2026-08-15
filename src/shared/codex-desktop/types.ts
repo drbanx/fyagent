@@ -106,7 +106,6 @@ export type InstallerErrorCode =
   | "DOWNLOAD_TIMEOUT"
   | "DOWNLOAD_CANCELLED"
   | "INSUFFICIENT_DISK_SPACE"
-  | "CHECKSUM_MISSING"
   | "CHECKSUM_MISMATCH"
   | "PACKAGE_PARSE_FAILED"
   | "PACKAGE_IDENTITY_MISMATCH"
@@ -120,8 +119,6 @@ export type InstallerErrorCode =
   | "MAC_DMG_MOUNT_FAILED"
   | "MAC_APP_NOT_FOUND"
   | "MAC_BUNDLE_ID_MISMATCH"
-  | "MAC_TEAM_ID_MISMATCH"
-  | "MAC_GATEKEEPER_REJECTED"
   | "MAC_APP_RUNNING"
   | "MAC_MULTIPLE_INSTALLATIONS"
   | "MAC_TARGET_PATH_CONFLICT"
@@ -186,7 +183,7 @@ export interface RemoteReleaseStatus {
   releaseId: string;
   displayVersion: string;
   platformVersion: PlatformVersion;
-  expectedSize: number;
+  downloadSizeHint: number | null;
   checkedAt: string;
 }
 
@@ -206,7 +203,6 @@ export type JobStage =
   | "checking"
   | "preflight"
   | "downloading"
-  | "verifying_download"
   | "installing"
   | "verifying_installation"
   | "succeeded"
@@ -249,7 +245,6 @@ export type InstallerViewState =
   | "job_checking"
   | "job_preflight"
   | "job_downloading"
-  | "job_verifying_download"
   | "job_installing"
   | "job_verifying_installation"
   | "succeeded"

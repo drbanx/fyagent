@@ -223,7 +223,7 @@ export const handlers = [
         build: 0,
         revision: 1,
       },
-      expectedSize: 0,
+      downloadSizeHint: null,
       checkedAt: "2026-01-01T00:00:00.000Z",
     }),
   ),

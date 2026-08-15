@@ -172,7 +172,7 @@ function configuredPorts(): FeaturePorts {
         build: 3,
         revision: 4,
       },
-      expectedSize: 4096,
+      downloadSizeHint: 4096,
       checkedAt: "2026-08-14T00:00:00.000Z",
     }),
     getJob: async () => null,

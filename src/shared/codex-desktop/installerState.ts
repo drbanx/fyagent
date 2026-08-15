@@ -45,8 +45,6 @@ export function deriveInstallerViewState(
         return "job_preflight";
       case "downloading":
         return "job_downloading";
-      case "verifying_download":
-        return "job_verifying_download";
       case "installing":
         return "job_installing";
       case "verifying_installation":
@@ -208,7 +206,6 @@ export const installerStateMessageKeys: Readonly<
   job_checking: "codexDesktop.state.checking",
   job_preflight: "codexDesktop.state.preflight",
   job_downloading: "codexDesktop.state.downloading",
-  job_verifying_download: "codexDesktop.state.verifyingDownload",
   job_installing: "codexDesktop.state.installing",
   job_verifying_installation: "codexDesktop.state.verifyingInstallation",
   succeeded: "codexDesktop.state.succeeded",
