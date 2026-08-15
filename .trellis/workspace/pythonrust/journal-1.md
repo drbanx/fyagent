@@ -711,3 +711,24 @@ Replaced the V2 Prompt and Memory prototypes with validated native business port
 ### Status
 
 [OK] **Completed**
+
+
+## Session 22: Executable installer upstream-admission removal
+
+**Date**: 2026-08-15
+**Task**: Executable installer upstream-admission removal
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Removed upstream content and publication-field admission checks from FyAgent executable one-click installs while preserving fixed endpoints, local same-file handoff, Windows helper/ACL/file-ID/inventory protections, macOS transaction safety, post-install verification, DTO/UI contracts, tests, and long-term specs. Native HIL remains unverified; prearchive only reports three pre-existing supported-platform findings outside this task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c54bb799` | (see git log) |
+
+### Status
+
+[OK] **Completed**

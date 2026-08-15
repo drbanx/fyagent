@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 21
+- **Total Sessions**: 22
 - **Last Active**: 2026-08-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~713 | Active |
+| `journal-1.md` | ~734 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 22 | 2026-08-15 | Executable installer upstream-admission removal | `c54bb799` | `dev/laiyongjie` |
 | 21 | 2026-08-15 | V2 Prompt and Memory native business integration | `8ddef12db1e5cda508cde643fcc6e53518ff5a05` | `dev/laiyongjie` |
 | 20 | 2026-08-14 | FyAgent v2 QoderWork / TRAE Work P0 | `47c2dab` | `dev/laiyongjie` |
 | 19 | 2026-08-14 | Agent catalog interactions and managed Codex install | `2324f4f9` | `dev/laiyongjie` |
