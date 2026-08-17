@@ -174,6 +174,7 @@ export const AGENT_CATALOG_IDS = [
   "workbuddy",
   "codex",
   "claude-code",
+  "opencode",
 ] as const;
 
 export type AgentCatalogId = (typeof AGENT_CATALOG_IDS)[number];
@@ -194,6 +195,7 @@ export const AGENT_VARIANT_IDS = [
   "workbuddy",
   "codex",
   "claude-code",
+  "opencode",
 ] as const;
 
 export type AgentVariantId = (typeof AGENT_VARIANT_IDS)[number];
@@ -260,6 +262,8 @@ export const AGENT_EVIDENCE_IDS = [
   "skill_service_contract",
   "mcp_service_contract",
   "claude_official_links",
+  "opencode_product",
+  "opencode_models",
   "p0_scope",
 ] as const;
 

@@ -1,5 +1,6 @@
 import claudeCodeIconUrl from "./claude-code.svg";
 import codexIconUrl from "./codex.svg";
+import openCodeIconUrl from "./opencode.svg";
 import qoderWorkIconUrl from "./qoderwork.svg";
 import traeWorkIconUrl from "./trae-work.png";
 import workBuddyIconUrl from "./workbuddy.png";
@@ -10,6 +11,7 @@ export const agentIconIds = [
   "workbuddy",
   "codex",
   "claude-code",
+  "opencode",
 ] as const;
 
 export type AgentIconId = (typeof agentIconIds)[number];
@@ -91,6 +93,19 @@ export const agentBrandById = {
     },
     detail: {
       opticalScale: 0.92,
+      background: "transparent",
+      corner: "none",
+    },
+  },
+  opencode: {
+    iconUrl: openCodeIconUrl,
+    list: {
+      opticalScale: 0.9,
+      background: "transparent",
+      corner: "none",
+    },
+    detail: {
+      opticalScale: 0.9,
       background: "transparent",
       corner: "none",
     },

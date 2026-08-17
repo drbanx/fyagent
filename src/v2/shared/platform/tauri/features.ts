@@ -88,6 +88,7 @@ const EXPECTED_AGENT_LINK_IDS = {
   workbuddy: ["product"],
   codex: [],
   "claude-code": ["cli", "desktop"],
+  opencode: ["product", "cli"],
 } as const satisfies Readonly<
   Record<AgentCatalogId, readonly AgentOfficialLinkId[]>
 >;
@@ -98,6 +99,7 @@ const EXPECTED_AGENT_VARIANT_IDS = {
   workbuddy: "workbuddy",
   codex: "codex",
   "claude-code": "claude-code",
+  opencode: "opencode",
 } as const;
 
 function isOneOf<T extends string>(

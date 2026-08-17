@@ -43,6 +43,7 @@ const variantById = {
   workbuddy: "workbuddy",
   codex: "codex",
   "claude-code": "claude-code",
+  opencode: "opencode",
 } as const;
 
 function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {

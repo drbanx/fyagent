@@ -107,6 +107,7 @@ const agentVariantById = {
   workbuddy: "workbuddy",
   codex: "codex",
   "claude-code": "claude-code",
+  opencode: "opencode",
 } as const;
 
 function catalogEntry(
