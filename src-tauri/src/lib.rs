@@ -87,7 +87,7 @@ use std::{
     collections::VecDeque,
     fmt,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
     },
     time::Duration,
@@ -351,6 +351,119 @@ fn emit_main_window_layout_mode(
     Ok(())
 }
 
+// #region agent log
+fn agent_debug_append(path: &std::path::Path, line: &str, create_parent: bool) -> bool {
+    use std::io::Write;
+    if create_parent {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    } else if !path.parent().is_some_and(std::path::Path::is_dir) {
+        return false;
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| file.write_all(line.as_bytes()))
+        .is_ok()
+}
+
+fn agent_debug_log(hypothesis_id: &str, location: &str, message: &str, data: serde_json::Value) {
+    static ANNOUNCED: AtomicBool = AtomicBool::new(false);
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let payload = serde_json::json!({
+        "sessionId": "0bf40e",
+        "runId": "windows-pre-fix",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": timestamp,
+    });
+    let line = format!("{payload}\n");
+
+    let mut targets: Vec<(std::path::PathBuf, bool)> = Vec::new();
+    targets.push((
+        std::path::PathBuf::from(
+            "/Users/pythonrust/Desktop/projects/fyagent/.cursor/debug-0bf40e.log",
+        ),
+        false,
+    ));
+    if let Ok(cwd) = std::env::current_dir() {
+        targets.push((cwd.join(".cursor").join("debug-0bf40e.log"), true));
+        let mut dir = cwd;
+        for _ in 0..8 {
+            if dir.join("src-tauri").join("tauri.conf.json").is_file() {
+                targets.push((dir.join(".cursor").join("debug-0bf40e.log"), true));
+                break;
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        targets.push((
+            std::path::PathBuf::from(local)
+                .join("FyAgent")
+                .join("debug-0bf40e.log"),
+            true,
+        ));
+    }
+    targets.sort_by(|left, right| left.0.cmp(&right.0));
+    targets.dedup_by(|left, right| left.0 == right.0);
+
+    let mut written: Vec<String> = Vec::new();
+    for (path, create_parent) in targets {
+        if agent_debug_append(&path, &line, create_parent) {
+            written.push(path.display().to_string());
+        }
+    }
+    if !ANNOUNCED.swap(true, Ordering::AcqRel) && !written.is_empty() {
+        let joined = written.join(" | ");
+        log::warn!("FyAgent debug log (session 0bf40e) written to: {joined}");
+        eprintln!("FyAgent debug log (session 0bf40e) written to: {joined}");
+    }
+}
+
+fn agent_debug_window_snapshot(window: &tauri::WebviewWindow) -> serde_json::Value {
+    let inner = window.inner_size().ok();
+    let outer = window.outer_size().ok();
+    let position = window.outer_position().ok();
+    let work = current_logical_work_area(window);
+    let (work_area, scale) = work.unzip();
+    let scale = scale.unwrap_or(0.0);
+    let overflow = match (outer, work_area, scale > 0.0) {
+        (Some(outer), Some(area), true) => serde_json::json!({
+            "x": f64::from(position.map(|pos| pos.x).unwrap_or(0)) < area.x * scale - 1.0,
+            "y": f64::from(position.map(|pos| pos.y).unwrap_or(0)) < area.y * scale - 1.0,
+            "right": f64::from(position.map(|pos| pos.x).unwrap_or(0)) + f64::from(outer.width)
+                > (area.x + area.width) * scale + 1.0,
+            "bottom": f64::from(position.map(|pos| pos.y).unwrap_or(0)) + f64::from(outer.height)
+                > (area.y + area.height) * scale + 1.0,
+        }),
+        _ => serde_json::Value::Null,
+    };
+    serde_json::json!({
+        "maximized": window.is_maximized().ok(),
+        "minimized": window.is_minimized().ok(),
+        "fullscreen": window.is_fullscreen().ok(),
+        "inner": inner.map(|size| serde_json::json!({"w": size.width, "h": size.height})),
+        "outer": outer.map(|size| serde_json::json!({"w": size.width, "h": size.height})),
+        "pos": position.map(|pos| serde_json::json!({"x": pos.x, "y": pos.y})),
+        "scale": scale,
+        "workArea": work_area.map(|area| serde_json::json!({
+            "x": area.x, "y": area.y, "w": area.width, "h": area.height
+        })),
+        "overflow": overflow,
+    })
+}
+// #endregion
+
 /// Re-evaluates only the current monitor constraint. It intentionally does not
 /// reset size or position: after returning to a large work area a legal user
 /// size stays untouched, while the product minimum becomes available again.
@@ -359,7 +472,26 @@ fn refresh_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()
         return Ok(());
     };
     let minimum = window_layout::effective_minimum_size(work_area);
+    // #region agent log
+    agent_debug_log(
+        "H4",
+        "lib.rs:refresh_main_window_layout:before",
+        "about to set_min_size after move/dpi",
+        serde_json::json!({
+            "snapshot": agent_debug_window_snapshot(window),
+            "min": {"w": minimum.width, "h": minimum.height},
+        }),
+    );
+    // #endregion
     window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
+    // #region agent log
+    agent_debug_log(
+        "H4",
+        "lib.rs:refresh_main_window_layout:after",
+        "after set_min_size",
+        serde_json::json!({ "snapshot": agent_debug_window_snapshot(window) }),
+    );
+    // #endregion
     emit_main_window_layout_mode(window, work_area, scale_factor)
 }
 
@@ -386,6 +518,17 @@ fn restore_hidden_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Re
     };
 
     let was_maximized = window.is_maximized().unwrap_or(false);
+    // #region agent log
+    agent_debug_log(
+        "H5",
+        "lib.rs:restore_hidden_main_window_layout:before",
+        "restore before unmaximize/clamp",
+        serde_json::json!({
+            "wasMaximized": was_maximized,
+            "snapshot": agent_debug_window_snapshot(window),
+        }),
+    );
+    // #endregion
     if was_maximized {
         window.unmaximize()?;
     }
@@ -404,12 +547,42 @@ fn restore_hidden_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Re
     );
     let minimum = window_layout::effective_minimum_size(work_area);
 
+    // #region agent log
+    agent_debug_log(
+        "H6",
+        "lib.rs:restore_hidden_main_window_layout:mutate",
+        "restore about to set size/position",
+        serde_json::json!({
+            "wasMaximized": was_maximized,
+            "stillMaximized": window.is_maximized().ok(),
+            "inner": {"w": size.width, "h": size.height},
+            "pos": {"x": position.x, "y": position.y},
+            "geometry": {
+                "x": geometry.x,
+                "y": geometry.y,
+                "w": geometry.width,
+                "h": geometry.height,
+                "maximized": geometry.maximized
+            },
+            "min": {"w": minimum.width, "h": minimum.height},
+            "snapshot": agent_debug_window_snapshot(window),
+        }),
+    );
+    // #endregion
     window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
     window.set_size(tauri::LogicalSize::new(geometry.width, geometry.height))?;
     window.set_position(tauri::LogicalPosition::new(geometry.x, geometry.y))?;
     if geometry.maximized {
         window.maximize()?;
     }
+    // #region agent log
+    agent_debug_log(
+        "H7",
+        "lib.rs:restore_hidden_main_window_layout:after",
+        "restore after size/position/maximize",
+        serde_json::json!({ "snapshot": agent_debug_window_snapshot(window) }),
+    );
+    // #endregion
     emit_main_window_layout_mode(window, work_area, scale_factor)
 }
 
@@ -420,6 +593,41 @@ fn install_main_window_layout_listener(window: &tauri::WebviewWindow) {
     let window_for_events = window.clone();
 
     window.on_window_event(move |event| {
+        // #region agent log
+        match event {
+            tauri::WindowEvent::Moved(position) => agent_debug_log(
+                "H8",
+                "lib.rs:window_event:moved",
+                "native window moved",
+                serde_json::json!({
+                    "eventPos": {"x": position.x, "y": position.y},
+                    "snapshot": agent_debug_window_snapshot(&window_for_events),
+                }),
+            ),
+            tauri::WindowEvent::Resized(size) => agent_debug_log(
+                "H8",
+                "lib.rs:window_event:resized",
+                "native window resized",
+                serde_json::json!({
+                    "eventSize": {"w": size.width, "h": size.height},
+                    "snapshot": agent_debug_window_snapshot(&window_for_events),
+                }),
+            ),
+            tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                agent_debug_log(
+                    "H8",
+                    "lib.rs:window_event:scale",
+                    "native scale factor changed",
+                    serde_json::json!({
+                        "scaleFactor": scale_factor,
+                        "snapshot": agent_debug_window_snapshot(&window_for_events),
+                    }),
+                );
+            }
+            _ => {}
+        }
+        // #endregion
+
         if !matches!(
             event,
             tauri::WindowEvent::Moved(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
@@ -443,6 +651,17 @@ fn install_main_window_layout_listener(window: &tauri::WebviewWindow) {
 }
 
 pub(crate) fn prepare_main_webview(window: &tauri::WebviewWindow) {
+    // #region agent log
+    agent_debug_log(
+        "H5",
+        "lib.rs:prepare_main_webview",
+        "preparing main webview",
+        serde_json::json!({
+            "cwd": std::env::current_dir().ok().map(|path| path.display().to_string()),
+            "snapshot": agent_debug_window_snapshot(window),
+        }),
+    );
+    // #endregion
     if let Err(error) = restore_hidden_main_window_layout(window) {
         log::warn!("Unable to apply main-window layout policy: {error}");
     }
