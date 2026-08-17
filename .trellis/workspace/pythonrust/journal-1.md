@@ -794,3 +794,25 @@ Removed upstream content and publication-field admission checks from FyAgent exe
 ### Status
 
 [OK] **Completed**
+
+
+## Session 25: SelectionLens 去掉 layoutId 缩放变形
+
+**Date**: 2026-08-17
+**Task**: SelectionLens 去掉 layoutId 缩放变形
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+layoutId 非等比 scale 叠加 backdrop-filter 会压扁滑块并拉糊顶栏文字。改为轨道 overlay 弹簧驱动 left/width；规格禁止再对玻璃滑块做 scale 投影。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9bb391d0` | (see git log) |
+| `85e5ebed` | (see git log) |
+
+### Status
+
+[OK] **Completed**
