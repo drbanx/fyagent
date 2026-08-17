@@ -12,15 +12,16 @@ FyAgent 生产壳是 V2（`src/index.html` 加载 `src/v2/main.tsx`）。顶栏�
 
 ## Confirmed Facts
 
-- 源滑块可打断，是因为 `layoutId` 共享元素会立刻改目标，而不是 width 动画队列。
-- fyagent 已有 `framer-motion`，V2 尚未使用；不要引入 `motion/react`。
+- 源滑块可打断，是因为共享视觉元素会立刻改目标，而不是 CSS width 动画队列。
+- fyagent 已有 `framer-motion`；V2 滑块带 `backdrop-filter`，不能照搬源项目的 `layoutId` scale 投影（大→小会 `scaleX≈0.29` 并拉糊文字）。
 - 选中态今天靠元素自身 `background: var(--fy-selected)`。若滑块滑动时仍保留这层填充，新项会先闪出背景。
 - 遗留 V1 Settings/Usage Tabs 不在生产入口。
 
 ## Requirements
 
-- R1：新增 V2 内部可复用滑块组件，移植源项目的 layoutId 运动、可打断行为，以及 pill 的填充 / 阴影 / 模糊 / 圆角 / 对比边。颜色映射到 `--fy-*` 玻璃 token，不搬源项目业务。
-- R2：顶栏六菜单切换使用该滑块。`LiquidGlassLens` 仍只挂在激活 `NavLink` 内，不承担滑动，也不把 SVG filter 做 layoutId。
+- R1：新增 V2 内部可复用滑块组件，移植源项目的可打断弹簧手感，以及 pill 的填充 / 阴影 / 模糊 / 圆角 / 对比边。用 overlay 几何弹簧，不用 `layoutId`。颜色映射到 `--fy-*` 玻璃 token，不搬源项目业务。
+- R2：顶栏六菜单切换使用该滑块。`LiquidGlassLens` 仍只挂在激活 `NavLink` 内，不承担滑动，也不把 SVG filter 放到 overlay 上。
+- R7：大项切到小项时滑块不得非等比缩放变形；滑块上的标签文字保持清晰。
 - R3：Agent / 模型侧栏目录选择使用同一组件。
 - R4：所有 segmented / tabs 与主从列表选择接上，包括 Memory 类型、Skills 视图与发现来源、MCP 编辑模式、各页 `fy-feature-list-item`、UI Lab tabs。
 - R5：尊重 `prefers-reduced-motion`：减弱为瞬间换位，保留选中语义。
@@ -28,13 +29,14 @@ FyAgent 生产壳是 V2（`src/index.html` 加载 `src/v2/main.tsx`）。顶栏�
 
 ## Acceptance Criteria
 
-- [ ] AC1：可复用组件只在当前选中项挂载一个 `aria-hidden` pill；同一组内共享一个 `layoutId`。（R1）
-- [ ] AC2：运动配置与源项目 L1 control 弹簧一致；新点击改目标而不排队。（R1）
-- [ ] AC3：顶栏六菜单切换时滑块在菜单间滑动；仍恰好一个 `LiquidGlassLens`。（R2）
-- [ ] AC4：Catalog 侧栏与 feature 列表切换时滑块跟随当前 `aria-current` 项。（R3、R4）
-- [ ] AC5：feature tabs 与 UI Lab tabs 切换时滑块跟随 `aria-selected` / `data-state`。（R4）
-- [ ] AC6：选中项不再另铺一层会抢先出现的静态填充；文字仍在滑块之上。（R1）
-- [ ] AC7：`mise run typecheck:v2` 与 `mise run test:v2` 通过；新增组件测试覆盖 active/inactive 挂载。（R1–R5）
+- [x] AC1：每组只有一个 `aria-hidden` overlay 滑块；`SelectionLens` 只登记当前宿主。（R1）
+- [x] AC2：运动配置与源项目 L1 control 弹簧一致；新点击改目标而不排队。（R1）
+- [x] AC3：顶栏六菜单切换时滑块在菜单间滑动；仍恰好一个 `LiquidGlassLens`。（R2）
+- [x] AC4：Catalog 侧栏与 feature 列表切换时滑块跟随当前 `aria-current` 项。（R3、R4）
+- [x] AC5：feature tabs 与 UI Lab tabs 切换时滑块跟随 `aria-selected` / `data-state`。（R4）
+- [x] AC6：选中项不再另铺一层会抢先出现的静态填充；文字仍在滑块之上。（R1）
+- [ ] AC7：`mise run typecheck:v2` 与相关 V2 测试通过；新增组件测试覆盖 active/inactive 挂载。（R1–R5）
+- [ ] AC8：大→小切换时 overlay 保持 `scaleX/scaleY === 1`，标签 `filter` 为 `none`。（R7）
 
 ## Out of Scope
 

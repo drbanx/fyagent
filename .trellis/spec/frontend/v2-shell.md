@@ -57,6 +57,8 @@ interface LiquidGlassLensProps {
 interface SelectionLensGroupProps {
   id: string;
   children: ReactNode;
+  className?: string;
+  inset?: number;
 }
 
 interface SelectionLensProps {
@@ -78,10 +80,13 @@ export const selectionLensTransition = {
 
 `LiquidGlassLens` wraps `@samasante/liquid-glass@0.1.1` with balanced optics
 plus `dispersion: 0`, `live={false}`, and `filterResolution={1}`. The sliding
-selection pill is a separate V2 adapter, `SelectionLens`, which uses
-`framer-motion` `layoutId` inside `SelectionLensGroup`. The group `id` is the
-shared `layoutId`; do not pass `layoutId` as a lens prop. Do not import
-`framer-motion` outside `shared/ui/SelectionLens.tsx`. The lifecycle-ready
+selection pill is a separate V2 adapter, `SelectionLens`. `SelectionLensGroup`
+owns one overlay pill and springs `left` / `top` / `width` / `height` to the
+active host. Do not use Motion `layoutId` or `LayoutGroup` scale projection
+for this pill: non-uniform `scaleX` plus `backdrop-filter` smears the capsule
+and the label. `SelectionLens` only registers the active host; it is not the
+painted node. Do not import `framer-motion` outside
+`shared/ui/SelectionLens.tsx`. The lifecycle-ready
 operation returns `Promise<void>` and owns a module-level promise guard. Its
 native side effect remains the existing payload-free `frontend-deeplink-ready`
 event.
@@ -190,15 +195,16 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
 - The pill is CSS interactive glass (`--fy-glass-interactive`,
   `--fy-shadow-control`, inset highlight, backdrop fallback). Host selected
   backgrounds must not also paint a static fill, or the next item will flash
-  before the pill arrives. Motion uses `selectionLensTransition`; a new click
-  retargets the shared layout node instead of queuing a width/left animation.
+  before the pill arrives. Motion uses `selectionLensTransition` on a single
+  overlay's `left` / `top` / `width` / `height`. A new click retargets that
+  spring. Do not interpolate size with `transform: scale`.
 - The `NavLink` owns hit area, focus, accessible name, and `aria-current`.
   Refraction is decorative enhancement. Project CSS must independently express
   tint, selected border/color/shadow, edge/highlight, and backdrop fallback.
 - Keep broad structural glass in CSS. SVG filters are not a substitute for
   accessible state and must not be animated across layout or multiplied across
-  controls. The sliding pill may use Motion `layoutId` projection; do not put
-  the SVG `Glass` node on that shared-layout element.
+  controls. Do not put the SVG `Glass` node on the sliding pill, and do not
+  put the label inside a scaled `layoutId` projection.
 
 ### Styling and responsive behavior
 
@@ -207,8 +213,9 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
 - Namespace V2 selectors. Do not use `transition: all`, animate the
   `backdrop-filter` property, globally hide scrollbars, or ignore
   `prefers-reduced-motion`. `SelectionLens` is the only approved layout
-  animation; it uses Motion `layoutId` and collapses to an instant swap when
-  the user prefers reduced motion.
+  animation; it springs overlay geometry and collapses to an instant swap when
+  the user prefers reduced motion. Never combine `layoutId` scale projection
+  with `backdrop-filter` on the same node.
 - Keep the chrome row near 68px, brand mark 28px, brand text 19px, navigation
   track 46px, and navigation/tool targets 38px. Native macOS Overlay adds a
   28px inert drag strip above that chrome row so the window can be dragged and
@@ -252,7 +259,8 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Condition                                                              | Required result                                                                    |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | Empty hash, root route, or unknown route                               | Redirect to `#/models`; Models alone has `aria-current="page"`                     |
-| Any normal production route                                            | Exactly one active primary link, one production `LiquidGlassLens`, and one nav `SelectionLens`; other tracks may each have their own pill |
+| A `layoutId` pill uses non-uniform scale with `backdrop-filter`            | Architecture test fails; geometry overlay must keep `scaleX/scaleY` at 1 |
+| Any normal production route                                            | Exactly one active primary link, one production `LiquidGlassLens`, and one nav `SelectionLens` overlay; other tracks may each have their own pill |
 | UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
 | React StrictMode or repeated ready calls                               | One native `frontend-deeplink-ready` emission per renderer lifetime                |
@@ -274,10 +282,11 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 
 - **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that
   `NavLink` alone owns `aria-current="page"`, contains the sole production
-  `LiquidGlassLens` plus the nav `SelectionLens`, remains keyboard-focusable,
-  and the Agent directory renders its approved master/detail UI with its own
-  catalog pill. Models, Skills, MCP, Prompts, and Memory render only their
-  approved bounded feature surfaces.
+  `LiquidGlassLens`, remains keyboard-focusable, and the nav track keeps one
+  overlay `SelectionLens` aligned to that link. The Agent directory renders
+  its approved master/detail UI with its own catalog pill. Models, Skills,
+  MCP, Prompts, and Memory render only their approved bounded feature
+  surfaces.
 - **Base:** Opening without a route lands on `#/models`, with six links and
   three tools visible. Browser preview has no system or simulated controls.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
@@ -301,8 +310,9 @@ mise run build:renderer
 
 - Unit tests assert default/wildcard redirects, six-route order, Router-owned
   selection, `aria-current`, a sole production `LiquidGlassLens`, one nav
-  `SelectionLens` on the active link, the L1 control spring, no lens outside a
-  group, the TopBar's nine-stop primary
+  `SelectionLens` overlay on the track, the L1 control spring, no lens outside a
+  group, no `layoutId` / `LayoutGroup` on the pill adapter, the TopBar's
+  nine-stop primary
   tab order, stable accessible names, inert tool clicks, absence of custom
   caption buttons, six non-empty product pages, and idempotent ready behavior.
   Browser/jsdom shells have no drag strip; native macOS Overlay is allowed one
@@ -310,7 +320,8 @@ mise run build:renderer
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract. They keep `framer-motion` behind
-  `shared/ui/SelectionLens.tsx` and `@samasante/liquid-glass` behind
+  `shared/ui/SelectionLens.tsx`, reject `layoutId` / `LayoutGroup` on that
+  adapter, and keep `@samasante/liquid-glass` behind
   `LiquidGlassLens`. They positively allow only the exact neutral Codex
   shared boundary and negatively prove that a neighboring shared path remains
   forbidden.
@@ -348,19 +359,21 @@ acceptance evidence unless a task explicitly requires them.
 
 ## 7. Wrong vs Correct
 
-Wrong: measure option widths and queue a CSS `left`/`width` transition, or pass
-`layoutId` into every lens.
+Wrong: morph the pill with `layoutId` scale projection (or a CSS transition
+queue). Non-uniform `scaleX` plus `backdrop-filter` deforms the capsule and
+smears the label.
 
 ```tsx
+<motion.div layoutId="nav" className="fy-selection-lens" />
 <motion.div animate={{ left, width }} transition={{ duration: 0.25 }} />
-<SelectionLens layoutId="nav" active={isActive} />
 ```
 
-Correct: one group per exclusive track; the active option mounts the pill, and
-a later click retargets the same shared layout node.
+Correct: one overlay pill per exclusive track; spring `left` / `top` /
+`width` / `height` to the active host so a later click retargets without
+scale.
 
 ```tsx
-<SelectionLensGroup id="primary-nav">
+<SelectionLensGroup id="primary-nav" inset={1}>
   <NavLink to={item.path}>
     {({ isActive }) => (
       <>

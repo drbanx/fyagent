@@ -2,8 +2,8 @@
 
 ## Checklist
 
-1. 新增 `src/v2/shared/ui/SelectionLens.tsx` 与 `selection-lens.css`：Group / Lens / Track、L1 弹簧、reduced-motion、`data-testid="selection-lens"`。
-2. 顶栏 `PrimaryNav`：Group 包六菜单；每个 `NavLink` 内放 `SelectionLens`；保留激活项上的 `LiquidGlassLens`；去掉导航选中项静态填充。
+1. 新增 `src/v2/shared/ui/SelectionLens.tsx` 与 `selection-lens.css`：Group overlay 几何弹簧 / Lens 登记宿主 / Track、L1 弹簧、reduced-motion、`data-testid="selection-lens"`。不要 `layoutId`。
+2. 顶栏 `PrimaryNav`：Group 包六菜单（`inset={1}`）；每个 `NavLink` 内放 `SelectionLens` 登记点；保留激活项上的 `LiquidGlassLens`；去掉导航选中项静态填充。
 3. `CatalogList` 内置 Group；`CatalogListItem` 在选中时渲染 Lens；去掉 catalog 选中静态填充。
 4. 接入 feature tabs：Memory 类型、Skills 视图、Skills 发现来源、MCP 编辑模式、UI Lab tabs。
 5. 接入 feature lists：Skills 已安装、MCP、Prompts、Memory 长期 / 每日。
