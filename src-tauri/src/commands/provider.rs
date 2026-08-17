@@ -2,10 +2,11 @@ use indexmap::IndexMap;
 use tauri::{Emitter, Manager, State};
 
 use crate::app_config::AppType;
+use crate::codex_config::CodexProviderFeatureIntent;
 use crate::commands::copilot::CopilotAuthState;
 use crate::commands::xai_oauth::XaiOAuthState;
 use crate::error::AppError;
-use crate::provider::{ClaudeDesktopMode, Provider, ProviderMutationResult};
+use crate::provider::{ClaudeDesktopMode, Provider, ProviderMeta, ProviderMutationResult};
 use crate::services::provider::QuickSetupApplyFailureCode;
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
@@ -202,10 +203,14 @@ pub struct ProviderQuickSetupRequest {
     base_url: String,
     api_key: String,
     model_id: String,
+    /// Codex 原生能力意图（生图扩展 / WebSocket），仅 codex 目标生效。
+    #[serde(default)]
+    codex_features: Option<CodexProviderFeatureIntent>,
 }
 
 impl ProviderQuickSetupRequest {
     fn into_provider(self, app_type: &AppType) -> Result<Provider, ProviderQuickSetupCommandError> {
+        let codex_features = self.codex_features.unwrap_or_default();
         let name = self.name.trim().to_string();
         let base_url = self.base_url.trim().to_string();
         let api_key = self.api_key.trim().to_string();
@@ -241,12 +246,28 @@ impl ProviderQuickSetupRequest {
                 let quote = |value: &str| {
                     serde_json::to_string(value).expect("serializing a Rust string cannot fail")
                 };
-                let config = format!(
-                    "model_provider = \"custom\"\nmodel = {}\ndisable_response_storage = true\n\n[model_providers.custom]\nname = {}\nbase_url = {}\nwire_api = \"responses\"\nrequires_openai_auth = true",
+                // 开启内置生图扩展后，请求走本地 `x-openai-actor-authorization`
+                // header，不再依赖 OpenAI 官方登录，故 requires_openai_auth=false。
+                let image_extension = codex_features.image_extension.unwrap_or(false);
+                let websockets = codex_features.websockets.unwrap_or(false);
+                let requires_openai_auth = !image_extension;
+                let mut config = format!(
+                    "model_provider = \"custom\"\nmodel = {}\ndisable_response_storage = true\n\n[model_providers.custom]\nname = {}\nbase_url = {}\nwire_api = \"responses\"\nrequires_openai_auth = {}",
                     quote(&model_id),
                     quote(&name),
                     quote(&base_url),
+                    requires_openai_auth,
                 );
+                if image_extension {
+                    config.push_str(&format!(
+                        "\nhttp_headers = {{ \"{}\" = \"{}\" }}",
+                        crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER,
+                        crate::codex_config::CODEX_IMAGE_EXTENSION_VALUE,
+                    ));
+                }
+                if websockets {
+                    config.push_str("\nsupports_websockets = true");
+                }
                 (
                     "fyagent-v2-quick-setup-codex",
                     serde_json::json!({
@@ -260,6 +281,14 @@ impl ProviderQuickSetupRequest {
         let mut provider = Provider::with_id(id.to_string(), name, settings_config, None);
         provider.category = Some("custom".to_string());
         provider.notes = Some("Created by FyAgent V2 quick setup".to_string());
+        // 显式生图选择视为已完成迁移，避免 prepare_codex_provider_features_for_save
+        // 的默认迁移覆盖用户的一键配置选择。
+        if codex_features.image_extension.is_some() {
+            provider
+                .meta
+                .get_or_insert_with(ProviderMeta::default)
+                .image_extension_configured = Some(true);
+        }
         Ok(provider)
     }
 }
@@ -1664,6 +1693,67 @@ mod provider_draft_command_tests {
         assert_eq!(
             provider.settings_config["auth"]["OPENAI_API_KEY"],
             "secret-key"
+        );
+    }
+
+    #[test]
+    fn quick_setup_request_writes_image_extension_and_websocket_features() {
+        let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+            "name": "Gateway", "baseUrl": "https://example.test/v1",
+            "apiKey": "secret-key", "modelId": "model-a",
+            "codexFeatures": { "imageExtension": true, "websockets": true }
+        }))
+        .unwrap();
+        let provider = request.into_provider(&AppType::Codex).unwrap();
+        let config = provider.settings_config["config"].as_str().unwrap();
+        assert!(
+            config.contains("requires_openai_auth = false"),
+            "开启生图后 requires_openai_auth 应为 false，实际 config:\n{config}"
+        );
+        assert!(
+            config.contains(
+                "http_headers = { \"x-openai-actor-authorization\" = \"local-image-extension\" }"
+            ),
+            "开启生图后应写入生图 header，实际 config:\n{config}"
+        );
+        assert!(
+            config.contains("supports_websockets = true"),
+            "开启 WebSocket 后应写入 supports_websockets，实际 config:\n{config}"
+        );
+        assert_eq!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn quick_setup_request_disabling_image_keeps_requires_openai_auth_true() {
+        let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+            "name": "Gateway", "baseUrl": "https://example.test/v1",
+            "apiKey": "secret-key", "modelId": "model-a",
+            "codexFeatures": { "imageExtension": false }
+        }))
+        .unwrap();
+        let provider = request.into_provider(&AppType::Codex).unwrap();
+        let config = provider.settings_config["config"].as_str().unwrap();
+        assert!(
+            config.contains("requires_openai_auth = true"),
+            "关闭生图后 requires_openai_auth 应保持 true，实际 config:\n{config}"
+        );
+        assert!(
+            !config.contains("http_headers"),
+            "关闭生图后不应写入生图 header，实际 config:\n{config}"
+        );
+        // 显式关闭也视为已完成迁移，阻止默认迁移重新开启生图
+        assert_eq!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            Some(true)
         );
     }
 }
