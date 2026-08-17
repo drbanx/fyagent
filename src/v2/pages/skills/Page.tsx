@@ -44,6 +44,10 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
+import {
+  SelectionLens,
+  SelectionLensTrack,
+} from "../../shared/ui/SelectionLens";
 
 type SkillsTab = "installed" | "discovery";
 type DialogName =
@@ -356,24 +360,33 @@ export function SkillsPage() {
           )}
         </div>
       </header>
-      <div className="fy-feature-tabs" role="tablist" aria-label="Skills 视图">
+      <SelectionLensTrack
+        id="skills-view-tabs"
+        className="fy-feature-tabs"
+        role="tablist"
+        aria-label="Skills 视图"
+      >
         <button
+          type="button"
           className="fy-feature-tab"
           role="tab"
           aria-selected={tab === "installed"}
           onClick={() => setTab("installed")}
         >
-          已安装
+          <SelectionLens active={tab === "installed"} />
+          <span>已安装</span>
         </button>
         <button
+          type="button"
           className="fy-feature-tab"
           role="tab"
           aria-selected={tab === "discovery"}
           onClick={() => setTab("discovery")}
         >
-          发现
+          <SelectionLens active={tab === "discovery"} />
+          <span>发现</span>
         </button>
-      </div>
+      </SelectionLensTrack>
       {progress && (
         <>
           <div
@@ -452,19 +465,24 @@ export function SkillsPage() {
                     aria-label="已安装 Skills 列表"
                   >
                     <h2>已安装 · {installed.length}</h2>
-                    <div className="fy-feature-list">
+                    <SelectionLensTrack
+                      id="skills-installed-list"
+                      className="fy-feature-list"
+                    >
                       {filtered.map((skill) => (
                         <button
                           key={skill.id}
+                          type="button"
                           className="fy-feature-list-item"
                           aria-current={skill.id === selected?.id}
                           onClick={() => setSelectedId(skill.id)}
                         >
+                          <SelectionLens active={skill.id === selected?.id} />
                           <strong>{skill.name}</strong>
                           <span>{skill.description || "暂无说明"}</span>
                         </button>
                       ))}
-                    </div>
+                    </SelectionLensTrack>
                   </section>
                   {selected && (
                     <Detail
@@ -674,24 +692,33 @@ function Discovery({
         </select>
         <Button onClick={() => setDialog("repos")}>管理仓库</Button>
       </div>
-      <div className="fy-feature-tabs" role="tablist" aria-label="发现来源">
+      <SelectionLensTrack
+        id="skills-discovery-source-tabs"
+        className="fy-feature-tabs"
+        role="tablist"
+        aria-label="发现来源"
+      >
         <button
+          type="button"
           className="fy-feature-tab"
           role="tab"
           aria-selected={source === "repos"}
           onClick={() => setSource("repos")}
         >
-          仓库
+          <SelectionLens active={source === "repos"} />
+          <span>仓库</span>
         </button>
         <button
+          type="button"
           className="fy-feature-tab"
           role="tab"
           aria-selected={source === "skillssh"}
           onClick={() => setSource("skillssh")}
         >
-          skills.sh
+          <SelectionLens active={source === "skillssh"} />
+          <span>skills.sh</span>
         </button>
-      </div>
+      </SelectionLensTrack>
       {source === "repos" ? (
         <div className="fy-feature-toolbar">
           <Input

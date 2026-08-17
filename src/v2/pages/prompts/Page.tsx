@@ -32,6 +32,10 @@ import {
   Spinner,
   Switch,
 } from "../../shared/ui/primitives";
+import {
+  SelectionLens,
+  SelectionLensTrack,
+} from "../../shared/ui/SelectionLens";
 
 import "./page.css";
 
@@ -458,14 +462,16 @@ export function PromptsPage() {
                 {enabledCount} 条已启用
               </span>
             </h2>
-            <div className="fy-feature-list">
+            <SelectionLensTrack id="prompts-list" className="fy-feature-list">
               {filtered.map((prompt) => (
                 <button
                   key={prompt.id}
+                  type="button"
                   className="fy-feature-list-item"
                   aria-current={prompt.id === selected?.id}
                   onClick={() => setSelectedId(prompt.id)}
                 >
+                  <SelectionLens active={prompt.id === selected?.id} />
                   <strong>{prompt.name}</strong>
                   <span>
                     {prompt.description || "暂无描述"} ·{" "}
@@ -473,7 +479,7 @@ export function PromptsPage() {
                   </span>
                 </button>
               ))}
-            </div>
+            </SelectionLensTrack>
           </section>
 
           {selected && (

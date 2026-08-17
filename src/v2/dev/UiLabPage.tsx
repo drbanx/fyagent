@@ -1,11 +1,16 @@
+import { useState } from "react";
+
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 
 import { LiquidGlassLens } from "../shared/ui/LiquidGlassLens";
 import { GlassButton, IconButton, Tooltip } from "../shared/ui/primitives";
+import { SelectionLens, SelectionLensGroup } from "../shared/ui/SelectionLens";
 import { PopoverPrimitive, TabsPrimitive } from "../shared/ui/vendor";
 
 export function UiLabPage() {
+  const [tab, setTab] = useState("one");
+
   return (
     <section className="fy-ui-lab" aria-labelledby="fy-ui-lab-title">
       <header className="fy-ui-lab-heading">
@@ -64,11 +69,23 @@ export function UiLabPage() {
 
         <article className="fy-ui-lab-card">
           <h2>功能信息</h2>
-          <TabsPrimitive.Root className="fy-lab-tabs" defaultValue="one">
-            <TabsPrimitive.List aria-label="功能状态">
-              <TabsPrimitive.Trigger value="one">已启用</TabsPrimitive.Trigger>
-              <TabsPrimitive.Trigger value="two">待设置</TabsPrimitive.Trigger>
-            </TabsPrimitive.List>
+          <TabsPrimitive.Root
+            className="fy-lab-tabs"
+            value={tab}
+            onValueChange={setTab}
+          >
+            <SelectionLensGroup id="ui-lab-tabs">
+              <TabsPrimitive.List aria-label="功能状态">
+                <TabsPrimitive.Trigger value="one">
+                  <SelectionLens active={tab === "one"} />
+                  <span>已启用</span>
+                </TabsPrimitive.Trigger>
+                <TabsPrimitive.Trigger value="two">
+                  <SelectionLens active={tab === "two"} />
+                  <span>待设置</span>
+                </TabsPrimitive.Trigger>
+              </TabsPrimitive.List>
+            </SelectionLensGroup>
             <TabsPrimitive.Content value="one">
               已启用的功能会显示在这里。
             </TabsPrimitive.Content>

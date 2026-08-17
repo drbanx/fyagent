@@ -35,6 +35,10 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
+import {
+  SelectionLens,
+  SelectionLensTrack,
+} from "../../shared/ui/SelectionLens";
 
 const DEFAULT_NEW_APPS: McpTargetId[] = [
   "claude",
@@ -349,14 +353,19 @@ export function McpPage() {
             <div className="fy-feature-master">
               <section className="fy-feature-panel" aria-label="MCP 列表">
                 <h2>MCP 服务 · {servers.length}</h2>
-                <div className="fy-feature-list">
+                <SelectionLensTrack
+                  id="mcp-server-list"
+                  className="fy-feature-list"
+                >
                   {filtered.map((server) => (
                     <button
                       key={server.id}
+                      type="button"
                       className="fy-feature-list-item"
                       aria-current={server.id === selected?.id}
                       onClick={() => setSelectedId(server.id)}
                     >
+                      <SelectionLens active={server.id === selected?.id} />
                       <strong>{server.name}</strong>
                       <span>
                         {server.description ||
@@ -371,7 +380,7 @@ export function McpPage() {
                       </span>
                     </button>
                   ))}
-                </div>
+                </SelectionLensTrack>
               </section>
               {selected && (
                 <ServerDetail
@@ -728,7 +737,8 @@ function McpEditor({
             onChange={(event) => setDocs(event.target.value)}
           />
         </label>
-        <div
+        <SelectionLensTrack
+          id="mcp-editor-mode-tabs"
           className="fy-feature-form-span fy-feature-tabs"
           role="tablist"
           aria-label="编辑模式"
@@ -740,7 +750,8 @@ function McpEditor({
             aria-selected={mode === "quick"}
             onClick={() => switchMode("quick")}
           >
-            快速配置
+            <SelectionLens active={mode === "quick"} />
+            <span>快速配置</span>
           </button>
           <button
             type="button"
@@ -749,9 +760,10 @@ function McpEditor({
             aria-selected={mode === "advanced"}
             onClick={() => switchMode("advanced")}
           >
-            JSON 编辑
+            <SelectionLens active={mode === "advanced"} />
+            <span>JSON 编辑</span>
           </button>
-        </div>
+        </SelectionLensTrack>
         {mode === "quick" ? (
           <>
             <label className="fy-control-field">

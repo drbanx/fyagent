@@ -61,7 +61,7 @@
 .fy-feature-tab[aria-selected="true"] {
   color: var(--fy-accent-text);
   font-weight: 650;
-  background: var(--fy-selected);
+  background: transparent;
 }
 .fy-feature-master {
   display: grid;
@@ -105,9 +105,10 @@
 .fy-feature-list-item:hover {
   background: rgba(229, 246, 255, 0.1);
 }
-.fy-feature-list-item[aria-current="true"] {
-  border-color: var(--fy-selected-border);
-  background: var(--fy-selected);
+.fy-feature-list-item[aria-current="true"],
+.fy-feature-list-item[aria-current="true"]:hover {
+  border-color: transparent;
+  background: transparent;
 }
 .fy-feature-list-item strong,
 .fy-feature-list-item span {

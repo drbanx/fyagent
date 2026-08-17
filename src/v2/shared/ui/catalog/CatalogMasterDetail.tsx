@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import type { AgentBrandAsset } from "../../assets/agents";
 import { classNames } from "../../design-system/classNames";
+import { SelectionLens, SelectionLensGroup } from "../SelectionLens";
 
 import "./catalog.css";
 
@@ -62,9 +63,11 @@ export function CatalogRail({
 
 export function CatalogList({ children }: { children: ReactNode }) {
   return (
-    <div className="fy-catalog-list" role="list">
-      {children}
-    </div>
+    <SelectionLensGroup id="catalog-list">
+      <div className="fy-catalog-list" role="list">
+        {children}
+      </div>
+    </SelectionLensGroup>
   );
 }
 
@@ -137,6 +140,7 @@ export function CatalogListItem({
         disabled={disabled}
         onClick={onSelect}
       >
+        <SelectionLens active={selected} />
         <BrandIconFrame asset={asset} size="list" />
         <span className="fy-catalog-list-copy">
           <strong>{label}</strong>

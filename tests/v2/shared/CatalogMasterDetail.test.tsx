@@ -52,6 +52,7 @@ describe("CatalogMasterDetail", () => {
       name: "QoderWork CN 能力待验证",
     });
     expect(item).toHaveAttribute("aria-current", "true");
+    expect(within(item).getByTestId("selection-lens")).toBeVisible();
     expect(item.querySelector('[data-size="list"]')).toHaveAttribute(
       "data-background",
       brand.list.background,

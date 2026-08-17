@@ -9,9 +9,8 @@
 }
 
 .fy-app-shell-macos-overlay {
-  grid-template-rows: calc(
-      var(--fy-titlebar-drag-height) + var(--fy-top-bar-height)
-    )
+  grid-template-rows:
+    calc(var(--fy-titlebar-drag-height) + var(--fy-top-bar-height))
     minmax(0, 1fr);
 }
 
@@ -147,12 +146,10 @@
 
 .fy-primary-nav-item-selected,
 .fy-primary-nav-item-selected:hover {
-  border-color: var(--fy-selected-border);
+  border-color: transparent;
   color: var(--fy-accent-text);
-  background: var(--fy-selected);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 5px 16px rgba(10, 31, 51, 0.22);
+  background: transparent;
+  box-shadow: none;
 }
 
 .fy-liquid-glass-lens {
@@ -173,6 +170,15 @@
     0 7px 18px rgba(8, 29, 48, 0.24);
   backdrop-filter: blur(16px) saturate(1.3);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
+}
+
+.fy-primary-nav-item .fy-liquid-glass-lens {
+  border-color: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .fy-liquid-glass-lens .fy-primary-nav-label {
@@ -442,10 +448,10 @@
 }
 
 .fy-lab-tabs [role="tab"][data-state="active"] {
-  border-color: var(--fy-selected-border);
+  border-color: transparent;
   color: var(--fy-accent-text);
-  background: var(--fy-selected);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  background: transparent;
+  box-shadow: none;
 }
 
 .fy-lab-tabs [role="tabpanel"] {

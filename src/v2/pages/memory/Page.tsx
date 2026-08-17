@@ -29,6 +29,10 @@ import {
   Spinner,
   Switch,
 } from "../../shared/ui/primitives";
+import {
+  SelectionLens,
+  SelectionLensTrack,
+} from "../../shared/ui/SelectionLens";
 
 import "./page.css";
 
@@ -186,24 +190,33 @@ export function MemoryPage() {
           <p>管理 OpenClaw 与 Hermes 的长期记忆和每日记录。</p>
         </div>
       </header>
-      <div className="fy-feature-tabs" role="tablist" aria-label="记忆类型">
+      <SelectionLensTrack
+        id="memory-type-tabs"
+        className="fy-feature-tabs"
+        role="tablist"
+        aria-label="记忆类型"
+      >
         <button
+          type="button"
           className="fy-feature-tab"
           role="tab"
           aria-selected={activeTab === "long-term"}
           onClick={() => switchTab("long-term")}
         >
-          长期记忆
+          <SelectionLens active={activeTab === "long-term"} />
+          <span>长期记忆</span>
         </button>
         <button
+          type="button"
           className="fy-feature-tab"
           role="tab"
           aria-selected={activeTab === "daily"}
           onClick={() => switchTab("daily")}
         >
-          每日记忆
+          <SelectionLens active={activeTab === "daily"} />
+          <span>每日记忆</span>
         </button>
-      </div>
+      </SelectionLensTrack>
       {activeTab === "long-term" ? (
         <LongTermView
           onDirtyChange={setDirty}
@@ -380,19 +393,24 @@ function LongTermView({
       <div className="fy-feature-master fy-memory-master">
         <section className="fy-feature-panel" aria-label="长期记忆资源">
           <h2>长期记忆 · 4</h2>
-          <div className="fy-feature-list">
+          <SelectionLensTrack
+            id="memory-document-list"
+            className="fy-feature-list"
+          >
             {MEMORY_DOCUMENTS.map((document) => (
               <button
                 key={document.id}
+                type="button"
                 className="fy-feature-list-item"
                 aria-current={document.id === selectedId}
                 onClick={() => selectDocument(document.id)}
               >
+                <SelectionLens active={document.id === selectedId} />
                 <strong>{document.title}</strong>
                 <span>{document.description}</span>
               </button>
             ))}
-          </div>
+          </SelectionLensTrack>
         </section>
         <LongTermEditor
           key={selectedId}
@@ -781,14 +799,19 @@ function DailyView({
             <h2>
               {debouncedSearch ? "搜索结果" : "每日文件"} · {rows.length}
             </h2>
-            <div className="fy-feature-list fy-memory-daily-list">
+            <SelectionLensTrack
+              id="memory-daily-list"
+              className="fy-feature-list fy-memory-daily-list"
+            >
               {rows.map((file) => (
                 <button
                   key={file.filename}
+                  type="button"
                   className="fy-feature-list-item"
                   aria-current={file.filename === resolvedFile}
                   onClick={() => selectFile(file.filename)}
                 >
+                  <SelectionLens active={file.filename === resolvedFile} />
                   <strong>{file.filename}</strong>
                   <span>
                     {"matchCount" in file
@@ -798,7 +821,7 @@ function DailyView({
                   <span>{fileMeta(file)}</span>
                 </button>
               ))}
-            </div>
+            </SelectionLensTrack>
           </section>
           {resolvedFile ? (
             fileQuery.isLoading ? (

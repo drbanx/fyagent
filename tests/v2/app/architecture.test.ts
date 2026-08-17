@@ -113,9 +113,7 @@ function isWithin(parent: string, candidate: string): boolean {
 }
 
 function isAllowedV2RepositoryTarget(target: string): boolean {
-  return (
-    isWithin(v2Root, target) || isWithin(neutralCodexDesktopRoot, target)
-  );
+  return isWithin(v2Root, target) || isWithin(neutralCodexDesktopRoot, target);
 }
 
 function resolveRepositoryImport(
@@ -279,6 +277,22 @@ describe("FyAgent V2 architecture boundary", () => {
     expect(
       violations,
       `The liquid-glass package escaped its V2 adapter:\n${violations.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("keeps framer-motion behind the selection-lens adapter", () => {
+    const adapterPath = "shared/ui/SelectionLens.tsx";
+    const violations = parsedModules.flatMap(({ references }) =>
+      references.flatMap(({ file, line, specifier }) =>
+        specifier === "framer-motion" && relativeV2Path(file) !== adapterPath
+          ? [`${relativeV2Path(file)}:${line} imports ${specifier}`]
+          : [],
+      ),
+    );
+
+    expect(
+      violations,
+      `framer-motion escaped its V2 adapter:\n${violations.join("\n")}`,
     ).toEqual([]);
   });
 

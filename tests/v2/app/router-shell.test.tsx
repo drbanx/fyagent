@@ -85,10 +85,14 @@ describe("FyAgent V2 routing", () => {
       const router = renderRoute(initialEntry);
 
       await expectPath(router, "/models");
+      const navigation = screen.getByRole("navigation", { name: "主导航" });
       expect(
         screen.getByRole("link", { name: "模型", current: "page" }),
       ).toHaveAttribute("href", "/models");
       expect(screen.getAllByTestId("liquid-glass-lens")).toHaveLength(1);
+      expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(
+        1,
+      );
     },
   );
 
@@ -112,6 +116,10 @@ describe("FyAgent V2 routing", () => {
       expect(
         within(navigation).getAllByTestId("liquid-glass-lens"),
       ).toHaveLength(1);
+      expect(within(activeLink).getByTestId("selection-lens")).toBeVisible();
+      expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(
+        1,
+      );
       const content = screen.getByRole("main", { name: "内容" });
       expect(content).not.toBeEmptyDOMElement();
     },
