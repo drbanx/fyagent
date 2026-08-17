@@ -58,6 +58,7 @@ const TARGET_PRESENTATION: Record<
   workbuddy: { label: "WorkBuddy", summary: "管理模型设置" },
   codex: { label: "Codex", summary: "快速配置模型" },
   claude: { label: "Claude Code", summary: "快速配置模型" },
+  opencode: { label: "OpenCode", summary: "在 OpenCode 中完成模型设置" },
 };
 
 const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
@@ -66,6 +67,7 @@ const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
   workbuddy: "workbuddy",
   codex: "codex",
   claude: "claude-code",
+  opencode: "opencode",
 };
 
 type Notice = {
@@ -1048,6 +1050,102 @@ function QoderGuidancePanel() {
   );
 }
 
+function OpenCodeGuidancePanel() {
+  const { ports } = useFeatures();
+  const navigate = useNavigate();
+  const catalogQuery = useAgentCatalog();
+  const [opening, setOpening] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const openLock = useRef(false);
+  const mountedRef = useRef(true);
+  const entry = catalogQuery.data?.agents.find(
+    (agent) => agent.id === "opencode",
+  );
+  const productLink = entry?.officialLinks.find(
+    (link) => link.id === "product",
+  );
+  const productCapability = entry?.capabilities.find(
+    (capability) => capability.id === "product.open",
+  );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      openLock.current = false;
+    };
+  }, []);
+
+  const openOfficial = async () => {
+    if (!productLink || openLock.current) return;
+    openLock.current = true;
+    setOpening(true);
+    setNotice(null);
+    try {
+      await ports.settings.openExternal(productLink.url);
+    } catch {
+      if (mountedRef.current) {
+        setNotice({
+          tone: "error",
+          title: "无法打开官方设置",
+          description: "请稍后重试。",
+        });
+      }
+    } finally {
+      openLock.current = false;
+      if (mountedRef.current) setOpening(false);
+    }
+  };
+
+  return (
+    <CatalogDetail
+      className="fy-models-config-panel"
+      ariaLabel="OpenCode 模型设置"
+    >
+      <header className="fy-models-config-heading">
+        <div>
+          <h2>OpenCode</h2>
+          <p>在 OpenCode 中选择模型，并在 FyAgent 中管理 MCP 与 Skills。</p>
+        </div>
+        <Badge tone="neutral">在 OpenCode 中完成模型设置</Badge>
+      </header>
+
+      <InlineNotice>
+        模型配置请在 OpenCode 中完成；FyAgent 可管理 MCP 与 Skills 同步。
+      </InlineNotice>
+
+      {catalogQuery.isLoading && (
+        <Spinner label="正在读取 OpenCode 官方入口" />
+      )}
+      {catalogQuery.isError && (
+        <InlineNotice tone="error">
+          暂时无法获取官方网站，请稍后重试。
+        </InlineNotice>
+      )}
+      <div className="fy-models-actions">
+        <Button
+          className="fy-control-button-primary"
+          onClick={() => navigate("/agents?target=opencode")}
+        >
+          管理 MCP 和 Skills
+        </Button>
+        <Button
+          disabled={
+            !productLink ||
+            (productCapability?.mode !== "direct" &&
+              productCapability?.mode !== "assisted") ||
+            opening
+          }
+          onClick={() => void openOfficial()}
+        >
+          {opening ? "正在打开…" : "打开官方设置"}
+        </Button>
+      </div>
+      <NoticeView notice={notice} />
+    </CatalogDetail>
+  );
+}
+
 const traeProbeCopy: Readonly<
   Record<
     TraeModelProbeResult["state"],
@@ -1466,6 +1564,8 @@ function TargetPanel({
       return <QoderGuidancePanel />;
     case "trae":
       return <TraePreflightPanel />;
+    case "opencode":
+      return <OpenCodeGuidancePanel />;
   }
 }
 

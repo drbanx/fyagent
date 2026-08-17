@@ -143,7 +143,7 @@ function catalogEntry(
 function catalogFixture(): AgentCatalogResult {
   return {
     contractVersion: 3,
-    reviewedAt: "2026-08-14",
+    reviewedAt: "2026-08-17",
     agents: [
       catalogEntry("qoderwork", "QoderWork CN", [
         {
@@ -177,6 +177,18 @@ function catalogFixture(): AgentCatalogResult {
           id: "desktop",
           label: "Claude Desktop",
           url: "https://claude.com/download",
+        },
+      ]),
+      catalogEntry("opencode", "OpenCode", [
+        {
+          id: "product",
+          label: "打开 OpenCode 官方页面",
+          url: "https://opencode.ai",
+        },
+        {
+          id: "cli",
+          label: "OpenCode CLI",
+          url: "https://opencode.ai/docs/cli",
         },
       ]),
     ],

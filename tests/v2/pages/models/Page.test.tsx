@@ -128,6 +128,7 @@ describe("V2 Models page", () => {
       "WorkBuddy管理模型设置",
       "Codex快速配置模型",
       "Claude Code快速配置模型",
+      "OpenCode在 OpenCode 中完成模型设置",
     ]);
 
     const expectedIcons = [
@@ -136,6 +137,7 @@ describe("V2 Models page", () => {
       getAgentIcon("workbuddy"),
       getAgentIcon("codex"),
       getAgentIcon("claude-code"),
+      getAgentIcon("opencode"),
     ];
     buttons.forEach((button, index) => {
       const icon = button.querySelector("img");

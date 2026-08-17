@@ -15,6 +15,7 @@ describe("models quick setup helpers", () => {
       "workbuddy",
       "codex",
       "claude",
+      "opencode",
     ]);
     expect(parseModelTarget("codex")).toBe("codex");
     expect(parseModelTarget("trae")).toBe("trae");

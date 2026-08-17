@@ -4,6 +4,7 @@ export const MODEL_TARGETS = [
   "workbuddy",
   "codex",
   "claude",
+  "opencode",
 ] as const;
 
 export type ModelTarget = (typeof MODEL_TARGETS)[number];
