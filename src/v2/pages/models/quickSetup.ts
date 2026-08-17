@@ -107,14 +107,16 @@ export function validateQuickSetup(
 }
 
 export function buildQuickSetupRequest(
-  _target: ProviderQuickSetupTarget,
+  target: ProviderQuickSetupTarget,
   input: NormalizedQuickSetupInput,
+  codexFeatures?: import("../../shared/features/types").ProviderQuickSetupRequest["codexFeatures"],
 ): import("../../shared/features/types").ProviderQuickSetupRequest {
   return {
     name: input.name,
     baseUrl: input.baseUrl,
     apiKey: input.apiKey,
     modelId: input.modelId,
+    ...(target === "codex" && codexFeatures ? { codexFeatures } : {}),
   };
 }
 

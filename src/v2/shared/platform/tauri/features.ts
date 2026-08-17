@@ -780,11 +780,29 @@ function assertQuickSetupRequest(
 ): ProviderQuickSetupRequest {
   if (
     !isRecord(request) ||
-    !hasExactKeys(request, ["name", "baseUrl", "apiKey", "modelId"]) ||
-    !Object.values(request).every((value) => typeof value === "string")
+    !hasRequiredAndOptionalKeys(
+      request,
+      ["name", "baseUrl", "apiKey", "modelId"],
+      ["codexFeatures"],
+    ) ||
+    !["name", "baseUrl", "apiKey", "modelId"].every(
+      (key) => typeof request[key] === "string",
+    ) ||
+    (request.codexFeatures !== undefined &&
+      !isValidCodexFeatures(request.codexFeatures))
   )
     throw new Error("Provider quick setup request is invalid");
   return request;
+}
+
+function isValidCodexFeatures(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    Object.keys(value).every((key) =>
+      ["imageExtension", "websockets"].includes(key),
+    ) &&
+    Object.values(value).every((item) => typeof item === "boolean")
+  );
 }
 
 function validateExternalUrl(url: string): void {

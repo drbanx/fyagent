@@ -83,6 +83,12 @@
   grid-column: 1 / -1;
 }
 
+.fy-models-codex-features {
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
 .fy-models-model-list {
   display: grid;
   gap: 6px;
@@ -140,7 +146,8 @@
   }
 
   .fy-models-form-wide,
-  .fy-models-actions {
+  .fy-models-actions,
+  .fy-models-codex-features {
     grid-column: auto;
   }
 }

@@ -522,6 +522,11 @@ export interface ProviderQuickSetupRequest {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  /** Codex 原生能力意图，仅 codex 目标生效。 */
+  codexFeatures?: {
+    imageExtension?: boolean;
+    websockets?: boolean;
+  };
 }
 
 /** Non-secret projection returned by Provider reads in V2. */

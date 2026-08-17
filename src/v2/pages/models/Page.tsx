@@ -638,6 +638,8 @@ function ProviderPanel({
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
   const [modelId, setModelId] = useState("");
+  const [imageExtension, setImageExtension] = useState(false);
+  const [websockets, setWebsockets] = useState(false);
   const [errors, setErrors] = useState<QuickSetupErrors>({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -706,7 +708,11 @@ function ProviderPanel({
     let authorityRereadAttempted = false;
     let keepWriteLock = false;
     try {
-      const request = buildQuickSetupRequest(app, validated.value);
+      const request = buildQuickSetupRequest(
+        app,
+        validated.value,
+        app === "codex" ? { imageExtension, websockets } : undefined,
+      );
       const applyResult = await ports.providers.applyQuickSetupWithResult(
         request,
         app,
@@ -923,6 +929,26 @@ function ProviderPanel({
             </span>
           )}
         </div>
+        {app === "codex" && (
+          <div className="fy-models-codex-features" data-testid="codex-features">
+            <div className="fy-models-checkbox-row">
+              <Checkbox
+                checked={imageExtension}
+                onCheckedChange={setImageExtension}
+                label="启用内置生图扩展"
+              />
+              <span>启用内置生图扩展</span>
+            </div>
+            <div className="fy-models-checkbox-row">
+              <Checkbox
+                checked={websockets}
+                onCheckedChange={setWebsockets}
+                label="启用 WebSocket 传输"
+              />
+              <span>启用 WebSocket 传输</span>
+            </div>
+          </div>
+        )}
         <div className="fy-models-actions">
           <Button
             className="fy-control-button-primary"

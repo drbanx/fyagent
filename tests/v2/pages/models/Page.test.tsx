@@ -624,6 +624,7 @@ describe("V2 Models page", () => {
         baseUrl: "https://codex.example/v1",
         apiKey: "codex-secret",
         modelId: "gpt-5",
+        codexFeatures: { imageExtension: false, websockets: false },
       },
       "codex",
     );
@@ -636,6 +637,57 @@ describe("V2 Models page", () => {
     expect(document.body).not.toHaveTextContent("Quick Setup Provider ID");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends Codex image-extension and websocket toggles in the quick setup payload", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {},
+      currentId: "",
+    }));
+    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
+      value: { warnings: [] },
+      liveConfigChanged: true,
+      app: "codex" as const,
+      warningCodes: [],
+    }));
+    renderPage(ports, "codex");
+
+    await screen.findByTestId("provider-status");
+    await user.clear(screen.getByLabelText("配置名称"));
+    await user.type(screen.getByLabelText("配置名称"), "Codex Gateway");
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://codex.example/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), "codex-secret");
+    await user.type(screen.getByLabelText("模型 ID"), "gpt-5");
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "启用内置生图扩展" }),
+    );
+    await user.click(
+      screen.getByRole("checkbox", { name: "启用 WebSocket 传输" }),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
+
+    await waitFor(() =>
+      expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1),
+    );
+    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
+      {
+        name: "Codex Gateway",
+        baseUrl: "https://codex.example/v1",
+        apiKey: "codex-secret",
+        modelId: "gpt-5",
+        codexFeatures: { imageExtension: true, websockets: true },
+      },
+      "codex",
+    );
   });
 
   it("treats an unclassified apply failure as unknown and stops writes", async () => {
