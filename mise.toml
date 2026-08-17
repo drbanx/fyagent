@@ -1,4 +1,4 @@
-min_version = "2026.8.0"
+min_version = "2026.8.6"
 
 [settings]
 lockfile = true
@@ -10,6 +10,9 @@ lockfile_platforms = [
   "windows-x64",
   "windows-arm64",
 ]
+
+[tool_config]
+locked = true
 
 [tools]
 uv = "latest"

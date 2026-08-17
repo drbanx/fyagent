@@ -2,7 +2,7 @@
 description = "Install locked repository tools and dependencies, then run strict environment checks"
 env = { FYAGENT_TASK_EFFECT = "dependency-environment" }
 run = [
-  "mise install --locked",
+  "mise install",
   { task = "deps:install" },
   { task = "env:check" },
   { task = "tasks:validate" },
