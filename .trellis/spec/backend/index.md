@@ -32,6 +32,10 @@ When using these notes before changing Rust/Tauri host code:
    the low-level `pnpm tauri` maintenance/Actions leaf.
 5. Preserve protocol and schema versions as protocol facts, but never infer the
    application version or current behavior from an archived design label.
+6. For main-window restore, maximize, min-size, or `layout-mode-changed`, read
+   the [Main Window Layout Contract](./main-window-layout.md). Do not mutate
+   geometry while maximized, and do not treat renderer CSS as the Windows
+   overflow fix.
 
 ## Guidelines
 
@@ -53,6 +57,7 @@ When using these notes before changing Rust/Tauri host code:
 | [Application Identity](./application-identity.md)                         | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                                                                                 |
 | [CC Switch Upstream Synchronization](./upstream-sync.md)                  | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                                                                                |
 | [Deep-Link Import Security](./deeplink-import-security.md)                | Untrusted `fyagent://v1/import` request validation, explicit provider activation approval, and credential-safe confirmation.                                                                   |
+| [Main Window Layout](./main-window-layout.md)                             | Work-area clamp, `layout-mode-changed`, and the Windows invariant that maximized windows must not receive `set_min_size` / `set_size` / `set_position`.                                        |
 
 ## Quality Check
 

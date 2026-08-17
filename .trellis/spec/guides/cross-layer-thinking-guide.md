@@ -120,6 +120,17 @@ For a Tauri command, event, or serialized payload, read
 [Frontend Type Safety](../frontend/type-safety.md) and the owning backend
 contract before changing either side.
 
+When the change is native window geometry plus renderer chrome:
+
+- [ ] Keep Overlay drag-strip gating in `shouldShowMacOverlayDragStrip()`
+      (`isNative && platform === "macos"`), not userAgent.
+- [ ] Keep Windows maximize overflow on the host
+      (`should_apply_runtime_geometry_constraints`); do not shrink V2 layout
+      to hide an unmaximized-but-still-max-sized window.
+- [ ] Put signatures and tests in
+      [Main Window Layout](../backend/main-window-layout.md) and
+      [V2 Shell](../frontend/v2-shell.md), not this guide.
+
 ---
 
 ## Versioned FyAgent Documentation Boundary

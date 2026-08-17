@@ -32,12 +32,19 @@ Before changing renderer code:
 10. For Codex Provider capability/restart UI or WorkBuddy navigation, consult
     the dedicated cross-layer note below and confirm it against current code and
     tests; do not infer behavior from an archived feature label.
+11. For V2 title-bar drag, Overlay chrome, or a report that the window jumps
+    off-screen after Windows maximize, read the
+    [V2 Shell Contract](./v2-shell.md) and the
+    [Main Window Layout Contract](../backend/main-window-layout.md) together.
+    Gate the macOS drag strip with `shouldShowMacOverlayDragStrip()`, not
+    userAgent. Do not shrink React layout to paper over native overflow.
 
 ## Guidelines
 
 | Guide                                                                      | Use it for                                                                                               |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [V2 Shell Contract](./v2-shell.md)                                         | Isolated V2 routes, styles, layer/platform boundaries, lifecycle, and V2-only gates.                     |
+| [V2 Shell Contract](./v2-shell.md)                                         | Isolated V2 routes, styles, layer/platform boundaries, Overlay drag strip, lifecycle, and V2-only gates. |
+| [Main Window Layout](../backend/main-window-layout.md)                     | Host maximize/min-size invariants; Windows overflow is not a renderer chrome bug.                        |
 | [V2 Agent and Models Contract](./v2-agent-models.md)                       | Catalog v3/runtime, shared geometry, Qoder/TRAE preflight, Codex installer, WorkBuddy, Provider quick setup, and secrets. |
 | [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md)                   | Eight Skill targets, six direct MCP targets, authoritative state, secret handling, and responsive UI.    |
 | [V2 Prompts and Memory Native Business Contract](./v2-prompts-memory.md)    | Seven Prompt applications, four fixed long-term memory resources, OpenClaw daily memory, native-only browser behavior, and data safety. |

@@ -29,6 +29,9 @@ mise run test:desktop:visual:preflight
 installer, or platform run. Visual-baseline capture/update is candidate-only,
 requires reviewed evidence, and does not replace ordinary local checks;
 `test:desktop:visual:update` is not an unattended baseline-writing command.
+Windows maximize overflow is a host `set_min_size` invariant; mock, Playwright,
+and macOS `rust:test` cannot close that acceptance gap. See
+[Main Window Layout](../backend/main-window-layout.md).
 
 ## Test Setup and Patterns
 

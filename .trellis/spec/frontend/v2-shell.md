@@ -65,6 +65,20 @@ There is deliberately no `WindowFramePort` or React/native caption-action
 signature in V2. Adding one requires a new reviewed task and native-window
 contract, not an ad hoc shell prop.
 
+The Overlay drag strip is gated only by this helper. Pass an injected runtime
+in tests; production calls `detectRuntime()`:
+
+```ts
+export function shouldShowMacOverlayDragStrip(
+  runtime: RuntimeEnvironment = detectRuntime(),
+): boolean {
+  return runtime.isNative && runtime.platform === "macos";
+}
+```
+
+Do not derive this from `navigator.userAgent` alone. Playwright on a Mac host
+would otherwise render the strip in browser tests.
+
 ## 3. Contracts
 
 ### Navigation and content
@@ -103,6 +117,15 @@ The navigation source contains exactly these entries in this order:
 - Native macOS Overlay may render one inert 28px `data-tauri-drag-region`
   strip above the chrome row. Browser preview, Windows, and tests without a
   native macOS runtime must not render that strip.
+- Gate that strip with `shouldShowMacOverlayDragStrip()`. The left
+  `--fy-titlebar-traffic-light-width` (78px) spacer uses `pointer-events:
+  none` so traffic lights stay clickable; only the remaining surface is the
+  drag region. Brand, nav, and tools sit in the 68px chrome row below the
+  strip (`--fy-titlebar-drag-height` + `--fy-top-bar-height` = 96px).
+- Windows Visible chrome keeps the 68px row and no drag strip. Reports that
+  maximize sends UI off-screen are host geometry; follow
+  [Main Window Layout](../backend/main-window-layout.md) instead of shrinking
+  React layout.
 - V2 must not call `setDecorations(false)` or otherwise disable system
   decorations at runtime. Browser preview correctly renders no native controls.
 - Do not fake system controls for browser screenshots or geometry tests.
@@ -197,6 +220,8 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Production requests the UI Lab path                                    | Route is absent and wildcard fallback selects `#/models`                           |
 | Custom caption buttons or `setDecorations(false)` appear                | Unit, architecture, or browser negative assertion fails                            |
 | A drag region appears outside native macOS Overlay TopBar               | Architecture test fails; browser preview still has no drag strip                   |
+| Drag strip is gated on userAgent instead of `detectRuntime()`           | Mac-host Playwright/jsdom can show a false strip; runtime tests must fail          |
+| Windows maximize overflow is “fixed” by shrinking V2 chrome             | Wrong layer; host must skip `set_min_size` while maximized                         |
 | V2 calls `setDecorations(false)`                                       | Static contract search and V2 tests fail                                           |
 | V2 imports legacy/upward code, or Tauri outside the platform boundary  | ESLint and executable architecture test fail                                       |
 | V2 imports neutral code outside `@/shared/codex-desktop`               | Architecture test fails; no broader shared-root allowlist                          |
@@ -297,6 +322,22 @@ bounded internal lens, and keep native window chrome outside React.
     isActive ? <LiquidGlassLens>{item.label}</LiquidGlassLens> : item.label
   }
 </NavLink>
+```
+
+Wrong: show the Overlay drag strip because the user agent looks like macOS.
+
+```ts
+if (/Mac/i.test(navigator.userAgent)) {
+  return <div data-tauri-drag-region />;
+}
+```
+
+Correct: require a native macOS Tauri runtime.
+
+```ts
+if (shouldShowMacOverlayDragStrip()) {
+  return <div data-testid="titlebar-drag-region">…</div>;
+}
 ```
 
 Wrong: use the neutral-core exception as a route into a legacy Hook.

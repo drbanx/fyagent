@@ -36,8 +36,13 @@ These guides help you **ask the right questions before coding**.
 - [ ] You're not sure where to put some logic
 - [ ] You are adding an event kind, JSONL record, RPC payload, or config field
 - [ ] UI / command code starts casting raw payload fields directly
+- [ ] Native window geometry (`set_min_size` / maximize / work area) and
+      renderer chrome (drag regions, Overlay title bar) are changing together
 
 → Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
+  and, for window chrome vs maximize overflow, the
+  [Main Window Layout Contract](../backend/main-window-layout.md) plus the
+  [V2 Shell Contract](../frontend/v2-shell.md).
 
 ### When to Think About Code Reuse
 
