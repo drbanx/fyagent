@@ -213,6 +213,26 @@ quoting. Non-Windows commands remain direct. This local mise boundary is
 distinct from GitHub Actions, which does not install mise and uses its own
 reviewed `pnpm.cmd` batch-shim bridge in the CI toolchain verifier.
 
+On Windows only, the guarded native wrapper resolves the Visual Studio 2022
+MSVC/SDK environment for the child process immediately before the final
+`cargo`/`pnpm tauri` compile. This is the single controlled exception to the
+"no `cmd.exe`" rule: Visual Studio's only supported loading mechanism is
+`cmd.exe` + `VsDevCmd.bat`. `scripts/tasks/windows-msvc-env.mjs` locates VS 2022
+(including Build Tools) through the official `vswhere.exe` and verifies the
+`Microsoft.VisualStudio.Component.VC.Tools.x86.x64` component, then spawns
+`cmd.exe` directly (not `shell: true`) with the argv array
+`["/d", "/s", "/c", "<command>"]` and `windowsVerbatimArguments: true`, where
+`<command>` is manually built as
+`call "<VsDevCmd>" -no_logo -arch=<arch> -host_arch=<hostArch> >nul && "<node>" -e "process.stdout.write(JSON.stringify(process.env))"`.
+The child dumps `process.env` as JSON to avoid `set` text encoding/quoting
+ambiguity; the result is parsed and validated for `INCLUDE`/`LIB`. The loaded
+environment merges only into the child env and never mutates `process.env`,
+writes the system/user environment, or touches the registry.
+`-arch`/`-host_arch` derive from `process.arch` (x64/x64 or arm64/arm64) and are
+never hard-coded. The merge is additive: it only adds MSVC/SDK variables and
+never overrides the owned RUSTC/RUSTDOC/target/linker/runner controls from
+`ownedCargoEnvironment`. macOS never invokes the loader.
+
 Contract tests execute real `mise run` calls for a positional value, a flag,
 and a filtered test. Metadata inspection alone is not sufficient proof that
 values reach the wrapper.
@@ -282,6 +302,9 @@ does not turn them into contribution, build, CI, or release prerequisites.
 | `check` reaches a non-read-only effect                                | Fail closed                                        |
 | A parameter is interpolated into a shell command                      | Reject; spawn validated argv instead               |
 | A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`  | Task-runner and DEP0040 contracts fail             |
+| Windows VS 2022 / VC tools component is missing                       | Fail with a `vswhere` hint naming "Desktop development with C++"; never elevate |
+| MSVC env load mutates `process.env` or the user/system environment    | Reject; the loader is child-env-only and additive only |
+| `-arch`/`-host_arch` is hard-coded or an unsupported architecture     | Reject; derive from `process.arch` (x64/arm64 only) |
 | A Rust filter begins with `-` or contains `--target`                  | Reject before rustc or Cargo starts                |
 | A fixed native operation receives forwarded argv                      | Reject before rustc or Tauri starts                |
 | Caller compiler/wrapper/runner/linker/target env redirects a task     | Reject before rustc/rustdoc starts                 |
@@ -351,7 +374,7 @@ does not turn them into contribution, build, CI, or release prerequisites.
   own-property task lookup, the exact standalone checkout sequence, manual
   trust guidance, the full local `check` gate, and unknown task rejection.
 - `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
-  `taskDocs.test.ts`, `systemCheck.test.ts`, and
+  `taskDocs.test.ts`, `systemCheck.test.ts`, `windowsMsvcEnv.test.ts`, and
   `localBuildBoundary.test.ts`.
 
 ## 9. Wrong vs Correct

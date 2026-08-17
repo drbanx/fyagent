@@ -168,6 +168,25 @@ fail-closed contract for local Windows Rust compilation without turning a
 local compile or test into PackageManager, ACL, setup, or other native-runtime
 evidence.
 
+On Windows only, before launching the final `pnpm tauri`/`cargo` compile child
+the wrapper resolves the VS 2022 MSVC/SDK environment through
+`scripts/tasks/windows-msvc-env.mjs` and merges it into that child's
+environment. This keeps Windows native builds working without a Developer
+PowerShell and without persisting MSVC/SDK variables into the system PATH. The
+loader locates VS 2022 (Build Tools included) with the official `vswhere.exe`,
+verifies the `Microsoft.VisualStudio.Component.VC.Tools.x86.x64` component, and
+runs `VsDevCmd.bat -no_logo -arch=<arch> -host_arch=<hostArch>` through a
+`cmd.exe` child (`/d /s /c`, `shell: false`, `windowsVerbatimArguments: true`)
+that dumps `process.env` as JSON. `-arch`/`-host_arch` derive from
+`process.arch`. The parsed environment is validated for `INCLUDE`/`LIB`, loaded
+only into the child env, and never mutates `process.env`, the user/system
+environment, or the registry. The merge is additive and never overrides the
+owned RUSTC/RUSTDOC/target/linker/runner controls. `rust:fmt`/`rust:fmt:check`
+do not load MSVC because rustfmt does not compile. On Windows `system:check`
+reports a static `vswhere` diagnosis instead of a bare `where.exe cl.exe` probe,
+and a missing VS 2022 or VC tools component yields an actionable hint naming the
+"Desktop development with C++" workload.
+
 This spec is the active execution boundary. Historical build decisions may
 explain provenance, but they do not override the current host-native contract.
 
@@ -246,6 +265,8 @@ the standard version file and `mise.lock` captured before the attempt.
 | A local command selects another OS/architecture by any route          | Reject before compilation, packaging, or verification                                   |
 | A non-host result is offered as native acceptance evidence            | Keep the gate pending and require the matching native Actions runner                    |
 | Host native libraries are missing                                     | `system:check` fails with a non-elevating installation hint                             |
+| Windows VS 2022 / VC tools component is missing                       | `system:check` reports a `vswhere` FAIL naming "Desktop development with C++"; never elevate |
+| MSVC environment parse fails or lacks `INCLUDE`/`LIB`                 | Fail before the compile child; never fall back to a bare PATH                           |
 | A prerequisite command is absent or cannot be launched                | Record a failed check with its installation hint and finish the machine-readable report |
 
 ## 8. Tests Required
@@ -275,6 +296,11 @@ the standard version file and `mise.lock` captured before the attempt.
   after all current-host validations and before workspace Cargo, the exact
   canonical target, `TAURI_ENV_DEBUG=true`, and no workspace Cargo after
   preparation failure. Prove macOS Rust tasks never invoke the helper preparer.
+- Unit-test the MSVC loader on a non-Windows host with injected spawn: x64/arm64
+  architecture mapping, vswhere candidate paths, non-Windows returning `null`
+  without probing, successful `VsDevCmd` environment parsing, missing
+  `INCLUDE`/`LIB`, and unparseable JSON. Prove the merge is additive, macOS never
+  invokes the loader, and the loader never mutates `process.env`.
 - Smoke the real `pnpm dev`/`pnpm build` and canonical mise wrappers with
   rejected arguments/environment, proving the error occurs before rustc,
   rustdoc, Cargo, Tauri, or a frontend build command can start. Fake native
@@ -284,7 +310,8 @@ the standard version file and `mise.lock` captured before the attempt.
   accepted current-host native binary inside the target boundary, and rejected
   out-of-bound/symlink/wrong-signature cases without building a foreign target.
 - Run `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
-  `taskDocs.test.ts`, `systemCheck.test.ts`, and `localBuildBoundary.test.ts`.
+  `taskDocs.test.ts`, `systemCheck.test.ts`, `windowsMsvcEnv.test.ts`, and
+  `localBuildBoundary.test.ts`.
 - In Required CI, run the locked uv/Python preparation on both `windows-2025`
   x64 and `windows-11-arm` ARM64. Require an explicit uv full managed-Python
   request for each matrix architecture and Python `sysconfig.get_platform()`
