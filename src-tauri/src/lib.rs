@@ -377,7 +377,7 @@ fn agent_debug_log(hypothesis_id: &str, location: &str, message: &str, data: ser
         .unwrap_or(0);
     let payload = serde_json::json!({
         "sessionId": "0bf40e",
-        "runId": "windows-pre-fix",
+        "runId": "windows-post-fix",
         "hypothesisId": hypothesis_id,
         "location": location,
         "message": message,
@@ -467,11 +467,17 @@ fn agent_debug_window_snapshot(window: &tauri::WebviewWindow) -> serde_json::Val
 /// Re-evaluates only the current monitor constraint. It intentionally does not
 /// reset size or position: after returning to a large work area a legal user
 /// size stays untouched, while the product minimum becomes available again.
+/// Maximized and exclusive-fullscreen windows skip `set_min_size`: on Windows
+/// that call unmaximizes the window but keeps the maximized client size.
 fn refresh_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     let Some((work_area, scale_factor)) = current_logical_work_area(window) else {
         return Ok(());
     };
     let minimum = window_layout::effective_minimum_size(work_area);
+    let maximized = window.is_maximized().unwrap_or(false);
+    let fullscreen = window.is_fullscreen().unwrap_or(false);
+    let apply_geometry =
+        window_layout::should_apply_runtime_geometry_constraints(maximized, fullscreen);
     // #region agent log
     agent_debug_log(
         "H4",
@@ -480,16 +486,22 @@ fn refresh_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()
         serde_json::json!({
             "snapshot": agent_debug_window_snapshot(window),
             "min": {"w": minimum.width, "h": minimum.height},
+            "applyGeometry": apply_geometry,
         }),
     );
     // #endregion
-    window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
+    if apply_geometry {
+        window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
+    }
     // #region agent log
     agent_debug_log(
         "H4",
         "lib.rs:refresh_main_window_layout:after",
         "after set_min_size",
-        serde_json::json!({ "snapshot": agent_debug_window_snapshot(window) }),
+        serde_json::json!({
+            "snapshot": agent_debug_window_snapshot(window),
+            "applyGeometry": apply_geometry,
+        }),
     );
     // #endregion
     emit_main_window_layout_mode(window, work_area, scale_factor)
