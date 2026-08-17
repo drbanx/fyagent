@@ -91,6 +91,8 @@ export const Input = forwardRef<
 ));
 Input.displayName = "Input";
 
+export { SecretInput, type SecretInputProps } from "./SecretInput";
+
 export function Badge({
   children,
   tone = "neutral",
