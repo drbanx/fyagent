@@ -3,7 +3,7 @@ type: audit
 status: complete
 updated: 2026-08-11
 review_on: 2026-09-11
-authority: .omo/plans/docs-restructure-v0.3.0.md
+authority: git:b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527
 source: git:b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527
 evidence: code_audit + local_artifact_audit
 ---
@@ -124,8 +124,7 @@ SHA-256 前缀、引用章节、当前语言和重拍结论。汇总结果为：
 - [VibeKey 宣发与产品设计审计](../marketing/vibekey-reference-audit.md)：继承“一个动作、
   一个状态、一个结果”，改造成软件控制面，放弃硬件、语音、Claude-only、众筹、定价
   和未经验证的市场数字；
-- [能力差距审计](vibekey-to-fyagent-capability-gap.md)与
-  [v0.3.1 后路线图](../../../.omo/plans/fyagent-capability-roadmap-post-v0.3.1.md)。
+- [能力差距审计](vibekey-to-fyagent-capability-gap.md)。
 
 概念样例状态保持清楚：
 

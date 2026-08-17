@@ -161,6 +161,6 @@ Provider 表单
 
 ## 7. 路线图输入
 
-详细的阶段、任务依赖和验收证据见 [FyAgent v0.3.1 后能力路线图](../../../.omo/plans/fyagent-capability-roadmap-post-v0.3.1.md)。
+详细的阶段、任务依赖和验收证据见 FyAgent v0.3.1 后能力路线图（原计划文档已从仓库移除，历史版本见 Git 历史）。
 
 相关历史宣发和视觉边界见 [VibeKey 宣发与产品设计对照审计](../marketing/vibekey-reference-audit.md)。

@@ -257,9 +257,7 @@ function classifyPath(path, domains) {
 
   if (
     path.startsWith("docs/") ||
-    path.startsWith("LICENSES/") ||
-    path.startsWith("memory/") ||
-    path.startsWith(".omo/")
+    path.startsWith("LICENSES/")
   ) {
     addDomains(domains, ["contracts", "docsSpec"]);
     return { matched: true, forceFull: false };

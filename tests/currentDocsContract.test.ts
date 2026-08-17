@@ -425,7 +425,6 @@ describe("current FyAgent documentation authority", () => {
       "docs/fyagent/audits/vibekey-to-fyagent-capability-gap.md",
       "docs/fyagent/marketing/vibekey-reference-audit.md",
       "docs/fyagent/marketing/visual-direction-sample-v2.md",
-      ".omo/plans/docs-restructure-v0.3.0.md",
     ]) {
       const source = read(file);
       expect(source, file).not.toContain(localUserRoot);
