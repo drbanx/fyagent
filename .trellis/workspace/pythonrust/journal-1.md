@@ -732,3 +732,43 @@ Removed upstream content and publication-field admission checks from FyAgent exe
 ### Status
 
 [OK] **Completed**
+
+
+## Session 23: macOS Overlay 拖拽条与 Windows 最大化几何
+
+**Date**: 2026-08-17
+**Task**: macOS Overlay 拖拽条与 Windows 最大化几何
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+恢复原生 macOS Overlay 顶部 28px 拖拽条；Windows 最大化期间不再 set_min_size，避免取消最大化后仍保持最大化客户区并跳出工作区。契约已写入 V2 shell 与 Main Window Layout spec。
+
+### Main Changes
+
+- 原生 macOS 用 shouldShowMacOverlayDragStrip()（detectRuntime，不用 UA）在 Brand/Nav/Tools 上方加 28px 惰性拖拽条，左侧 78px 让出红黄绿。
+- Windows 日志证实 Moved 后 refresh 的 set_min_size 会取消最大化并留下 2560×1521 客户区；最大化/独占全屏时跳过几何写入。
+- 新增 .trellis/spec/backend/main-window-layout.md，并收紧 v2-shell 拖拽条开关与跨层路由。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a781f102` | (see git log) |
+| `833b9407` | (see git log) |
+| `1ac564ab` | (see git log) |
+| `6619bcb6` | (see git log) |
+| `9615733a` | (see git log) |
+
+### Testing
+
+- [OK] mise run rust:test -- runtime_geometry_constraints_skip_maximized_and_fullscreen 通过。
+- [OK] macOS 本机确认拖拽/双击缩放；Windows 本机确认最大化不再飞出屏幕后已去掉调试埋点。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 无。任务已归档。
