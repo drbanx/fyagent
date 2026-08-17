@@ -17,15 +17,18 @@ import type { FeaturePorts } from "@/v2/shared/features/ports";
 import { FeatureProvider } from "@/v2/shared/features/provider";
 import type { AgentCatalogResult } from "@/v2/shared/features/types";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
+import { TooltipProvider } from "@/v2/shared/ui/primitives";
 
 function renderPage(ports: FeaturePorts, target?: string) {
   const initialEntry = target ? `/models?target=${target}` : "/models";
   return render(
     <StrictMode>
       <MemoryRouter initialEntries={[initialEntry]}>
-        <FeatureProvider ports={ports}>
-          <ModelsPage />
-        </FeatureProvider>
+        <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+          <FeatureProvider ports={ports}>
+            <ModelsPage />
+          </FeatureProvider>
+        </TooltipProvider>
       </MemoryRouter>
     </StrictMode>,
   );
@@ -325,13 +328,13 @@ describe("V2 Models page", () => {
       });
     renderPage(ports, "workbuddy");
 
-    await screen.findByText("已发现配置文件");
+    await screen.findByText("已有第三方模型数量");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://workbuddy.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "first-secret");
-    await user.type(screen.getByLabelText("手动模型 ID"), "manual-model");
+    await user.type(screen.getByLabelText("自定义模型 ID"), "manual-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
 
     const confirm = await screen.findByRole("button", { name: "确认覆盖" });
@@ -343,7 +346,7 @@ describe("V2 Models page", () => {
     fireEvent.change(screen.getByLabelText("API Key"), {
       target: { value: "replacement-secret" },
     });
-    fireEvent.change(screen.getByLabelText("手动模型 ID"), {
+    fireEvent.change(screen.getByLabelText("自定义模型 ID"), {
       target: { value: "replacement-model" },
     });
     await user.click(confirm);
@@ -371,7 +374,7 @@ describe("V2 Models page", () => {
     expect(ports.workbuddy.getModelIds).toHaveBeenCalledTimes(2);
   });
 
-  it("locks duplicate WorkBuddy fetches, preserves truncation, and clears the key", async () => {
+  it("locks duplicate WorkBuddy fetches, preserves truncation, and keeps the key", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
     type FetchResult = Awaited<
@@ -384,7 +387,7 @@ describe("V2 Models page", () => {
     ports.workbuddy.fetchModels = vi.fn(() => pendingFetch);
     renderPage(ports, "workbuddy");
 
-    await screen.findByText("已发现配置文件");
+    await screen.findByText("已有第三方模型数量");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://fetch.example/v1",
@@ -404,11 +407,11 @@ describe("V2 Models page", () => {
 
     expect(await screen.findByText("已达到可显示的模型数量上限")).toBeVisible();
     expect(screen.getByText("model-a")).toBeVisible();
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.getByLabelText("API Key")).toHaveValue("fetch-secret");
     expect(document.body).not.toHaveTextContent("fetch-secret");
   });
 
-  it("redacts WorkBuddy fetch failures and clears the submitted key", async () => {
+  it("redacts WorkBuddy fetch failures and keeps the submitted key", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
     ports.workbuddy.fetchModels = vi.fn(async () => {
@@ -416,7 +419,7 @@ describe("V2 Models page", () => {
     });
     renderPage(ports, "workbuddy");
 
-    await screen.findByText("已发现配置文件");
+    await screen.findByText("已有第三方模型数量");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://failure.example/v1",
@@ -425,7 +428,7 @@ describe("V2 Models page", () => {
     await user.click(screen.getByRole("button", { name: "拉取模型" }));
 
     expect(await screen.findByText("模型读取失败")).toBeVisible();
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.getByLabelText("API Key")).toHaveValue("fetch-secret");
     expect(document.body).not.toHaveTextContent("fetch-secret");
   });
 
@@ -439,7 +442,7 @@ describe("V2 Models page", () => {
     ports.workbuddy.saveModels = vi.fn();
     renderPage(ports, "workbuddy");
 
-    await screen.findByText("已发现配置文件");
+    await screen.findByText("已有第三方模型数量");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://hostile.example/v1",
@@ -450,7 +453,7 @@ describe("V2 Models page", () => {
     expect(await screen.findByText("模型读取失败")).toBeVisible();
     expect(screen.queryByText("safe-model")).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("fetch-secret");
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.getByLabelText("API Key")).toHaveValue("fetch-secret");
     expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
   });
 
@@ -460,14 +463,14 @@ describe("V2 Models page", () => {
     ports.workbuddy.saveModels = vi.fn();
     renderPage(ports, "workbuddy");
 
-    await screen.findByText("已发现配置文件");
+    await screen.findByText("已有第三方模型数量");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://conflict.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "conflict-secret");
     await user.type(
-      screen.getByLabelText("手动模型 ID"),
+      screen.getByLabelText("自定义模型 ID"),
       "prefix-conflict-secret-suffix",
     );
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
@@ -495,13 +498,13 @@ describe("V2 Models page", () => {
     }));
     renderPage(ports, "workbuddy");
 
-    await screen.findByText("已发现配置文件");
+    await screen.findByText("已有第三方模型数量");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://conflict.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "conflict-secret");
-    await user.type(screen.getByLabelText("手动模型 ID"), "conflict-model");
+    await user.type(screen.getByLabelText("自定义模型 ID"), "conflict-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
 
     expect(
@@ -534,13 +537,13 @@ describe("V2 Models page", () => {
       });
     renderPage(ports, "workbuddy");
 
-    await screen.findByText("已发现配置文件");
+    await screen.findByText("已有第三方模型数量");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://expired.example/v1",
     );
     await user.type(screen.getByLabelText("API Key"), "expired-secret");
-    await user.type(screen.getByLabelText("手动模型 ID"), "expired-model");
+    await user.type(screen.getByLabelText("自定义模型 ID"), "expired-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
     await user.click(await screen.findByRole("button", { name: "确认覆盖" }));
 
@@ -572,6 +575,105 @@ describe("V2 Models page", () => {
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "保存并应用" })).toBeDisabled();
     expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
+  });
+
+  it("hides WorkBuddy backup and config-file status, and groups existing IDs", async () => {
+    const user = userEvent.setup();
+    const ports = workBuddyPorts();
+    ports.workbuddy.getModelIds = vi.fn(async () => ({
+      ids: ["gpt-4o", "gemini-2.5-pro", "grok-4.6"],
+      revision: "revision-1",
+    }));
+    renderPage(ports, "workbuddy");
+
+    await screen.findByText("当前已有的第三方模型 ID");
+    const existingToggle = await screen.findByTestId("workbuddy-status");
+    expect(existingToggle).toHaveTextContent("已有第三方模型数量3");
+    expect(existingToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByText("配置状态")).not.toBeInTheDocument();
+    expect(screen.queryByText("备份")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "gpt 分组" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "gemini 分组" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "grok 分组" })).toBeVisible();
+    expect(screen.getByText("gpt-4o")).toBeVisible();
+    expect(screen.getByText("gemini-2.5-pro")).toBeVisible();
+
+    await user.click(screen.getByRole("heading", { name: "当前已有的第三方模型 ID" }));
+    expect(existingToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("gpt-4o")).not.toBeInTheDocument();
+  });
+
+  it("toggles WorkBuddy API key visibility without leaving the input", async () => {
+    const user = userEvent.setup();
+    const ports = workBuddyPorts();
+    renderPage(ports, "workbuddy");
+
+    await screen.findByText("已有第三方模型数量");
+    const apiKey = screen.getByLabelText("API Key");
+    await user.type(apiKey, "visible-secret");
+    expect(apiKey).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "显示 API Key" }));
+    expect(apiKey).toHaveAttribute("type", "text");
+    expect(apiKey).toHaveValue("visible-secret");
+    await user.click(screen.getByRole("button", { name: "隐藏 API Key" }));
+    expect(apiKey).toHaveAttribute("type", "password");
+    expect(document.body).not.toHaveTextContent("visible-secret");
+  });
+
+  it("explains the WorkBuddy option for local models without an API key", async () => {
+    const user = userEvent.setup();
+    const ports = workBuddyPorts();
+    renderPage(ports, "workbuddy");
+
+    await screen.findByText("当前已有的第三方模型 ID");
+    await user.hover(screen.getByRole("button", { name: "不使用 API Key 说明" }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "给不需要鉴权的本地模型使用，例如本机的 Ollama、LM Studio。勾选后请求不会携带 API Key。",
+    );
+  });
+
+  it("manages fetched and manual WorkBuddy models in one draft", async () => {
+    const user = userEvent.setup();
+    const ports = workBuddyPorts();
+    ports.workbuddy.fetchModels = vi.fn(async () => ({
+      models: ["gpt-4o", "gemini-2.5-pro"],
+      truncated: false,
+    }));
+    ports.workbuddy.saveModels = vi.fn(async () => ({
+      state: "saved" as const,
+      revision: "revision-2",
+      modelCount: 3,
+      createdEntries: 2,
+      updatedEntries: 1,
+    }));
+    renderPage(ports, "workbuddy");
+
+    await screen.findByText("已有第三方模型数量");
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://draft.example/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), "draft-secret");
+    await user.click(screen.getByRole("button", { name: "拉取模型" }));
+    expect(await screen.findByText("已读取 2 个模型")).toBeVisible();
+    await user.type(screen.getByLabelText("自定义模型 ID"), "custom-router");
+    await user.click(screen.getByRole("button", { name: "填入" }));
+    await user.click(
+      screen.getByRole("button", { name: "移除模型 gemini-2.5-pro" }),
+    );
+    await user.click(screen.getByRole("button", { name: "保存并应用" }));
+
+    await screen.findByText("WorkBuddy 模型配置已保存");
+    expect(ports.workbuddy.saveModels).toHaveBeenCalledWith({
+      baseUrl: "https://draft.example/v1",
+      apiKey: "draft-secret",
+      allowNoApiKey: false,
+      selectedModelIds: ["gpt-4o"],
+      manualModelIds: ["custom-router"],
+      clearExistingApiKeys: false,
+      expectedRevision: "revision-1",
+    });
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
 
   it("atomically applies Codex once with the exact provider payload", async () => {
@@ -676,7 +778,9 @@ describe("V2 Models page", () => {
     );
 
     await waitFor(() =>
-      expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1),
+      expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(
+        1,
+      ),
     );
     expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
       {

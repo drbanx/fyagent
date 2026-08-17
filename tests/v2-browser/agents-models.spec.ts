@@ -700,7 +700,7 @@ test("WorkBuddy freezes overwrite input, sends revision, rereads, and clears cre
 
   await page.getByLabel("服务地址").fill("https://workbuddy.example.test/v1");
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
-  await page.getByLabel("手动模型 ID").fill("manual-browser-model");
+  await page.getByLabel("自定义模型 ID").fill("manual-browser-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
 
   const dialog = page.getByRole("dialog", { name: "确认覆盖已有模型" });
@@ -768,7 +768,7 @@ test("WorkBuddy write failures stay redacted and clear the submitted credential"
 
   await page.getByLabel("服务地址").fill("https://failure.example.test/v1");
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
-  await page.getByLabel("手动模型 ID").fill("failure-model");
+  await page.getByLabel("自定义模型 ID").fill("failure-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
 
   await expect(page.locator("body")).toContainText("保存失败");
@@ -799,7 +799,7 @@ test("WorkBuddy concurrent modification rereads authority instead of claiming su
   await page
     .getByLabel("API Key", { exact: true })
     .fill("browser-conflict-secret");
-  await page.getByLabel("手动模型 ID").fill("conflict-model");
+  await page.getByLabel("自定义模型 ID").fill("conflict-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
 
   await expect(page.locator("body")).toContainText("配置已被其他操作修改");

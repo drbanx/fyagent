@@ -1,7 +1,11 @@
+import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
+import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
+import { classNames } from "../../shared/design-system/classNames";
 import type { FeaturePorts } from "../../shared/features/ports";
 import { useFeatures } from "../../shared/features/provider";
 import {
@@ -23,7 +27,9 @@ import {
   Dialog,
   InlineNotice,
   Input,
+  SecretInput,
   Spinner,
+  Tooltip,
 } from "../../shared/ui/primitives";
 import {
   CatalogDetail,
@@ -32,6 +38,14 @@ import {
   CatalogMasterDetail,
   CatalogRail,
 } from "../../shared/ui/catalog";
+import {
+  FieldFeedback,
+  focusControl,
+  isErrorNotice,
+  ModelsSection,
+  useFieldNotices,
+  type Notice,
+} from "./feedback";
 import {
   buildQuickSetupRequest,
   isHttpUrl,
@@ -43,6 +57,11 @@ import {
   type ModelTarget,
   type QuickSetupErrors,
 } from "./quickSetup";
+import {
+  addUniqueModelIds,
+  groupModelIds,
+  splitWorkBuddyDraft,
+} from "./workBuddyModels";
 import "./Page.css";
 
 type WorkBuddySaveRequest = Parameters<
@@ -70,21 +89,84 @@ const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
   opencode: "opencode",
 };
 
-type Notice = {
-  tone: "info" | "warning" | "error";
-  title: string;
-  description?: string;
-};
+type WorkBuddyNoticeField = "baseUrl" | "apiKey" | "fetch" | "draft" | "save";
 
 function NoticeView({ notice }: { notice: Notice | null }) {
-  if (!notice) return null;
+  return <FieldFeedback notice={notice} />;
+}
+
+function GroupedModelChips({
+  ids,
+  removable = false,
+  onRemove,
+  emptyLabel,
+}: {
+  ids: readonly string[];
+  removable?: boolean;
+  onRemove?: (modelId: string) => void;
+  emptyLabel: string;
+}) {
+  const groups = useMemo(() => groupModelIds(ids), [ids]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+
+  if (ids.length === 0) {
+    return <p className="fy-models-muted">{emptyLabel}</p>;
+  }
+
   return (
-    <InlineNotice tone={notice.tone}>
-      <strong>{notice.title}</strong>
-      {notice.description && (
-        <p className="fy-models-muted">{notice.description}</p>
-      )}
-    </InlineNotice>
+    <div className="fy-models-groups">
+      {groups.map((group) => {
+        const isCollapsed = collapsed.has(group.type);
+        return (
+          <section key={group.type} className="fy-models-group">
+            <button
+              type="button"
+              className="fy-models-group-toggle"
+              aria-expanded={!isCollapsed}
+              aria-label={`${group.type} 分组`}
+              onClick={() =>
+                setCollapsed((current) => {
+                  const next = new Set(current);
+                  if (next.has(group.type)) next.delete(group.type);
+                  else next.add(group.type);
+                  return next;
+                })
+              }
+            >
+              <span>{group.type}</span>
+              <span className="fy-models-group-count">{group.ids.length}</span>
+              <CaretDownIcon
+                className={classNames(
+                  "fy-models-caret",
+                  isCollapsed && "fy-models-caret-collapsed",
+                )}
+                size={14}
+                aria-hidden
+              />
+            </button>
+            {isCollapsed ? null : (
+              <ul className="fy-models-chips">
+                {group.ids.map((modelId) => (
+                  <li key={modelId} className="fy-models-chip">
+                    <code>{modelId}</code>
+                    {removable ? (
+                      <button
+                        type="button"
+                        className="fy-models-chip-remove"
+                        aria-label={`移除模型 ${modelId}`}
+                        onClick={() => onRemove?.(modelId)}
+                      >
+                        <XIcon size={12} aria-hidden />
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
@@ -104,14 +186,15 @@ function WorkBuddyPanel() {
   const apiKeyRef = useRef("");
   const [allowNoApiKey, setAllowNoApiKey] = useState(false);
   const [clearExistingApiKeys, setClearExistingApiKeys] = useState(false);
-  const [manualModels, setManualModels] = useState("");
-  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
-  const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(
+  const [manualDraft, setManualDraft] = useState("");
+  const [draftModelIds, setDraftModelIds] = useState<string[]>([]);
+  const [fetchedSourceIds, setFetchedSourceIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [existingOpen, setExistingOpen] = useState(true);
   const [truncated, setTruncated] = useState(false);
   const [busy, setBusy] = useState<"fetch" | "save" | null>(null);
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const { notices, show, clear, dismiss } = useFieldNotices<WorkBuddyNoticeField>();
   const [pendingOverwrite, setPendingOverwrite] = useState<{
     request: WorkBuddySaveRequest;
     token: string;
@@ -121,7 +204,7 @@ function WorkBuddyPanel() {
   const mountedRef = useRef(true);
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
-  const manualModelsInputRef = useRef<HTMLTextAreaElement>(null);
+  const manualModelsInputRef = useRef<HTMLInputElement>(null);
 
   const setApiKey = (value: string) => {
     apiKeyRef.current = value;
@@ -159,17 +242,17 @@ function WorkBuddyPanel() {
 
   const validateConnection = (): boolean => {
     if (!isHttpUrl(baseUrl.trim())) {
-      setNotice({
+      show("baseUrl", {
         tone: "error",
         title: "请输入有效的服务地址",
         description: "只接受不含账号信息的 HTTP(S) 地址。",
       });
-      baseUrlInputRef.current?.focus();
+      focusControl(baseUrlInputRef.current);
       return false;
     }
     if (!allowNoApiKey && !apiKeyRef.current.trim()) {
-      setNotice({ tone: "error", title: "请输入 API Key" });
-      apiKeyInputRef.current?.focus();
+      show("apiKey", { tone: "error", title: "请输入 API Key" });
+      focusControl(apiKeyInputRef.current);
       return false;
     }
     const credential = apiKeyRef.current.trim();
@@ -186,11 +269,11 @@ function WorkBuddyPanel() {
           }
         });
       if (collision) {
-        setNotice({
+        show("baseUrl", {
           tone: "error",
           title: "服务地址不能包含 API Key",
         });
-        baseUrlInputRef.current?.focus();
+        focusControl(baseUrlInputRef.current);
         return false;
       }
     }
@@ -202,7 +285,7 @@ function WorkBuddyPanel() {
     const submittedApiKey = apiKeyRef.current.trim();
     writeLock.current = true;
     setBusy("fetch");
-    setNotice(null);
+    clear();
     try {
       const result = await ports.workbuddy.fetchModels({
         baseUrl: baseUrl.trim(),
@@ -218,10 +301,10 @@ function WorkBuddyPanel() {
       ) {
         throw new Error("credential-model-id-conflict");
       }
-      setFetchedModels(result.models);
-      setSelectedModelIds(new Set(result.models));
+      setDraftModelIds((current) => addUniqueModelIds(current, result.models));
+      setFetchedSourceIds(new Set(result.models));
       setTruncated(result.truncated);
-      setNotice({
+      show("fetch", {
         tone: result.truncated ? "warning" : "info",
         title: result.truncated
           ? "已达到可显示的模型数量上限"
@@ -230,27 +313,62 @@ function WorkBuddyPanel() {
       });
     } catch {
       if (mountedRef.current)
-        setNotice({
+        show("fetch", {
           tone: "error",
           title: "模型读取失败",
           description: "请检查地址、凭据和服务状态后重试。",
         });
     } finally {
-      clearApiKey();
       if (mountedRef.current) setBusy(null);
       writeLock.current = false;
     }
   };
 
-  const buildSaveRequest = (): WorkBuddySaveRequest => {
-    const selected = [...selectedModelIds];
-    const manual = parseManualModelIds(manualModels);
+  const collectDraftIds = (): string[] =>
+    addUniqueModelIds(draftModelIds, parseManualModelIds(manualDraft));
+
+  const fillManualModels = () => {
+    const pending = parseManualModelIds(manualDraft);
+    if (pending.length === 0) {
+      show("draft", { tone: "error", title: "请输入模型 ID" });
+      focusControl(manualModelsInputRef.current);
+      return;
+    }
+    const submittedApiKey = apiKeyRef.current.trim();
+    if (
+      submittedApiKey &&
+      pending.some((modelId) => modelId.includes(submittedApiKey))
+    ) {
+      show("draft", {
+        tone: "error",
+        title: "模型 ID 不能包含 API Key",
+        description: "请检查模型 ID 后重试。",
+      });
+      focusControl(manualModelsInputRef.current);
+      return;
+    }
+    setDraftModelIds((current) => addUniqueModelIds(current, pending));
+    setManualDraft("");
+    dismiss("draft");
+  };
+
+  const clearDraftModels = () => {
+    setDraftModelIds([]);
+    setFetchedSourceIds(new Set());
+    setTruncated(false);
+  };
+
+  const buildSaveRequest = (draftIds: string[]): WorkBuddySaveRequest => {
+    const { selectedModelIds, manualModelIds } = splitWorkBuddyDraft(
+      draftIds,
+      fetchedSourceIds,
+    );
     const request = {
       baseUrl: baseUrl.trim(),
       apiKey: apiKeyRef.current.trim(),
       allowNoApiKey,
-      selectedModelIds: selected,
-      manualModelIds: manual,
+      selectedModelIds,
+      manualModelIds,
       clearExistingApiKeys,
       expectedRevision:
         modelIdsQuery.data?.revision ?? statusQuery.data?.revision ?? null,
@@ -265,7 +383,7 @@ function WorkBuddyPanel() {
     if (writeLock.current) return;
     writeLock.current = true;
     setBusy("save");
-    setNotice(null);
+    clear();
     let shouldRefresh = true;
     let rereadNotice: {
       confirmed: Notice;
@@ -278,7 +396,7 @@ function WorkBuddyPanel() {
       switch (result.state) {
         case "saved":
           setPendingOverwrite(null);
-          setNotice({
+          show("save", {
             tone: "info",
             title: "WorkBuddy 模型配置已保存",
             description: `共 ${result.modelCount} 个模型；新增 ${result.createdEntries}，更新 ${result.updatedEntries}。`,
@@ -346,7 +464,7 @@ function WorkBuddyPanel() {
             },
           };
         } else {
-          setNotice({
+          show("save", {
             tone: "error",
             title: "保存失败",
             description: "请刷新当前设置、检查输入后重试。",
@@ -359,7 +477,8 @@ function WorkBuddyPanel() {
         ? await refreshAuthoritativeState()
         : false;
       if (mountedRef.current && rereadNotice) {
-        setNotice(
+        show(
+          "save",
           rereadConfirmed ? rereadNotice.confirmed : rereadNotice.unconfirmed,
         );
       }
@@ -370,7 +489,8 @@ function WorkBuddyPanel() {
 
   const startSave = () => {
     if (writeLock.current || !validateConnection()) return;
-    const request = buildSaveRequest();
+    const draftIds = collectDraftIds();
+    const request = buildSaveRequest(draftIds);
     const submittedApiKey = request.apiKey.trim();
     if (
       submittedApiKey &&
@@ -379,21 +499,25 @@ function WorkBuddyPanel() {
       )
     ) {
       clearApiKey();
-      setNotice({
+      show("draft", {
         tone: "error",
         title: "模型 ID 不能包含 API Key",
         description: "请检查模型 ID 后重试。",
       });
-      manualModelsInputRef.current?.focus();
+      focusControl(manualModelsInputRef.current);
       return;
     }
     if (
       request.selectedModelIds.length === 0 &&
       request.manualModelIds.length === 0
     ) {
-      setNotice({ tone: "error", title: "请至少选择或填写一个模型 ID" });
-      manualModelsInputRef.current?.focus();
+      show("draft", { tone: "error", title: "请至少选择或填写一个模型 ID" });
+      focusControl(manualModelsInputRef.current);
       return;
+    }
+    if (parseManualModelIds(manualDraft).length > 0) {
+      setDraftModelIds(draftIds);
+      setManualDraft("");
     }
     void saveRequest(request);
   };
@@ -408,7 +532,6 @@ function WorkBuddyPanel() {
     });
   };
 
-  const status = statusQuery.data;
   const modelIds = modelIdsQuery.data?.ids ?? [];
   const loading = statusQuery.isLoading || modelIdsQuery.isLoading;
   const readFailed = statusQuery.isError || modelIdsQuery.isError;
@@ -421,7 +544,7 @@ function WorkBuddyPanel() {
       <header className="fy-models-config-heading">
         <div>
           <h2>WorkBuddy</h2>
-          <p>查看并管理 WorkBuddy 的模型设置。</p>
+          <p>查看并管理 WorkBuddy 的模型设置。出错时提示会出现在对应输入旁边。</p>
         </div>
       </header>
 
@@ -431,138 +554,223 @@ function WorkBuddyPanel() {
           暂时无法读取 WorkBuddy 配置，请重试。
         </InlineNotice>
       )}
-      {status && (
-        <div className="fy-models-status-grid" data-testid="workbuddy-status">
-          <div className="fy-models-status-item">
-            <span>配置状态</span>
-            <strong>{status.exists ? "已发现配置文件" : "尚无配置文件"}</strong>
-          </div>
-          <div className="fy-models-status-item">
-            <span>模型数量</span>
-            <strong>{status.modelCount}</strong>
-          </div>
-          <div className="fy-models-status-item">
-            <span>备份</span>
-            <strong>{status.backupExists ? "存在" : "未发现"}</strong>
-          </div>
-        </div>
-      )}
-      <div className="fy-models-status-item" data-testid="workbuddy-model-ids">
-        <span>当前模型 ID</span>
-        <code>{modelIds.length ? modelIds.join(", ") : "未观察到模型 ID"}</code>
-      </div>
+      <section
+        className="fy-models-existing"
+        data-testid="workbuddy-model-ids"
+        aria-label="当前已有的第三方模型 ID"
+      >
+        <button
+          type="button"
+          className="fy-models-existing-toggle"
+          data-testid="workbuddy-status"
+          aria-expanded={existingOpen}
+          onClick={() => setExistingOpen((open) => !open)}
+        >
+          <h3>当前已有的第三方模型 ID</h3>
+          <span className="fy-models-existing-meta">
+            <span>已有第三方模型数量</span>
+            <strong className="fy-models-existing-count">
+              {modelIds.length}
+            </strong>
+            <CaretDownIcon
+              className={classNames(
+                "fy-models-caret",
+                existingOpen && "fy-models-caret-open",
+              )}
+              size={18}
+              aria-hidden
+            />
+          </span>
+        </button>
+        {existingOpen ? (
+          <GroupedModelChips ids={modelIds} emptyLabel="未观察到模型 ID" />
+        ) : null}
+      </section>
 
-      <div className="fy-models-form">
-        <label className="fy-control-field">
-          服务地址
-          <Input
-            ref={baseUrlInputRef}
-            id="workbuddy-base-url"
-            name="workbuddy-base-url"
-            type="url"
-            value={baseUrl}
-            onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder="https://gateway.example/v1"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="fy-control-field">
-          API Key
-          <Input
-            ref={apiKeyInputRef}
-            id="workbuddy-api-key"
-            name="workbuddy-api-key"
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <div className="fy-models-checkbox-row">
-          <Checkbox
-            checked={allowNoApiKey}
-            onCheckedChange={setAllowNoApiKey}
-            label="允许无 API Key"
-            disabled={busy !== null}
-          />
-          <span>不使用 API Key</span>
+      <ModelsSection
+        title="连接设置"
+        titleId="workbuddy-connection-title"
+        invalid={isErrorNotice(notices.baseUrl) || isErrorNotice(notices.apiKey)}
+      >
+        <div className="fy-models-form">
+          <label className="fy-control-field">
+            服务地址
+            <Input
+              ref={baseUrlInputRef}
+              id="workbuddy-base-url"
+              name="workbuddy-base-url"
+              type="url"
+              value={baseUrl}
+              onChange={(event) => {
+                setBaseUrl(event.target.value);
+                dismiss("baseUrl");
+              }}
+              placeholder="https://gateway.example/v1"
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={isErrorNotice(notices.baseUrl)}
+              aria-describedby={
+                notices.baseUrl ? "workbuddy-base-url-error" : undefined
+              }
+            />
+            <FieldFeedback
+              id="workbuddy-base-url-error"
+              notice={notices.baseUrl}
+            />
+          </label>
+          <div className="fy-control-field">
+            <label htmlFor="workbuddy-api-key">API Key</label>
+            <SecretInput
+              ref={apiKeyInputRef}
+              id="workbuddy-api-key"
+              name="workbuddy-api-key"
+              value={apiKey}
+              onChange={(event) => {
+                setApiKey(event.target.value);
+                dismiss("apiKey");
+              }}
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={isErrorNotice(notices.apiKey)}
+              aria-describedby={
+                notices.apiKey ? "workbuddy-api-key-error" : undefined
+              }
+              revealLabel="显示 API Key"
+              hideLabel="隐藏 API Key"
+            />
+            <FieldFeedback
+              id="workbuddy-api-key-error"
+              notice={notices.apiKey}
+            />
+          </div>
+          <div className="fy-models-checkbox-row fy-models-checkbox-row-inline">
+            <Checkbox
+              checked={allowNoApiKey}
+              onCheckedChange={(checked) => {
+                setAllowNoApiKey(checked);
+                if (checked) dismiss("apiKey");
+              }}
+              label="允许无 API Key"
+              disabled={busy !== null}
+            />
+            <span>不使用 API Key</span>
+            <Tooltip
+              label={
+                <span className="fy-models-help-copy">
+                  给不需要鉴权的本地模型使用，例如本机的 Ollama、LM
+                  Studio。勾选后请求不会携带 API Key。
+                </span>
+              }
+            >
+              <button
+                type="button"
+                className="fy-models-help"
+                aria-label="不使用 API Key 说明"
+              >
+                <QuestionIcon size={16} weight="regular" aria-hidden />
+              </button>
+            </Tooltip>
+          </div>
+          <div className="fy-models-checkbox-row">
+            <Checkbox
+              checked={clearExistingApiKeys}
+              onCheckedChange={setClearExistingApiKeys}
+              label="清除已有模型的 API Key"
+              disabled={busy !== null}
+            />
+            <span>更新时清除已保存的 API Key</span>
+          </div>
         </div>
-        <div className="fy-models-checkbox-row">
-          <Checkbox
-            checked={clearExistingApiKeys}
-            onCheckedChange={setClearExistingApiKeys}
-            label="清除已有模型的 API Key"
-            disabled={busy !== null}
-          />
-          <span>更新时清除已保存的 API Key</span>
-        </div>
+      </ModelsSection>
 
-        <div className="fy-models-actions">
-          <Button disabled={busy !== null} onClick={() => void fetchModels()}>
-            {busy === "fetch" ? "读取中…" : "拉取模型"}
+      <section
+        className="fy-models-draft"
+        data-testid="workbuddy-draft-models"
+        data-invalid={isErrorNotice(notices.draft) || undefined}
+        aria-label="待保存的模型 ID"
+      >
+        <h3>待保存的模型 ID</h3>
+        {truncated ? (
+          <p className="fy-models-muted">已达到可显示的模型数量上限。</p>
+        ) : null}
+        <GroupedModelChips
+          ids={draftModelIds}
+          removable
+          onRemove={(modelId) =>
+            setDraftModelIds((current) =>
+              current.filter((id) => id !== modelId),
+            )
+          }
+          emptyLabel="尚未添加模型。可拉取远程模型，或手动填入模型 ID。"
+        />
+        <div className="fy-models-action-block">
+          <div className="fy-models-actions">
+            <Button disabled={busy !== null} onClick={() => void fetchModels()}>
+              {busy === "fetch" ? "读取中…" : "拉取模型"}
+            </Button>
+            <Button
+              className="fy-control-button-danger"
+              disabled={busy !== null || draftModelIds.length === 0}
+              onClick={clearDraftModels}
+            >
+              清除所有模型
+            </Button>
+          </div>
+          <FieldFeedback id="workbuddy-fetch-error" notice={notices.fetch} />
+        </div>
+        <div className="fy-models-manual-row">
+          <label className="fy-control-field fy-models-manual-field">
+            自定义模型 ID
+            <Input
+              ref={manualModelsInputRef}
+              id="workbuddy-manual-model-ids"
+              name="workbuddy-manual-model-ids"
+              value={manualDraft}
+              onChange={(event) => {
+                setManualDraft(event.target.value);
+                dismiss("draft");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  fillManualModels();
+                }
+              }}
+              placeholder="输入模型 ID，多个用逗号分隔"
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={isErrorNotice(notices.draft)}
+              aria-describedby={
+                notices.draft ? "workbuddy-draft-error" : undefined
+              }
+            />
+          </label>
+          <Button disabled={busy !== null} onClick={fillManualModels}>
+            填入
           </Button>
         </div>
+        <FieldFeedback id="workbuddy-draft-error" notice={notices.draft} />
+        <p className="fy-models-muted">已选择 {draftModelIds.length} 个模型</p>
+      </section>
 
-        {fetchedModels.length > 0 && (
-          <div className="fy-models-form-wide">
-            <h3>可用模型</h3>
-            {truncated && (
-              <p className="fy-models-muted">已达到可显示的模型数量上限。</p>
-            )}
-            <ul className="fy-models-model-list" aria-label="可用模型列表">
-              {fetchedModels.map((modelId) => (
-                <li key={modelId}>
-                  <label className="fy-models-model-option">
-                    <Checkbox
-                      checked={selectedModelIds.has(modelId)}
-                      onCheckedChange={(checked) =>
-                        setSelectedModelIds((current) => {
-                          const next = new Set(current);
-                          if (checked) next.add(modelId);
-                          else next.delete(modelId);
-                          return next;
-                        })
-                      }
-                      label={`选择模型 ${modelId}`}
-                      disabled={busy !== null}
-                    />
-                    <code>{modelId}</code>
-                  </label>
-                </li>
-              ))}
-            </ul>
+      <ModelsSection
+        title="保存"
+        titleId="workbuddy-save-title"
+        invalid={isErrorNotice(notices.save)}
+      >
+        <div className="fy-models-action-block">
+          <div className="fy-models-actions">
+            <Button
+              className="fy-control-button-primary"
+              disabled={busy !== null || loading || readFailed}
+              onClick={startSave}
+            >
+              {busy === "save" ? "保存中…" : "保存并应用"}
+            </Button>
           </div>
-        )}
-
-        <label className="fy-control-field fy-models-form-wide">
-          手动模型 ID
-          <textarea
-            ref={manualModelsInputRef}
-            id="workbuddy-manual-model-ids"
-            name="workbuddy-manual-model-ids"
-            className="fy-control-textarea"
-            rows={4}
-            value={manualModels}
-            onChange={(event) => setManualModels(event.target.value)}
-            placeholder="每行一个，或使用逗号分隔"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <div className="fy-models-actions">
-          <Button
-            className="fy-control-button-primary"
-            disabled={busy !== null || loading || readFailed}
-            onClick={startSave}
-          >
-            {busy === "save" ? "保存中…" : "保存并应用"}
-          </Button>
+          <FieldFeedback id="workbuddy-save-error" notice={notices.save} />
         </div>
-      </div>
-
-      <NoticeView notice={notice} />
+      </ModelsSection>
 
       <Dialog
         open={Boolean(pendingOverwrite)}
@@ -880,11 +1088,10 @@ function ProviderPanel({
         </div>
         <div className="fy-control-field">
           <label htmlFor={`${app}-quick-setup-api-key`}>API Key</label>
-          <Input
+          <SecretInput
             ref={apiKeyInputRef}
             id={`${app}-quick-setup-api-key`}
             name={`${app}-quick-setup-api-key`}
-            type="password"
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
             autoComplete="off"
@@ -893,6 +1100,8 @@ function ProviderPanel({
             aria-describedby={
               errors.apiKey ? `${app}-quick-setup-api-key-error` : undefined
             }
+            revealLabel="显示 API Key"
+            hideLabel="隐藏 API Key"
           />
           {errors.apiKey && (
             <span
@@ -930,7 +1139,10 @@ function ProviderPanel({
           )}
         </div>
         {app === "codex" && (
-          <div className="fy-models-codex-features" data-testid="codex-features">
+          <div
+            className="fy-models-codex-features"
+            data-testid="codex-features"
+          >
             <div className="fy-models-checkbox-row">
               <Checkbox
                 checked={imageExtension}
@@ -1140,9 +1352,7 @@ function OpenCodeGuidancePanel() {
         模型配置请在 OpenCode 中完成；FyAgent 可管理 MCP 与 Skills 同步。
       </InlineNotice>
 
-      {catalogQuery.isLoading && (
-        <Spinner label="正在读取 OpenCode 官方入口" />
-      )}
+      {catalogQuery.isLoading && <Spinner label="正在读取 OpenCode 官方入口" />}
       {catalogQuery.isError && (
         <InlineNotice tone="error">
           暂时无法获取官方网站，请稍后重试。
@@ -1482,8 +1692,7 @@ function TraePreflightPanel() {
         </label>
         <label className="fy-control-field">
           API Key
-          <Input
-            type="password"
+          <SecretInput
             value={apiKey}
             onChange={(event) => {
               apiKeyRef.current = event.target.value;
@@ -1492,6 +1701,8 @@ function TraePreflightPanel() {
             autoComplete="off"
             spellCheck={false}
             disabled={pending || allowNoApiKey}
+            revealLabel="显示 API Key"
+            hideLabel="隐藏 API Key"
           />
         </label>
         <div className="fy-models-form-wide fy-models-consent-list">
