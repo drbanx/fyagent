@@ -116,7 +116,7 @@ describe("FyAgent V2 routing", () => {
       expect(
         within(navigation).getAllByTestId("liquid-glass-lens"),
       ).toHaveLength(1);
-      expect(within(activeLink).getByTestId("selection-lens")).toBeVisible();
+      expect(within(navigation).getByTestId("selection-lens")).toBeVisible();
       expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(
         1,
       );

@@ -296,6 +296,16 @@ describe("FyAgent V2 architecture boundary", () => {
     ).toEqual([]);
   });
 
+  it("does not use layoutId scale projection for the selection pill", () => {
+    const source = fs.readFileSync(
+      path.join(v2Root, "shared/ui/SelectionLens.tsx"),
+      "utf8",
+    );
+
+    expect(source).not.toMatch(/\blayoutId\s*=/);
+    expect(source).not.toMatch(/\bLayoutGroup\b/);
+  });
+
   it("keeps import targets statically auditable", () => {
     const violations = parsedModules.flatMap(
       ({ file, nonLiteralDynamicImports }) =>

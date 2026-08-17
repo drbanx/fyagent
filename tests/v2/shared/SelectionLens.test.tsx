@@ -18,7 +18,7 @@ describe("SelectionLens", () => {
     });
   });
 
-  it("renders one hidden pill only on the active option", () => {
+  it("renders one track pill for the active option", () => {
     render(
       <SelectionLensTrack id="demo-track" role="list">
         <button type="button">
@@ -47,7 +47,7 @@ describe("SelectionLens", () => {
     ).toBeNull();
   });
 
-  it("keeps a shared layout id inside the group", () => {
+  it("keeps one shared pill inside the group", () => {
     render(
       <SelectionLensGroup id="shared-track">
         <SelectionLens active />

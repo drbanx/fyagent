@@ -15,7 +15,11 @@ export function PrimaryNav() {
       aria-label="主导航"
       data-testid="primary-navigation"
     >
-      <SelectionLensGroup id="primary-nav">
+      <SelectionLensGroup
+        id="primary-nav"
+        className="fy-primary-nav-track"
+        inset={1}
+      >
         {navigationItems.map((item) => (
           <NavLink
             key={item.id}

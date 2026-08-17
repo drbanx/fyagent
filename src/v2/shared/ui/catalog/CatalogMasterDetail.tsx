@@ -63,10 +63,8 @@ export function CatalogRail({
 
 export function CatalogList({ children }: { children: ReactNode }) {
   return (
-    <SelectionLensGroup id="catalog-list">
-      <div className="fy-catalog-list" role="list">
-        {children}
-      </div>
+    <SelectionLensGroup id="catalog-list" className="fy-catalog-list" role="list">
+      {children}
     </SelectionLensGroup>
   );
 }
