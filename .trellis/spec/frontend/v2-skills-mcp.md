@@ -40,9 +40,11 @@ type SkillTargetId = McpTargetId | "qoderwork" | "trae-work";
 const MCP_TARGETS: ReadonlyArray<{ id: McpTargetId; label: string }>;
 const SKILL_TARGETS: ReadonlyArray<{ id: SkillTargetId; label: string }>;
 
-const supportedAppIconById: Record<SkillTargetId, string>;
+const supportedAppIconById: Record<McpTargetId, string>;
+const skillTargetIconById: Record<SkillTargetId, string>;
 
-function getSupportedAppIcon(id: SkillTargetId): string;
+function getSupportedAppIcon(id: McpTargetId): string;
+function getSkillTargetIcon(id: SkillTargetId): string;
 
 interface SkillsPort {
   getInstalled(): Promise<InstalledSkill[]>;
@@ -164,15 +166,17 @@ interface SettingsPort {
 
 ### Presentation boundary
 
-- User-visible CSS is namespaced under `.fy-skills-*`, `.fy-mcp-*`, or
-  `.fy-control-*` and consumes only `--fy-*` tokens.
-- The shared assignment panel resolves Claude, Codex, Gemini, Grok Build,
-  OpenCode, Hermes, QoderWork, and TRAE Work through one exhaustive V2-owned
-  `Record<SkillTargetId, string>` when rendered for Skills. MCP passes its
-  six-target collection explicitly. Runtime code must not import a legacy
-  asset path or a remote URL. A reviewed byte-for-byte local asset copy is
-  acceptable when V2 owns the resulting path and the asset inventory is
-  updated.
+- User-visible CSS is namespaced under `.fy-feature-*` or `.fy-control-*`.
+  Skills and MCP own only the page wrappers `.fy-skills-page` and
+  `.fy-mcp-page`; do not invent a parallel `.fy-skills-*` / `.fy-mcp-*` theme.
+  Consume only `--fy-*` tokens.
+- The shared assignment panel resolves all eight Skill targets through
+  `skillTargetIconById` / `getSkillTargetIcon`. MCP passes its six-target
+  collection explicitly and still goes through that map. `supportedAppIconById`
+  / `getSupportedAppIcon` cover only the six MCP identities. Runtime code must
+  not import a legacy asset path or a remote URL. A reviewed byte-for-byte
+  local asset copy is acceptable when V2 owns the resulting path and the asset
+  inventory is updated.
 - Assignment icons are decorative beside the existing text:
   `alt=""` and `aria-hidden="true"`. The switch keeps the sole accessible name
   `${app.label} ${labelSuffix}`; an icon must not create a duplicate label.
@@ -286,5 +290,5 @@ label.
 Correct: use the exhaustive local V2 map and keep the image decorative.
 
 ```tsx
-<img src={getSupportedAppIcon(app.id)} alt="" aria-hidden="true" />
+<img src={getSkillTargetIcon(app.id)} alt="" aria-hidden="true" />
 ```

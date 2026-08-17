@@ -5,12 +5,18 @@
 Read this contract before changing `src-tauri/src/window_layout.rs`,
 `restore_hidden_main_window_layout`, `refresh_main_window_layout`, the
 `Moved` / DPI layout listener in `src-tauri/src/lib.rs`, or Windows
-`windows_window_state` restore/save. Renderer chrome (macOS Overlay drag
-strip) is owned by the [V2 Shell Contract](../frontend/v2-shell.md); do not
-fix native window overflow in React or CSS.
+`windows_window_state` restore/save.
 
-This is a host geometry contract. The V2 shell does not own maximize,
-restore, min-size, or work-area clamping.
+The V2 app-shell Overlay chrome is a renderer React widget under
+`src/v2/widgets/app-shell/` (window chrome, not a feature route). The
+[V2 Shell Contract](../frontend/v2-shell.md) owns that composition,
+including the macOS Overlay drag strip. **V2-owned chrome** means that
+React widget only. It does not mean V2 owns host geometry, and it does
+not place Overlay outside the V2 tree.
+
+This is a host geometry contract. Do not fix native window overflow in
+Overlay, React, or CSS. The V2 shell does not own maximize, restore,
+min-size, or work-area clamping.
 
 ## 2. Signatures
 
@@ -57,9 +63,13 @@ debounce: 150ms after Moved or ScaleFactorChanged
   origin. Visible UI then sits partly off-screen.
 - `MAXIMUM_WORK_AREA_SHARE` (90%) clamps **normal** rectangles only. Do not
   rewrite a maximized client area into a 90% pseudo-maximized window.
-- macOS keeps Overlay title bar (`titleBarStyle: Overlay`). Windows keeps a
-  Visible system title bar. Do not switch either to compensate for drag or
-  maximize bugs.
+- macOS keeps the native Tauri title bar (`titleBarStyle: Overlay`). That
+  native Overlay style is host chrome. The V2 app-shell Overlay widget may
+  add the inert drag strip in the React tree; it is not a feature page and
+  it is not outside V2. Windows keeps a Visible system title bar and no
+  Overlay drag strip. Do not switch either `titleBarStyle` to compensate
+  for drag or maximize bugs, and do not treat the React Overlay chrome as
+  a geometry owner.
 - Windows persistence stays in Shell-user `windows_window_state`; macOS stays
   on `tauri-plugin-window-state`. Do not change the JSON field set unless
   runtime evidence proves a missing field.

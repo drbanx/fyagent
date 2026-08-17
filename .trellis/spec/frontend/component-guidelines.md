@@ -1,5 +1,10 @@
 # Component Guidelines
 
+These conventions apply to leftover `src/components/**` outside `src/v2`.
+V2 primitives, tokens, and copy live under `src/v2/shared/ui` and must not
+import these leftover wrappers, `src/index.css`, `lucide-react`, or
+`src/i18n/**`. See [V2 Shell](./v2-shell.md).
+
 ## Component Families
 
 Business components are generally function components with a local props

@@ -30,19 +30,20 @@ These guides help you **ask the right questions before coding**.
 
 ### When to Think About Cross-Layer Issues
 
-- [ ] Feature touches 3+ layers (API, Service, Component, Database)
+- [ ] Feature touches 3+ layers (Rust host, Tauri IPC, renderer port/facade, React)
 - [ ] Data format changes between layers
 - [ ] Multiple consumers need the same data
 - [ ] You're not sure where to put some logic
-- [ ] You are adding an event kind, JSONL record, RPC payload, or config field
+- [ ] You are adding a Tauri command, event, DTO field, or config field
 - [ ] UI / command code starts casting raw payload fields directly
-- [ ] Native window geometry (`set_min_size` / maximize / work area) and
-      renderer chrome (drag regions, Overlay title bar) are changing together
+- [ ] Product UI may belong in V2 (`src/v2`) rather than leftover legacy `src/` code
+- [ ] Native window geometry (maximize / min-size / work area) and renderer
+      chrome (Overlay drag) are changing together
 
-→ Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
-  and, for window chrome vs maximize overflow, the
-  [Main Window Layout Contract](../backend/main-window-layout.md) plus the
-  [V2 Shell Contract](../frontend/v2-shell.md).
+→ Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md).
+  For V2 routes or shell chrome, read the
+  [V2 Shell Contract](../frontend/v2-shell.md). For host maximize/min-size,
+  read the [Main Window Layout Contract](../backend/main-window-layout.md).
 
 ### When to Think About Code Reuse
 

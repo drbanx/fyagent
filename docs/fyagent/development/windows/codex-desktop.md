@@ -238,9 +238,3 @@ WebView2 paths, Windows registry behavior, the protected bridge/ACL/file URI,
 PackageManager terminal behavior, cleanup, or setup/uninstall lifecycle on real
 Windows 10/11, x64/ARM64, or Bob/Alice systems. Those are explicit residual
 risks and prohibit a native-compatibility or native-runtime-verified claim.
-
-The repository also intentionally accepts the official Trellis `0.6.14`
-Codex hooks without FyAgent's former path-containment, exact-import,
-session/input, and markup-escaping overlay checks. That separate prompt-hook
-regression remains a documented residual risk; the helper security boundary
-must not be presented as restoring equivalent hook hardening.

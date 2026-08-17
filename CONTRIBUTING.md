@@ -21,7 +21,7 @@ There are many ways to contribute:
 ### Prerequisites
 
 - Git and Git LFS where visual assets require it
-- [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 or newer,
+- [mise](https://mise.jdx.dev/getting-started.html) 2026.8.6 or newer,
   installed globally
 - [Tauri 2.0 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
@@ -267,7 +267,7 @@ FyAgent maintains four locale resources. When modifying user-facing text:
 ### 前提条件
 
 - Git；视觉资产需要时安装 Git LFS
-- 全局安装 [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 或更高版本
+- 全局安装 [mise](https://mise.jdx.dev/getting-started.html) 2026.8.6 或更高版本
 - [Tauri 2.0 开发环境](https://v2.tauri.app/start/prerequisites/)
 
 仓库通过各自的版本与 lock 文件固定 Node.js、pnpm、Rust、uv 和由 uv 管理的 Python；

@@ -1,5 +1,11 @@
 # Quality Guidelines
 
+`mise run typecheck`, `format:check`, and `test:unit` cover leftover renderer
+and shared non-V2 tests. `vitest.config.ts` excludes `tests/v2/**` and
+`tests/v2-browser/**`; V2 changes must use the gates in
+[V2 Shell](./v2-shell.md). V2 copy is hardcoded Chinese and is not part of
+the four-locale `t(...)` contract below.
+
 ## Reproducible Core Frontend Checks
 
 For an ordinary renderer change, start with the repository task API:
@@ -107,10 +113,10 @@ execution script.
 Never use `NODE_NO_WARNINGS`, `--no-warnings`, `--no-deprecation`,
 `--disable-warning=DEP0040`, or stderr filtering to make these gates pass.
 
-## UI Text and Accessible Primitives
+## Leftover UI Text and Accessible Primitives
 
-When a renderer change adds or changes user-visible text, use `t(...)` and
-update the four locales registered by `src/i18n/index.ts`:
+When a leftover renderer change adds or changes user-visible text, use `t(...)`
+and update the four locales registered by `src/i18n/index.ts`:
 
 ```text
 src/i18n/locales/en.json

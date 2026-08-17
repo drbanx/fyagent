@@ -60,14 +60,14 @@ export type MemoryDocumentId =
 export interface MemoryPort {
   readDocument(id: MemoryDocumentId): Promise<string | null>;
   writeDocument(id: MemoryDocumentId, content: string): Promise<void>;
-  getHermesLimits(): Promise<HermesLimits>;
+  getHermesLimits(): Promise<HermesMemoryLimits>;
   setHermesEnabled(kind: "memory" | "user", enabled: boolean): Promise<void>;
-  listDailyFiles(): Promise<DailyMemoryFile[]>;
+  listDailyFiles(): Promise<DailyMemoryFileInfo[]>;
   readDailyFile(filename: string): Promise<string | null>;
   writeDailyFile(filename: string, content: string): Promise<void>;
   deleteDailyFile(filename: string): Promise<void>;
   searchDailyFiles(query: string): Promise<DailyMemorySearchResult[]>;
-  openOpenClawDirectory(target: "workspace" | "memory"): Promise<void>;
+  openOpenClawDirectory(subdir: "workspace" | "memory"): Promise<void>;
 }
 ```
 

@@ -30,12 +30,13 @@ rg -n "keyword" <relevant-paths>
 
 ### Step 2: Ask These Questions
 
-| Question                             | If Yes...                    |
-| ------------------------------------ | ---------------------------- |
-| Does a similar function exist?       | Use or extend it             |
-| Is this pattern used elsewhere?      | Follow the existing pattern  |
-| Could this be a shared utility?      | Create it in the right place |
-| Am I copying code from another file? | **STOP** - extract to shared |
+| Question                                       | If Yes...                                                         |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| Does a similar function exist?                 | Use or extend it                                                  |
+| Is this pattern used elsewhere?                | Follow the existing pattern                                       |
+| Could this be a shared utility?                | Create it in the right place                                      |
+| Am I copying leftover `src/` UI into `src/v2`? | **STOP** — reuse V2 shared/widgets; read [V2 Shell](../frontend/v2-shell.md) |
+| Am I copying code from another file?           | **STOP** - extract to shared                                      |
 
 ---
 
@@ -62,9 +63,11 @@ rg -n "keyword" <relevant-paths>
 ### Pattern 4: Repeated Payload Field Extraction
 
 When two or more consumers read the same Tauri, event, or configuration payload
-field, first locate the owning API facade, domain type, or schema. Put the
-shared decoding/normalization there instead of creating another local cast; for
-the concrete wire contract, read [Frontend Type Safety](../frontend/type-safety.md).
+field, first locate the existing owner: a V2 feature port, a legacy API facade,
+a domain type, or a schema. Put shared decoding there instead of another local
+cast. For the wire-contract rules, read
+[Frontend Type Safety](../frontend/type-safety.md); for V2 placement, read
+[V2 Shell](../frontend/v2-shell.md).
 
 ---
 
@@ -95,27 +98,10 @@ When you've made similar changes to multiple files:
 ### Reducers Should Use Exhaustive Structure
 
 When state is derived from action-like values (`action`, `kind`, `status`,
-`phase`), prefer a reducer with one `switch` over scattered `if/else` updates.
-
-```typescript
-// BAD - action-specific state transitions are hard to audit
-if (action === "opened") { ... }
-else if (action === "comment") { ... }
-else if (action === "status") { ... }
-
-// GOOD - one reducer owns the transition table
-switch (event.action) {
-  case "opened":
-    ...
-    return;
-  case "comment":
-    ...
-    return;
-}
-```
-
-This makes the transition table discoverable; display code and commands should
-not duplicate pieces of the same state transition.
+`phase`), prefer one reducer over scattered `if/else` updates so the transition
+table stays in one place. Display code should not re-implement pieces of that
+table. For renderer state ownership, read
+[State Management](../frontend/state-management.md).
 
 ---
 

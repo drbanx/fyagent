@@ -3,25 +3,34 @@
 ## 1. Scope / Trigger
 
 Read this contract before changing `src/v2/**`, the V2-only test/configuration
-files, or the renderer entry that selects `src/v2/main.tsx`. It is a narrow V2
-exception to the legacy renderer conventions: the existing frontend
-specs remain authoritative for every path outside the V2 boundary.
+files, or the renderer entry that selects `src/v2/main.tsx`. Production HTML
+(`src/index.html`) loads that entry; leftover `src/main.tsx` is not the
+desktop/browser shell. This page is a narrow V2 exception to the leftover
+renderer conventions: the existing frontend specs remain authoritative for
+every path outside the V2 boundary.
 
 Production V2 code uses this structure:
 
 ```text
 src/v2/
-|- app/                  # composition root, router, errors, and styles
+|- main.tsx              # production composition root
+|- app/                  # router, RootError, and styles
 |- pages/<route>/        # one folder for each first-level route
 |- widgets/app-shell/    # visible web-shell composition
-|- shared/               # config, assets, UI, design system, and platform ports
+|- shared/               # config, assets, UI, feature ports, platform adapters
 `- dev/                  # development-only UI Lab
 ```
 
-Do not create empty `entities`, `features`, store, or service layers speculatively.
-Native title bars, caption buttons, and dragging stay system/Tauri chrome.
-React may add only the inert native-macOS Overlay drag strip required for
-window move and double-click zoom; it must not reimplement caption buttons.
+Do not create empty `entities`, store, or service layers speculatively.
+Existing `shared/features` is the approved port/query module, not a
+speculative FSD `features` layer.
+Tauri `titleBarStyle: Overlay` is the host native title bar; it does not
+hand window geometry to V2. Caption buttons stay system chrome. The inert
+macOS drag strip is V2-owned Overlay React chrome in
+`src/v2/widgets/app-shell/TopBar.tsx` (app-shell widget, not a feature
+route). React must not reimplement caption buttons. The native host still
+owns maximize, min-size, and work-area geometry (`set_min_size` is skipped
+while maximized).
 The approved Skills and MCP exception follows the dedicated
 [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md).
 Agent directory and model quick setup follow the dedicated
@@ -54,21 +63,32 @@ interface LiquidGlassLensProps {
   className?: string;
 }
 
-interface SelectionLensGroupProps {
+export function SelectionLensGroup({
+  id,
+  inset = 0,
+  className,
+  children,
+  ...props
+}: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
-  children: ReactNode;
-  className?: string;
   inset?: number;
-}
+}): JSX.Element;
 
-interface SelectionLensProps {
+export function SelectionLens({
+  active,
+}: {
   active: boolean;
   className?: string;
-}
+}): JSX.Element | null;
 
-type SelectionLensTrackProps = Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
+export function SelectionLensTrack({
+  id,
+  className,
+  children,
+  ...props
+}: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
-};
+}): JSX.Element;
 
 export const selectionLensTransition = {
   type: "spring",
@@ -139,14 +159,18 @@ The navigation source contains exactly these entries in this order:
   Settings, and Avatar. Native caption controls are outside the renderer and
   outside this tab-order contract.
 
-### System-owned native chrome
+### Window chrome
 
 - The React top bar has exactly three web regions in its chrome row: Brand,
   Primary Navigation, and Tools. It contains no minimize, maximize, close, or
   traffic-light controls.
-- Native macOS Overlay may render one inert 28px `data-tauri-drag-region`
-  strip above the chrome row. Browser preview, Windows, and tests without a
-  native macOS runtime must not render that strip.
+- Overlay React chrome is V2-owned window chrome in `TopBar.tsx` under
+  `src/v2/widgets/app-shell/`. It is not a feature route and is not outside
+  the V2 React tree. On native macOS `TopBar` renders one inert 28px
+  `data-tauri-drag-region` strip above the chrome row. Browser preview,
+  Windows, and tests without a native macOS runtime must not render that
+  strip. `titleBarStyle: Overlay` remains host chrome; V2 does not own
+  maximize, min-size, or work-area geometry.
 - Gate that strip with `shouldShowMacOverlayDragStrip()`. The left
   `--fy-titlebar-traffic-light-width` (78px) spacer uses `pointer-events:
   none` so traffic lights stay clickable; only the remaining surface is the
@@ -217,7 +241,7 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   the user prefers reduced motion. Never combine `layoutId` scale projection
   with `backdrop-filter` on the same node.
 - Keep the chrome row near 68px, brand mark 28px, brand text 19px, navigation
-  track 46px, and navigation/tool targets 38px. Native macOS Overlay adds a
+  track 46px, and navigation/tool targets 38px. V2 Overlay chrome adds a
   28px inert drag strip above that chrome row so the window can be dragged and
   double-clicked. At 900px, reduce CSS gaps and
   padding without hiding any label or tool or using JavaScript viewport state.
@@ -226,9 +250,11 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
 
 ### Layer boundaries
 
-Dependencies point downward only:
+Dependencies point downward only. Same-layer imports are allowed
+(`pages` → `pages`, `widgets` → `widgets`).
 
 ```text
+main.tsx (root) -> app
 app -> pages, widgets, shared, dev (DEV-only)
 pages -> shared
 widgets -> shared
@@ -259,14 +285,14 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Condition                                                              | Required result                                                                    |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | Empty hash, root route, or unknown route                               | Redirect to `#/models`; Models alone has `aria-current="page"`                     |
-| A `layoutId` pill uses non-uniform scale with `backdrop-filter`            | Architecture test fails; geometry overlay must keep `scaleX/scaleY` at 1 |
+| A `layoutId` pill uses non-uniform scale with `backdrop-filter`            | Architecture test fails; overlay must spring `left`/`top`/`width`/`height` and must not animate `transform: scale` |
 | Any normal production route                                            | Exactly one active primary link, one production `LiquidGlassLens`, and one nav `SelectionLens` overlay; other tracks may each have their own pill |
 | UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
 | React StrictMode or repeated ready calls                               | One native `frontend-deeplink-ready` emission per renderer lifetime                |
 | Production requests the UI Lab path                                    | Route is absent and wildcard fallback selects `#/models`                           |
 | Custom caption buttons or `setDecorations(false)` appear                | Unit, architecture, or browser negative assertion fails                            |
-| A drag region appears outside native macOS Overlay TopBar               | Architecture test fails; browser preview still has no drag strip                   |
+| A drag region appears outside the V2 `TopBar` Overlay chrome            | Architecture test fails; browser preview still has no drag strip                   |
 | Drag strip is gated on userAgent instead of `detectRuntime()`           | Mac-host Playwright/jsdom can show a false strip; runtime tests must fail          |
 | Windows maximize overflow is “fixed” by shrinking V2 chrome             | Wrong layer; host must skip `set_min_size` while maximized                         |
 | V2 calls `setDecorations(false)`                                       | Static contract search and V2 tests fail                                           |
@@ -315,8 +341,8 @@ mise run build:renderer
   nine-stop primary
   tab order, stable accessible names, inert tool clicks, absence of custom
   caption buttons, six non-empty product pages, and idempotent ready behavior.
-  Browser/jsdom shells have no drag strip; native macOS Overlay is allowed one
-  inert strip above the chrome row.
+  Browser/jsdom shells have no drag strip; native macOS may show one inert
+  V2 `TopBar` Overlay strip above the chrome row.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract. They keep `framer-motion` behind
@@ -395,7 +421,9 @@ return <button aria-label="Close" onClick={closeWindow} />;
 ```
 
 Correct: let Router own the semantic link, wrap only its active label with the
-bounded internal lens, and keep native window chrome outside React.
+bounded internal lens, and keep caption buttons outside React. Overlay drag
+chrome stays in `TopBar.tsx`; `titleBarStyle: Overlay` and window geometry
+stay with the host.
 
 ```tsx
 <NavLink to={item.path}>

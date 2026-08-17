@@ -117,7 +117,7 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [SUPPORT.md](SUPPORT.md), and [CON
 
 ## Development
 
-A first checkout requires a global `mise >= 2026.8.0`. After reviewing the repository configuration, use this sequence for interactive development:
+A first checkout requires a global `mise >= 2026.8.6`. After reviewing the repository configuration, use this sequence for interactive development:
 
 ```bash
 mise trust

@@ -1,5 +1,10 @@
 # Type Safety
 
+Leftover renderer types live in `src/types.ts` and `src/lib/`. V2 feature
+wire types live in `src/v2/shared/features/types.ts` and must be parsed at
+the platform adapter before React Query sees them. Do not treat leftover
+facades as the V2 port contract.
+
 ## Compiler Contract
 
 The renderer compiles with TypeScript strict mode. `tsconfig.json` also enables
@@ -26,7 +31,10 @@ maps `@/*` to `src/*`. Type-check renderer and test code with
 export const providerSchema = z.object({
   name: z.string(),
   websiteUrl: z.string().url().optional().or(z.literal("")),
-  settingsConfig: z.string().min(1),
+  notes: z.string().optional(),
+  settingsConfig: z.string().min(1), // also JSON.parse-checked
+  icon: z.string().optional(),
+  iconColor: z.string().optional(),
 });
 
 export type ProviderFormData = z.infer<typeof providerSchema>;

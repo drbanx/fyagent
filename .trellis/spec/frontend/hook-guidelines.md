@@ -1,5 +1,10 @@
 # Hook Guidelines
 
+These conventions apply to leftover `src/hooks/` and feature-local hooks
+outside `src/v2`. V2 feature data crosses `FeaturePorts` and V2 query hooks
+under `src/v2/shared/features/`; pages must not import leftover hooks. See
+[V2 Shell](./v2-shell.md).
+
 ## Location and Naming
 
 Custom hooks are exported functions whose names start with `use`. Cross-feature

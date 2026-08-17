@@ -26,8 +26,9 @@ mise.lock                        approved uv resolution and tool artifacts
 `mise.toml` must not repeat Node, pnpm, Rust, or Python versions. It enables the
 Node, pnpm, and Rust idiomatic files, declares only `uv = "latest"`, includes
 the domain task TOMLs, and disables automatic installation when ordinary tasks
-start. The repository requires mise `>= 2026.8.0`; repository scripts never
-download or privately install mise.
+start. The repository requires mise `>= 2026.8.6`, which is the
+`mise.toml` `min_version`. Repository scripts never download or privately
+install mise.
 
 The audited repository aliases are:
 
@@ -247,7 +248,7 @@ the standard version file and `mise.lock` captured before the attempt.
 
 | Condition                                                             | Required result                                                                         |
 | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| mise is missing or older than 2026.8.0                                | Stop before dependency preparation                                                      |
+| mise is missing or older than 2026.8.6                                | Stop before dependency preparation                                                      |
 | Ordinary task is started with a missing tool                          | Fail and direct the developer to `bootstrap`; never auto-trust                          |
 | A standard version differs from the actual executable                 | `env:check` fails                                                                       |
 | `mise.toml` repeats Node/pnpm/Rust/Python                             | Lock and environment contracts fail                                                     |
@@ -272,7 +273,8 @@ the standard version file and `mise.lock` captured before the attempt.
 ## 8. Tests Required
 
 - Parse every standard source and assert Node 24.19.0, pnpm 10.12.3, Rust
-  1.97.1, and Python 3.14.7 without duplicate mise declarations.
+  1.97.1, Python 3.14.7, and `mise.toml` `min_version = "2026.8.6"` without
+  duplicate mise tool-version declarations.
 - Regenerate `mise.lock` from no prior lock, target all four platforms, and
   require an identical second generation.
 - Structurally validate backend identity, URLs, SHA-256 checksums, platform

@@ -3,8 +3,9 @@
 ## 1. Scope / Trigger
 
 Read this contract before changing the V2 Agent directory, Models quick setup,
-their local Agent assets, the versioned native catalog, WorkBuddy model ports,
-Claude/Codex Provider quick setup, or the sanitized Provider summary boundary.
+their local Agent assets, the versioned native catalog (including OpenCode),
+WorkBuddy model ports, Claude/Codex Provider quick setup, or the sanitized
+Provider summary boundary.
 The common shell, native-chrome, router, and layer rules remain in
 [V2 Shell](./v2-shell.md). Skills/MCP and Prompt/Memory have separate feature
 contracts and must not be folded into the Agent capability catalog.
@@ -14,13 +15,16 @@ The product boundary is deliberately asymmetric. Agents and Models share one
 its own capability workflow:
 
 - QoderWork CN, TRAE Work, and WorkBuddy each expose one catalog-owned product
-  link; Claude Code exposes separate CLI and Desktop links. QoderWork additionally
-  exposes safe Hooks/MCP preparation, while TRAE Models owns connection
-  preflight and external MCP validation.
+  link; Claude Code exposes separate CLI and Desktop links; OpenCode exposes
+  `product` then `cli`. QoderWork additionally exposes safe Hooks/MCP
+  preparation, while TRAE Models owns connection preflight and external MCP
+  validation.
 - WorkBuddy additionally uses its dedicated revision-checked configuration
   domain.
 - Codex exposes no catalog link. Its detail owns the FyAgent-managed desktop
   installer while Codex and Claude Code retain bounded Provider quick setup.
+- OpenCode model write is assisted vendor UI only: the Models page must not
+  mount Provider quick setup or a managed installer for it.
 - Browser preview never impersonates authoritative desktop state or installer
   success.
 
@@ -34,7 +38,8 @@ type AgentCatalogId =
   | "trae-work"
   | "workbuddy"
   | "codex"
-  | "claude-code";
+  | "claude-code"
+  | "opencode";
 
 type AgentOfficialLinkId = "product" | "cli" | "desktop";
 
@@ -54,7 +59,8 @@ type AgentCatalogResult = {
       | "trae-work-cn"
       | "workbuddy"
       | "codex"
-      | "claude-code";
+      | "claude-code"
+      | "opencode";
     displayName: string;
     description: string;
     officialLinks: AgentOfficialLink[];
@@ -120,9 +126,13 @@ type ProviderQuickSetupRequest = {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  codexFeatures?: {
+    imageExtension?: boolean;
+    websockets?: boolean;
+  };
 };
 
-apply_provider_quick_setup_with_result({ app, request })
+apply_provider_quick_setup_with_result({ request, app })
   -> ProviderMutationResult<{
        warnings: string[];
      }>
@@ -152,12 +162,12 @@ mutation arguments only and never query keys or query data.
 ### Catalog and local assets
 
 - `get_agent_catalog` is deterministic, non-networking, non-secret, and ordered
-  exactly: QoderWork CN, TRAE Work, WorkBuddy, Codex, Claude Code.
+  exactly: QoderWork CN, TRAE Work, WorkBuddy, Codex, Claude Code, OpenCode.
 - The v3 link matrix is exact: QoderWork CN, TRAE Work, and WorkBuddy each own
-  one `product` link; Claude Code owns `cli` then `desktop`; Codex owns an empty
-  list and keeps its dedicated managed installer outside generic launch. Link
-  IDs are unique per entry, labels are nonempty, and URLs are absolute HTTPS
-  values owned by Rust.
+  one `product` link; Claude Code owns `cli` then `desktop`; OpenCode owns
+  `product` then `cli`; Codex owns an empty list and keeps its dedicated
+  managed installer outside generic launch. Link IDs are unique per entry,
+  labels are nonempty, and URLs are absolute HTTPS values owned by Rust.
 - V1 `officialUrl`, catalog v2, future catalog versions, and unknown capability,
   mode, evidence, variant, or runtime values fail closed in the
   Tauri adapter. The renderer never guesses a legacy shape or carries a second
@@ -179,10 +189,11 @@ mutation arguments only and never query keys or query data.
 - Render a keyboard-accessible left selector and right detail. The selected
   button owns `aria-current`; initial selection follows native catalog order.
 - Both pages use the shared rail `clamp(220px, 24vw, 268px)`, 14px gap, 56px
-  rows, 36px list frames, 64px detail frames, stable scrollbar gutter, and the
-  single 760px stack breakpoint. Page CSS must not redefine catalog columns,
+  rows, 36px list frames, 64px detail frames, stable scrollbar gutter, the
+  760px master/detail stack (list becomes two columns), and the 520px list
+  collapse to one column. Page CSS must not redefine catalog columns,
   brand-ID sizing, or another responsive rail.
-- QoderWork/TRAE/WorkBuddy and Claude link actions call only
+- QoderWork/TRAE/WorkBuddy/OpenCode and Claude link actions call only
   `settings.openExternal(link.url)` from the catalog. Models selects an explicit
   `product` link when it needs product guidance; it never depends on array
   position. These actions do not inspect login state, download packages, read
@@ -209,8 +220,8 @@ mutation arguments only and never query keys or query data.
 ### Models target selection
 
 - The exact selector order is QoderWork CN, TRAE Work, WorkBuddy, Codex, Claude
-  Code. Missing, empty, or unknown `target` resolves to QoderWork CN.
-- All five selectors use the same reviewed local Agent asset map. No selector
+  Code, OpenCode. Missing, empty, or unknown `target` resolves to QoderWork CN.
+- All six selectors use the same reviewed local Agent asset map. No selector
   image is loaded from a remote URL.
 - Target state is component-local. API keys and form content never enter the
   hash, URL query, local/session storage, or cross-target state. Target change
@@ -250,6 +261,10 @@ mutation arguments only and never query keys or query data.
   host and no userinfo/query/fragment, reserved-ID collision, public-field
   credential collision, and credential-in-URL collision in both renderer and
   Rust. Errors are generic and never echo the field values.
+- The V2 port is `applyQuickSetupWithResult(request, app)`. Codex may attach
+  optional `codexFeatures.imageExtension` / `codexFeatures.websockets`; Claude
+  must omit `codexFeatures`. OpenCode is not a `ProviderAppId` and must not
+  call this port.
 - Rust derives one stable reserved Provider ID per app. The renderer cannot
   submit a generic Provider, arbitrary ID, category, metadata, usage script,
   icon, sort order, or live-config fragment.
@@ -309,6 +324,7 @@ mutation arguments only and never query keys or query data.
 | TRAE preflight reaches any terminal result                                                 | Clear key/request state; report only FyAgent validation, never vendor save                               |
 | External MCP result contains an original env/header value                                  | Reject the result and expose no copy action                                                             |
 | Models target missing or unknown                                                           | Select QoderWork CN; issue no write                                                                     |
+| OpenCode is the Models target                                                              | Render vendor-UI guidance only; do not call Provider quick setup or the Codex installer                 |
 | Any selector lacks a local icon                                                            | Asset mapping/unit/browser gate fails                                                                   |
 | WorkBuddy remote/local ID contains a complete API key                                      | Generic fail-closed error before DTO/cache/DOM/write                                                    |
 | WorkBuddy revision or overwrite token drifts                                               | Write nothing; reread before claiming state                                                             |
@@ -324,9 +340,12 @@ mutation arguments only and never query keys or query data.
 
 ## 5. Good / Base / Bad Cases
 
-- Good: `/models` opens on QoderWork CN at the top, all five local icons render,
+- Good: `/models` opens on QoderWork CN at the top, all six local icons render,
   and the page resolves the catalog's explicit `product` link when assisted
   guidance is requested.
+- Good: OpenCode's Models panel only offers vendor-UI guidance plus catalog
+  `product` open and navigation to Agents; it never submits Provider quick
+  setup.
 - Good: TRAE validation returns a canonical request ID, the renderer passes the
   same ID to one cancellable probe, clears the key in `finally`, and describes
   `reachable` as a local preflight rather than vendor configuration success.
@@ -366,8 +385,9 @@ Required focused coverage includes:
 
 - exact catalog v3 version/order/variant/capability/mode/reason/evidence/link
   ID/label/HTTPS matrix and v2/future/unknown/excess fail-closed cases,
-  Claude CLI/Desktop order, Codex zero-link behavior, and command registration;
-- five local assets, official Qoder/TRAE digests/passive formats, Qoder default,
+  Claude CLI/Desktop order, OpenCode product/CLI order, Codex zero-link
+  behavior, and command registration;
+- six local assets, official Qoder/TRAE digests/passive formats, Qoder default,
   exact Models order, master/detail keyboard/ARIA, four maintained viewports;
 - exact official-link IPC, per-link lock/error behavior, Codex negative-link
   behavior, and negative download/login/config behavior;
@@ -410,12 +430,15 @@ Correct: submit the minimum request once, then independently confirm the safe
 native snapshot.
 
 ```ts
-await ports.providers.applyQuickSetupWithResult(app, {
-  name,
-  baseUrl,
-  apiKey,
-  modelId,
-});
+await ports.providers.applyQuickSetupWithResult(
+  {
+    name,
+    baseUrl,
+    apiKey,
+    modelId,
+  },
+  app,
+);
 const summary = await ports.providers.getSummary(app);
 if (summary.currentId !== QUICK_SETUP_PROVIDER_IDS[app]) {
   showUnconfirmedState();

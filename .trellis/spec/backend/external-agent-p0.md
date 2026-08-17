@@ -29,8 +29,10 @@ get_agent_catalog() -> {
 }
 ```
 
-`id` is one of `qoderwork | trae-work | workbuddy | codex | claude-code`.
-Every entry declares the same closed 11-capability sequence:
+`id` is one of
+`qoderwork | trae-work | workbuddy | codex | claude-code | opencode`,
+in that catalog order. Every entry declares the same closed 11-capability
+sequence:
 
 ```text
 product.open app.detect app.launch skills.read skills.write

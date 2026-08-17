@@ -4,21 +4,29 @@ These guidelines describe the renderer patterns observed in this checkout of
 FyAgent. They are evidence-based reference material for changes under
 `src/` and related renderer tests, not a proposed frontend redesign.
 
+The production desktop and browser entry is `src/index.html`, which loads
+`src/v2/main.tsx`. Leftover V1 bootstrap (`src/main.tsx`, `src/App.tsx`,
+`src/components/**`, `src/hooks/**`, `src/lib/**`, `src/i18n/**`) remains in
+the tree and is still covered by the non-V2 Vitest suite; the guidelines
+below stay authoritative for that leftover renderer. They are not the
+production shell contract.
+
 ## Pre-Development Checklist
 
 Before changing renderer code:
 
 1. For any `src/v2/**` change, read the
    [V2 Shell Contract](./v2-shell.md) first. It is the only exception
-   to the legacy route-placement, styling, primitive, and translation rules;
+   to the leftover route-placement, styling, primitive, and translation rules;
    the guidelines below remain authoritative outside V2.
 2. Read the nearest relevant guideline and inspect the existing feature,
    primitive, and executable tests.
 3. Locate the existing Tauri API facade, query hook, type, schema, and test
    family before creating another one.
 4. Classify state as local UI state, Context state, or backend/resource state.
-5. For user-visible text, locate the matching keys in all four registered
-   locale files before adding a literal string.
+5. For leftover renderer text, locate the matching keys in all four registered
+   locale files before adding a literal string. V2 pages use hardcoded Chinese
+   copy and must not import `src/i18n/**`.
 6. For a backend payload change, inspect both the TypeScript facade and the
    matching `src-tauri/` serialization/command code.
 7. For an application-brand icon change, read the shared
@@ -45,7 +53,7 @@ Before changing renderer code:
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [V2 Shell Contract](./v2-shell.md)                                         | Isolated V2 routes, styles, layer/platform boundaries, Overlay drag strip, lifecycle, and V2-only gates. |
 | [Main Window Layout](../backend/main-window-layout.md)                     | Host maximize/min-size invariants; Windows overflow is not a renderer chrome bug.                        |
-| [V2 Agent and Models Contract](./v2-agent-models.md)                       | Catalog v3/runtime, shared geometry, Qoder/TRAE preflight, Codex installer, WorkBuddy, Provider quick setup, and secrets. |
+| [V2 Agent and Models Contract](./v2-agent-models.md)                       | Catalog v3 six-entry order (including OpenCode), shared geometry, Qoder/TRAE preflight, Codex installer, WorkBuddy, Provider quick setup, and secrets. |
 | [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md)                   | Eight Skill targets, six direct MCP targets, authoritative state, secret handling, and responsive UI.    |
 | [V2 Prompts and Memory Native Business Contract](./v2-prompts-memory.md)    | Seven Prompt applications, four fixed long-term memory resources, OpenClaw daily memory, native-only browser behavior, and data safety. |
 | [External Agent P0 Safety](../backend/external-agent-p0.md)                | Cross-layer QoderWork/TRAE Work native command, persistence, network, permission, and evidence boundary.  |
@@ -92,9 +100,14 @@ from duplicate declarations in `mise.toml`.
 
 - [package.json](../../../package.json) defines the renderer tooling and
   runnable scripts.
-- [src/main.tsx](../../../src/main.tsx) shows the renderer provider boundary.
+- [src/index.html](../../../src/index.html) selects the production renderer
+  (`src/v2/main.tsx`).
+- [src/v2/main.tsx](../../../src/v2/main.tsx) is the production composition
+  root.
+- [src/main.tsx](../../../src/main.tsx) remains the leftover V1 bootstrap and
+  is not loaded by the production HTML entry.
 - [CONTRIBUTING.md](../../../CONTRIBUTING.md) records the maintained
-  contribution expectations, including strict TypeScript and translated UI
-  text.
+  contribution expectations, including strict TypeScript and leftover-renderer
+  translated UI text.
 - [Development Environment](../backend/development-environment.md) summarizes
   the local mise command boundary enforced by repository tasks and tests.

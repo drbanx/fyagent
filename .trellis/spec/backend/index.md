@@ -33,9 +33,10 @@ When using these notes before changing Rust/Tauri host code:
 5. Preserve protocol and schema versions as protocol facts, but never infer the
    application version or current behavior from an archived design label.
 6. For main-window restore, maximize, min-size, or `layout-mode-changed`, read
-   the [Main Window Layout Contract](./main-window-layout.md). Do not mutate
-   geometry while maximized, and do not treat renderer CSS as the Windows
-   overflow fix.
+   the [Main Window Layout Contract](./main-window-layout.md). Host owns
+   geometry: do not mutate it while maximized. V2 Overlay is renderer
+   app-shell chrome only; do not treat that React chrome or CSS as the
+   Windows overflow fix.
 
 ## Guidelines
 
@@ -44,7 +45,7 @@ When using these notes before changing Rust/Tauri host code:
 | [Codex Desktop Installer](./codex-desktop-installer.md)                   | Fixed-source installer service, shared renderer DTO/state core, V2 port/events, Shell-user package ownership, protected PackageBridge, and trusted restart/launch.                             |
 | [Codex Provider Configuration](./codex-provider-configuration.md)         | Lossless Codex Provider TOML, native capabilities, vendor/session projection, warnings, and live-config change evidence.                                                                       |
 | [WorkBuddy Configuration](./workbuddy-configuration.md)                   | WorkBuddy model discovery, restricted third-party `/v1` access, credential-safe persistence, and renderer-domain isolation.                                                                    |
-| [External Agent P0 Safety](./external-agent-p0.md)                        | Catalog v3, runtime/launch authority, eight Skill targets, Qoder Hooks, TRAE endpoint/MCP preflight, narrow permissions, and secret boundaries.                                                  |
+| [External Agent P0 Safety](./external-agent-p0.md)                        | Catalog v3 (six agents including OpenCode), runtime/launch authority, eight Skill targets, Qoder Hooks, TRAE endpoint/MCP preflight, narrow permissions, and secret boundaries.                    |
 | [Application Version and Installer Assets](./fyagent-version-contract.md) | Cargo version single source, version commands, frozen release values, exact cross-platform asset names, and evidence sets.                                                                     |
 | [GitHub CI Workflow](./github-ci-workflow.md)                             | Repository-owned change classification, domain-aware PR/merge-group jobs, full dev/main pushes, and the stable `CI / Required` aggregate.                                                      |
 | [GitHub Release Workflow](./github-release-workflow.md)                   | Exact dev-HEAD/tag/successful-push-CI identity, full preflight/formal topology, asset transaction, attestation, and public Release.                                                            |
@@ -57,7 +58,7 @@ When using these notes before changing Rust/Tauri host code:
 | [Application Identity](./application-identity.md)                         | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                                                                                 |
 | [CC Switch Upstream Synchronization](./upstream-sync.md)                  | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                                                                                |
 | [Deep-Link Import Security](./deeplink-import-security.md)                | Untrusted `fyagent://v1/import` request validation, explicit provider activation approval, and credential-safe confirmation.                                                                   |
-| [Main Window Layout](./main-window-layout.md)                             | Work-area clamp, `layout-mode-changed`, and the Windows invariant that maximized windows must not receive `set_min_size` / `set_size` / `set_position`.                                        |
+| [Main Window Layout](./main-window-layout.md)                             | Work-area clamp, `layout-mode-changed`, and the Windows invariant that maximized windows must not receive `set_min_size` / `set_size` / `set_position`. V2 Overlay is renderer chrome; host owns geometry. |
 
 ## Quality Check
 

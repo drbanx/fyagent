@@ -53,6 +53,11 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
   Tauri/toolchain migration explicitly changes the inventory.
 - Copy `src-tauri/icons/32x32.png` byte-for-byte to
   `src/assets/icons/app-icon.png` for the About surface.
+- `src/v2/shared/assets/fyagent-y-mark-transparent-128.png` is a separately
+  reviewed V2 chrome mark. It is identity-sealed in the raster inventory and
+  is not produced or overwritten by `assets:icons`. An application-icon
+  regeneration must leave it unchanged unless a separate reviewed visual
+  update includes it.
 - macOS template images are the technical monochrome exception to the color
   preservation rule. Crop to the source alpha bounds, fit proportionally in
   an 18pt content box centered on a 24pt canvas, and emit black RGBA at 24,
@@ -80,7 +85,7 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 | A generated PNG, ICO, or ICNS container cannot be decoded                         | Reject the output                                                                     |
 | About icon differs from generated `32x32.png`                                     | Reject the renderer asset                                                             |
 | Tray template has the wrong size, non-black visible RGB, or no partial alpha      | Reject the template                                                                   |
-| Application-brand generator output includes third-party artwork, a screenshot, or the DMG background | Remove it from the generator write set; independently reviewed catalog assets belong to their own task |
+| Application-brand generator output includes third-party artwork, a screenshot, the DMG background, or the V2 128px chrome mark | Remove it from the generator write set; independently reviewed catalog/chrome assets belong to their own task |
 | Static/build checks pass but native shell or Dock appearance is unobserved        | Keep native visual acceptance pending                                                 |
 | Canonically sorted complete ICNS chunks differ across repeat generation            | Reject even if decoded pixels match; this pipeline requires canonical container-byte stability          |
 | A tracked raster asset differs from the reviewed path-and-digest inventory        | Reject until it is decoded, visually reviewed, and the reviewed inventory is updated  |
