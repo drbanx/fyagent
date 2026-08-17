@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 23
+- **Total Sessions**: 24
 - **Last Active**: 2026-08-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~774 | Active |
+| `journal-1.md` | ~796 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-08-17 | SelectionLens 可打断滑块移植 | `606c35bd`, `b74d63d3` | `dev/laiyongjie` |
 | 23 | 2026-08-17 | macOS Overlay 拖拽条与 Windows 最大化几何 | `a781f102`, `833b9407`, `1ac564ab`, `6619bcb6`, `9615733a` | `dev/laiyongjie` |
 | 22 | 2026-08-15 | Executable installer upstream-admission removal | `c54bb799` | `dev/laiyongjie` |
 | 21 | 2026-08-15 | V2 Prompt and Memory native business integration | `8ddef12db1e5cda508cde643fcc6e53518ff5a05` | `dev/laiyongjie` |
