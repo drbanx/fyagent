@@ -53,10 +53,35 @@ interface LiquidGlassLensProps {
   children: ReactNode;
   className?: string;
 }
+
+interface SelectionLensGroupProps {
+  id: string;
+  children: ReactNode;
+}
+
+interface SelectionLensProps {
+  active: boolean;
+  className?: string;
+}
+
+type SelectionLensTrackProps = Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
+  id: string;
+};
+
+export const selectionLensTransition = {
+  type: "spring",
+  stiffness: 520,
+  damping: 42,
+  mass: 0.62,
+} as const;
 ```
 
-It wraps `@samasante/liquid-glass@0.1.1` with balanced optics plus
-`dispersion: 0`, `live={false}`, and `filterResolution={1}`. The lifecycle-ready
+`LiquidGlassLens` wraps `@samasante/liquid-glass@0.1.1` with balanced optics
+plus `dispersion: 0`, `live={false}`, and `filterResolution={1}`. The sliding
+selection pill is a separate V2 adapter, `SelectionLens`, which uses
+`framer-motion` `layoutId` inside `SelectionLensGroup`. The group `id` is the
+shared `layoutId`; do not pass `layoutId` as a lens prop. Do not import
+`framer-motion` outside `shared/ui/SelectionLens.tsx`. The lifecycle-ready
 operation returns `Promise<void>` and owns a module-level promise guard. Its
 native side effect remains the existing payload-free `frontend-deeplink-ready`
 event.
@@ -157,19 +182,33 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
 - Use `@samasante/liquid-glass` only behind `LiquidGlassLens`. Mount at most one
   production instance, inside the active `NavLink`; do not stretch it across
   the navigation track, tools, popovers, content plane, or background.
+- Use `SelectionLens` for interruptible exclusive option tracks: primary nav,
+  catalog lists, feature tabs, feature lists, and UI Lab tabs. One
+  `SelectionLensGroup` per track; at most one active pill per group. A page
+  may host several groups. Do not use it for Switch, Checkbox, `<select>`,
+  pagination, or independent tool buttons.
+- The pill is CSS interactive glass (`--fy-glass-interactive`,
+  `--fy-shadow-control`, inset highlight, backdrop fallback). Host selected
+  backgrounds must not also paint a static fill, or the next item will flash
+  before the pill arrives. Motion uses `selectionLensTransition`; a new click
+  retargets the shared layout node instead of queuing a width/left animation.
 - The `NavLink` owns hit area, focus, accessible name, and `aria-current`.
   Refraction is decorative enhancement. Project CSS must independently express
   tint, selected border/color/shadow, edge/highlight, and backdrop fallback.
 - Keep broad structural glass in CSS. SVG filters are not a substitute for
   accessible state and must not be animated across layout or multiplied across
-  controls.
+  controls. The sliding pill may use Motion `layoutId` projection; do not put
+  the SVG `Glass` node on that shared-layout element.
 
 ### Styling and responsive behavior
 
 - V2 owns its globals, motion, primitives, and semantic tokens. Do not import
   legacy `src/index.css`, dark-theme tokens, UI wrappers, or `src/i18n/**`.
-- Namespace V2 selectors. Do not use `transition: all`, animate layout/backdrop
-  blur, globally hide scrollbars, or ignore `prefers-reduced-motion`.
+- Namespace V2 selectors. Do not use `transition: all`, animate the
+  `backdrop-filter` property, globally hide scrollbars, or ignore
+  `prefers-reduced-motion`. `SelectionLens` is the only approved layout
+  animation; it uses Motion `layoutId` and collapses to an instant swap when
+  the user prefers reduced motion.
 - Keep the chrome row near 68px, brand mark 28px, brand text 19px, navigation
   track 46px, and navigation/tool targets 38px. Native macOS Overlay adds a
   28px inert drag strip above that chrome row so the window can be dragged and
@@ -213,7 +252,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Condition                                                              | Required result                                                                    |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | Empty hash, root route, or unknown route                               | Redirect to `#/models`; Models alone has `aria-current="page"`                     |
-| Any normal production route                                            | Exactly one active link and one selected lens                                      |
+| Any normal production route                                            | Exactly one active primary link, one production `LiquidGlassLens`, and one nav `SelectionLens`; other tracks may each have their own pill |
 | UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
 | React StrictMode or repeated ready calls                               | One native `frontend-deeplink-ready` emission per renderer lifetime                |
@@ -234,9 +273,10 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 ## 5. Good / Base / Bad Cases
 
 - **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that
-  `NavLink` alone owns `aria-current="page"`, contains the sole selected lens,
-  remains keyboard-focusable, and the Agent directory renders its approved
-  master/detail UI. Models, Skills, MCP, Prompts, and Memory render only their
+  `NavLink` alone owns `aria-current="page"`, contains the sole production
+  `LiquidGlassLens` plus the nav `SelectionLens`, remains keyboard-focusable,
+  and the Agent directory renders its approved master/detail UI with its own
+  catalog pill. Models, Skills, MCP, Prompts, and Memory render only their
   approved bounded feature surfaces.
 - **Base:** Opening without a route lands on `#/models`, with six links and
   three tools visible. Browser preview has no system or simulated controls.
@@ -260,14 +300,18 @@ mise run build:renderer
 ```
 
 - Unit tests assert default/wildcard redirects, six-route order, Router-owned
-  selection, `aria-current`, a sole active lens, the TopBar's nine-stop primary
+  selection, `aria-current`, a sole production `LiquidGlassLens`, one nav
+  `SelectionLens` on the active link, the L1 control spring, no lens outside a
+  group, the TopBar's nine-stop primary
   tab order, stable accessible names, inert tool clicks, absence of custom
   caption buttons, six non-empty product pages, and idempotent ready behavior.
   Browser/jsdom shells have no drag strip; native macOS Overlay is allowed one
   inert strip above the chrome row.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
-  window-frame contract. They positively allow only the exact neutral Codex
+  window-frame contract. They keep `framer-motion` behind
+  `shared/ui/SelectionLens.tsx` and `@samasante/liquid-glass` behind
+  `LiquidGlassLens`. They positively allow only the exact neutral Codex
   shared boundary and negatively prove that a neighboring shared path remains
   forbidden.
 - Vitest may mock the third-party filter surface to isolate router and semantic
@@ -304,6 +348,30 @@ acceptance evidence unless a task explicitly requires them.
 
 ## 7. Wrong vs Correct
 
+Wrong: measure option widths and queue a CSS `left`/`width` transition, or pass
+`layoutId` into every lens.
+
+```tsx
+<motion.div animate={{ left, width }} transition={{ duration: 0.25 }} />
+<SelectionLens layoutId="nav" active={isActive} />
+```
+
+Correct: one group per exclusive track; the active option mounts the pill, and
+a later click retargets the same shared layout node.
+
+```tsx
+<SelectionLensGroup id="primary-nav">
+  <NavLink to={item.path}>
+    {({ isActive }) => (
+      <>
+        <SelectionLens active={isActive} />
+        {isActive ? <LiquidGlassLens>{item.label}</LiquidGlassLens> : item.label}
+      </>
+    )}
+  </NavLink>
+</SelectionLensGroup>
+```
+
 Wrong: make React own native chrome and selected state while depending directly
 on an optical effect.
 
@@ -318,9 +386,12 @@ bounded internal lens, and keep native window chrome outside React.
 
 ```tsx
 <NavLink to={item.path}>
-  {({ isActive }) =>
-    isActive ? <LiquidGlassLens>{item.label}</LiquidGlassLens> : item.label
-  }
+  {({ isActive }) => (
+    <>
+      <SelectionLens active={isActive} />
+      {isActive ? <LiquidGlassLens>{item.label}</LiquidGlassLens> : item.label}
+    </>
+  )}
 </NavLink>
 ```
 
