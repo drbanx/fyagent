@@ -19,8 +19,9 @@ src/v2/
 ```
 
 Do not create empty `entities`, `features`, store, or service layers speculatively.
-Native title bars, caption buttons, and dragging are system/Tauri chrome and
-must not be reimplemented in the React tree.
+Native title bars, caption buttons, and dragging stay system/Tauri chrome.
+React may add only the inert native-macOS Overlay drag strip required for
+window move and double-click zoom; it must not reimplement caption buttons.
 The approved Skills and MCP exception follows the dedicated
 [V2 Skills and MCP Feature Contract](./v2-skills-mcp.md).
 Agent directory and model quick setup follow the dedicated
@@ -96,9 +97,12 @@ The navigation source contains exactly these entries in this order:
 
 ### System-owned native chrome
 
-- The React top bar has exactly three web regions: Brand, Primary Navigation,
-  and Tools. It contains no minimize, maximize, close, traffic-light, or
-  title-bar drag-region DOM.
+- The React top bar has exactly three web regions in its chrome row: Brand,
+  Primary Navigation, and Tools. It contains no minimize, maximize, close, or
+  traffic-light controls.
+- Native macOS Overlay may render one inert 28px `data-tauri-drag-region`
+  strip above the chrome row. Browser preview, Windows, and tests without a
+  native macOS runtime must not render that strip.
 - V2 must not call `setDecorations(false)` or otherwise disable system
   decorations at runtime. Browser preview correctly renders no native controls.
 - Do not fake system controls for browser screenshots or geometry tests.
@@ -143,8 +147,10 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   legacy `src/index.css`, dark-theme tokens, UI wrappers, or `src/i18n/**`.
 - Namespace V2 selectors. Do not use `transition: all`, animate layout/backdrop
   blur, globally hide scrollbars, or ignore `prefers-reduced-motion`.
-- Keep the top bar near 68px, brand mark 28px, brand text 19px, navigation
-  track 46px, and navigation/tool targets 38px. At 900px, reduce CSS gaps and
+- Keep the chrome row near 68px, brand mark 28px, brand text 19px, navigation
+  track 46px, and navigation/tool targets 38px. Native macOS Overlay adds a
+  28px inert drag strip above that chrome row so the window can be dragged and
+  double-clicked. At 900px, reduce CSS gaps and
   padding without hiding any label or tool or using JavaScript viewport state.
 - Preserve Radix Tooltip/Popover/Tabs behavior and portals, Phosphor icons,
   React 18, Tailwind 3, and the existing logo.
@@ -189,7 +195,8 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
 | React StrictMode or repeated ready calls                               | One native `frontend-deeplink-ready` emission per renderer lifetime                |
 | Production requests the UI Lab path                                    | Route is absent and wildcard fallback selects `#/models`                           |
-| Custom controls/drag region/frame port appears                         | Unit, architecture, or browser negative assertion fails                            |
+| Custom caption buttons or `setDecorations(false)` appear                | Unit, architecture, or browser negative assertion fails                            |
+| A drag region appears outside native macOS Overlay TopBar               | Architecture test fails; browser preview still has no drag strip                   |
 | V2 calls `setDecorations(false)`                                       | Static contract search and V2 tests fail                                           |
 | V2 imports legacy/upward code, or Tauri outside the platform boundary  | ESLint and executable architecture test fail                                       |
 | V2 imports neutral code outside `@/shared/codex-desktop`               | Architecture test fails; no broader shared-root allowlist                          |
@@ -211,7 +218,8 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
   distinct through its CSS material, text, border, shadow, and focus ring.
 - **Bad:** React disables decorations, stores `currentView`, renders caption
-  buttons/traffic lights, stretches one SVG lens across a wide bar, mounts a
+  buttons/traffic lights, spreads drag regions across interactive chrome,
+  stretches one SVG lens across a wide bar, mounts a
   lens per tool, or uses an underline/filter as the only selected indicator.
 
 ## 6. Tests Required
@@ -229,7 +237,9 @@ mise run build:renderer
 - Unit tests assert default/wildcard redirects, six-route order, Router-owned
   selection, `aria-current`, a sole active lens, the TopBar's nine-stop primary
   tab order, stable accessible names, inert tool clicks, absence of custom
-  chrome/drag regions, six non-empty product pages, and idempotent ready behavior.
+  caption buttons, six non-empty product pages, and idempotent ready behavior.
+  Browser/jsdom shells have no drag strip; native macOS Overlay is allowed one
+  inert strip above the chrome row.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract. They positively allow only the exact neutral Codex

@@ -8,7 +8,43 @@
   overflow: hidden;
 }
 
+.fy-app-shell-macos-overlay {
+  grid-template-rows: calc(
+      var(--fy-titlebar-drag-height) + var(--fy-top-bar-height)
+    )
+    minmax(0, 1fr);
+}
+
 .fy-top-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  height: var(--fy-top-bar-height);
+  isolation: isolate;
+}
+
+.fy-top-bar-macos-overlay {
+  height: calc(var(--fy-titlebar-drag-height) + var(--fy-top-bar-height));
+}
+
+.fy-titlebar-drag-strip {
+  display: grid;
+  grid-template-columns: var(--fy-titlebar-traffic-light-width) minmax(0, 1fr);
+  width: 100%;
+  height: var(--fy-titlebar-drag-height);
+}
+
+.fy-titlebar-traffic-light-space {
+  pointer-events: none;
+}
+
+.fy-titlebar-drag-surface {
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.fy-top-bar-chrome {
   display: grid;
   grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
   align-items: center;
@@ -16,7 +52,7 @@
   min-width: 0;
   height: var(--fy-top-bar-height);
   padding: 0 20px;
-  isolation: isolate;
+  -webkit-app-region: no-drag;
 }
 
 .fy-top-bar-leading,
@@ -461,7 +497,7 @@
 }
 
 @media (max-width: 1024px) {
-  .fy-top-bar {
+  .fy-top-bar-chrome {
     padding: 0 12px;
   }
 
@@ -502,7 +538,7 @@
 }
 
 @media (max-width: 920px) {
-  .fy-top-bar {
+  .fy-top-bar-chrome {
     padding: 0 10px;
   }
 

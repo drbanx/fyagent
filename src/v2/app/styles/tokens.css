@@ -38,5 +38,7 @@
   --fy-shadow-control: 0 8px 22px rgba(11, 29, 48, 0.22);
   --fy-focus: #b9eaff;
   --fy-top-bar-height: 68px;
+  --fy-titlebar-drag-height: 28px;
+  --fy-titlebar-traffic-light-width: 78px;
   --fy-content-radius: 22px;
 }

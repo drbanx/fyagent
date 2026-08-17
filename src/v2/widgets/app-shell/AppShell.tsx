@@ -1,11 +1,17 @@
 import { useEffect } from "react";
 
-import { signalFrontendReady } from "../../shared/platform";
+import { classNames } from "../../shared/design-system/classNames";
+import {
+  shouldShowMacOverlayDragStrip,
+  signalFrontendReady,
+} from "../../shared/platform";
 import { TooltipProvider } from "../../shared/ui/primitives";
 import { ContentViewport } from "./ContentViewport";
 import { TopBar } from "./TopBar";
 
 export function AppShell() {
+  const macosOverlay = shouldShowMacOverlayDragStrip();
+
   useEffect(() => {
     void signalFrontendReady().catch((error: unknown) => {
       console.error("FyAgent V2 frontend lifecycle readiness failed", error);
@@ -14,7 +20,13 @@ export function AppShell() {
 
   return (
     <TooltipProvider delayDuration={250} skipDelayDuration={100}>
-      <div className="fy-app-shell" data-testid="app-shell">
+      <div
+        className={classNames(
+          "fy-app-shell",
+          macosOverlay && "fy-app-shell-macos-overlay",
+        )}
+        data-testid="app-shell"
+      >
         <TopBar />
         <ContentViewport />
       </div>

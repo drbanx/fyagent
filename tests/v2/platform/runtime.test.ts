@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectNativePlatform,
   detectRuntime,
+  shouldShowMacOverlayDragStrip,
 } from "../../../src/v2/shared/platform/runtime";
 
 describe("V2 runtime detection", () => {
@@ -36,5 +37,26 @@ describe("V2 runtime detection", () => {
       isNative: true,
       platform: "unknown",
     });
+  });
+
+  it("shows the Overlay drag strip only on native macOS", () => {
+    expect(
+      shouldShowMacOverlayDragStrip({
+        isNative: true,
+        platform: "macos",
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowMacOverlayDragStrip({
+        isNative: true,
+        platform: "windows",
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowMacOverlayDragStrip({
+        isNative: false,
+        platform: "browser",
+      }),
+    ).toBe(false);
   });
 });

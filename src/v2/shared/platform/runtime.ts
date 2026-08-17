@@ -56,3 +56,9 @@ export function detectRuntime(
     platform: detectNativePlatform(scope.navigator),
   };
 }
+
+export function shouldShowMacOverlayDragStrip(
+  runtime: RuntimeEnvironment = detectRuntime(),
+): boolean {
+  return runtime.isNative && runtime.platform === "macos";
+}

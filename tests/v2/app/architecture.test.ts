@@ -347,7 +347,8 @@ describe("FyAgent V2 architecture boundary", () => {
 
         if (
           ts.isJsxAttribute(node) &&
-          node.name.getText(sourceFile) === "data-tauri-drag-region"
+          node.name.getText(sourceFile) === "data-tauri-drag-region" &&
+          relativeV2Path(file) !== "widgets/app-shell/TopBar.tsx"
         ) {
           violations.push(
             `${relativeV2Path(file)}:${lineNumber(sourceFile, node)} declares a native drag region`,
