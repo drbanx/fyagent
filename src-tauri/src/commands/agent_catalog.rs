@@ -7,7 +7,7 @@ use crate::services::external_agents::{
 };
 
 const AGENT_CATALOG_CONTRACT_VERSION: u16 = 3;
-const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-14";
+const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-17";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -106,6 +106,19 @@ const CLAUDE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
     ),
 ];
 
+const OPENCODE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
+    official_link(
+        AgentOfficialLinkId::Product,
+        "打开 OpenCode 官方页面",
+        "https://opencode.ai",
+    ),
+    official_link(
+        AgentOfficialLinkId::Cli,
+        "OpenCode CLI",
+        "https://opencode.ai/docs/cli",
+    ),
+];
+
 const QODER_PRODUCT_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::QoderworkProduct];
 const QODER_RUNTIME_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::QoderworkInstall];
 const QODER_SKILLS_EVIDENCE: &[AgentEvidenceId] = &[
@@ -139,6 +152,8 @@ const PROVIDER_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::ProviderQuickSe
 const SKILL_SERVICE_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::SkillServiceContract];
 const MCP_SERVICE_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::McpServiceContract];
 const CLAUDE_LINK_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::ClaudeOfficialLinks];
+const OPENCODE_PRODUCT_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::OpencodeProduct];
+const OPENCODE_MODELS_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::OpencodeModels];
 const P0_SCOPE_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::P0Scope];
 
 const QODERWORK_CAPABILITIES: [DeclaredAgentCapability; 11] = [
@@ -486,7 +501,76 @@ const CLAUDE_CODE_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
 ];
 
-const AGENT_CATALOG: [AgentCatalogEntry; 5] = [
+const OPENCODE_CAPABILITIES: [DeclaredAgentCapability; 11] = [
+    capability(
+        AgentCapabilityId::ProductOpen,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::OfficialLinkReviewed,
+        OPENCODE_PRODUCT_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::AppDetect,
+        AgentCapabilityMode::Unverified,
+        AgentCapabilityReasonCode::TrustedRuntimeIdentityUnavailable,
+        OPENCODE_PRODUCT_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::AppLaunch,
+        AgentCapabilityMode::Unverified,
+        AgentCapabilityReasonCode::TrustedRuntimeIdentityUnavailable,
+        OPENCODE_PRODUCT_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::SkillsRead,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentSkillSynchronization,
+        SKILL_SERVICE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::SkillsWrite,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentSkillSynchronization,
+        SKILL_SERVICE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::HooksRead,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::HooksWrite,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::ModelsValidate,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::ModelsWrite,
+        AgentCapabilityMode::Assisted,
+        AgentCapabilityReasonCode::VendorUiRequired,
+        OPENCODE_MODELS_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::McpValidate,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentMcpValidation,
+        MCP_SERVICE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::McpWrite,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::DedicatedNativeContract,
+        MCP_SERVICE_EVIDENCE,
+    ),
+];
+
+const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
     AgentCatalogEntry {
         id: AgentCatalogId::QoderWork,
         variant_id: AgentVariantId::QoderWorkCn,
@@ -526,6 +610,14 @@ const AGENT_CATALOG: [AgentCatalogEntry; 5] = [
         description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
         official_links: &CLAUDE_OFFICIAL_LINKS,
         capabilities: &CLAUDE_CODE_CAPABILITIES,
+    },
+    AgentCatalogEntry {
+        id: AgentCatalogId::OpenCode,
+        variant_id: AgentVariantId::OpenCode,
+        display_name: "OpenCode",
+        description: "支持 Skills 同步与 MCP 配置；模型设置请在 OpenCode 中完成。",
+        official_links: &OPENCODE_OFFICIAL_LINKS,
+        capabilities: &OPENCODE_CAPABILITIES,
     },
 ];
 
@@ -592,7 +684,7 @@ mod tests {
         let catalog = get_agent_catalog();
 
         assert_eq!(catalog.contract_version, 3);
-        assert_eq!(catalog.reviewed_at, "2026-08-14");
+        assert_eq!(catalog.reviewed_at, "2026-08-17");
         assert_eq!(
             catalog
                 .agents
@@ -620,6 +712,11 @@ mod tests {
                     AgentCatalogId::ClaudeCode,
                     AgentVariantId::ClaudeCode,
                     "Claude Code",
+                ),
+                (
+                    AgentCatalogId::OpenCode,
+                    AgentVariantId::OpenCode,
+                    "OpenCode",
                 ),
             ]
         );
@@ -831,7 +928,7 @@ mod tests {
         let value = serde_json::to_value(get_agent_catalog()).expect("catalog serializes");
 
         assert_eq!(value["contractVersion"], 3);
-        assert_eq!(value["reviewedAt"], "2026-08-14");
+        assert_eq!(value["reviewedAt"], "2026-08-17");
         assert_eq!(
             sorted_object_keys(&value),
             ["agents", "contractVersion", "reviewedAt"]

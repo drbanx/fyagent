@@ -20,6 +20,8 @@ pub enum AgentCatalogId {
     Codex,
     #[serde(rename = "claude-code")]
     ClaudeCode,
+    #[serde(rename = "opencode")]
+    OpenCode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -34,6 +36,8 @@ pub enum AgentVariantId {
     Codex,
     #[serde(rename = "claude-code")]
     ClaudeCode,
+    #[serde(rename = "opencode")]
+    OpenCode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -109,6 +113,8 @@ pub enum AgentEvidenceId {
     SkillServiceContract,
     McpServiceContract,
     ClaudeOfficialLinks,
+    OpencodeProduct,
+    OpencodeModels,
     P0Scope,
 }
 
@@ -221,7 +227,8 @@ const fn runtime_boundary(
         AgentCatalogId::QoderWork
         | AgentCatalogId::TraeWork
         | AgentCatalogId::WorkBuddy
-        | AgentCatalogId::ClaudeCode => (
+        | AgentCatalogId::ClaudeCode
+        | AgentCatalogId::OpenCode => (
             ExternalAgentRuntimeCapabilityState::Unverified,
             AgentCapabilityReasonCode::TrustedRuntimeIdentityUnavailable,
         ),
@@ -243,6 +250,7 @@ mod tests {
             AgentCatalogId::TraeWork,
             AgentCatalogId::WorkBuddy,
             AgentCatalogId::ClaudeCode,
+            AgentCatalogId::OpenCode,
         ] {
             let status = ExternalAgentRuntimeService::get_status(agent_id);
 
