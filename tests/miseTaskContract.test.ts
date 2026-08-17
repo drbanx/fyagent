@@ -575,6 +575,7 @@ describe("canonical mise task API", () => {
       captureCommand,
       runCommand,
       resolveToolCommand,
+      resolveMsvcEnvironment: () => ({}),
     }) as { command: string; args: string[]; target: string };
     expect(tauri).toMatchObject({
       command: "pnpm",
@@ -610,6 +611,7 @@ describe("canonical mise task API", () => {
       runCommand,
       resolveToolCommand,
       resolveRunner,
+      resolveMsvcEnvironment: () => ({}),
     }) as { command: string; args: string[]; target: string };
     expect(cargo.command).toBe("cargo");
     expect(cargo.args).toEqual([
@@ -713,6 +715,10 @@ describe("canonical mise task API", () => {
         validateCargoConfig: () => {
           sequence.push("validate:cargo-config");
         },
+        resolveMsvcEnvironment: () => {
+          sequence.push("resolve:msvc");
+          return { INCLUDE: "C:\\vs\\include", LIB: "C:\\vs\\lib" };
+        },
       }) as {
         command: string;
         args: string[];
@@ -729,6 +735,7 @@ describe("canonical mise task API", () => {
         "probe:rustc",
         "probe:rustdoc",
         "run:helper",
+        "resolve:msvc",
         "run:cargo",
       ]);
       expect(calls.slice(0, 2)).toEqual([
@@ -748,7 +755,11 @@ describe("canonical mise task API", () => {
       expect(calls[3]).toEqual({
         command: "cargo",
         args: plan.args,
-        environment: plan.environment,
+        environment: {
+          ...plan.environment,
+          INCLUDE: "C:\\vs\\include",
+          LIB: "C:\\vs\\lib",
+        },
       });
       expect(
         calls.filter(

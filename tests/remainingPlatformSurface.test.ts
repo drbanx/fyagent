@@ -462,8 +462,11 @@ describe("durable supported-platform surface contract", () => {
       checker.isExcludedPath(`.trellis/tasks/archive/${marker}/task.json`),
     ).toBe(true);
     expect(checker.isExcludedPath(`.trellis/tasks/current/${marker}.md`)).toBe(
-      false,
+      true,
     );
+    expect(checker.isExcludedPath(".codebuddy/agents/example.md")).toBe(true);
+    expect(checker.isExcludedPath(".codex/agents/example.md")).toBe(true);
+    expect(checker.isExcludedPath(".agents/skills/example/SKILL.md")).toBe(true);
     expect(checker.isTextExcludedPath("pnpm-lock.yaml")).toBe(true);
     expect(checker.isTextExcludedPath("src-tauri/Cargo.lock")).toBe(true);
     expect(checker.isTextExcludedPath("mise.lock")).toBe(false);

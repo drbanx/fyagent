@@ -619,6 +619,14 @@ function isArchivePath(relativePath) {
   return relativePath.startsWith(ARCHIVE_PREFIX);
 }
 
+function isDotPath(relativePath) {
+  // Dot-prefixed top-level entries (`.trellis/`, `.codebuddy/`, `.codex/`,
+  // `.agents/`, and dotfiles such as `.gitignore`) hold workspace, agent, and
+  // template configuration rather than shipped platform surface. Excluding
+  // them keeps template edits from forcing contract churn.
+  return relativePath.startsWith(".");
+}
+
 function activeTaskIdFromPath(value) {
   normalizeRepositoryPath(value);
   const match =
@@ -760,6 +768,7 @@ export function parseArguments(argv, environment = process.env) {
 export function isExcludedPath(relativePath, activeTask) {
   normalizeRepositoryPath(relativePath);
   return (
+    isDotPath(relativePath) ||
     isArchivePath(relativePath) ||
     (activeTask !== undefined &&
       (relativePath === activeTask ||

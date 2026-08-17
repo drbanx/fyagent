@@ -2,6 +2,11 @@
 
 import process from "node:process";
 import { run, usageBoolean } from "./lib.mjs";
+import {
+  VCTOOLS_COMPONENT,
+  findVsInstallation,
+  msvcRequirementHint,
+} from "./windows-msvc-env.mjs";
 
 export const REQUIREMENTS = Object.freeze({
   darwin: {
@@ -15,9 +20,19 @@ export const REQUIREMENTS = Object.freeze({
     commands: [
       ["git", ["--version"], "Install Git for Windows."],
       [
-        "where.exe",
-        ["cl.exe"],
-        "Open a Visual Studio 2022 Developer shell with the Desktop C++ workload.",
+        "vswhere.exe",
+        [
+          "-latest",
+          "-version",
+          "[17.0,18.0)",
+          "-products",
+          "*",
+          "-requires",
+          VCTOOLS_COMPONENT,
+          "-property",
+          "installationPath",
+        ],
+        msvcRequirementHint(),
       ],
       [
         "reg.exe",
@@ -62,6 +77,18 @@ function inspect(platform) {
 }
 
 function probe(command, args) {
+  if (command === "vswhere.exe") {
+    try {
+      findVsInstallation();
+      return { status: 0, stdout: "", stderr: "" };
+    } catch (error) {
+      return {
+        status: 1,
+        stdout: "",
+        stderr: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   try {
     return run(command, args, { capture: true, allowFailure: true });
   } catch (error) {

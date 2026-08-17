@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { ROOT, capture, fail, isMain, run } from "./lib.mjs";
 import { parse as parseToml } from "smol-toml";
+import { resolveMsvcEnvironment as loadMsvcEnvironment } from "./windows-msvc-env.mjs";
 
 export const HOST_RUST_TARGETS = Object.freeze({
   "darwin-x64": "x86_64-apple-darwin",
@@ -871,6 +872,7 @@ export function executeTauriTask({
   captureCommand = capture,
   runCommand = run,
   resolveToolCommand = resolveToolExecutable,
+  resolveMsvcEnvironment = loadMsvcEnvironment,
 }) {
   assertTauriRequest({ operation, forwardedArguments, environment });
   assertNoCargoToolchainConfig({ environment });
@@ -897,7 +899,21 @@ export function executeTauriTask({
     rustcExecutable,
     rustdocExecutable,
   });
-  runCommand(plan.command, plan.args, { env: plan.environment });
+  let commandEnvironment;
+  switch (platform) {
+    case "win32":
+      commandEnvironment = {
+        ...plan.environment,
+        ...(resolveMsvcEnvironment({ platform, architecture }) ?? {}),
+      };
+      break;
+    case "darwin":
+      commandEnvironment = plan.environment;
+      break;
+    default:
+      throw new Error(`Unsupported host platform: ${platform}`);
+  }
+  runCommand(plan.command, plan.args, { env: commandEnvironment });
   return plan;
 }
 
@@ -914,6 +930,7 @@ export function executeCargoTask({
   resolveRunner = resolveNativeRunner,
   validateCargoConfig = assertNoCargoToolchainConfig,
   nodeExecutable = process.execPath,
+  resolveMsvcEnvironment = loadMsvcEnvironment,
 }) {
   assertCargoRequest({
     operation,
@@ -952,6 +969,7 @@ export function executeCargoTask({
     rustdocExecutable,
     nativeRunnerConfig,
   });
+  let commandEnvironment;
   switch (platform) {
     case "win32":
       if (
@@ -969,13 +987,18 @@ export function executeCargoTask({
           TAURI_ENV_DEBUG: "true",
         },
       });
+      commandEnvironment = {
+        ...plan.environment,
+        ...(resolveMsvcEnvironment({ platform, architecture }) ?? {}),
+      };
       break;
     case "darwin":
+      commandEnvironment = plan.environment;
       break;
     default:
       throw new Error(`Unsupported host platform: ${platform}`);
   }
-  runCommand(plan.command, plan.args, { env: plan.environment });
+  runCommand(plan.command, plan.args, { env: commandEnvironment });
   return plan;
 }
 

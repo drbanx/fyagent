@@ -15,7 +15,7 @@
     ],
     [
       "scripts/tasks/host-native.mjs",
-      "e7cd5083f269bf6d9ad528ab0553e4797c75c8e9d924a4248280f67ccc44e4db"
+      "da42bc838fb02e1eefcd64d7449c262cbbe79c2de9de22875e31042ff00aeb0a"
     ],
     [
       "scripts/tasks/lib.mjs",
@@ -23,15 +23,19 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "7c11ed5f2e1f0ae9b2b2d3c9dd8851007f70ddfc8e8ec81df9aedd9084a504df"
+      "da043dbf51013e043cbc1e3c46859343c740ad9f6bcb7435d1093dce27784ff5"
     ],
     [
       "scripts/tasks/system-check.mjs",
-      "a8411a667d36d6a714321ebcfc77fd6be4276d28b8f27f551c58b0ac8c2da352"
+      "ad47de9709b57988c961932bf6d39d4af8053dccf50566b3b9434af60449b16a"
     ],
     [
       "scripts/tasks/toolchain-check.mjs",
       "bb0558cd23e0a7885ee490ca0363862532bad66c3c2391f47c033ad50118f024"
+    ],
+    [
+      "scripts/tasks/windows-msvc-env.mjs",
+      "148e7aef298cb96962a107cc41268186f935237b86537707c300473b12a697fd"
     ],
     [
       "src-tauri/build.rs",
@@ -307,7 +311,7 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "bf58b762e80ed23d43a76d52ec33674c8dd87f0d23fda06cf7239eab31da41b2"
+      "be5fdfe4ac0bdde9d5e0d948e11e2aa9408a42f8044de3b0a817c3cf4537c6df"
     ],
     [
       "tests/releaseWorkflow.test.ts",
@@ -315,7 +319,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "d02aea3ea1010ce4d3f5394577b4db71c2afd9d1624fd43a5d008f2107360f3c"
+      "dcdaea1df0ead605f74c2f9ca78842fdea139b6d2d5d05524db38ae6705e42f4"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
