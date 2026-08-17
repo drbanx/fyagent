@@ -225,7 +225,15 @@ mutation arguments only and never query keys or query data.
 ### WorkBuddy
 
 - Cache only sanitized status and model-ID DTOs. The API key lives in component
-  memory and one native request, then clears on every terminal outcome.
+  memory and native discovery/save requests. A successful or failed fetch keeps
+  the key so the user can review the draft and save without re-entering it. The
+  key still clears on save terminal outcomes, target change, route leave, and
+  unmount. A visibility toggle may reveal the value in the input only; it never
+  enters query cache, URL, storage, notices, or logs.
+- Existing third-party model IDs are a read-only observation grouped by model
+  family. Fetch and manual entry share one draft list: pull merges remote IDs,
+  fill adds typed IDs, and save splits the draft back into selected versus
+  manual IDs. The panel does not display backup or configuration-file status.
 - Discovery, revision, overwrite capability, atomic persistence, concurrent
   modification, and authoritative reread follow the backend WorkBuddy
   contract. The UI freezes one exact overwrite request and replays it only with

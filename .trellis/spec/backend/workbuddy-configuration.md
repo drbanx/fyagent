@@ -158,7 +158,9 @@ otherwise exact save request plus the expected revision.
 - Missing legacy `visibleApps.workbuddy` resolves to `true`. Entering WorkBuddy
   mounts only its status/configuration surface and performs no Provider,
   current-provider, MCP, Skills, profile, usage, environment/migration, or proxy
-  query. The API key clears on unmount and is never refilled from disk.
+  query. The API key is never refilled from disk. V2 discovery fetch keeps the
+  in-memory key; save terminal outcomes, target change, and unmount still clear
+  it.
 - A truncated-fetch warning remains visible until a later successful,
   non-truncated fetch replaces it. Failed or stale requests do not silently
   convert the warning into a complete result.
