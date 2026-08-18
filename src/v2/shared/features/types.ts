@@ -594,6 +594,7 @@ export interface WorkBuddySaveModelsRequest
   extends WorkBuddyFetchModelsRequest {
   selectedModelIds: string[];
   manualModelIds: string[];
+  removedModelIds?: string[];
   clearExistingApiKeys: boolean;
   expectedRevision: string | null;
   overwriteToken?: string;

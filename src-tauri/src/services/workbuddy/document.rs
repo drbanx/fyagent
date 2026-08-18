@@ -159,6 +159,56 @@ impl WorkBuddyDocument {
         Ok(())
     }
 
+    pub(crate) fn remove_models(&mut self, ids: &[String]) {
+        if ids.is_empty() {
+            return;
+        }
+        let remove = ids.iter().map(String::as_str).collect::<HashSet<_>>();
+        self.models_mut().retain(|entry| {
+            entry
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .map(|id| !remove.contains(id))
+                .unwrap_or(true)
+        });
+    }
+
+    /// Drop removed IDs from a populated object-root `availableModels` list.
+    /// Missing and empty fields stay untouched; malformed values still fail.
+    pub(crate) fn prune_available_models(
+        &mut self,
+        removed_ids: &[String],
+    ) -> Result<(), WorkBuddyError> {
+        if removed_ids.is_empty() || self.format != WorkBuddyConfigFormat::ObjectRoot {
+            return Ok(());
+        }
+
+        let Value::Object(root) = &mut self.root else {
+            unreachable!("an object-root document has an object root");
+        };
+        let Some(value) = root.get_mut("availableModels") else {
+            return Ok(());
+        };
+        let Value::Array(available_models) = value else {
+            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
+        };
+        if available_models.is_empty() {
+            return Ok(());
+        }
+        if !available_models.iter().all(Value::is_string) {
+            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
+        }
+
+        let remove = removed_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
+        available_models
+            .retain(|value| value.as_str().is_some_and(|id| !remove.contains(id.trim())));
+        Ok(())
+    }
+
     pub(crate) fn serialize(&self) -> Result<Vec<u8>, WorkBuddyError> {
         let mut serialized = serde_json::to_vec_pretty(&self.root)
             .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
@@ -299,6 +349,36 @@ mod tests {
         assert_eq!(
             serialized["availableModels"],
             serde_json::json!(["kept", "model-a", "model-b"])
+        );
+    }
+
+    #[test]
+    fn remove_models_preserves_remaining_order_and_prunes_available_models() {
+        let mut document = WorkBuddyDocument::parse(serde_json::json!({
+            "models": [
+                { "id": "keep-a", "name": "A" },
+                { "id": "drop-me", "name": "B" },
+                { "id": "keep-b", "name": "C" }
+            ],
+            "availableModels": ["keep-a", "drop-me", "keep-b", "other"]
+        }))
+        .unwrap();
+
+        document.remove_models(&["drop-me".to_string()]);
+        document
+            .prune_available_models(&["drop-me".to_string()])
+            .unwrap();
+        let serialized: Value = serde_json::from_slice(&document.serialize().unwrap()).unwrap();
+        assert_eq!(
+            serialized["models"],
+            serde_json::json!([
+                { "id": "keep-a", "name": "A" },
+                { "id": "keep-b", "name": "C" }
+            ])
+        );
+        assert_eq!(
+            serialized["availableModels"],
+            serde_json::json!(["keep-a", "keep-b", "other"])
         );
     }
 }

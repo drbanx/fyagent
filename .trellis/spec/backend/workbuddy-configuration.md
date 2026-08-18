@@ -23,6 +23,7 @@ save_workbuddy_models({
   allowNoApiKey,
   selectedModelIds,
   manualModelIds,
+  removedModelIds,
   clearExistingApiKeys,
   expectedRevision,
   overwriteToken?,
@@ -125,7 +126,9 @@ otherwise exact save request plus the expected revision.
 - Existing target IDs without a valid matching confirmation capability return
   `overwrite_confirmation_required` with one opaque token and unique
   `existingIds`. This preflight creates neither backup nor primary write. The UI
-  freezes the exact request and retries only that request with the token.
+  freezes the exact request and retries only that request with the token. V2
+  existing-model delete confirms once in the UI, then may auto-replay that
+  token so the user is not asked a second time.
 - The backend consumes the token before rereading, validates request and
   revision binding, rereads under the lock, and checks the revision again.
   Malformed, mismatched, expired, or reused tokens never authorize a write.
@@ -137,7 +140,10 @@ otherwise exact save request plus the expected revision.
 - Preserve non-target entries, array order, target positions, unknown fields,
   existing `onlyReasoning`, and unknown `reasoning` members. Update only the
   documented connection fields (`url` and policy-controlled `apiKey`); do not
-  rebuild or normalize existing entries.
+  rebuild or normalize existing entries. `removedModelIds` delete matching
+  entries and prune them from a populated `availableModels` list. A
+  removal-only save does not require a Base URL or API key. An ID present in
+  both the target set and `removedModelIds` fails closed.
 - Commit backup then primary using flush/sync and same-directory atomic
   replacement. Windows uses replacement semantics with no delete-before-rename
   gap. Unix primary and backup credential files remain mode `0600`.
@@ -159,8 +165,9 @@ otherwise exact save request plus the expected revision.
   mounts only its status/configuration surface and performs no Provider,
   current-provider, MCP, Skills, profile, usage, environment/migration, or proxy
   query. The API key is never refilled from disk. V2 discovery fetch keeps the
-  in-memory key; save terminal outcomes, target change, and unmount still clear
-  it.
+  in-memory key; save terminal outcomes still clear it. The V2 Models page keeps
+  that key while it stays mounted across sidebar navigation and target switches.
+  Actual unmount of the persistent Models page still clears it.
 - A truncated-fetch warning remains visible until a later successful,
   non-truncated fetch replaces it. Failed or stale requests do not silently
   convert the warning into a complete result.
@@ -180,9 +187,11 @@ otherwise exact save request plus the expected revision.
 | Windows profile, `.workbuddy`, primary, or backup resolves through a reparse point or changes identity | Fail closed before the target, backup, or any temporary leaf is mutated. |
 | A Windows writer already owns, or tries to acquire, a write-compatible primary handle | Reject the snapshot/save; create neither backup nor temporary leaf. |
 | Target IDs already exist without a matching overwrite token                   | Return one confirmation requirement; write neither backup nor primary.                            |
+| `removedModelIds` match existing entries without a matching overwrite token   | Return one confirmation requirement listing those IDs; write neither backup nor primary.          |
+| A removal-only save commits with a valid token                                | Delete matching entries and prune populated `availableModels`; URL/key are not required.          |
 | Token is malformed, expired, mismatched, or reused                            | Consume/reject it, expose no credential or target contents, and write nothing.                    |
 | A save updates an existing target                                             | Preserve entry position, unknown fields, and unrelated entries; update only documented fields.    |
-| WorkBuddy view unmounts                                                       | Clear the in-memory API key and cancel/isolate its queries from other app domains.                |
+| WorkBuddy view unmounts                                                       | Clear the in-memory API key and cancel/isolate its queries from other app domains. V2 Models keep-alive hide is not an unmount. |
 
 ## 5. Good / Base / Bad Cases
 

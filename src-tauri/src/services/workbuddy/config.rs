@@ -33,7 +33,7 @@ use super::{
         SaveWorkBuddyModelsOutcome, SaveWorkBuddyModelsRequest, WorkBuddyModelIdsResult,
         WorkBuddyStatus,
     },
-    url::{normalize_workbuddy_base_url, reject_url_credential_collision, NormalizedWorkBuddyUrl},
+    url::{normalize_workbuddy_base_url, reject_url_credential_collision},
 };
 
 const MODELS_FILE_NAME: &str = "models.json";
@@ -182,24 +182,41 @@ pub(crate) fn save_workbuddy_models_at_locked(
     paths: &WorkBuddyPaths,
     request: &SaveWorkBuddyModelsRequest,
 ) -> Result<SaveWorkBuddyModelsOutcome, WorkBuddyError> {
-    let normalized_url = normalize_workbuddy_base_url(&request.base_url)?;
-    reject_url_credential_collision(&normalized_url, &request.api_key)?;
-    if request.api_key.trim().is_empty() && !request.allow_no_api_key {
-        return Err(WorkBuddyError::new(WorkBuddyErrorCode::ApiKeyRequired));
-    }
     let target_ids = normalized_target_ids(request);
-    let credential = request.api_key.trim();
+    let removed_ids = normalized_removed_ids(request);
     if target_ids
         .iter()
-        .any(|id| credential_matches_model_id(credential, id))
+        .any(|id| removed_ids.iter().any(|removed| removed == id))
     {
         return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
     }
-    if target_ids.is_empty() {
+    if target_ids.is_empty() && removed_ids.is_empty() {
         return Err(WorkBuddyError::new(
             WorkBuddyErrorCode::ConfigNoTargetModels,
         ));
     }
+
+    let normalized_url = if target_ids.is_empty() {
+        None
+    } else {
+        let normalized_url = normalize_workbuddy_base_url(&request.base_url)?;
+        reject_url_credential_collision(&normalized_url, &request.api_key)?;
+        if request.api_key.trim().is_empty() && !request.allow_no_api_key {
+            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ApiKeyRequired));
+        }
+        let credential = request.api_key.trim();
+        if target_ids
+            .iter()
+            .any(|id| credential_matches_model_id(credential, id))
+        {
+            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
+        }
+        Some(normalized_url)
+    };
+    let digest_url = normalized_url
+        .as_ref()
+        .map(|url| url.base_url.as_str())
+        .unwrap_or("");
 
     // Consume a confirmation capability before the latest file reread. A
     // stale or malformed follow-up must not leave a reusable token behind.
@@ -208,7 +225,7 @@ pub(crate) fn save_workbuddy_models_at_locked(
     let pending = request
         .overwrite_token
         .as_deref()
-        .map(|token| consume_overwrite_token(token, request, &normalized_url, &target_ids))
+        .map(|token| consume_overwrite_token(token, request, digest_url, &target_ids, &removed_ids))
         .transpose()?;
 
     #[cfg(target_os = "windows")]
@@ -230,49 +247,62 @@ pub(crate) fn save_workbuddy_models_at_locked(
         return Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification);
     }
 
-    let existing_ids = loaded.document.existing_target_ids(&target_ids);
+    let existing_update_ids = loaded.document.existing_target_ids(&target_ids);
+    let existing_removed_ids = loaded.document.existing_target_ids(&removed_ids);
+    if target_ids.is_empty() && existing_removed_ids.is_empty() {
+        return Err(WorkBuddyError::new(
+            WorkBuddyErrorCode::ConfigNoTargetModels,
+        ));
+    }
+    let mut confirmation_ids = existing_update_ids;
+    confirmation_ids.extend(existing_removed_ids.iter().cloned());
     if let Some(pending) = pending {
         if pending.expected_revision != loaded.revision {
             return Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification);
         }
-    } else if !existing_ids.is_empty() {
-        let token = issue_overwrite_token(request, &normalized_url, &target_ids);
+    } else if !confirmation_ids.is_empty() {
+        let token = issue_overwrite_token(request, digest_url, &target_ids, &removed_ids);
         return Ok(SaveWorkBuddyModelsOutcome::OverwriteConfirmationRequired {
             token,
-            existing_ids,
+            existing_ids: confirmation_ids,
         });
     }
 
-    let normalized_base_url = normalized_url.base_url.to_string();
+    loaded.document.remove_models(&removed_ids);
+    loaded.document.prune_available_models(&removed_ids)?;
+
     let mut created_entries = 0usize;
     let mut updated_entries = 0usize;
 
-    for target_id in &target_ids {
-        let mut matched_existing = false;
-        for entry in loaded.document.models_mut() {
-            let model = entry
-                .as_object_mut()
-                .expect("document validation guarantees model-object entries");
-            let matches_target = model
-                .get("id")
-                .and_then(Value::as_str)
-                .is_some_and(|id| id.trim() == target_id);
-            if matches_target {
-                patch_existing_connection_fields(model, &normalized_base_url, request);
-                updated_entries += 1;
-                matched_existing = true;
+    if let Some(normalized_url) = normalized_url.as_ref() {
+        let normalized_base_url = normalized_url.base_url.to_string();
+        for target_id in &target_ids {
+            let mut matched_existing = false;
+            for entry in loaded.document.models_mut() {
+                let model = entry
+                    .as_object_mut()
+                    .expect("document validation guarantees model-object entries");
+                let matches_target = model
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| id.trim() == target_id);
+                if matches_target {
+                    patch_existing_connection_fields(model, &normalized_base_url, request);
+                    updated_entries += 1;
+                    matched_existing = true;
+                }
             }
-        }
-        if !matched_existing {
-            loaded
-                .document
-                .models_mut()
-                .push(Value::Object(new_managed_model(
-                    target_id,
-                    &normalized_base_url,
-                    request,
-                )));
-            created_entries += 1;
+            if !matched_existing {
+                loaded
+                    .document
+                    .models_mut()
+                    .push(Value::Object(new_managed_model(
+                        target_id,
+                        &normalized_base_url,
+                        request,
+                    )));
+                created_entries += 1;
+            }
         }
     }
 
@@ -461,6 +491,18 @@ fn normalized_target_ids(request: &SaveWorkBuddyModelsRequest) -> Vec<String> {
     target_ids
 }
 
+fn normalized_removed_ids(request: &SaveWorkBuddyModelsRequest) -> Vec<String> {
+    let mut removed_ids = Vec::new();
+    let mut seen = HashSet::new();
+    for id in &request.removed_model_ids {
+        let id = id.trim();
+        if !id.is_empty() && seen.insert(id.to_string()) {
+            removed_ids.push(id.to_string());
+        }
+    }
+    removed_ids
+}
+
 fn new_managed_model(
     id: &str,
     normalized_base_url: &str,
@@ -512,12 +554,13 @@ fn patch_existing_connection_fields(
 
 fn issue_overwrite_token(
     request: &SaveWorkBuddyModelsRequest,
-    normalized_url: &NormalizedWorkBuddyUrl,
+    normalized_base_url: &str,
     target_ids: &[String],
+    removed_ids: &[String],
 ) -> String {
     let token = new_opaque_capability_token();
     let pending = PendingOverwrite {
-        request_digest: request_digest(request, normalized_url, target_ids),
+        request_digest: request_digest(request, normalized_base_url, target_ids, removed_ids),
         expected_revision: request.expected_revision.clone(),
         expires_at: Instant::now() + OVERWRITE_TOKEN_TTL,
     };
@@ -542,8 +585,9 @@ fn new_opaque_capability_token() -> String {
 fn consume_overwrite_token(
     token: &str,
     request: &SaveWorkBuddyModelsRequest,
-    normalized_url: &NormalizedWorkBuddyUrl,
+    normalized_base_url: &str,
     target_ids: &[String],
+    removed_ids: &[String],
 ) -> Result<PendingOverwrite, WorkBuddyError> {
     // Remove first so malformed, mismatched, expired, and successful attempts
     // all consume a token exactly once.
@@ -556,7 +600,7 @@ fn consume_overwrite_token(
         ));
     }
 
-    let request_digest = request_digest(request, normalized_url, target_ids);
+    let request_digest = request_digest(request, normalized_base_url, target_ids, removed_ids);
     if !constant_time_equals(&pending.request_digest, &request_digest) {
         return Err(WorkBuddyError::new(
             WorkBuddyErrorCode::OverwriteTokenInvalid,
@@ -576,13 +620,14 @@ fn lock_pending_overwrites() -> std::sync::MutexGuard<'static, HashMap<String, P
 /// expose it or enable an offline equality/dictionary check after serialization.
 fn request_digest(
     request: &SaveWorkBuddyModelsRequest,
-    normalized_url: &NormalizedWorkBuddyUrl,
+    normalized_base_url: &str,
     target_ids: &[String],
+    removed_ids: &[String],
 ) -> [u8; 32] {
     let mut mac = HmacSha256::new_from_slice(overwrite_mac_key())
         .expect("the fixed-size overwrite MAC key is always valid");
     mac.update(b"fyagent-workbuddy-overwrite-v1");
-    update_length_prefixed(&mut mac, normalized_url.base_url.as_str().as_bytes());
+    update_length_prefixed(&mut mac, normalized_base_url.as_bytes());
     update_bool(&mut mac, request.allow_no_api_key);
     update_bool(&mut mac, request.clear_existing_api_keys);
     update_optional_string(&mut mac, request.expected_revision.as_deref());
@@ -590,6 +635,10 @@ fn request_digest(
         update_length_prefixed(&mut mac, target_id.as_bytes());
     }
     mac.update(&(target_ids.len() as u64).to_be_bytes());
+    for removed_id in removed_ids {
+        update_length_prefixed(&mut mac, removed_id.as_bytes());
+    }
+    mac.update(&(removed_ids.len() as u64).to_be_bytes());
     let api_key_digest = mac_bytes(api_key_mac_key(), request.api_key.as_bytes());
     update_length_prefixed(&mut mac, &api_key_digest);
     mac_bytes_from_mac(mac)
@@ -768,6 +817,7 @@ mod tests {
             allow_no_api_key: false,
             selected_model_ids: vec!["model-a".to_string()],
             manual_model_ids: Vec::new(),
+            removed_model_ids: Vec::new(),
             clear_existing_api_keys: false,
             expected_revision,
             overwrite_token: None,
@@ -1117,6 +1167,49 @@ mod tests {
         request.selected_model_ids = vec!["new".to_string()];
         saved(save_workbuddy_models_at_locked(&paths, &request).unwrap());
         assert!(read_json(&paths).get("availableModels").is_none());
+    }
+
+    #[test]
+    fn delete_only_save_removes_existing_ids_without_url_or_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        write_models(
+            &paths,
+            r#"{"models":[{"id":"keep-me"},{"id":"drop-me"}],"availableModels":["keep-me","drop-me"]}"#,
+        );
+        let revision = get_workbuddy_status_at(&paths).unwrap().revision;
+        let mut request = request(revision);
+        request.base_url.clear();
+        request.api_key.clear();
+        request.selected_model_ids.clear();
+        request.removed_model_ids = vec!["drop-me".to_string()];
+
+        let (token, existing_ids) =
+            overwrite(save_workbuddy_models_at_locked(&paths, &request).unwrap());
+        assert_eq!(existing_ids, ["drop-me"]);
+        request.overwrite_token = Some(token);
+        let (_, model_count, created_entries, updated_entries) =
+            saved(save_workbuddy_models_at_locked(&paths, &request).unwrap());
+        assert_eq!((model_count, created_entries, updated_entries), (1, 0, 0));
+
+        let root = read_json(&paths);
+        assert_eq!(root["models"], serde_json::json!([{ "id": "keep-me" }]));
+        assert_eq!(root["availableModels"], serde_json::json!(["keep-me"]));
+    }
+
+    #[test]
+    fn overlapping_removed_and_target_ids_fail_closed_without_a_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        write_models(&paths, r#"[{"id":"model-a"}]"#);
+        let before = fs::read(&paths.models).unwrap();
+        let revision = get_workbuddy_status_at(&paths).unwrap().revision;
+        let mut request = request(revision);
+        request.removed_model_ids = vec!["model-a".to_string()];
+        let error = save_workbuddy_models_at_locked(&paths, &request).unwrap_err();
+        assert_eq!(error.code(), WorkBuddyErrorCode::ConfigInvalidEntry);
+        assert_eq!(fs::read(&paths.models).unwrap(), before);
+        assert!(!paths.backup.exists());
     }
 
     #[test]
