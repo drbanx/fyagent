@@ -12,6 +12,7 @@ import {
   readToml,
   run,
   usageBoolean,
+  isPosixTaskHost,
 } from "./lib.mjs";
 import { validateLockfile } from "./lockfile-check.mjs";
 
@@ -63,27 +64,19 @@ export function normalizeComparablePath(
 }
 
 function hostUsesCaseInsensitivePaths(platform = process.platform) {
-  switch (platform) {
-    case "win32":
-      return true;
-    case "darwin":
-      return false;
-    default:
-      throw new Error(`Unsupported toolchain-check host: ${platform}`);
-  }
+  if (platform === "win32") return true;
+  if (isPosixTaskHost(platform)) return false;
+  throw new Error(`Unsupported toolchain-check host: ${platform}`);
 }
 
 function findOnPath(command) {
   let extensions;
-  switch (process.platform) {
-    case "win32":
-      extensions = (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";");
-      break;
-    case "darwin":
-      extensions = [""];
-      break;
-    default:
-      throw new Error(`Unsupported toolchain-check host: ${process.platform}`);
+  if (process.platform === "win32") {
+    extensions = (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";");
+  } else if (isPosixTaskHost(process.platform)) {
+    extensions = [""];
+  } else {
+    throw new Error(`Unsupported toolchain-check host: ${process.platform}`);
   }
   for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
     if (!directory) continue;
@@ -122,15 +115,12 @@ function verifyPython() {
   if (!path.isAbsolute(managed))
     throw new Error(`uv returned a non-absolute Python path: ${managed}`);
   let venvPython;
-  switch (process.platform) {
-    case "win32":
-      venvPython = path.join(process.cwd(), ".venv", "Scripts", "python.exe");
-      break;
-    case "darwin":
-      venvPython = path.join(process.cwd(), ".venv", "bin", "python");
-      break;
-    default:
-      throw new Error(`Unsupported toolchain-check host: ${process.platform}`);
+  if (process.platform === "win32") {
+    venvPython = path.join(process.cwd(), ".venv", "Scripts", "python.exe");
+  } else if (isPosixTaskHost(process.platform)) {
+    venvPython = path.join(process.cwd(), ".venv", "bin", "python");
+  } else {
+    throw new Error(`Unsupported toolchain-check host: ${process.platform}`);
   }
   if (!fs.existsSync(venvPython)) {
     throw new Error(".venv is missing; run mise run python:sync");

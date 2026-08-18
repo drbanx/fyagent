@@ -20,7 +20,7 @@ function nodeScript(script: string, ...args: string[]) {
 }
 
 describe("read-only host prerequisite checks", () => {
-  it.each(["darwin", "win32"])(
+  it.each(["darwin", "win32", "linux"])(
     "describes %s prerequisites without probing another host",
     (platform) => {
       const result = nodeScript(SCRIPT, "--describe-platform", platform);

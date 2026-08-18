@@ -6,7 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { ROOT, capture, fail, isMain, run } from "./lib.mjs";
+import { ROOT, capture, fail, isMain, isPosixTaskHost, run } from "./lib.mjs";
 import { parse as parseToml } from "smol-toml";
 import { resolveMsvcEnvironment as loadMsvcEnvironment } from "./windows-msvc-env.mjs";
 
@@ -15,6 +15,8 @@ export const HOST_RUST_TARGETS = Object.freeze({
   "darwin-arm64": "aarch64-apple-darwin",
   "win32-x64": "x86_64-pc-windows-msvc",
   "win32-arm64": "aarch64-pc-windows-msvc",
+  "linux-x64": "x86_64-unknown-linux-gnu",
+  "linux-arm64": "aarch64-unknown-linux-gnu",
 });
 
 const TAURI_OPERATIONS = Object.freeze({
@@ -236,21 +238,18 @@ export function resolveToolExecutable({
   let delimiter;
   let executable;
   let requireExecutePermission;
-  switch (platform) {
-    case "win32":
-      pathApi = path.win32;
-      delimiter = ";";
-      executable = `${tool}.exe`;
-      requireExecutePermission = false;
-      break;
-    case "darwin":
-      pathApi = path.posix;
-      delimiter = ":";
-      executable = tool;
-      requireExecutePermission = true;
-      break;
-    default:
-      throw new Error(`Unsupported host platform: ${platform}`);
+  if (platform === "win32") {
+    pathApi = path.win32;
+    delimiter = ";";
+    executable = `${tool}.exe`;
+    requireExecutePermission = false;
+  } else if (isPosixTaskHost(platform)) {
+    pathApi = path.posix;
+    delimiter = ":";
+    executable = tool;
+    requireExecutePermission = true;
+  } else {
+    throw new Error(`Unsupported host platform: ${platform}`);
   }
   for (const rawDirectory of searchPath.split(delimiter)) {
     const unquoted = rawDirectory.replace(/^"(.*)"$/, "$1");
@@ -270,25 +269,15 @@ export function resolveToolExecutable({
 }
 
 function supportedHostPathApi(platform) {
-  switch (platform) {
-    case "win32":
-      return path.win32;
-    case "darwin":
-      return path.posix;
-    default:
-      throw new Error(`Unsupported host platform: ${platform}`);
-  }
+  if (platform === "win32") return path.win32;
+  if (isPosixTaskHost(platform)) return path.posix;
+  throw new Error(`Unsupported host platform: ${platform}`);
 }
 
 function normalizeSupportedHostPath(value, platform) {
-  switch (platform) {
-    case "win32":
-      return value.toLowerCase();
-    case "darwin":
-      return value;
-    default:
-      throw new Error(`Unsupported host platform: ${platform}`);
-  }
+  if (platform === "win32") return value.toLowerCase();
+  if (isPosixTaskHost(platform)) return value;
+  throw new Error(`Unsupported host platform: ${platform}`);
 }
 
 export function buildNativeRunnerConfig({
@@ -551,10 +540,10 @@ function isPathWithin(parent, candidate, platform) {
 
 function expectedNativeMachine(target) {
   if (target.startsWith("x86_64-")) {
-    return { pe: 0x8664, macho: 0x01000007 };
+    return { pe: 0x8664, macho: 0x01000007, elf: 62 };
   }
   if (target.startsWith("aarch64-")) {
-    return { pe: 0xaa64, macho: 0x0100000c };
+    return { pe: 0xaa64, macho: 0x0100000c, elf: 183 };
   }
   throw new Error(`Unsupported native executable target: ${target}`);
 }
@@ -605,6 +594,31 @@ function verifyNativeBinarySignature(file, platform, target) {
       if (machine !== expectedMachine.pe) {
         throw new Error(
           `Native Windows test executable architecture ${machine} does not match ${target}`,
+        );
+      }
+      return;
+    }
+    if (platform === "linux") {
+      if (
+        length < 20 ||
+        header[0] !== 0x7f ||
+        header[1] !== 0x45 ||
+        header[2] !== 0x4c ||
+        header[3] !== 0x46
+      ) {
+        throw new Error(
+          "Native test executable must have a 64-bit object header",
+        );
+      }
+      if (header[4] !== 2 || header[5] !== 1) {
+        throw new Error(
+          "Native test executable must be a little-endian 64-bit object",
+        );
+      }
+      const machine = header.readUInt16LE(18);
+      if (machine !== expectedMachine.elf) {
+        throw new Error(
+          `Native test executable architecture ${machine} does not match ${target}`,
         );
       }
       return;
@@ -900,18 +914,15 @@ export function executeTauriTask({
     rustdocExecutable,
   });
   let commandEnvironment;
-  switch (platform) {
-    case "win32":
-      commandEnvironment = {
-        ...plan.environment,
-        ...(resolveMsvcEnvironment({ platform, architecture }) ?? {}),
-      };
-      break;
-    case "darwin":
-      commandEnvironment = plan.environment;
-      break;
-    default:
-      throw new Error(`Unsupported host platform: ${platform}`);
+  if (platform === "win32") {
+    commandEnvironment = {
+      ...plan.environment,
+      ...(resolveMsvcEnvironment({ platform, architecture }) ?? {}),
+    };
+  } else if (isPosixTaskHost(platform)) {
+    commandEnvironment = plan.environment;
+  } else {
+    throw new Error(`Unsupported host platform: ${platform}`);
   }
   runCommand(plan.command, plan.args, { env: commandEnvironment });
   return plan;
@@ -970,33 +981,30 @@ export function executeCargoTask({
     nativeRunnerConfig,
   });
   let commandEnvironment;
-  switch (platform) {
-    case "win32":
-      if (
-        typeof nodeExecutable !== "string" ||
-        !path.win32.isAbsolute(nodeExecutable)
-      ) {
-        throw new Error(
-          "The canonical Node executable must be an absolute Windows path",
-        );
-      }
-      runCommand(nodeExecutable, [WINDOWS_USER_HELPER_PREPARE_SCRIPT], {
-        env: {
-          ...plan.environment,
-          TAURI_ENV_TARGET_TRIPLE: plan.target,
-          TAURI_ENV_DEBUG: "true",
-        },
-      });
-      commandEnvironment = {
+  if (platform === "win32") {
+    if (
+      typeof nodeExecutable !== "string" ||
+      !path.win32.isAbsolute(nodeExecutable)
+    ) {
+      throw new Error(
+        "The canonical Node executable must be an absolute Windows path",
+      );
+    }
+    runCommand(nodeExecutable, [WINDOWS_USER_HELPER_PREPARE_SCRIPT], {
+      env: {
         ...plan.environment,
-        ...(resolveMsvcEnvironment({ platform, architecture }) ?? {}),
-      };
-      break;
-    case "darwin":
-      commandEnvironment = plan.environment;
-      break;
-    default:
-      throw new Error(`Unsupported host platform: ${platform}`);
+        TAURI_ENV_TARGET_TRIPLE: plan.target,
+        TAURI_ENV_DEBUG: "true",
+      },
+    });
+    commandEnvironment = {
+      ...plan.environment,
+      ...(resolveMsvcEnvironment({ platform, architecture }) ?? {}),
+    };
+  } else if (isPosixTaskHost(platform)) {
+    commandEnvironment = plan.environment;
+  } else {
+    throw new Error(`Unsupported host platform: ${platform}`);
   }
   runCommand(plan.command, plan.args, { env: commandEnvironment });
   return plan;

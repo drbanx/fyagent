@@ -57,6 +57,7 @@ type SourceContract = { id: string; file: string; snippet: string };
 
 type CheckerModule = {
   ACTIVE_TASK_ENV: string;
+  DEVELOPMENT_HOST_ADMISSION_PATHS: readonly string[];
   GENERATED_STANDALONE_PREVIEW_PATH: string;
   MACOS_POSIX_CONTRACT: readonly SourceContract[];
   RUST_ALLOWANCE_CONTRACT: readonly RustAllowance[];
@@ -246,6 +247,26 @@ describe("durable supported-platform surface contract", () => {
       expect(checker.scanText(relativePath, source), relativePath).toEqual([]);
       expect(checker.scanPath(relativePath), relativePath).toEqual([]);
     }
+
+    const admission = checker.DEVELOPMENT_HOST_ADMISSION_PATHS;
+    expect([...admission]).toEqual(
+      [...admission].sort((left, right) => left.localeCompare(right, "en")),
+    );
+    expect(new Set(admission).size).toBe(admission.length);
+    const kernel = checker.SURFACE_MARKERS.kernel;
+    expect(checker.scanText(admission[0], `${kernel}-x64`)).toEqual([]);
+    expect(
+      checker.scanText(admission[0], checker.SURFACE_MARKERS.imagePackage),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "image-package" }),
+      ]),
+    );
+    expect(checker.scanText("src/lib/platform.ts", kernel)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rule: "retired-kernel" }),
+      ]),
+    );
   });
 
   it("keeps the always-run checker import closure on Node builtins only", () => {
@@ -696,7 +717,7 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
     const entries = permittedRustEntries();
-    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(9);
+    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(8);
     expect(checker.scanRustImplicitPredicates(entries)).toEqual([]);
 
     const first = checker.RUST_ALLOWANCE_CONTRACT[0];

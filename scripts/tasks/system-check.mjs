@@ -47,6 +47,21 @@ export const REQUIREMENTS = Object.freeze({
       ],
     ],
   },
+  linux: {
+    commands: [
+      ["git", ["--version"], "Install Git."],
+      [
+        "pkg-config",
+        ["--version"],
+        "Install pkg-config and the current Tauri 2 desktop prerequisites for this host.",
+      ],
+      [
+        "cc",
+        ["--version"],
+        "Install a C/C++ compiler and the current Tauri 2 desktop prerequisites for this host.",
+      ],
+    ],
+  },
 });
 
 function inspect(platform) {

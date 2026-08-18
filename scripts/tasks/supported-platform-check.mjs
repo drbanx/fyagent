@@ -241,18 +241,30 @@ const TEXT_EXCLUSIONS = new Set([
   GENERATED_STANDALONE_PREVIEW_PATH,
 ]);
 export const ACTIVE_TASK_ENV = "FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK";
+export const DEVELOPMENT_HOST_ADMISSION_PATHS = Object.freeze([
+  "mise.lock",
+  "mise.toml",
+  "scripts/tasks/host-native.mjs",
+  "scripts/tasks/lib.mjs",
+  "scripts/tasks/lockfile-check.mjs",
+  "scripts/tasks/system-check.mjs",
+  "scripts/tasks/toolchain-check.mjs",
+  "tests/developmentEnvironment.test.ts",
+  "tests/localBuildBoundary.test.ts",
+  "tests/miseTaskContract.test.ts",
+  "tests/systemCheck.test.ts",
+]);
+const DEVELOPMENT_HOST_CONTENT_RULE_IDS = new Set([
+  "retired-kernel",
+  "native-object-format",
+  "retired-home-layout",
+]);
 const UNSUPPORTED_CFG =
   '#[cfg(not(any(target_os = "windows", target_os = "macos")))]';
 const TESTABLE_UNSUPPORTED_CFG =
   '#[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]';
 
 export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
-  Object.freeze({
-    id: "crate-rejection",
-    file: "src-tauri/src/lib.rs",
-    condition: UNSUPPORTED_CFG,
-    next: 'compile_error!("FyAgent desktop supports only Windows and macOS.");',
-  }),
   Object.freeze({
     id: "runtime-path-import",
     file: "src-tauri/src/codex_desktop_runtime.rs",
@@ -422,7 +434,7 @@ export const RUST_MANUAL_TARGET_CONTRACT = Object.freeze([
       match target_os.as_str() {
         "macos" => { tauri_build::build(); return; }
         "windows" => {}
-        other => panic!("unsupported FyAgent build target: {other:?}"),
+        _ => { tauri_build::build(); return; }
       }
     `,
   }),
@@ -1553,8 +1565,12 @@ export function scanText(relativePath, source) {
     ? stripOpaqueSvgPayload(source)
     : source;
   const findings = [];
+  const skipIds = DEVELOPMENT_HOST_ADMISSION_PATHS.includes(relativePath)
+    ? DEVELOPMENT_HOST_CONTENT_RULE_IDS
+    : undefined;
   for (const [index, line] of inspected.split(/\r?\n/u).entries()) {
     for (const rule of CONTENT_RULES) {
+      if (skipIds?.has(rule.id)) continue;
       if (rule.pattern.test(line)) {
         findings.push(finding(relativePath, index + 1, rule.id, line));
       }

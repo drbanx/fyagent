@@ -95,6 +95,9 @@ Portable policy tests can run on the current host, but their result remains a
 portable contract result. Windows, macOS, ARM64, and any other non-host native
 gate runs only on its matching GitHub Actions runner. Repository tasks never
 install or activate a non-host Rust target as part of local execution.
+Linux x64/arm64 is a development host for `check` and other current-host
+tasks; it is not a shipped product platform and does not add a local
+cross-compile or Actions job.
 
 ## 4. Parameter Transport
 
@@ -346,7 +349,7 @@ does not turn them into contribution, build, CI, or release prerequisites.
   preserve direct non-Windows commands, bind both native Windows pnpm lock
   assets and checksums, and prove the DEP0040 checker uses the shared resolver
   without a `pnpm.cmd` fallback.
-- Pure tests for all four supported process-host mappings, strict absolute
+- Pure tests for all six development-host process mappings, strict absolute
   rustc/rustdoc identity, case-insensitive caller compiler/wrapper/runner/linker/
   target and target-bearing flag rejection, plus fixed current-host
   Tauri/Cargo argv and owned child environment.

@@ -546,10 +546,12 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
     }
 }
 
-/// A fail-closed adapter for hosts V1 cannot install on.
+/// A fail-closed adapter for operating systems the shipped desktop product
+/// does not support.
 ///
-/// Supported-host production construction never needs this type. Unit tests
-/// still compile it so the unsupported result remains covered on every host.
+/// Windows and macOS production construction never uses this type. Other
+/// development hosts compile it so `cargo check` and tests can run without
+/// claiming product support.
 #[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
 #[derive(Debug, Clone)]
 pub(crate) struct UnsupportedPlatformAdapter {

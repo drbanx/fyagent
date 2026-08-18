@@ -10,6 +10,8 @@ const SUPPORTED_PLATFORMS = [
   "macos-arm64",
   "windows-x64",
   "windows-arm64",
+  "linux-x64",
+  "linux-arm64",
 ] as const;
 
 type Artifact = { checksum?: string; url?: string };
@@ -104,7 +106,7 @@ describe("mise and uv development environment", () => {
     ]);
   });
 
-  it("locks native Node, pnpm, and uv artifacts for all four host variants", () => {
+  it("locks native Node, pnpm, and uv artifacts for every development host", () => {
     const lock = toml("mise.lock");
     const node = lockEntry(lock, "node");
     const pnpm = lockEntry(lock, "pnpm");

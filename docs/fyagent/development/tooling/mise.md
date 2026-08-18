@@ -20,8 +20,10 @@ mise run dev
 
 `mise trust` is a manual developer security decision; no repository task runs
 it automatically. Routine work then uses `mise run <task>`, and
-`mise run check` is the complete current-host pre-commit gate. GitHub Actions
+`mise run check` is the complete current-host pre-commit gate. The lock covers
+every development host listed in `mise.toml` `settings.lockfile_platforms`.
+Shipped desktop product evidence remains Windows and macOS GitHub Actions jobs.
+GitHub Actions
 deliberately installs and runs its native toolchain without mise. The generated
 [task reference](../mise-tasks.md) is the complete command catalog and must be
 regenerated from task metadata rather than edited by hand.
-

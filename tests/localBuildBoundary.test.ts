@@ -213,14 +213,16 @@ describe("local build boundary", () => {
     }
   });
 
-  it("maps only the four supported process hosts and verifies rustc identity", () => {
+  it("maps every development-host process pair and verifies rustc identity", () => {
     const cases = [
       ["darwin", "x64", "x86_64-apple-darwin"],
       ["darwin", "arm64", "aarch64-apple-darwin"],
       ["win32", "x64", "x86_64-pc-windows-msvc"],
       ["win32", "arm64", "aarch64-pc-windows-msvc"],
+      ["linux", "x64", "x86_64-unknown-linux-gnu"],
+      ["linux", "arm64", "aarch64-unknown-linux-gnu"],
     ] as const;
-    expect(Object.keys(hostNative.HOST_RUST_TARGETS)).toHaveLength(4);
+    expect(Object.keys(hostNative.HOST_RUST_TARGETS)).toHaveLength(6);
     for (const [platform, architecture, target] of cases) {
       expect(hostNative.expectedRustTarget(platform, architecture)).toBe(
         target,

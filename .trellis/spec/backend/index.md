@@ -27,7 +27,9 @@ When using these notes before changing Rust/Tauri host code:
 4. Run local commands through the shared
    [Development Environment Contract](./development-environment.md); do not
    substitute a machine-global Node, Rust, or pnpm toolchain, and never select
-   a non-host OS/architecture locally. Native compile/test entrypoints must use
+   a non-host OS/architecture locally. Linux is a development host for
+   `mise run check` and current-host compile/test; it is not a shipped product
+   platform. Native compile/test entrypoints must use
    their guarded mise task (or the guarded `pnpm dev`/`pnpm build` alias), not
    the low-level `pnpm tauri` maintenance/Actions leaf.
 5. Preserve protocol and schema versions as protocol facts, but never infer the

@@ -1,6 +1,3 @@
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-compile_error!("FyAgent desktop supports only Windows and macOS.");
-
 mod app_config;
 mod app_store;
 mod auto_launch;

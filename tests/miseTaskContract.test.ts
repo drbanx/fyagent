@@ -129,6 +129,7 @@ describe("canonical mise task API", () => {
   it("uses mise's native Windows pnpm executable without changing other commands", () => {
     expect(resolveTaskExecutable("pnpm", "win32")).toBe("pnpm.exe");
     expect(resolveTaskExecutable("pnpm", "darwin")).toBe("pnpm");
+    expect(resolveTaskExecutable("pnpm", "linux")).toBe("pnpm");
 
     for (const command of ["npm", "npx", "pnpx", "node", "cargo"]) {
       expect(resolveTaskExecutable(command, "win32"), command).toBe(command);
@@ -774,6 +775,8 @@ describe("canonical mise task API", () => {
   it.each([
     ["darwin", "x64"],
     ["darwin", "arm64"],
+    ["linux", "x64"],
+    ["linux", "arm64"],
   ] as const)(
     "does not prepare the Windows helper for %s/%s Rust tasks",
     (platform, architecture) => {
@@ -1038,6 +1041,25 @@ describe("canonical mise task API", () => {
           return bytes;
         },
       },
+      {
+        platform: "linux",
+        architecture: "x64",
+        target: "x86_64-unknown-linux-gnu",
+        machineOffset: 18,
+        validMachine: 62,
+        wrongMachine: 183,
+        bytes() {
+          const bytes = Buffer.alloc(64);
+          bytes[0] = 0x7f;
+          bytes[1] = 0x45;
+          bytes[2] = 0x4c;
+          bytes[3] = 0x46;
+          bytes[4] = 2;
+          bytes[5] = 1;
+          bytes.writeUInt16LE(this.validMachine, this.machineOffset);
+          return bytes;
+        },
+      },
     ] as const;
 
     for (const fixtureCase of cases) {
@@ -1094,6 +1116,12 @@ describe("canonical mise task API", () => {
             break;
           case "darwin":
             wrongBytes.writeUInt32BE(
+              fixtureCase.wrongMachine,
+              fixtureCase.machineOffset,
+            );
+            break;
+          case "linux":
+            wrongBytes.writeUInt16LE(
               fixtureCase.wrongMachine,
               fixtureCase.machineOffset,
             );

@@ -4,8 +4,10 @@
 
 Read this reference before changing repository tool versions, `mise.toml`, any
 lockfile, Python execution, local onboarding commands, the canonical task API,
-or any local compile, package, test, or verification path. It applies to native
-development on macOS and Windows.
+or any local compile, package, test, or verification path. Local current-host
+development, including `mise run check`, runs on macOS, Windows, and Linux.
+The shipped desktop product and its CI/Release evidence remain Windows and
+macOS only.
 GitHub Actions deliberately installs tools with native setup actions instead
 of installing mise.
 
@@ -45,9 +47,10 @@ empty file through the aliases selects `pnpm-win-arm64.exe` and
 `uv-aarch64-pc-windows-msvc.zip`; `lockfile-check.mjs` rejects a platform key
 whose URL names another architecture.
 
-`mise.lock` targets `macos-x64`, `macos-arm64`, `windows-x64`, and
-`windows-arm64`. Node, pnpm, and uv have a generated HTTPS
-URL and SHA-256 checksum for every platform. The `core:rust` backend currently
+`mise.lock` targets `macos-x64`, `macos-arm64`, `windows-x64`,
+`windows-arm64`, `linux-x64`, and `linux-arm64`. Node, pnpm, and uv have a
+generated HTTPS URL and SHA-256 checksum for every development host. The
+`core:rust` backend currently
 emits no platform artifact records: mise reports those four entries as skipped,
 so the lock stores exact Rust version/options and native jobs must additionally
 prove the selected rustup toolchain. Do not fabricate Rust checksums or present
@@ -120,8 +123,9 @@ task contract.
 
 Every canonical local development, build, test, package, and verification
 entrypoint is restricted to the OS and architecture of the process actually
-running it. The shared Node wrapper maps only the four supported
-`process.platform`/`process.arch` pairs, resolves `rustc` and `rustdoc` from
+running it. The shared Node wrapper maps the six development-host
+`process.platform`/`process.arch` pairs
+(`darwin`/`win32`/`linux` × `x64`/`arm64`), resolves `rustc` and `rustdoc` from
 PATH to absolute executable paths, parses both `-vV` identities, and requires
 their host/release/commit to match the process host and each other. Before
 starting either probe, Cargo, or Tauri, it rejects fixed-operation forwarded
@@ -148,7 +152,8 @@ whose fixed argv is the current absolute Node executable plus the same
 `host-native.mjs`; paths containing whitespace remain separate argv. Cargo
 appends only the test binary and filter argv. The runner validates the process
 host/target, repository target-directory boundary, regular non-symlink file,
-native format, and exact PE `Machine` or thin Mach-O `cputype` before direct
+native format, and exact PE `Machine`, thin Mach-O `cputype`, or 64-bit
+little-endian object `e_machine` before direct
 `spawnSync(..., shell: false)`. No shell, emulator,
 subsystem bridge, user runner, or user linker participates. The wrapper also passes an explicit
 `--target <verified-current-host>` to Tauri and Cargo check/Clippy/test. Caller
@@ -221,9 +226,11 @@ never acceptance evidence. The current native setup contract is owned by
 [Windows Installer](./windows-installer.md).
 
 Repository tasks do not install non-host Rust targets or provision a
-cross-compilation environment. Adding a new supported platform therefore
-requires a matching native Actions job and its evidence, not a local target
-flag or compatibility script.
+cross-compilation environment. Adding a new shipped product platform requires a
+matching native Actions job and its evidence, not a local target flag or
+compatibility script. Adding a development host is not product support: it must
+not add Linux packaging, distribution, or CI/Release surfaces, and it must not
+`compile_error!` or otherwise refuse `mise run check` on that host.
 
 ## 6. Lock and Update Governance
 
@@ -231,7 +238,7 @@ Normal bootstrap/install consumes existing locks and never bumps them. An
 intentional full lock regeneration is:
 
 ```bash
-mise lock --platform macos-x64,macos-arm64,windows-x64,windows-arm64
+mise lock --platform macos-x64,macos-arm64,windows-x64,windows-arm64,linux-x64,linux-arm64
 mise run tasks:validate
 ```
 
@@ -264,6 +271,8 @@ the standard version file and `mise.lock` captured before the attempt.
 | User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject the effective config before rustc/rustdoc/Cargo/Tauri starts                     |
 | A Windows helper preparation fails or selects another target/profile  | Stop before the main workspace Cargo command                                            |
 | A local command selects another OS/architecture by any route          | Reject before compilation, packaging, or verification                                   |
+| A Linux development host is refused by task or toolchain wrappers     | Fail the environment contract; `mise run check` must admit the current host             |
+| `src-tauri` uses `compile_error!` to reject a non-shipping OS         | Fail; compile through the existing unsupported adapter instead                          |
 | A non-host result is offered as native acceptance evidence            | Keep the gate pending and require the matching native Actions runner                    |
 | Host native libraries are missing                                     | `system:check` fails with a non-elevating installation hint                             |
 | Windows VS 2022 / VC tools component is missing                       | `system:check` reports a `vswhere` FAIL naming "Desktop development with C++"; never elevate |
@@ -275,7 +284,7 @@ the standard version file and `mise.lock` captured before the attempt.
 - Parse every standard source and assert Node 24.19.0, pnpm 10.12.3, Rust
   1.97.1, Python 3.14.7, and `mise.toml` `min_version = "2026.8.6"` without
   duplicate mise tool-version declarations.
-- Regenerate `mise.lock` from no prior lock, target all four platforms, and
+- Regenerate `mise.lock` from no prior lock, target all six development hosts, and
   require an identical second generation.
 - Structurally validate backend identity, URLs, SHA-256 checksums, platform
   architecture, native Windows ARM64 pnpm/uv assets, Rust options, and absence
@@ -290,14 +299,17 @@ the standard version file and `mise.lock` captured before the attempt.
   `mise which rustc`, the exact rustup active toolchain, components, and sysroot.
 - Exercise a parameter plus flag through real `mise run`, and prove filters
   cannot smuggle `--target` into Rust tests.
-- Unit-test the exact four-entry process-host mapping, absolute rustc/rustdoc
+- Unit-test the exact six-entry process-host mapping, absolute rustc/rustdoc
   resolution and matching `-vV` identities, case-insensitive compiler/wrapper/
   runner/target rejection, target-bearing flag rejection, and fixed
   Tauri/Cargo argv plus owned child environment.
 - Unit-test Windows Rust task ordering and environment: one helper preparation
   after all current-host validations and before workspace Cargo, the exact
   canonical target, `TAURI_ENV_DEBUG=true`, and no workspace Cargo after
-  preparation failure. Prove macOS Rust tasks never invoke the helper preparer.
+  preparation failure. Prove macOS and Linux Rust tasks never invoke the helper
+  preparer. Prove `src-tauri` compiles on a non-shipping OS through the
+  unsupported adapter rather than `compile_error!`, and that
+  `supported-platform:check` still rejects product packaging surfaces.
 - Unit-test the MSVC loader on a non-Windows host with injected spawn: x64/arm64
   architecture mapping, vswhere candidate paths, non-Windows returning `null`
   without probing, successful `VsDevCmd` environment parsing, missing
@@ -325,18 +337,95 @@ the standard version file and `mise.lock` captured before the attempt.
   exclude GitHub workflow definitions from that negative scan because they own
   the required native platform targets.
 - Obtain native Windows ARM64, Windows x64, macOS x64, and macOS ARM64 runner
-  evidence before claiming all supported platforms verified. Local success is
-  not substitute evidence for another OS or architecture.
+  evidence before claiming all shipped product platforms verified. Local Linux
+  `mise run check` success is development-host evidence, not product support.
 
 ## 9. Wrong vs Correct
 
 Wrong: duplicate versions in mise, accept an x64 URL under an ARM64 key, use a
 system Python fallback, run a repository trust task, silently install system
 packages, bypass the canonical wrapper with a low-level target command, bridge
-into a foreign executable, or treat a locally staged non-host package as
-acceptance.
+into a foreign executable, treat a locally staged non-host package as
+acceptance, or refuse `mise run check` on a Linux development host by collapsing
+product support and development-host admission into one Windows/macOS-only
+allowlist or a crate-level `compile_error!`.
 
 Correct: standard ecosystem files select exact versions, mise orchestrates and
-locks audited assets, uv owns Python, canonical local wrappers verify and pin
-the current host before toolchain execution, and matching native Actions
-runners close every non-host evidence gate.
+locks audited assets for every development host, uv owns Python, canonical local
+wrappers verify and pin the current host before toolchain execution, matching
+native Actions runners close every shipped-product evidence gate, and Linux
+hosts compile through the existing unsupported adapter without claiming product
+support.
+
+## Scenario: Development-host admission
+
+### 1. Scope / Trigger
+
+- Trigger: current-host task wrappers, lockfile platforms, `src-tauri` compile
+  gates, or `supported-platform:check` would refuse Linux as a development host
+  or would reintroduce Linux as a shipped product/CI/Release surface.
+
+### 2. Signatures
+
+- `lib.mjs`: `PRODUCT_PLATFORMS`, `DEVELOPMENT_HOSTS`/`SUPPORTED_PLATFORMS`,
+  `isPosixTaskHost(platform)`, `resolveTaskExecutable(command, platform)`
+- `host-native.mjs`: `HOST_RUST_TARGETS` includes
+  `linux-x64` → `x86_64-unknown-linux-gnu` and
+  `linux-arm64` → `aarch64-unknown-linux-gnu`
+- `src-tauri/build.rs`: `CARGO_CFG_TARGET_OS` match arms `macos` / `windows` /
+  `_` (the catch-all calls `tauri_build::build()` and returns)
+- `supported-platform-check.mjs`: `DEVELOPMENT_HOST_ADMISSION_PATHS`
+
+### 3. Contracts
+
+- Request: `mise run check` / `env:check` / `rust:check` on
+  `process.platform === "linux"` with `x64` or `arm64`
+- Response: host admission succeeds; later missing Tauri native libraries may
+  still fail `system:check` or Cargo with installation hints
+- Environment: `mise.toml` `settings.lockfile_platforms` equals the six
+  development hosts; Node/pnpm/uv lock artifacts exist for `linux-x64` and
+  `linux-arm64`
+- Product CI/Release workflows remain Windows and macOS runners only
+
+### 4. Validation & Error Matrix
+
+- `freebsd` or another unknown `process.platform` → `Unsupported task host` /
+  `Unsupported local host OS/architecture`
+- Linux `x64`/`arm64` → admit and pin `x86_64-unknown-linux-gnu` /
+  `aarch64-unknown-linux-gnu`
+- `compile_error!` on `not(windows|macos)` → contract failure
+- Development-host file names the kernel marker → allowed
+- Same file names AppImage/Flatpak/GTK product packaging → still rejected
+- Product source (`src/**`, unlisted scripts) names the kernel marker → rejected
+
+### 5. Good/Base/Bad Cases
+
+- Good: Linux x64/arm64 `expectedRustTarget` mapping, posix `pnpm` resolution,
+  no Windows helper, ELF-style current-host test-binary identity
+- Base: macOS and Windows mappings and wrappers unchanged
+- Bad: crate-level `compile_error!`, `build.rs` panic on unknown OS, lockfile
+  without Linux artifacts, collapsing product and development hosts
+
+### 6. Tests Required
+
+- `developmentEnvironment.test.ts` lockfile platform set
+- `localBuildBoundary.test.ts` six-entry mapping
+- `miseTaskContract.test.ts` posix executable resolution, Linux helper skip,
+  native test-binary identity
+- `systemCheck.test.ts` `--describe-platform linux`
+- `remainingPlatformSurface.test.ts` admission-path skip vs product packaging
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+compile_error!("FyAgent desktop supports only Windows and macOS.");
+```
+
+#### Correct
+
+Keep Windows/macOS product adapters. On any other OS, compile
+`UnsupportedPlatformAdapter` so `cargo check` can run, and admit Linux only in
+the development-host wrappers and lockfile.

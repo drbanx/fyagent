@@ -27,7 +27,10 @@ fn main() {
             return;
         }
         "windows" => {}
-        other => panic!("unsupported FyAgent build target: {other:?}"),
+        _ => {
+            tauri_build::build();
+            return;
+        }
     }
 
     println!("cargo:rerun-if-env-changed=FYAGENT_WINDOWS_MANIFEST");

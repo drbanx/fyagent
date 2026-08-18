@@ -21,6 +21,8 @@ const ARCH_MARKERS = Object.freeze({
   "macos-arm64": /(?:arm64|aarch64)/i,
   "windows-x64": /(?:x64|x86_64)/i,
   "windows-arm64": /(?:arm64|aarch64)/i,
+  "linux-x64": /(?:x64|x86_64)/i,
+  "linux-arm64": /(?:arm64|aarch64)/i,
 });
 
 function entriesFor(lock, name) {
