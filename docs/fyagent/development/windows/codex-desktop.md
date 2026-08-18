@@ -79,12 +79,10 @@ replacement in the shipped path.
 The elevated parent creates one local first-instance duplex pipe before asking
 Explorer to launch the fixed sibling helper as Alice. Its session-local
 `LOCAL\` name combines a fixed versioned prefix with a random 256-bit nonce.
-The BA-owned descriptor gives Alice exactly read-data, write-data,
-`READ_CONTROL`, and synchronize rights; SYSTEM and Administrators retain only
-`READ_CONTROL`. The pipe also carries a Medium no-write-up mandatory label so
-the Explorer-launched asInvoker helper can connect: a High label inherited from
-the elevated parent would deny those write rights with `ACCESS_DENIED`. No
-generic-write alias grants pipe-instance creation.
+The BA-owned descriptor gives Alice `FILE_GENERIC_READ` plus `FILE_WRITE_DATA`
+(`FILE_READ_ATTRIBUTES` is required to connect to a named pipe);
+SYSTEM and Administrators retain only `READ_CONTROL`. No generic-write alias
+grants pipe-instance creation.
 
 The parent also first-creates BA-owned admission and cancellation events. Alice
 can synchronize and inspect their owner but cannot signal them. The helper

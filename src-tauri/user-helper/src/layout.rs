@@ -20,14 +20,14 @@ pub const USER_HELPER_CANCEL_EVENT_PREFIX: &str = r"Local\FyAgent.UserHelper.Can
 /// `READ_CONTROL | SYNCHRONIZE`; lets the helper wait and verify BA ownership
 /// without granting it `EVENT_MODIFY_STATE`.
 pub const USER_HELPER_CONTROL_EVENT_ACCESS_MASK: u32 = 0x0012_0000;
-/// `FILE_READ_DATA | FILE_WRITE_DATA | READ_CONTROL | SYNCHRONIZE`; shared
-/// with the parent pipe DACL. The fixed read direction carries only the
-/// parent-created package-bridge control, while `READ_CONTROL` lets the helper
-/// verify the server object's BA owner.
+/// `FILE_GENERIC_READ | FILE_WRITE_DATA`; shared with the parent pipe DACL.
+/// Named-pipe connect checks `FILE_READ_ATTRIBUTES` even when the client does
+/// not request it, and `FILE_GENERIC_READ` also covers `FILE_READ_EA`.
+/// `READ_CONTROL` lets the helper verify the server object's BA owner.
 ///
 /// `FILE_GENERIC_WRITE` is intentionally not used because its append-data bit
 /// aliases `FILE_CREATE_PIPE_INSTANCE` for named pipes.
-pub const USER_HELPER_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_0003;
+pub const USER_HELPER_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_008B;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstallLayout {
@@ -279,16 +279,23 @@ mod tests {
     }
 
     #[test]
-    fn pipe_client_access_is_exact_read_write_data_plus_control_and_synchronize() {
+    fn pipe_client_access_is_generic_read_plus_write_data_without_create_instance() {
         const FILE_READ_DATA: u32 = 0x0000_0001;
         const FILE_WRITE_DATA: u32 = 0x0000_0002;
         const FILE_APPEND_DATA_OR_CREATE_PIPE_INSTANCE: u32 = 0x0000_0004;
+        const FILE_READ_EA: u32 = 0x0000_0008;
+        const FILE_READ_ATTRIBUTES: u32 = 0x0000_0080;
         const READ_CONTROL: u32 = 0x0002_0000;
         const SYNCHRONIZE: u32 = 0x0010_0000;
 
         assert_eq!(
             USER_HELPER_PIPE_CLIENT_ACCESS_MASK,
-            FILE_READ_DATA | FILE_WRITE_DATA | READ_CONTROL | SYNCHRONIZE
+            FILE_READ_DATA
+                | FILE_WRITE_DATA
+                | FILE_READ_EA
+                | FILE_READ_ATTRIBUTES
+                | READ_CONTROL
+                | SYNCHRONIZE
         );
         assert_eq!(
             USER_HELPER_PIPE_CLIENT_ACCESS_MASK & FILE_APPEND_DATA_OR_CREATE_PIPE_INSTANCE,

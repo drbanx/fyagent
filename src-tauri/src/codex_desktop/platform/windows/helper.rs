@@ -828,12 +828,12 @@ impl OneShotPipeServer {
         if handle.is_invalid() {
             // #region agent log
             agent_debug_log(
-                "D",
+                "F",
                 "platform/windows/helper.rs:create_pipe",
                 "pipe_create_failed",
                 serde_json::json!({
                     "lastError": unsafe { GetLastError() }.0,
-                    "mediumLabel": true,
+                    "daclMask": "0x0012008b",
                 }),
             );
             // #endregion
@@ -843,10 +843,13 @@ impl OneShotPipeServer {
         }
         // #region agent log
         agent_debug_log(
-            "D",
+            "F",
             "platform/windows/helper.rs:create_pipe",
             "pipe_create_ok",
-            serde_json::json!({ "mediumLabel": true }),
+            serde_json::json!({
+                "daclMask": "0x0012008b",
+                "shellSidRid": sid_rid_from_canonical(shell_sid),
+            }),
         );
         // #endregion
         Ok(Self {
@@ -1266,12 +1269,11 @@ struct PipeSecurityDescriptor(PSECURITY_DESCRIPTOR);
 
 impl PipeSecurityDescriptor {
     fn new(shell_sid: &str) -> Result<Self, InstallerError> {
-        // The elevated parent would otherwise create a High-IL pipe. Explorer's
-        // asInvoker helper is typically Medium; MIC NO_WRITE_UP then denies
-        // FILE_READ_DATA|FILE_WRITE_DATA even when the Alice DACL ACE matches.
-        let sddl = format!(
-            "O:BAG:BAD:P(A;;0x00120003;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)S:(ML;;NW;;;ME)"
-        );
+        // FILE_GENERIC_READ includes FILE_READ_ATTRIBUTES, which named-pipe
+        // connect checks even when the client requests only data rights.
+        // FILE_WRITE_DATA is granted separately so FILE_CREATE_PIPE_INSTANCE
+        // (FILE_GENERIC_WRITE / FILE_APPEND_DATA) stays withheld.
+        let sddl = format!("O:BAG:BAD:P(A;;0x0012008b;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)");
         let sddl = wide_null(&sddl);
         let mut descriptor = PSECURITY_DESCRIPTOR::default();
         unsafe {
@@ -1578,6 +1580,12 @@ fn wide_null(value: &str) -> Vec<u16> {
     OsStr::new(value).encode_wide().chain(Some(0)).collect()
 }
 
+// #region agent log
+fn sid_rid_from_canonical(sid: &str) -> Option<u32> {
+    sid.rsplit_once('-')?.1.parse().ok()
+}
+// #endregion
+
 fn wide_os_null(value: &OsStr) -> Vec<u16> {
     value.encode_wide().chain(Some(0)).collect()
 }
@@ -1794,9 +1802,7 @@ mod tests {
         assert!(source.contains("PIPE_REJECT_REMOTE_CLIENTS"));
         assert!(source.contains("PIPE_ACCESS_DUPLEX"));
         assert!(source.contains("BRIDGE_CONTROL_BYTES as u32"));
-        assert!(source.contains(
-            "O:BAG:BAD:P(A;;0x00120003;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)S:(ML;;NW;;;ME)"
-        ));
+        assert!(source.contains("O:BAG:BAD:P(A;;0x0012008b;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)"));
         assert!(source.contains("GetNamedPipeClientProcessId"));
         assert!(source.contains("ImpersonateNamedPipeClient"));
         assert!(source.contains("OpenThreadToken"));

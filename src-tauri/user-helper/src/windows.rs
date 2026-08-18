@@ -57,10 +57,11 @@ use windows::{
             FILE_ATTRIBUTE_RECALL_ON_OPEN, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
             FILE_DELETE_CHILD, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_BACKUP_SEMANTICS,
             FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_OVERLAPPED, FILE_GENERIC_EXECUTE,
-            FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_DELETE, FILE_SHARE_MODE,
-            FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_WRITE_ATTRIBUTES,
-            FILE_WRITE_DATA, FILE_WRITE_EA, OPEN_EXISTING, SECURITY_EFFECTIVE_ONLY,
-            SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT, WRITE_DAC, WRITE_OWNER,
+            FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
+            FILE_SHARE_MODE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO,
+            FILE_WRITE_ATTRIBUTES, FILE_WRITE_DATA, FILE_WRITE_EA, OPEN_EXISTING,
+            SECURITY_EFFECTIVE_ONLY, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT, WRITE_DAC,
+            WRITE_OWNER,
         },
         System::{
             Com::CoTaskMemFree,
@@ -1159,6 +1160,91 @@ fn process_integrity_rid() -> Option<u32> {
     }
     Some(unsafe { *authority })
 }
+
+fn process_user_sid_rid() -> Option<u32> {
+    let mut token = HANDLE::default();
+    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.ok()?;
+    let token = OwnedKernelHandle::new(token).ok()?;
+    let mut required = 0_u32;
+    let _ = unsafe { GetTokenInformation(token.raw(), TokenUser, None, 0, &mut required) };
+    if required < size_of::<TOKEN_USER>() as u32 {
+        return None;
+    }
+    let mut buffer = aligned_words(required as usize);
+    unsafe {
+        GetTokenInformation(
+            token.raw(),
+            TokenUser,
+            Some(buffer.as_mut_ptr().cast()),
+            required,
+            &mut required,
+        )
+    }
+    .ok()?;
+    let user = unsafe { &*buffer.as_ptr().cast::<TOKEN_USER>() };
+    let sid = user.User.Sid;
+    if sid.0.is_null() || !unsafe { IsValidSid(sid) }.as_bool() {
+        return None;
+    }
+    let count_ptr = unsafe { GetSidSubAuthorityCount(sid) };
+    if count_ptr.is_null() {
+        return None;
+    }
+    let count = unsafe { *count_ptr };
+    if count == 0 {
+        return None;
+    }
+    let authority = unsafe { GetSidSubAuthority(sid, u32::from(count) - 1) };
+    if authority.is_null() {
+        return None;
+    }
+    Some(unsafe { *authority })
+}
+
+fn probe_pipe_create(name: PCWSTR, access: u32, with_sqos: bool) -> i32 {
+    let flags = if with_sqos {
+        FILE_ATTRIBUTE_NORMAL
+            | FILE_FLAG_OVERLAPPED
+            | SECURITY_SQOS_PRESENT
+            | SECURITY_IDENTIFICATION
+            | SECURITY_EFFECTIVE_ONLY
+    } else {
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED
+    };
+    match unsafe {
+        CreateFileW(
+            name,
+            access,
+            FILE_SHARE_MODE(0),
+            None,
+            OPEN_EXISTING,
+            flags,
+            None,
+        )
+    } {
+        Ok(handle) => {
+            drop(unsafe { OwnedHandle::from_raw_handle(handle.0) });
+            0
+        }
+        Err(error) => error.code().0,
+    }
+}
+
+fn pipe_connect_probe_data(name: PCWSTR, hresult: i32) -> String {
+    let rid = |value: Option<u32>| {
+        value
+            .map(|rid| rid.to_string())
+            .unwrap_or_else(|| "null".to_owned())
+    };
+    format!(
+        "{{\"hresult\":{hresult},\"integrityRid\":{},\"userSidRid\":{},\"probeNoSqos\":{},\"probeRcSync\":{},\"probeReadAttrs\":{}}}",
+        rid(process_integrity_rid()),
+        rid(process_user_sid_rid()),
+        probe_pipe_create(name, USER_HELPER_PIPE_CLIENT_ACCESS_MASK, false),
+        probe_pipe_create(name, USER_HELPER_CONTROL_EVENT_ACCESS_MASK, true),
+        probe_pipe_create(name, FILE_READ_ATTRIBUTES.0 | 0x0010_0000, true)
+    )
+}
 // #endregion
 
 #[derive(Clone, Copy)]
@@ -1605,22 +1691,19 @@ impl PipeChannel {
                     | SECURITY_EFFECTIVE_ONLY,
                 None,
             )
-        }
-        .map_err(|error| {
-            // #region agent log
-            helper_debug_log(
-                "pipe_connect_failed",
-                &format!(
-                    "{{\"hresult\":{},\"integrityRid\":{}}}",
-                    error.code().0,
-                    process_integrity_rid()
-                        .map(|rid| rid.to_string())
-                        .unwrap_or_else(|| "null".to_owned())
-                ),
-            );
-            // #endregion
-            HelperRunError::PipeUnavailable
-        })?;
+        };
+        let handle = match handle {
+            Ok(handle) => handle,
+            Err(error) => {
+                // #region agent log
+                helper_debug_log(
+                    "pipe_connect_failed",
+                    &pipe_connect_probe_data(PCWSTR(wide_name.as_ptr()), error.code().0),
+                );
+                // #endregion
+                return Err(HelperRunError::PipeUnavailable);
+            }
+        };
 
         let owned = unsafe { OwnedHandle::from_raw_handle(handle.0) };
         if let Err(error) = verify_builtin_administrators_owner(HANDLE(owned.as_raw_handle())) {

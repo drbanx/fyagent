@@ -771,7 +771,7 @@ describe("Codex current-user helper static contract", () => {
     expect(parentHelper).toContain("BCryptGenRandom");
     expect(parentHelper).toMatch(/let mut random = \[0_u8; 32\]/u);
     expect(parentHelper).toContain(
-      "O:BAG:BAD:P(A;;0x00120003;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)S:(ML;;NW;;;ME)",
+      "O:BAG:BAD:P(A;;0x0012008b;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)",
     );
   });
 
