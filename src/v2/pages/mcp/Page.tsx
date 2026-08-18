@@ -269,7 +269,7 @@ export function McpPage() {
       });
     });
   return (
-    <div className="fy-feature-page fy-mcp-page">
+    <div className="fy-feature-page fy-mcp-page" data-testid="mcp-page">
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>MCP</h1>

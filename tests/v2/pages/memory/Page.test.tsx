@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MemoryPage } from "@/v2/pages/memory/Page";
 import type { FeaturePorts } from "@/v2/shared/features/ports";
 import { FeatureProvider } from "@/v2/shared/features/provider";
+import { PrimaryBlockerProvider } from "@/v2/shared/ui/PrimaryBlocker";
 import type {
   DailyMemoryFileInfo,
   DailyMemorySearchResult,
@@ -114,7 +115,14 @@ function statefulMemoryPorts(
 function renderMemory(ports: FeaturePorts) {
   const router = createMemoryRouter(
     [
-      { path: "/memory", element: <MemoryPage /> },
+      {
+        path: "/memory",
+        element: (
+          <PrimaryBlockerProvider>
+            <MemoryPage />
+          </PrimaryBlockerProvider>
+        ),
+      },
       { path: "/other", element: <main>其他页面</main> },
     ],
     { initialEntries: ["/memory"] },

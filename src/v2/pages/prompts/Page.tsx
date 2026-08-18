@@ -7,7 +7,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
-import { useBlocker, type BlockerFunction } from "react-router-dom";
+import { type BlockerFunction } from "react-router-dom";
 
 import { errorMessage, isNativeOnlyError } from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
@@ -32,6 +32,7 @@ import {
   Spinner,
   Switch,
 } from "../../shared/ui/primitives";
+import { usePrimaryBlocker } from "../../shared/ui/PrimaryBlocker";
 import {
   SelectionLens,
   SelectionLensTrack,
@@ -158,7 +159,7 @@ export function PromptsPage() {
       editorDirty && currentLocation.pathname !== nextLocation.pathname,
     [editorDirty],
   );
-  const blocker = useBlocker(shouldBlockNavigation);
+  const blocker = usePrimaryBlocker(shouldBlockNavigation);
   const activeDiscardIntent: DiscardIntent =
     discardIntent ?? (blocker.state === "blocked" ? { kind: "route" } : null);
 

@@ -305,7 +305,7 @@ export function SkillsPage() {
   };
 
   return (
-    <div className="fy-feature-page fy-skills-page">
+    <div className="fy-feature-page fy-skills-page" data-testid="skills-page">
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>Skills</h1>

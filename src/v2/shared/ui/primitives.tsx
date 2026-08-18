@@ -6,6 +6,7 @@ import {
 } from "react";
 
 import { classNames } from "../design-system/classNames";
+import { usePersistentVisibility } from "./PersistentSurface";
 import {
   CheckboxPrimitive,
   DialogPrimitive,
@@ -216,8 +217,15 @@ export function Dialog({
   actions?: ReactNode;
   large?: boolean;
 }) {
+  const visible = usePersistentVisibility();
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+    <DialogPrimitive.Root
+      open={open && visible}
+      onOpenChange={(next) => {
+        if (!visible) return;
+        onOpenChange(next);
+      }}
+    >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fy-control-dialog-overlay" />
         <DialogPrimitive.Content

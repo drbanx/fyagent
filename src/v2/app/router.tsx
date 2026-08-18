@@ -1,13 +1,8 @@
 import { Navigate, createHashRouter, type RouteObject } from "react-router-dom";
 
-import { AgentsPage } from "../pages/agents/Page";
-import { McpPage } from "../pages/mcp/Page";
-import { MemoryPage } from "../pages/memory/Page";
-import { ModelsPage } from "../pages/models/Page";
-import { PromptsPage } from "../pages/prompts/Page";
-import { SkillsPage } from "../pages/skills/Page";
 import { FeatureProvider } from "../shared/features/provider";
 import { AppShell } from "../widgets/app-shell/AppShell";
+import { PersistentPrimaryOutlet } from "./PersistentPrimaryOutlet";
 import { RootError } from "./RootError";
 
 const developmentRoutes: RouteObject[] = import.meta.env.DEV
@@ -36,14 +31,19 @@ export const appRoutes: RouteObject[] = [
         errorElement: <RootError />,
         children: [
           { index: true, element: <Navigate to="/models" replace /> },
-          { path: "agents", element: <AgentsPage /> },
-          { path: "models", element: <ModelsPage /> },
-          { path: "skills", element: <SkillsPage /> },
-          { path: "mcp", element: <McpPage /> },
-          { path: "prompts", element: <PromptsPage /> },
-          { path: "memory", element: <MemoryPage /> },
-          ...developmentRoutes,
-          { path: "*", element: <Navigate to="/models" replace /> },
+          {
+            element: <PersistentPrimaryOutlet />,
+            children: [
+              { path: "agents", element: null },
+              { path: "models", element: null },
+              { path: "skills", element: null },
+              { path: "mcp", element: null },
+              { path: "prompts", element: null },
+              { path: "memory", element: null },
+              ...developmentRoutes,
+              { path: "*", element: <Navigate to="/models" replace /> },
+            ],
+          },
         ],
       },
     ],

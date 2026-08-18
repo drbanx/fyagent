@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PromptsPage } from "@/v2/pages/prompts/Page";
 import type { FeaturePorts } from "@/v2/shared/features/ports";
 import { FeatureProvider } from "@/v2/shared/features/provider";
+import { PrimaryBlockerProvider } from "@/v2/shared/ui/PrimaryBlocker";
 import {
   PROMPT_APP_IDS,
   type ManagedPrompt,
@@ -104,7 +105,14 @@ function statefulPorts(
 function renderPrompts(ports: FeaturePorts) {
   const router = createMemoryRouter(
     [
-      { path: "/prompts", element: <PromptsPage /> },
+      {
+        path: "/prompts",
+        element: (
+          <PrimaryBlockerProvider>
+            <PromptsPage />
+          </PrimaryBlockerProvider>
+        ),
+      },
       { path: "/memory", element: <h1>记忆目标页</h1> },
     ],
     { initialEntries: ["/prompts"] },

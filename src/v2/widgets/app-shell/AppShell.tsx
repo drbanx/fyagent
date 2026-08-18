@@ -5,6 +5,7 @@ import {
   shouldShowMacOverlayDragStrip,
   signalFrontendReady,
 } from "../../shared/platform";
+import { PrimaryBlockerProvider } from "../../shared/ui/PrimaryBlocker";
 import { TooltipProvider } from "../../shared/ui/primitives";
 import { ContentViewport } from "./ContentViewport";
 import { TopBar } from "./TopBar";
@@ -28,7 +29,9 @@ export function AppShell() {
         data-testid="app-shell"
       >
         <TopBar />
-        <ContentViewport />
+        <PrimaryBlockerProvider>
+          <ContentViewport />
+        </PrimaryBlockerProvider>
       </div>
     </TooltipProvider>
   );

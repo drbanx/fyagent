@@ -12,6 +12,8 @@ import type { RouteObject } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { appRoutes } from "@/v2/app/router";
+import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
+import * as featureFactory from "@/v2/shared/platform/features";
 
 vi.mock("@samasante/liquid-glass", () => ({
   Glass: ({
@@ -224,5 +226,134 @@ describe("FyAgent V2 shell accessibility", () => {
     }
 
     expectSystemOwnedChrome();
+  });
+});
+
+describe("FyAgent V2 primary page persistence", () => {
+  it("keeps Models page form content after visiting another primary route", async () => {
+    const user = userEvent.setup();
+    const router = renderRoute("/models?target=workbuddy");
+
+    const url = await screen.findByLabelText("服务地址");
+    await user.type(url, "https://keep.example/v1");
+    await user.click(screen.getByRole("link", { name: "Agent 目录" }));
+    await expectPath(router, "/agents");
+    expect(screen.getByTestId("models-page")).not.toBeVisible();
+
+    await user.click(screen.getByRole("link", { name: "模型" }));
+    await expectPath(router, "/models");
+    expect(await screen.findByLabelText("服务地址")).toHaveValue(
+      "https://keep.example/v1",
+    );
+    expect(screen.getByRole("heading", { name: "WorkBuddy" })).toBeVisible();
+  });
+
+  it("keeps Agent catalog selection after visiting another primary route", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.catalog.get = vi.fn(async () => ({
+      contractVersion: 3 as const,
+      reviewedAt: "2026-08-18",
+      agents: [
+        {
+          id: "qoderwork" as const,
+          variantId: "qoderwork-cn" as const,
+          displayName: "QoderWork CN",
+          description: "QoderWork",
+          officialLinks: [
+            {
+              id: "product" as const,
+              label: "打开 QoderWork CN 官方页面",
+              url: "https://qoder.com.cn/qoderwork",
+            },
+          ],
+          capabilities: [],
+        },
+        {
+          id: "claude-code" as const,
+          variantId: "claude-code" as const,
+          displayName: "Claude Code",
+          description: "Claude Code",
+          officialLinks: [
+            {
+              id: "cli" as const,
+              label: "Claude Code CLI",
+              url: "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+            },
+          ],
+          capabilities: [],
+        },
+      ],
+    }));
+    const createPorts = vi
+      .spyOn(featureFactory, "createFeaturePorts")
+      .mockReturnValue(ports);
+    try {
+      const router = renderRoute("/agents?target=claude-code");
+
+      expect(
+        await screen.findByRole("heading", { name: "Claude Code" }),
+      ).toBeVisible();
+      await user.click(screen.getByRole("link", { name: "模型" }));
+      await expectPath(router, "/models");
+      expect(screen.getByTestId("agents-page")).not.toBeVisible();
+
+      await user.click(screen.getByRole("link", { name: "Agent 目录" }));
+      await expectPath(router, "/agents");
+      expect(
+        await screen.findByRole("heading", { name: "Claude Code" }),
+      ).toBeVisible();
+      expect(router.state.location.search).toBe("?target=claude-code");
+    } finally {
+      createPorts.mockRestore();
+    }
+  });
+
+  it("keeps Skills, Prompts, Memory, and MCP after leaving", async () => {
+    const user = userEvent.setup();
+    const router = renderRoute("/skills");
+
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    expect(screen.getByRole("tab", { name: "发现" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(screen.getByRole("link", { name: "提示词" }));
+    await expectPath(router, "/prompts");
+    expect(screen.getByTestId("skills-page")).not.toBeVisible();
+
+    await user.selectOptions(screen.getByLabelText("当前应用"), "gemini");
+    expect(screen.getByLabelText("当前应用")).toHaveValue("gemini");
+    await user.click(screen.getByRole("link", { name: "记忆" }));
+    await expectPath(router, "/memory");
+    expect(screen.getByTestId("prompts-page")).not.toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+    expect(screen.getByRole("tab", { name: "每日记忆" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(screen.getByRole("link", { name: "MCP" }));
+    await expectPath(router, "/mcp");
+    expect(screen.getByTestId("memory-page")).not.toBeVisible();
+    expect(screen.getByTestId("mcp-page")).toBeVisible();
+
+    await user.click(screen.getByRole("link", { name: "Skills" }));
+    await expectPath(router, "/skills");
+    expect(screen.getByTestId("mcp-page")).not.toBeVisible();
+    expect(screen.getByRole("tab", { name: "发现" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(screen.getByRole("link", { name: "提示词" }));
+    expect(screen.getByLabelText("当前应用")).toHaveValue("gemini");
+    await user.click(screen.getByRole("link", { name: "记忆" }));
+    expect(screen.getByRole("tab", { name: "每日记忆" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(screen.getByRole("link", { name: "MCP" }));
+    expect(screen.getByTestId("mcp-page")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "MCP" })).toBeVisible();
   });
 });

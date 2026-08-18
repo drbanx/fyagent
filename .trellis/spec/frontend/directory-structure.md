@@ -16,7 +16,7 @@ src/
 |- index.html                 # production HTML; imports src/v2/main.tsx
 `- v2/
    |- main.tsx                # production composition root
-   |- app/                    # router, RootError, styles
+   |- app/                    # router, PersistentPrimaryOutlet, RootError, styles
    |- pages/<route>/          # agents, models, skills, mcp, prompts, memory
    |- widgets/app-shell/      # AppShell, TopBar, Brand, PrimaryNav,
    |                          # ToolCluster, ContentViewport

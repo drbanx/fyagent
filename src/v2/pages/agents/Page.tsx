@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { getAgentBrand } from "../../shared/assets/agents";
 import { CodexDesktopInstallerPanel } from "../../shared/codex-desktop/CodexDesktopInstallerPanel";
@@ -1026,21 +1026,29 @@ function AgentDetail({
 
 export function AgentsPage() {
   const { ports, notify } = useFeatures();
+  const { pathname } = useLocation();
+  const pageActive = pathname === "/agents";
   const [searchParams, setSearchParams] = useSearchParams();
   const catalogQuery = useAgentCatalog();
   const [selectedId, setSelectedId] = useState<AgentCatalogId | null>(null);
   const [openingKey, setOpeningKey] = useState<string | null>(null);
   const openLock = useRef(false);
   const entries = catalogQuery.data?.agents ?? [];
-  const requestedTarget = searchParams.get("target");
-  const targetFromRoute = AGENT_CATALOG_IDS.find(
-    (id) => id === requestedTarget,
-  );
-  const convergedId = convergeSelection(
-    entries,
-    selectedId ?? targetFromRoute ?? null,
-  );
+  const requestedTarget = pageActive ? searchParams.get("target") : null;
+  const targetFromRoute =
+    AGENT_CATALOG_IDS.find((id) => id === requestedTarget) ?? null;
+  if (pageActive && targetFromRoute && targetFromRoute !== selectedId) {
+    setSelectedId(targetFromRoute);
+  }
+  const convergedId = convergeSelection(entries, selectedId ?? targetFromRoute);
   const selected = entries.find((entry) => entry.id === convergedId) ?? null;
+
+  useEffect(() => {
+    if (!pageActive) return;
+    if (searchParams.get("target") !== null) return;
+    if (!selectedId) return;
+    setSearchParams({ target: selectedId }, { replace: true });
+  }, [pageActive, searchParams, selectedId, setSearchParams]);
 
   const openOfficial = async (
     entry: AgentCatalogEntry,
@@ -1064,7 +1072,7 @@ export function AgentsPage() {
   };
 
   return (
-    <div className="fy-feature-page fy-agents-page">
+    <div className="fy-feature-page fy-agents-page" data-testid="agents-page">
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>Agent 目录</h1>

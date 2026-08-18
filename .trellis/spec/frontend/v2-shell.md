@@ -14,7 +14,7 @@ Production V2 code uses this structure:
 ```text
 src/v2/
 |- main.tsx              # production composition root
-|- app/                  # router, RootError, and styles
+|- app/                  # router, PersistentPrimaryOutlet, RootError, and styles
 |- pages/<route>/        # one folder for each first-level route
 |- widgets/app-shell/    # visible web-shell composition
 |- shared/               # config, assets, UI, feature ports, platform adapters
@@ -148,6 +148,14 @@ The navigation source contains exactly these entries in this order:
   `/models`; the stable default URL is `#/models`.
 - Derive selected state only from router location. The active link has
   `aria-current="page"`; do not maintain a second `currentView` state.
+- After a primary route is first visited, keep that page mounted for the rest of
+  the renderer session. Switching to another primary route hides the previous
+  page with `hidden` and `inert` instead of unmounting it, so in-session
+  selection and form content are not lost. Secrets still must not enter the
+  hash, URL query, localStorage, sessionStorage, or query cache.
+  `PersistentPrimaryOutlet` lives in `app/` because widgets must not import
+  pages. Keep-alive can mount several pages at once, so the app shell owns
+  one router blocker; hidden pages must not call `useBlocker`.
 - Put each production page element below its matching `pages/<route>/` folder.
   All six routes render their approved business surfaces. Prompts and Memory
   use bounded native feature ports and must not widen the existing command,
@@ -221,7 +229,10 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   backgrounds must not also paint a static fill, or the next item will flash
   before the pill arrives. Motion uses `selectionLensTransition` on a single
   overlay's `left` / `top` / `width` / `height`. A new click retargets that
-  spring. Do not interpolate size with `transform: scale`.
+  spring. When a group first appears, or is shown again after an ancestor
+  `hidden` (including a keep-alive primary surface), the same overlay springs
+  from a collapsed origin at the track start; do not give catalog rails a
+  second slider. Do not interpolate size with `transform: scale`.
 - The `NavLink` owns hit area, focus, accessible name, and `aria-current`.
   Refraction is decorative enhancement. Project CSS must independently express
   tint, selected border/color/shadow, edge/highlight, and backdrop fallback.
@@ -396,7 +407,9 @@ smears the label.
 
 Correct: one overlay pill per exclusive track; spring `left` / `top` /
 `width` / `height` to the active host so a later click retargets without
-scale.
+scale. Catalog rails, feature lists, tabs, and primary nav all use this
+adapter. First show and show-after-`hidden` replay the same collapsed-origin
+appear spring.
 
 ```tsx
 <SelectionLensGroup id="primary-nav" inset={1}>
