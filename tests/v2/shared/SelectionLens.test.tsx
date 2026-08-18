@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
@@ -88,11 +89,12 @@ describe("SelectionLens", () => {
     });
   });
 
-  it("still uses one pill when the active option is chosen from local state", () => {
+  it("keeps the same overlay node when the active option changes", async () => {
+    const user = userEvent.setup();
     function Track() {
       const [current, setCurrent] = useState("one");
       return (
-        <SelectionLensTrack id="state-track">
+        <SelectionLensTrack id="interrupt-track">
           <button type="button" onClick={() => setCurrent("one")}>
             <SelectionLens active={current === "one"} />
             One
@@ -106,6 +108,8 @@ describe("SelectionLens", () => {
     }
 
     render(<Track />);
-    expect(screen.getAllByTestId("selection-lens")).toHaveLength(1);
+    const pill = screen.getByTestId("selection-lens");
+    await user.click(screen.getByRole("button", { name: "Two" }));
+    expect(screen.getByTestId("selection-lens")).toBe(pill);
   });
 });

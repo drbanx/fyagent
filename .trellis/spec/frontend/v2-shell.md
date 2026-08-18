@@ -101,11 +101,14 @@ export const selectionLensTransition = {
 `LiquidGlassLens` wraps `@samasante/liquid-glass@0.1.1` with balanced optics
 plus `dispersion: 0`, `live={false}`, and `filterResolution={1}`. The sliding
 selection pill is a separate V2 adapter, `SelectionLens`. `SelectionLensGroup`
-owns one overlay pill and springs `left` / `top` / `width` / `height` to the
-active host. Do not use Motion `layoutId` or `LayoutGroup` scale projection
-for this pill: non-uniform `scaleX` plus `backdrop-filter` smears the capsule
-and the label. `SelectionLens` only registers the active host; it is not the
-painted node. Do not import `framer-motion` outside
+owns one overlay pill and springs `left` / `top` / `width` / `height` with
+`selectionLensTransition`. Drive those values with Motion values so a later
+click retargets from the live geometry. Do not unmount or `key=` the overlay
+when the active host changes: that restarts from the collapsed origin instead
+of interrupting. Do not use Motion `layoutId` or `LayoutGroup` scale
+projection for this pill: non-uniform `scaleX` plus `backdrop-filter` smears
+the capsule and the label. `SelectionLens` only registers the active host; it
+is not the painted node. Do not import `framer-motion` outside
 `shared/ui/SelectionLens.tsx`. The lifecycle-ready
 operation returns `Promise<void>` and owns a module-level promise guard. Its
 native side effect remains the existing payload-free `frontend-deeplink-ready`
@@ -229,10 +232,12 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   backgrounds must not also paint a static fill, or the next item will flash
   before the pill arrives. Motion uses `selectionLensTransition` on a single
   overlay's `left` / `top` / `width` / `height`. A new click retargets that
-  spring. When a group first appears, or is shown again after an ancestor
-  `hidden` (including a keep-alive primary surface), the same overlay springs
-  from a collapsed origin at the track start; do not give catalog rails a
-  second slider. Do not interpolate size with `transform: scale`.
+  spring from the overlay's current geometry, not from the previous host's
+  rest box, and must not remount the overlay. When a group first appears, or
+  is shown again after an ancestor `hidden` (including a keep-alive primary
+  surface), the same overlay springs from a collapsed origin at the track
+  start; do not give catalog rails a second slider. Do not interpolate size
+  with `transform: scale`.
 - The `NavLink` owns hit area, focus, accessible name, and `aria-current`.
   Refraction is decorative enhancement. Project CSS must independently express
   tint, selected border/color/shadow, edge/highlight, and backdrop fallback.
@@ -297,6 +302,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | Empty hash, root route, or unknown route                               | Redirect to `#/models`; Models alone has `aria-current="page"`                     |
 | A `layoutId` pill uses non-uniform scale with `backdrop-filter`            | Architecture test fails; overlay must spring `left`/`top`/`width`/`height` and must not animate `transform: scale` |
+| Changing the active option remounts the overlay or restarts from `{width:0}` | Unit test fails; the same overlay node must keep identity and retarget from current geometry |
 | Any normal production route                                            | Exactly one active primary link, one production `LiquidGlassLens`, and one nav `SelectionLens` overlay; other tracks may each have their own pill |
 | UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
@@ -320,10 +326,11 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 - **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that
   `NavLink` alone owns `aria-current="page"`, contains the sole production
   `LiquidGlassLens`, remains keyboard-focusable, and the nav track keeps one
-  overlay `SelectionLens` aligned to that link. The Agent directory renders
-  its approved master/detail UI with its own catalog pill. Models, Skills,
-  MCP, Prompts, and Memory render only their approved bounded feature
-  surfaces.
+  overlay `SelectionLens` aligned to that link. A second click before the
+  spring settles keeps the same overlay node and continues from its current
+  box. The Agent directory renders its approved master/detail UI with its own
+  catalog pill. Models, Skills, MCP, Prompts, and Memory render only their
+  approved bounded feature surfaces.
 - **Base:** Opening without a route lands on `#/models`, with six links and
   three tools visible. Browser preview has no system or simulated controls.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
@@ -347,7 +354,8 @@ mise run build:renderer
 
 - Unit tests assert default/wildcard redirects, six-route order, Router-owned
   selection, `aria-current`, a sole production `LiquidGlassLens`, one nav
-  `SelectionLens` overlay on the track, the L1 control spring, no lens outside a
+  `SelectionLens` overlay on the track, the L1 control spring, stable overlay
+  node identity when the active option changes, no lens outside a
   group, no `layoutId` / `LayoutGroup` on the pill adapter, the TopBar's
   nine-stop primary
   tab order, stable accessible names, inert tool clicks, absence of custom
@@ -379,15 +387,13 @@ mise run build:renderer
 - The final post-merge gate asserts all six routes are non-empty and reruns the
   shell, architecture, and four-viewport browser matrix from the resolved tree.
   Pre-merge results remain diagnostic only.
-- The root `FyAgent-前端交互预览.html` is a deterministic, generated standalone
-  bundle. The supported-platform text scanner may exclude only that exact root
-  file's generated body; the filename, `src/v2/**` sources,
+- The root `FyAgent-前端交互预览.html` is a deterministic local standalone
+  bundle written by `mise run build:renderer`. It is gitignored and must not
+  enter the Git index. The supported-platform scanner may text-exclude only
+  that exact root body's local copy; `src/v2/**` sources,
   `scripts/build-v2-preview.mjs`, and every nested same-named file remain in
-  scope. Acceptance requires a fresh renderer build, a second generation with
-  an identical SHA-256, focused tests that freeze this exact-path boundary, and
-  normal scanning of all source-visible platform wording. This exception does
-  not claim that the final inline bundle receives an independent full-text
-  platform scan; changing the generator or source coverage must revisit it.
+  scope. Builder tests freeze generator behavior. Do not treat a committed
+  copy or its SHA-256 as Required CI evidence.
 
 The full local project gate remains `mise run check`. Real Windows
 Tauri/WebView2 chrome, SVG/backdrop performance, current-host 125%/150% display
@@ -402,14 +408,15 @@ smears the label.
 
 ```tsx
 <motion.div layoutId="nav" className="fy-selection-lens" />
-<motion.div animate={{ left, width }} transition={{ duration: 0.25 }} />
+<motion.div key={activeId} animate={{ left, width }} transition={{ duration: 0.25 }} />
+setHost(null); // on every option change, then mount at the new rest box
 ```
 
 Correct: one overlay pill per exclusive track; spring `left` / `top` /
-`width` / `height` to the active host so a later click retargets without
-scale. Catalog rails, feature lists, tabs, and primary nav all use this
-adapter. First show and show-after-`hidden` replay the same collapsed-origin
-appear spring.
+`width` / `height` from the current overlay values so a later click
+interrupts without scale and without remounting. Catalog rails, feature
+lists, tabs, and primary nav all use this adapter. First show and
+show-after-`hidden` replay the same collapsed-origin appear spring.
 
 ```tsx
 <SelectionLensGroup id="primary-nav" inset={1}>

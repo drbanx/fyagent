@@ -1,4 +1,9 @@
-import { motion, useReducedMotion } from "framer-motion";
+import {
+  animate,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+} from "framer-motion";
 import {
   createContext,
   useCallback,
@@ -74,11 +79,18 @@ export function SelectionLensGroup({
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLElement | null>(null);
+  const hostGenerationRef = useRef(0);
   const hiddenRef = useRef(false);
+  const positionedRef = useRef(false);
+  const revealSeenRef = useRef(0);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [box, setBox] = useState<LensBox | null>(null);
   const [revealKey, setRevealKey] = useState(0);
   const reduceMotion = useReducedMotion() === true;
+  const left = useMotionValue(inset);
+  const top = useMotionValue(inset);
+  const width = useMotionValue(0);
+  const height = useMotionValue(0);
 
   const syncBox = useCallback(() => {
     const scope = scopeRef.current;
@@ -118,6 +130,7 @@ export function SelectionLensGroup({
   }, [inset]);
 
   const register = useCallback((nextHost: HTMLElement | null) => {
+    hostGenerationRef.current += 1;
     hostRef.current = nextHost;
     setHost(nextHost);
   }, []);
@@ -126,8 +139,18 @@ export function SelectionLensGroup({
     if (hostRef.current !== currentHost) {
       return;
     }
-    hostRef.current = null;
-    setHost(null);
+    const generation = hostGenerationRef.current;
+    queueMicrotask(() => {
+      if (hostGenerationRef.current !== generation) {
+        return;
+      }
+      if (hostRef.current !== currentHost) {
+        return;
+      }
+      hostRef.current = null;
+      positionedRef.current = false;
+      setHost(null);
+    });
   }, []);
 
   useLayoutEffect(() => {
@@ -159,6 +182,50 @@ export function SelectionLensGroup({
     };
   }, [host, syncBox]);
 
+  useLayoutEffect(() => {
+    if (!box) {
+      return;
+    }
+
+    const collapseToOrigin = () => {
+      left.set(inset);
+      top.set(inset);
+      width.set(0);
+      height.set(0);
+    };
+
+    if (reduceMotion === true) {
+      left.set(box.x);
+      top.set(box.y);
+      width.set(box.width);
+      height.set(box.height);
+      positionedRef.current = true;
+      revealSeenRef.current = revealKey;
+      return;
+    }
+
+    if (revealKey !== revealSeenRef.current) {
+      revealSeenRef.current = revealKey;
+      collapseToOrigin();
+      positionedRef.current = true;
+    } else if (!positionedRef.current) {
+      collapseToOrigin();
+      positionedRef.current = true;
+    }
+
+    const controls = [
+      animate(left, box.x, selectionLensTransition),
+      animate(top, box.y, selectionLensTransition),
+      animate(width, box.width, selectionLensTransition),
+      animate(height, box.height, selectionLensTransition),
+    ];
+    return () => {
+      for (const control of controls) {
+        control.stop();
+      }
+    };
+  }, [box, height, inset, left, reduceMotion, revealKey, top, width]);
+
   return (
     <SelectionLensContext.Provider value={{ register, unregister }}>
       <div
@@ -170,23 +237,14 @@ export function SelectionLensGroup({
         {children}
         {host && box ? (
           <motion.div
-            key={revealKey}
             className="fy-selection-lens"
-            initial={
-              reduceMotion
-                ? false
-                : { left: inset, top: inset, width: 0, height: 0 }
-            }
-            animate={{
-              left: box.x,
-              top: box.y,
-              width: box.width,
-              height: box.height,
+            style={{
+              left,
+              top,
+              width,
+              height,
+              borderRadius: box.borderRadius,
             }}
-            transition={
-              reduceMotion ? { duration: 0 } : selectionLensTransition
-            }
-            style={{ borderRadius: box.borderRadius }}
             aria-hidden
             data-testid="selection-lens"
             data-selection-lens-reveal={revealKey}
