@@ -855,7 +855,7 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
 
   await page.getByLabel("配置名称").fill("Browser Codex");
   await page.getByLabel("服务地址").fill("https://codex.example.test/v1");
-  await page.getByLabel("API Key").fill(apiKey);
+  await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("模型 ID").fill("gpt-browser");
   const providerPanel = page.getByRole("region", { name: "Codex 模型配置" });
   const submit = providerPanel.locator("button.fy-control-button-primary");
@@ -920,7 +920,7 @@ test("Claude quick setup updates its reserved row with exact settings and switch
 
   await page.getByLabel("配置名称").fill("Browser Claude");
   await page.getByLabel("服务地址").fill("https://claude.example.test/v1");
-  await page.getByLabel("API Key").fill(apiKey);
+  await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("模型 ID").fill("claude-browser");
   await page.getByRole("button", { name: "保存并设为当前配置" }).click();
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
@@ -964,7 +964,7 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
 
   await page.getByLabel("配置名称").fill("Partial Codex");
   await page.getByLabel("服务地址").fill("https://partial.example.test/v1");
-  await page.getByLabel("API Key").fill("partial-secret");
+  await page.getByLabel("API Key", { exact: true }).fill("partial-secret");
   await page.getByLabel("模型 ID").fill("partial-model");
   await page.getByRole("button", { name: "保存并设为当前配置" }).click();
 

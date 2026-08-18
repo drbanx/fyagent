@@ -89,7 +89,7 @@ async function expectPromptNativeOnly(page: Page): Promise<void> {
       exact: true,
     }),
   ).toBeVisible();
-  await expect(page.locator(".fy-control-empty")).toBeVisible();
+  await expect(promptPage.locator(".fy-control-empty")).toBeVisible();
   await expect(page.getByRole("button", { name: "新建提示词" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "从文件导入" })).toBeDisabled();
   await expect(
@@ -124,7 +124,7 @@ async function expectMemoryNativeOnly(
       exact: true,
     }),
   ).toBeVisible();
-  await expect(page.locator(".fy-control-empty")).toBeVisible();
+  await expect(memoryPage.locator(".fy-control-empty")).toBeVisible();
   await expect(page.locator('section[aria-label="长期记忆资源"]')).toHaveCount(
     0,
   );

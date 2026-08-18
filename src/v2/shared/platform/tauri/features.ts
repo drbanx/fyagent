@@ -800,8 +800,7 @@ function isValidCodexFeatures(value: unknown): boolean {
   return (
     Object.keys(value).every((key) =>
       ["imageExtension", "websockets"].includes(key),
-    ) &&
-    Object.values(value).every((item) => typeof item === "boolean")
+    ) && Object.values(value).every((item) => typeof item === "boolean")
   );
 }
 

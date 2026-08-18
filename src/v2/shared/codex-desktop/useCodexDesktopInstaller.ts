@@ -357,7 +357,6 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   }, [
     acceptSnapshot,
     actionState.primaryAction,
-    actionState.primaryDisabled,
     effectiveJob,
     performLocked,
     port,

@@ -172,10 +172,12 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
     await expect(link).toHaveClass(/fy-primary-nav-item-selected/);
     await expect(page.getByTestId("content-viewport")).not.toHaveText("");
 
+    const selectedLens = navigation.getByTestId("selection-lens");
+    await expect(selectedLens).toHaveCount(1);
     await expect
       .poll(
         () =>
-          link.evaluate((element) => {
+          selectedLens.evaluate((element) => {
             const style = getComputedStyle(element);
             return (
               style.borderColor !== "rgba(0, 0, 0, 0)" &&

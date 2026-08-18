@@ -12,7 +12,7 @@
   min-height: 0;
   overflow: hidden;
 }
-.fy-feature-page > :not(.fy-feature-workspace) {
+.fy-feature-page:has(.fy-feature-workspace) > :not(.fy-feature-workspace) {
   flex: 0 0 auto;
 }
 .fy-feature-header {

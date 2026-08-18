@@ -1,10 +1,6 @@
 import { EyeIcon } from "@phosphor-icons/react/dist/csr/Eye";
 import { EyeSlashIcon } from "@phosphor-icons/react/dist/csr/EyeSlash";
-import {
-  forwardRef,
-  useState,
-  type InputHTMLAttributes,
-} from "react";
+import { forwardRef, useState, type InputHTMLAttributes } from "react";
 
 import { classNames } from "../design-system/classNames";
 
@@ -18,13 +14,7 @@ export type SecretInputProps = Omit<
 
 export const SecretInput = forwardRef<HTMLInputElement, SecretInputProps>(
   (
-    {
-      className,
-      disabled,
-      revealLabel = "显示",
-      hideLabel = "隐藏",
-      ...props
-    },
+    { className, disabled, revealLabel = "显示", hideLabel = "隐藏", ...props },
     ref,
   ) => {
     const [visible, setVisible] = useState(false);

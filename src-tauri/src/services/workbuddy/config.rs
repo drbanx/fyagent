@@ -313,10 +313,7 @@ pub(crate) fn save_workbuddy_models_at_locked(
     let serialized = loaded.document.serialize()?;
 
     #[cfg(all(test, target_os = "macos"))]
-    if let Some(replacement) = WORKBUDDY_PRECOMMIT_REPLACEMENT
-        .lock()
-        .expect("workbuddy precommit test hook lock")
-        .take()
+    if let Some(replacement) = WORKBUDDY_PRECOMMIT_REPLACEMENT.with(|slot| slot.borrow_mut().take())
     {
         fs::write(&paths.models, replacement)
             .expect("workbuddy precommit test hook must replace primary file");
@@ -417,8 +414,10 @@ pub(crate) fn save_workbuddy_models_at_locked(
 }
 
 #[cfg(all(test, target_os = "macos"))]
-static WORKBUDDY_PRECOMMIT_REPLACEMENT: std::sync::Mutex<Option<Vec<u8>>> =
-    std::sync::Mutex::new(None);
+thread_local! {
+    static WORKBUDDY_PRECOMMIT_REPLACEMENT: std::cell::RefCell<Option<Vec<u8>>> =
+        const { std::cell::RefCell::new(None) };
+}
 
 #[cfg(target_os = "macos")]
 fn load_config(path: &Path) -> Result<LoadedConfig, WorkBuddyError> {
@@ -804,6 +803,18 @@ mod tests {
         assert_eq!(first.len(), 64);
         assert_eq!(second.len(), 64);
         assert_ne!(first, second);
+    }
+
+    #[cfg(all(test, target_os = "macos"))]
+    struct WorkbuddyPrecommitReplacementGuard;
+
+    #[cfg(all(test, target_os = "macos"))]
+    impl Drop for WorkbuddyPrecommitReplacementGuard {
+        fn drop(&mut self) {
+            WORKBUDDY_PRECOMMIT_REPLACEMENT.with(|slot| {
+                *slot.borrow_mut() = None;
+            });
+        }
     }
 
     fn paths(temp: &tempfile::TempDir) -> WorkBuddyPaths {
@@ -1335,7 +1346,10 @@ mod tests {
         write_models(&paths, r#"[{"id":"model-a","apiKey":"old-key"}]"#);
         let revision = get_workbuddy_status_at(&paths).unwrap().revision;
         let external = br#"[{"id":"model-a","apiKey":"editor-key","note":"external"}]"#.to_vec();
-        *WORKBUDDY_PRECOMMIT_REPLACEMENT.lock().unwrap() = Some(external.clone());
+        let _clear_hook = WorkbuddyPrecommitReplacementGuard;
+        WORKBUDDY_PRECOMMIT_REPLACEMENT.with(|slot| {
+            *slot.borrow_mut() = Some(external.clone());
+        });
         let mut save_request = request(revision);
         save_request.selected_model_ids = vec!["model-b".to_string()];
 
