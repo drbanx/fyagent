@@ -275,39 +275,6 @@ impl From<InstallerError> for InstallerErrorDto {
     }
 }
 
-// #region agent log
-pub(crate) fn agent_debug_log(
-    hypothesis_id: &'static str,
-    location: &'static str,
-    message: &'static str,
-    data: serde_json::Value,
-) {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0);
-    let payload = serde_json::json!({
-        "sessionId": "a50673",
-        "runId": "win-post-download",
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": timestamp,
-    });
-    let line = payload.to_string();
-    log::info!("[agent-debug a50673] {line}");
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/Users/pythonrust/Desktop/projects/fyagent/.cursor/debug-a50673.log")
-    {
-        use std::io::Write;
-        let _ = writeln!(file, "{line}");
-    }
-}
-// #endregion
-
 const ALLOWED_CONTEXT_KEYS: &[&str] = &[
     "architecture",
     "job_id",

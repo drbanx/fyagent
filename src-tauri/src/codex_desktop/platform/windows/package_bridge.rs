@@ -84,7 +84,7 @@ use windows::{
 };
 
 use crate::{
-    codex_desktop::error::{agent_debug_log, InstallerError, InstallerErrorCode},
+    codex_desktop::error::{InstallerError, InstallerErrorCode},
     windows_runtime::is_canonical_sid,
 };
 
@@ -641,33 +641,9 @@ impl ProgramDataAnchor {
                 granted_dangerous,
                 token_is_local_administrator(token.raw())?,
             ) {
-                // #region agent log
-                agent_debug_log(
-                    "B",
-                    "platform/windows/package_bridge.rs:ancestor_access",
-                    "ancestor_mutation_rejected",
-                    serde_json::json!({
-                        "granted": granted,
-                        "grantedDangerous": granted_dangerous,
-                    }),
-                );
-                // #endregion
                 return Err(bridge_integrity_error(
                     "the Shell user could mutate a ProgramData bridge ancestor",
                 ));
-            }
-            if granted_dangerous != 0 {
-                // #region agent log
-                agent_debug_log(
-                    "B",
-                    "platform/windows/package_bridge.rs:ancestor_access",
-                    "ancestor_admin_bypass",
-                    serde_json::json!({
-                        "granted": granted,
-                        "grantedDangerous": granted_dangerous,
-                    }),
-                );
-                // #endregion
             }
         }
         Ok(())

@@ -11,7 +11,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
 use windows::{
@@ -36,16 +36,14 @@ use windows::{
             AccessCheck, AclSizeInformation,
             Authorization::{GetSecurityInfo, SE_FILE_OBJECT, SE_KERNEL_OBJECT},
             CheckTokenMembership, CopySid, CreateWellKnownSid, DuplicateToken, EqualSid, GetAce,
-            GetAclInformation, GetLengthSid, GetSecurityDescriptorControl, GetSidSubAuthority,
-            GetSidSubAuthorityCount, GetTokenInformation, IsValidSid, IsWellKnownSid,
-            SecurityImpersonation, TokenIntegrityLevel, TokenUser, WinAuthenticatedUserSid,
+            GetAclInformation, GetLengthSid, GetSecurityDescriptorControl, GetTokenInformation,
+            IsValidSid, IsWellKnownSid, SecurityImpersonation, TokenUser, WinAuthenticatedUserSid,
             WinBuiltinAdministratorsSid, WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL_REVISION,
             ACL_SIZE_INFORMATION, DACL_SECURITY_INFORMATION, GENERIC_MAPPING,
             GROUP_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PRIVILEGE_SET,
             PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE, SE_DACL_AUTO_INHERITED,
             SE_DACL_AUTO_INHERIT_REQ, SE_DACL_DEFAULTED, SE_DACL_PRESENT, SE_DACL_PROTECTED,
-            SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE, TOKEN_MANDATORY_LABEL,
-            TOKEN_QUERY, TOKEN_USER,
+            SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE, TOKEN_QUERY, TOKEN_USER,
         },
         Storage::FileSystem::{
             CreateFileW, FileAttributeTagInfo, FileStandardInfo, GetDriveTypeW,
@@ -57,11 +55,10 @@ use windows::{
             FILE_ATTRIBUTE_RECALL_ON_OPEN, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
             FILE_DELETE_CHILD, FILE_FLAGS_AND_ATTRIBUTES, FILE_FLAG_BACKUP_SEMANTICS,
             FILE_FLAG_OPEN_REPARSE_POINT, FILE_FLAG_OVERLAPPED, FILE_GENERIC_EXECUTE,
-            FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
-            FILE_SHARE_MODE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO,
-            FILE_WRITE_ATTRIBUTES, FILE_WRITE_DATA, FILE_WRITE_EA, OPEN_EXISTING,
-            SECURITY_EFFECTIVE_ONLY, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT, WRITE_DAC,
-            WRITE_OWNER,
+            FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_DELETE, FILE_SHARE_MODE,
+            FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_WRITE_ATTRIBUTES,
+            FILE_WRITE_DATA, FILE_WRITE_EA, OPEN_EXISTING, SECURITY_EFFECTIVE_ONLY,
+            SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT, WRITE_DAC, WRITE_OWNER,
         },
         System::{
             Com::CoTaskMemFree,
@@ -150,22 +147,6 @@ impl std::fmt::Display for HelperRunError {
 impl std::error::Error for HelperRunError {}
 
 pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError> {
-    // #region agent log
-    helper_debug_log(
-        "boot",
-        &format!(
-            "{{\"debug\":{},\"integrityRid\":{}}}",
-            if cfg!(debug_assertions) {
-                "true"
-            } else {
-                "false"
-            },
-            process_integrity_rid()
-                .map(|rid| rid.to_string())
-                .unwrap_or_else(|| "null".to_owned())
-        ),
-    );
-    // #endregion
     let executable = std::env::current_exe()
         .map_err(|_| HelperRunError::OperationFailed(HelperErrorCode::InstallLayoutInvalid))?;
     if executable.file_name().is_none_or(|name| {
@@ -1119,134 +1100,6 @@ fn aligned_words(byte_length: usize) -> Vec<usize> {
     vec![0_usize; byte_length.div_ceil(size_of::<usize>()).max(1)]
 }
 
-// #region agent log
-fn process_integrity_rid() -> Option<u32> {
-    let mut token = HANDLE::default();
-    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.ok()?;
-    let token = OwnedKernelHandle::new(token).ok()?;
-    let mut required = 0_u32;
-    let _ =
-        unsafe { GetTokenInformation(token.raw(), TokenIntegrityLevel, None, 0, &mut required) };
-    if required < size_of::<TOKEN_MANDATORY_LABEL>() as u32 {
-        return None;
-    }
-    let mut buffer = aligned_words(required as usize);
-    unsafe {
-        GetTokenInformation(
-            token.raw(),
-            TokenIntegrityLevel,
-            Some(buffer.as_mut_ptr().cast()),
-            required,
-            &mut required,
-        )
-    }
-    .ok()?;
-    let label = unsafe { &*buffer.as_ptr().cast::<TOKEN_MANDATORY_LABEL>() };
-    let sid = label.Label.Sid;
-    if sid.0.is_null() || !unsafe { IsValidSid(sid) }.as_bool() {
-        return None;
-    }
-    let count_ptr = unsafe { GetSidSubAuthorityCount(sid) };
-    if count_ptr.is_null() {
-        return None;
-    }
-    let count = unsafe { *count_ptr };
-    if count == 0 {
-        return None;
-    }
-    let authority = unsafe { GetSidSubAuthority(sid, u32::from(count) - 1) };
-    if authority.is_null() {
-        return None;
-    }
-    Some(unsafe { *authority })
-}
-
-fn process_user_sid_rid() -> Option<u32> {
-    let mut token = HANDLE::default();
-    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.ok()?;
-    let token = OwnedKernelHandle::new(token).ok()?;
-    let mut required = 0_u32;
-    let _ = unsafe { GetTokenInformation(token.raw(), TokenUser, None, 0, &mut required) };
-    if required < size_of::<TOKEN_USER>() as u32 {
-        return None;
-    }
-    let mut buffer = aligned_words(required as usize);
-    unsafe {
-        GetTokenInformation(
-            token.raw(),
-            TokenUser,
-            Some(buffer.as_mut_ptr().cast()),
-            required,
-            &mut required,
-        )
-    }
-    .ok()?;
-    let user = unsafe { &*buffer.as_ptr().cast::<TOKEN_USER>() };
-    let sid = user.User.Sid;
-    if sid.0.is_null() || !unsafe { IsValidSid(sid) }.as_bool() {
-        return None;
-    }
-    let count_ptr = unsafe { GetSidSubAuthorityCount(sid) };
-    if count_ptr.is_null() {
-        return None;
-    }
-    let count = unsafe { *count_ptr };
-    if count == 0 {
-        return None;
-    }
-    let authority = unsafe { GetSidSubAuthority(sid, u32::from(count) - 1) };
-    if authority.is_null() {
-        return None;
-    }
-    Some(unsafe { *authority })
-}
-
-fn probe_pipe_create(name: PCWSTR, access: u32, with_sqos: bool) -> i32 {
-    let flags = if with_sqos {
-        FILE_ATTRIBUTE_NORMAL
-            | FILE_FLAG_OVERLAPPED
-            | SECURITY_SQOS_PRESENT
-            | SECURITY_IDENTIFICATION
-            | SECURITY_EFFECTIVE_ONLY
-    } else {
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED
-    };
-    match unsafe {
-        CreateFileW(
-            name,
-            access,
-            FILE_SHARE_MODE(0),
-            None,
-            OPEN_EXISTING,
-            flags,
-            None,
-        )
-    } {
-        Ok(handle) => {
-            drop(unsafe { OwnedHandle::from_raw_handle(handle.0) });
-            0
-        }
-        Err(error) => error.code().0,
-    }
-}
-
-fn pipe_connect_probe_data(name: PCWSTR, hresult: i32) -> String {
-    let rid = |value: Option<u32>| {
-        value
-            .map(|rid| rid.to_string())
-            .unwrap_or_else(|| "null".to_owned())
-    };
-    format!(
-        "{{\"hresult\":{hresult},\"integrityRid\":{},\"userSidRid\":{},\"probeNoSqos\":{},\"probeRcSync\":{},\"probeReadAttrs\":{}}}",
-        rid(process_integrity_rid()),
-        rid(process_user_sid_rid()),
-        probe_pipe_create(name, USER_HELPER_PIPE_CLIENT_ACCESS_MASK, false),
-        probe_pipe_create(name, USER_HELPER_CONTROL_EVENT_ACCESS_MASK, true),
-        probe_pipe_create(name, FILE_READ_ATTRIBUTES.0 | 0x0010_0000, true)
-    )
-}
-// #endregion
-
 #[derive(Clone, Copy)]
 enum ExactBridgeAcl {
     StableDirectory,
@@ -1524,9 +1377,6 @@ impl ParentControls {
         // into an admission bypass after a launch timeout.
         let admission = open_sync_event(&admission_event_name(request.pipe_nonce()))?;
         let cancel = open_sync_event(&cancel_event_name(request.pipe_nonce()))?;
-        // #region agent log
-        helper_debug_log("events_ok", "{}");
-        // #endregion
         Ok(Self { admission, cancel })
     }
 
@@ -1553,20 +1403,10 @@ impl ParentControls {
 fn open_sync_event(name: &str) -> Result<OwnedKernelHandle, HelperRunError> {
     let name: Vec<u16> = OsStr::new(name).encode_wide().chain(Some(0)).collect();
     let access = SYNCHRONIZATION_ACCESS_RIGHTS(USER_HELPER_CONTROL_EVENT_ACCESS_MASK);
-    let handle = unsafe { OpenEventW(access, false, PCWSTR(name.as_ptr())) }.map_err(|error| {
-        // #region agent log
-        helper_debug_log(
-            "events_failed",
-            &format!("{{\"hresult\":{}}}", error.code().0),
-        );
-        // #endregion
-        HelperRunError::PipeUnavailable
-    })?;
+    let handle = unsafe { OpenEventW(access, false, PCWSTR(name.as_ptr())) }
+        .map_err(|_| HelperRunError::PipeUnavailable)?;
     let handle = OwnedKernelHandle::new(handle).map_err(|_| HelperRunError::PipeUnavailable)?;
     if let Err(error) = verify_builtin_administrators_owner(handle.raw()) {
-        // #region agent log
-        helper_debug_log("event_owner_rejected", "{}");
-        // #endregion
         return Err(error);
     }
     Ok(handle)
@@ -1691,30 +1531,13 @@ impl PipeChannel {
                     | SECURITY_EFFECTIVE_ONLY,
                 None,
             )
-        };
-        let handle = match handle {
-            Ok(handle) => handle,
-            Err(error) => {
-                // #region agent log
-                helper_debug_log(
-                    "pipe_connect_failed",
-                    &pipe_connect_probe_data(PCWSTR(wide_name.as_ptr()), error.code().0),
-                );
-                // #endregion
-                return Err(HelperRunError::PipeUnavailable);
-            }
-        };
+        }
+        .map_err(|_| HelperRunError::PipeUnavailable)?;
 
         let owned = unsafe { OwnedHandle::from_raw_handle(handle.0) };
         if let Err(error) = verify_builtin_administrators_owner(HANDLE(owned.as_raw_handle())) {
-            // #region agent log
-            helper_debug_log("pipe_owner_rejected", "{}");
-            // #endregion
             return Err(error);
         }
-        // #region agent log
-        helper_debug_log("pipe_connect_ok", "{}");
-        // #endregion
         Ok(Self {
             state: Mutex::new(PipeState {
                 handle: owned,
@@ -1968,34 +1791,6 @@ fn wait_for_overlapped_io(
 const fn hresult_from_win32(value: u32) -> HRESULT {
     HRESULT::from_win32(value)
 }
-
-// #region agent log
-pub(crate) fn helper_debug_log(message: &str, data: &str) {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0);
-    let Some(path) = std::env::current_exe().ok().and_then(|executable| {
-        executable
-            .parent()
-            .map(|parent| parent.join("fyagent-user-helper-debug.ndjson"))
-    }) else {
-        return;
-    };
-    let line = format!(
-        "{{\"sessionId\":\"a50673\",\"runId\":\"win-post-download\",\"hypothesisId\":\"D\",\"location\":\"user-helper\",\"message\":\"{message}\",\"data\":{data},\"timestamp\":{timestamp}}}\n"
-    );
-    let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    else {
-        return;
-    };
-    use std::io::Write;
-    let _ = file.write_all(line.as_bytes());
-}
-// #endregion
 
 #[cfg(test)]
 mod tests {

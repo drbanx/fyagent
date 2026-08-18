@@ -108,38 +108,6 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     acceptedJobRef.current = incoming;
     const nextSpeed = updateDownloadSpeedState(speedRef.current, incoming);
     speedRef.current = nextSpeed;
-    // #region agent log
-    if (
-      incoming.stage === "failed" ||
-      incoming.stage === "installing" ||
-      incoming.stage === "downloading"
-    ) {
-      fetch("http://127.0.0.1:7830/ingest/86147eae-2206-453d-af63-6df80e0b09de", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "a50673",
-        },
-        body: JSON.stringify({
-          sessionId: "a50673",
-          runId: "win-post-download",
-          hypothesisId: "E",
-          location: "useCodexDesktopInstaller.ts:acceptSnapshot",
-          message: "job_snapshot",
-          data: {
-            stage: incoming.stage,
-            progressPhase: incoming.progress?.phase ?? null,
-            completedBytes: incoming.progress?.completedBytes ?? null,
-            totalBytes: incoming.progress?.totalBytes ?? null,
-            percent: incoming.progress?.percent ?? null,
-            errorCode: incoming.error?.code ?? null,
-            errorMessage: incoming.error?.details?.redactedMessage ?? null,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
     if (aliveRef.current) {
       setJob(incoming);
       setDownloadSpeed(nextSpeed);

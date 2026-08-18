@@ -21,7 +21,7 @@ use futures::FutureExt;
 use crate::codex_desktop::{
     cancellation::{cancellation_error, NeverCancelled},
     download::{download_release, DownloadProgressSink, DownloadProgressUpdate, HttpTransport},
-    error::{agent_debug_log, InstallerError, InstallerErrorCode},
+    error::{InstallerError, InstallerErrorCode},
     jobs::{
         JobCancellation, JobEventSink, JobStore, ProcessLifecycleClaim, ProcessLifecycleTransition,
     },
@@ -1003,45 +1003,17 @@ impl CodexDesktopService {
         .await?;
         download_progress.take_error()?;
         self.ensure_not_cancelled(cancellation)?;
-        // #region agent log
-        agent_debug_log(
-            "E",
-            "services/codex_desktop/mod.rs:download_complete",
-            "download_complete",
-            serde_json::json!({
-                "size": artifact.actual_size(),
-                "sha12": artifact.local_sha256().get(..12).unwrap_or(""),
-                "platform": format!("{:?}", release.platform),
-            }),
-        );
-        // #endregion
 
         let package = self
             .platform
             .prepare_install_package(&release, &artifact)
             .await?;
         self.ensure_not_cancelled(cancellation)?;
-        // #region agent log
-        agent_debug_log(
-            "E",
-            "services/codex_desktop/mod.rs:prepare_ok",
-            "prepare_ok",
-            serde_json::json!({ "packageSize": package.actual_size() }),
-        );
-        // #endregion
 
         // `JobStore::update_stage` arbitrates cancellation and Installing under
         // one mutex. Only call the irreversible platform installer after this
         // method has confirmed the actual stage is `Installing`.
         self.transition_to(job_id, JobStage::Installing, cancellation)?;
-        // #region agent log
-        agent_debug_log(
-            "E",
-            "services/codex_desktop/mod.rs:installing",
-            "entered_installing",
-            serde_json::json!({ "jobIdPrefix": job_id.get(..8).unwrap_or(job_id) }),
-        );
-        // #endregion
         let installation_progress = Arc::new(InstallationProgressBridge::new(
             self.job_store.clone(),
             self.clock.clone(),
@@ -1210,32 +1182,6 @@ impl CodexDesktopService {
     }
 
     fn settle_failure(&self, job_id: &str, error: InstallerError) {
-        // #region agent log
-        let dto = error.to_dto();
-        let job_stage = self
-            .job_store
-            .get()
-            .ok()
-            .flatten()
-            .filter(|snapshot| snapshot.job_id == job_id)
-            .map(|snapshot| format!("{:?}", snapshot.stage));
-        agent_debug_log(
-            "A",
-            "services/codex_desktop/mod.rs:settle_failure",
-            "install_failed",
-            serde_json::json!({
-                "code": format!("{:?}", dto.code),
-                "errorStage": dto.stage.map(|stage| format!("{stage:?}")),
-                "jobStage": job_stage,
-                "suggestedAction": format!("{:?}", dto.suggested_action),
-                "retryable": dto.retryable,
-                "redactedMessage": dto.details.redacted_message,
-                "platformErrorCode": dto.details.platform_error_code,
-                "httpStatus": dto.details.http_status,
-                "endpointKind": dto.details.endpoint_kind,
-            }),
-        );
-        // #endregion
         if let Err(settlement_error) = self.job_store.fail(job_id, error, self.clock.now_rfc3339())
         {
             if settlement_error.code() != InstallerErrorCode::JobNotFound {
