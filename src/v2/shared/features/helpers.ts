@@ -1,3 +1,4 @@
+import { mcpUrlSearchToken, redactMcpArgs } from "./mcpSecurity";
 import type {
   DiscoverableSkill,
   InstalledSkill,
@@ -72,6 +73,42 @@ export function convergeSelection<T extends { id: string }>(
   return items[0]?.id ?? null;
 }
 
+export function skillInstallPath(
+  skill: Pick<InstalledSkill, "directory" | "path">,
+): string {
+  const path = skill.path?.trim();
+  return path ? path : skill.directory;
+}
+
+export function mcpInstallDirectory(
+  spec: Pick<McpServerSpec, "command" | "cwd">,
+): string | null {
+  const cwd = spec.cwd?.trim();
+  if (cwd) return cwd;
+  const command = spec.command?.trim();
+  if (!command || !isAbsoluteFilesystemPath(command)) return null;
+  return parentDirectory(command);
+}
+
+function isAbsoluteFilesystemPath(value: string): boolean {
+  return (
+    /^[a-zA-Z]:[\\/]/.test(value) ||
+    value.startsWith("\\\\") ||
+    value.startsWith("/")
+  );
+}
+
+function parentDirectory(value: string): string {
+  const trimmed = value.replace(/[\\/]+$/, "");
+  const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (index < 0) return trimmed;
+  if (trimmed.startsWith("/") && index === 0) return "/";
+  if (/^[a-zA-Z]:[\\/]/.test(trimmed) && index === 2) {
+    return trimmed.slice(0, 3);
+  }
+  return trimmed.slice(0, index);
+}
+
 export function buildSkillSearchText(skill: InstalledSkill): string {
   return [
     skill.name,
@@ -98,9 +135,9 @@ export function buildMcpSearchText(server: McpServer): string {
     ...(server.tags ?? []),
     spec.type,
     spec.command,
-    ...(spec.args ?? []),
+    ...redactMcpArgs(spec.args ?? []),
     spec.cwd,
-    spec.url,
+    spec.url ? mcpUrlSearchToken(spec.url) : undefined,
     server.homepage,
     server.docs,
     server.source,

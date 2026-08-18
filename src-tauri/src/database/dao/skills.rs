@@ -53,6 +53,7 @@ impl Database {
                     installed_at: row.get(16)?,
                     content_hash: row.get(17)?,
                     updated_at: row.get::<_, i64>(18).unwrap_or(0),
+                    path: None,
                 })
             })
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -101,6 +102,7 @@ impl Database {
                 installed_at: row.get(16)?,
                 content_hash: row.get(17)?,
                 updated_at: row.get::<_, i64>(18).unwrap_or(0),
+                path: None,
             })
         });
 
@@ -331,6 +333,7 @@ mod tests {
             installed_at: 1,
             content_hash: Some(format!("{name}-hash")),
             updated_at: 2,
+            path: None,
         }
     }
 

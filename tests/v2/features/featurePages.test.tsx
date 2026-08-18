@@ -21,6 +21,12 @@ import {
 } from "@/v2/shared/features/types";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
 
+function appearsBefore(first: HTMLElement, second: HTMLElement) {
+  expect(
+    first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).not.toBe(0);
+}
+
 function renderFeature(page: React.ReactNode, ports: FeaturePorts) {
   return render(<FeatureProvider ports={ports}>{page}</FeatureProvider>);
 }
@@ -87,6 +93,26 @@ describe("V2 MCP management", () => {
     expect(document.body).not.toHaveTextContent(secret);
     expect(screen.getAllByRole("switch")).toHaveLength(6);
     expect(screen.getByText(/stdio · 1 Agent/)).toBeVisible();
+    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
+      "手动添加",
+    );
+    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
+      "无本地安装目录",
+    );
+    expect(screen.getByRole("region", { name: "当前分配" })).toHaveTextContent(
+      "Claude",
+    );
+    expect(screen.getByRole("region", { name: "安装信息" })).toHaveTextContent(
+      "stdio",
+    );
+    appearsBefore(
+      screen.getByRole("button", { name: "编辑" }),
+      screen.getByRole("region", { name: "安装来源" }),
+    );
+    appearsBefore(
+      screen.getByRole("button", { name: "删除" }),
+      screen.getByRole("region", { name: "安装信息" }),
+    );
 
     await user.click(screen.getByRole("button", { name: "编辑" }));
     const dialog = screen.getByRole("dialog", { name: "编辑 Docs server" });
@@ -237,6 +263,203 @@ describe("V2 MCP management", () => {
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent("secret-shaped-server-id");
   });
+
+  it("redacts secret-bearing MCP URLs and arguments in ordinary details", async () => {
+    const secret = "amap-query-secret";
+    const server: McpServer = {
+      id: "amap",
+      name: "高德地图 MCP",
+      apps: createAssignments(["claude"]),
+      server: {
+        type: "http",
+        url: `https://mcp.amap.com/mcp?key=${secret}`,
+        args: ["mcp", "-s", "feishu-app-secret"],
+      },
+    };
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = async () => ({ amap: server });
+    renderFeature(<McpPage />, ports);
+
+    expect(
+      await screen.findByRole("heading", { name: "高德地图 MCP" }),
+    ).toBeVisible();
+    expect(document.body).not.toHaveTextContent(secret);
+    expect(document.body).not.toHaveTextContent("feishu-app-secret");
+    expect(document.body).toHaveTextContent(
+      "https://mcp.amap.com/mcp?key=••••••",
+    );
+    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
+      "精选目录",
+    );
+    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
+      "无本地安装目录",
+    );
+    expect(screen.getByRole("region", { name: "当前分配" })).toHaveTextContent(
+      "Claude",
+    );
+    appearsBefore(
+      screen.getByRole("button", { name: "编辑" }),
+      screen.getByRole("region", { name: "安装来源" }),
+    );
+  });
+
+  it("shows a copyable MCP install directory for an absolute command", async () => {
+    const user = userEvent.setup();
+    const command =
+      "C:\\Users\\xk\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\node.exe";
+    const directory =
+      "C:\\Users\\xk\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node";
+    const server: McpServer = {
+      id: "node_repl",
+      name: "node_repl",
+      apps: createAssignments(["codex"]),
+      server: { type: "stdio", command },
+    };
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = async () => ({ node_repl: server });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderFeature(<McpPage />, ports);
+
+    expect(
+      await screen.findByRole("heading", { name: "node_repl" }),
+    ).toBeVisible();
+    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
+      directory,
+    );
+    expect(screen.queryByText("无本地安装目录")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "复制安装目录" }));
+    expect(writeText).toHaveBeenCalledWith(directory);
+  });
+
+  it("installs a zero-config catalog item onto the default MCP targets", async () => {
+    const user = userEvent.setup();
+    const store: Record<string, McpServer> = {};
+    const upsert = vi.fn(async (server: McpServer) => {
+      store[server.id] = server;
+    });
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = vi.fn(async () => ({ ...store }));
+    ports.mcp.upsert = upsert;
+    renderFeature(<McpPage />, ports);
+
+    await screen.findByText("还没有 MCP 服务");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    const card = screen
+      .getByRole("heading", { name: "Time" })
+      .closest("article");
+    expect(card).not.toBeNull();
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "安装" }),
+    );
+
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
+    expect(upsert.mock.calls[0]?.[0]).toMatchObject({
+      id: "time",
+      apps: {
+        claude: true,
+        codex: true,
+        gemini: true,
+        grokbuild: true,
+        opencode: false,
+        hermes: false,
+      },
+      server: { type: "stdio", command: "uvx", args: ["mcp-server-time"] },
+    });
+  });
+
+  it("does not silently overwrite a conflicting catalog id", async () => {
+    const user = userEvent.setup();
+    const existing: McpServer = {
+      id: "time",
+      name: "Custom time",
+      apps: createAssignments(["claude"]),
+      server: { type: "stdio", command: "python", args: ["time.py"] },
+    };
+    const upsert = vi.fn(async () => undefined);
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = async () => ({ time: existing });
+    ports.mcp.upsert = upsert;
+    renderFeature(<McpPage />, ports);
+
+    await screen.findByRole("heading", { name: "Custom time" });
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    const card = screen
+      .getByRole("heading", { name: "Time" })
+      .closest("article");
+    expect(card).not.toBeNull();
+    expect(
+      within(card as HTMLElement).getByRole("button", { name: "已存在" }),
+    ).toBeDisabled();
+    expect(upsert).not.toHaveBeenCalled();
+
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "重新配置" }),
+    );
+    await user.click(screen.getByRole("button", { name: "确认" }));
+    await waitFor(() =>
+      expect(upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "time",
+          server: {
+            type: "stdio",
+            command: "uvx",
+            args: ["mcp-server-time"],
+          },
+        }),
+      ),
+    );
+  });
+
+  it("keeps catalog install dialogs free of launch-command details", async () => {
+    const user = userEvent.setup();
+    const upsert = vi.fn(async () => undefined);
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.upsert = upsert;
+    renderFeature(<McpPage />, ports);
+
+    await screen.findByText("还没有 MCP 服务");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    const card = screen
+      .getByRole("heading", { name: "高德地图 MCP" })
+      .closest("article");
+    expect(card).not.toBeNull();
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "配置并安装" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "安装 高德地图 MCP",
+    });
+    expect(dialog).not.toHaveTextContent("npx");
+    expect(dialog).not.toHaveTextContent("cmd");
+    expect(dialog).not.toHaveTextContent("mcp.amap.com");
+    await user.type(
+      within(dialog).getByLabelText(/API Key/),
+      "amap-query-secret",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "安装" }));
+    await waitFor(() =>
+      expect(upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "amap",
+          server: {
+            type: "http",
+            url: "https://mcp.amap.com/mcp?key=amap-query-secret",
+          },
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "安装 高德地图 MCP" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(document.body).not.toHaveTextContent("amap-query-secret");
+  });
 });
 
 describe("V2 Skills management", () => {
@@ -386,6 +609,83 @@ describe("V2 Skills management", () => {
     expect(checkUpdates).toHaveBeenCalledTimes(2);
     expect(screen.getByText("批量更新完成失败")).toBeVisible();
     expect(screen.getByText("1 项失败，1 项成功")).toBeVisible();
+  });
+
+  it("shows download source and assigned apps in installed skill details", async () => {
+    const user = userEvent.setup();
+    const remote: InstalledSkill = {
+      ...installedSkill("review-skill", "Review Skill"),
+      description: "Review changes in pull requests",
+      repoOwner: "acme",
+      repoName: "skills",
+      repoBranch: "main",
+      apps: createAssignments(["claude", "codex"]),
+      path: "C:\\Users\\xk\\AppData\\Roaming\\fyagent\\skills\\review-skill",
+    };
+    const local: InstalledSkill = {
+      ...installedSkill("local-notes", "Local Notes"),
+      apps: createAssignments(),
+      installedAt: 0,
+    };
+    const openExternal = vi.fn(async () => undefined);
+    const ports = createBrowserFeaturePorts();
+    ports.skills.getInstalled = async () => [remote, local];
+    ports.settings.openExternal = openExternal;
+
+    renderFeature(<SkillsPage />, ports);
+
+    expect(
+      await screen.findByRole("region", { name: "下载来源" }),
+    ).toHaveTextContent("GitHub 仓库");
+    expect(screen.getByRole("region", { name: "下载来源" })).toHaveTextContent(
+      "acme/skills",
+    );
+    expect(
+      within(screen.getByRole("region", { name: "Skill 详情" })).getByText(
+        "Review changes in pull requests",
+      ),
+    ).toBeVisible();
+    const assignment = screen.getByRole("region", { name: "当前分配" });
+    expect(assignment).toHaveTextContent("Claude");
+    expect(assignment).toHaveTextContent("Codex");
+    expect(assignment).not.toHaveTextContent("Gemini");
+
+    await user.click(screen.getByRole("button", { name: "打开仓库" }));
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/acme/skills");
+
+    const installPath =
+      "C:\\Users\\xk\\AppData\\Roaming\\fyagent\\skills\\review-skill";
+    expect(screen.getByRole("region", { name: "下载来源" })).toHaveTextContent(
+      installPath,
+    );
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    await user.click(screen.getByRole("button", { name: "复制安装目录" }));
+    expect(writeText).toHaveBeenCalledWith(installPath);
+    expect(
+      screen.queryByRole("button", { name: "展开" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "收起" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Local Notes/ }));
+    expect(screen.getByRole("region", { name: "下载来源" })).toHaveTextContent(
+      "本地导入",
+    );
+    expect(screen.getByRole("region", { name: "当前分配" })).toHaveTextContent(
+      "尚未分配到任何应用",
+    );
+    expect(
+      screen.getByRole("region", { name: "安装信息" }),
+    ).not.toHaveTextContent("安装时间");
+    appearsBefore(
+      screen.getByRole("button", { name: "卸载" }),
+      screen.getByRole("region", { name: "下载来源" }),
+    );
   });
 
   it("keeps discovery installation locked until authority refresh completes", async () => {

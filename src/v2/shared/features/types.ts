@@ -61,6 +61,7 @@ export interface InstalledSkill {
   name: string;
   description?: string;
   directory: string;
+  path?: string;
   repoOwner?: string;
   repoName?: string;
   repoBranch?: string;

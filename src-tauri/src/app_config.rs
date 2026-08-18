@@ -349,6 +349,9 @@ pub struct InstalledSkill {
     /// 最近更新时间（Unix 时间戳，0 = 从未更新）
     #[serde(default)]
     pub updated_at: i64,
+    /// 当前 SSOT 下的完整安装路径（列表/详情展示，不入库）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 /// 未管理的 Skill（在应用目录中发现但未被 FyAgent 管理）

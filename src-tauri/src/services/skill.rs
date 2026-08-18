@@ -648,10 +648,55 @@ impl SkillService {
 
     // ========== 统一管理方法 ==========
 
-    /// 获取所有已安装的 Skills
+    /// 获取所有已安装的 Skills。
+    ///
+    /// 更新时间取 SSOT 中当前 Skill 文件（`SKILL.md`，否则技能目录）的修改时间。
+    /// 安装时间保持为空：不读文件创建时间，也不回退数据库安装时钟。
     pub fn get_all_installed(db: &Arc<Database>) -> Result<Vec<InstalledSkill>> {
         let skills = db.get_all_installed_skills()?;
-        Ok(skills.into_values().collect())
+        let ssot_dir = Self::get_ssot_dir().ok();
+        Ok(skills
+            .into_values()
+            .map(|skill| Self::with_skill_file_times(skill, ssot_dir.as_deref()))
+            .collect())
+    }
+
+    fn with_skill_file_times(mut skill: InstalledSkill, ssot_dir: Option<&Path>) -> InstalledSkill {
+        skill.installed_at = 0;
+        skill.path = Self::resolve_install_path(&skill.directory, ssot_dir);
+        if let Some(modified) = Self::read_skill_modified_time(&skill.directory, ssot_dir) {
+            skill.updated_at = modified;
+        }
+        skill
+    }
+
+    fn resolve_install_path(directory: &str, ssot_dir: Option<&Path>) -> Option<String> {
+        let directory = Self::require_valid_directory(directory).ok()?;
+        Some(ssot_dir?.join(directory).to_string_lossy().into_owned())
+    }
+
+    fn read_skill_modified_time(directory: &str, ssot_dir: Option<&Path>) -> Option<i64> {
+        let directory = Self::require_valid_directory(directory).ok()?;
+        let skill_dir = ssot_dir?.join(directory);
+        let skill_md = skill_dir.join("SKILL.md");
+        let metadata = if skill_md.is_file() {
+            fs::metadata(&skill_md).ok()?
+        } else if skill_dir.is_dir() {
+            fs::metadata(&skill_dir).ok()?
+        } else {
+            return None;
+        };
+        metadata
+            .modified()
+            .ok()
+            .and_then(Self::unix_timestamp_from_system_time)
+            .filter(|timestamp| *timestamp > 0)
+    }
+
+    fn unix_timestamp_from_system_time(time: SystemTime) -> Option<i64> {
+        time.duration_since(UNIX_EPOCH)
+            .ok()
+            .and_then(|duration| i64::try_from(duration.as_secs()).ok())
     }
 
     /// 安装 Skill
@@ -847,6 +892,7 @@ impl SkillService {
             installed_at: chrono::Utc::now().timestamp(),
             content_hash,
             updated_at: 0,
+            path: None,
         };
 
         // 保存到数据库
@@ -1244,6 +1290,7 @@ impl SkillService {
             installed_at: skill.installed_at,
             content_hash: new_hash,
             updated_at: chrono::Utc::now().timestamp(),
+            path: None,
         };
 
         let updated_skill = Self::persist_updated_skill_metadata(db, &updated_metadata)?;
@@ -1726,6 +1773,7 @@ impl SkillService {
                 installed_at: chrono::Utc::now().timestamp(),
                 content_hash,
                 updated_at: 0,
+                path: None,
             };
 
             // 保存到数据库
@@ -3604,6 +3652,7 @@ impl SkillService {
                 installed_at: chrono::Utc::now().timestamp(),
                 content_hash,
                 updated_at: 0,
+                path: None,
             };
 
             // 保存到数据库
@@ -4283,6 +4332,7 @@ pub fn migrate_skills_to_ssot(db: &Arc<Database>) -> Result<usize> {
             installed_at: chrono::Utc::now().timestamp(),
             content_hash,
             updated_at: 0,
+            path: None,
         };
 
         db.save_skill(&skill)?;
@@ -4995,7 +5045,73 @@ mod tests {
             installed_at: 0,
             content_hash: None,
             updated_at: 0,
+            path: None,
         }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn get_all_installed_uses_skill_file_times() {
+        let temp = tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let mut skill = poisoned_skill("local:review-skill", "review-skill");
+        skill.installed_at = 1;
+        skill.updated_at = 0;
+        db.save_skill(&skill).expect("seed skill");
+
+        let skill_dir = SkillService::get_ssot_dir()
+            .expect("ssot dir")
+            .join("review-skill");
+        fs::create_dir_all(&skill_dir).expect("create skill dir");
+        let skill_md = skill_dir.join("SKILL.md");
+        fs::write(&skill_md, "---\nname: Review\n---\n").expect("write SKILL.md");
+        let metadata = fs::metadata(&skill_md).expect("skill file metadata");
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(SkillService::unix_timestamp_from_system_time)
+            .expect("modified time");
+
+        let listed = SkillService::get_all_installed(&db).expect("list installed");
+        let got = listed
+            .iter()
+            .find(|item| item.id == "local:review-skill")
+            .expect("listed skill");
+        assert_eq!(got.installed_at, 0);
+        assert_eq!(got.updated_at, modified);
+        assert_ne!(got.updated_at, 0);
+        assert_eq!(
+            got.path.as_deref(),
+            Some(skill_dir.to_string_lossy().as_ref())
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn get_all_installed_leaves_installed_at_empty_when_skill_files_are_missing() {
+        let temp = tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let mut skill = poisoned_skill("local:missing-skill", "missing-skill");
+        skill.installed_at = 1_700_000_000;
+        skill.updated_at = 0;
+        db.save_skill(&skill).expect("seed skill");
+
+        let listed = SkillService::get_all_installed(&db).expect("list installed");
+        let got = listed
+            .iter()
+            .find(|item| item.id == "local:missing-skill")
+            .expect("listed skill");
+        let expected_path = SkillService::get_ssot_dir()
+            .expect("ssot dir")
+            .join("missing-skill");
+        assert_eq!(got.installed_at, 0);
+        assert_eq!(got.updated_at, 0);
+        assert_eq!(
+            got.path.as_deref(),
+            Some(expected_path.to_string_lossy().as_ref())
+        );
     }
 
     #[test]

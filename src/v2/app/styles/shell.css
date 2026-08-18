@@ -205,12 +205,19 @@
 }
 
 .fy-content-frame {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
   padding: 0 20px 16px;
 }
 
 .fy-content-viewport {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   width: 100%;
   min-width: 0;
   height: 100%;

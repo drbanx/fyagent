@@ -19,31 +19,52 @@ describe("MCP preset platform commands", () => {
     vi.resetModules();
   });
 
-  it("wraps npx with cmd only on Windows", async () => {
+  it("uses uvx for the time preset on every platform", async () => {
     const { mcpPresets } = await loadPresets("windows");
     const time = mcpPresets.find((preset) => preset.id === "time");
 
     expect(time?.server).toMatchObject({
       type: "stdio",
-      command: "cmd",
-      args: ["/c", "npx", "-y", "@modelcontextprotocol/server-time"],
+      command: "uvx",
+      args: ["mcp-server-time"],
     });
   });
 
-  it("uses direct npx only on macOS", async () => {
-    const { mcpPresets } = await loadPresets("macos");
-    const time = mcpPresets.find((preset) => preset.id === "time");
+  it("wraps npx with cmd only on Windows", async () => {
+    const { mcpPresets } = await loadPresets("windows");
+    const memory = mcpPresets.find((preset) => preset.id === "memory");
 
-    expect(time?.server).toMatchObject({
+    expect(memory?.server).toMatchObject({
+      type: "stdio",
+      command: "cmd",
+      args: ["/c", "npx", "-y", "@modelcontextprotocol/server-memory"],
+    });
+  });
+
+  it("uses direct npx on macOS and unknown hosts", async () => {
+    const macos = await loadPresets("macos");
+    expect(
+      macos.mcpPresets.find((preset) => preset.id === "memory")?.server,
+    ).toMatchObject({
       type: "stdio",
       command: "npx",
-      args: ["-y", "@modelcontextprotocol/server-time"],
+      args: ["-y", "@modelcontextprotocol/server-memory"],
     });
-  });
 
-  it("does not publish platform-specific npx presets on an unknown host", async () => {
-    const { mcpPresets } = await loadPresets("unknown");
-
-    expect(mcpPresets.map((preset) => preset.id)).toEqual(["fetch"]);
+    const unknown = await loadPresets("unknown");
+    expect(
+      unknown.mcpPresets.find((preset) => preset.id === "memory")?.server,
+    ).toMatchObject({
+      type: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-memory"],
+    });
+    expect(unknown.mcpPresets.map((preset) => preset.id)).toEqual([
+      "fetch",
+      "time",
+      "memory",
+      "sequential-thinking",
+      "context7",
+    ]);
   });
 });

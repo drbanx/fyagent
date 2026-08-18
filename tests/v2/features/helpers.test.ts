@@ -3,11 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildMcpSearchText,
   convergeSelection,
+  mcpInstallDirectory,
   overlayKnownMcpFields,
   parseAdvancedServerJson,
   parseKeyValueLines,
   runSequentialBulk,
   sanitizeMcpConfigurationError,
+  skillInstallPath,
 } from "@/v2/shared/features/helpers";
 import { createAssignments, type McpServer } from "@/v2/shared/features/types";
 
@@ -38,6 +40,25 @@ describe("V2 feature helpers", () => {
     expect(text).not.toContain("secret");
     expect(text).not.toContain("private-token");
     expect(text).not.toContain("authorization");
+  });
+
+  it("does not index MCP URL query secrets or sensitive arguments", () => {
+    const server: McpServer = {
+      id: "maps",
+      name: "Maps",
+      apps: createAssignments(),
+      server: {
+        type: "http",
+        url: "https://mcp.amap.com/mcp?key=amap-query-secret",
+        args: ["mcp", "-a", "cli_app", "-s", "feishu-app-secret"],
+      },
+    };
+    const text = buildMcpSearchText(server);
+    expect(text).toContain("https://mcp.amap.com/mcp");
+    expect(text).toContain("-a");
+    expect(text).not.toContain("amap-query-secret");
+    expect(text).not.toContain("feishu-app-secret");
+    expect(text).not.toContain("key=amap");
   });
 
   it("does not echo secret-bearing MCP configuration errors", () => {
@@ -96,5 +117,42 @@ describe("V2 feature helpers", () => {
     expect(order).toEqual(["a", "b", "c"]);
     expect(result.successes).toEqual(["a", "c"]);
     expect(result.failures).toEqual([{ id: "b", error: "请稍后重试。" }]);
+  });
+
+  it("prefers the resolved Skill install path over the directory name", () => {
+    expect(
+      skillInstallPath({
+        directory: "review-skill",
+        path: "C:/Users/xk/.fyagent/skills/review-skill",
+      }),
+    ).toBe("C:/Users/xk/.fyagent/skills/review-skill");
+    expect(skillInstallPath({ directory: "review-skill" })).toBe(
+      "review-skill",
+    );
+    expect(skillInstallPath({ directory: "review-skill", path: "  " })).toBe(
+      "review-skill",
+    );
+  });
+
+  it("derives an MCP install directory from cwd or an absolute command", () => {
+    expect(mcpInstallDirectory({ command: "npx" })).toBeNull();
+    expect(mcpInstallDirectory({ command: "uvx" })).toBeNull();
+    expect(mcpInstallDirectory({ command: "cmd" })).toBeNull();
+    expect(
+      mcpInstallDirectory({
+        command:
+          "C:\\Users\\xk\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\node.exe",
+      }),
+    ).toBe("C:\\Users\\xk\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node");
+    expect(mcpInstallDirectory({ command: "C:\\node.exe" })).toBe("C:\\");
+    expect(mcpInstallDirectory({ command: "/usr/local/bin/node" })).toBe(
+      "/usr/local/bin",
+    );
+    expect(
+      mcpInstallDirectory({
+        command: "npx",
+        cwd: "D:\\workspace\\mcp-tools",
+      }),
+    ).toBe("D:\\workspace\\mcp-tools");
   });
 });

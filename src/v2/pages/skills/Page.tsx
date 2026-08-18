@@ -1,12 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 
+import { getSkillTargetIcon } from "../../shared/assets/apps";
 import {
   buildSkillSearchText,
   convergeSelection,
   errorMessage,
   isDiscoverableInstalled,
   runSequentialBulk,
+  skillInstallPath,
   supportedFoundIn,
   UserFacingError,
 } from "../../shared/features/helpers";
@@ -44,6 +46,7 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
+import { CopyablePath } from "../../shared/ui/CopyablePath";
 
 type SkillsTab = "installed" | "discovery";
 type DialogName =
@@ -53,6 +56,20 @@ type DialogName =
   | "repos"
   | "settings"
   | null;
+
+function formatSkillTimestamp(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "未知";
+  return new Date(value * 1000).toLocaleString();
+}
+
+function githubRepoUrl(owner: string, name: string): string | null {
+  if (!/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(name)) return null;
+  return `https://github.com/${owner}/${name}`;
+}
+
+function assignedSkillTargets(skill: InstalledSkill) {
+  return SKILL_TARGETS.filter((target) => Boolean(skill.apps[target.id]));
+}
 
 const invalidations = [
   featureKeys.skills,
@@ -81,37 +98,130 @@ function Detail({
   onOpen: (url: string) => void;
   showAssignment: boolean;
 }) {
+  const assigned = assignedSkillTargets(skill);
+  const repo =
+    skill.repoOwner && skill.repoName
+      ? `${skill.repoOwner}/${skill.repoName}`
+      : null;
+  const repoUrl =
+    skill.repoOwner && skill.repoName
+      ? githubRepoUrl(skill.repoOwner, skill.repoName)
+      : null;
+  const sourceLabel = repo ? "GitHub 仓库" : "本地导入";
+  const description = skill.description?.trim() || "暂无说明";
+
   return (
     <section
-      className="fy-feature-panel fy-feature-detail"
+      className="fy-feature-panel fy-feature-detail fy-feature-detail-scroll"
       aria-label="Skill 详情"
     >
-      <div className="fy-feature-detail-title">
-        <h2>{skill.name}</h2>
-        {update && <Badge tone="warning">有更新</Badge>}
+      <div className="fy-feature-detail-header">
+        <div className="fy-feature-detail-title">
+          <h2>{skill.name}</h2>
+          {update && <Badge tone="warning">有更新</Badge>}
+          <Badge tone={repo ? "accent" : "neutral"}>{sourceLabel}</Badge>
+        </div>
+        <p className="fy-feature-intro">{description}</p>
+        <div className="fy-feature-actions">
+          {update && (
+            <Button
+              className="fy-control-button-primary"
+              disabled={busy}
+              onClick={onUpdate}
+            >
+              更新
+            </Button>
+          )}
+          <Button
+            className="fy-control-button-danger"
+            disabled={busy}
+            onClick={onUninstall}
+          >
+            卸载
+          </Button>
+        </div>
       </div>
-      {skill.description && (
-        <p className="fy-feature-description">{skill.description}</p>
-      )}
-      <dl className="fy-feature-definition">
-        {skill.repoOwner && skill.repoName && (
-          <>
-            <dt>仓库</dt>
+      <div className="fy-feature-info-grid">
+        <section className="fy-feature-info-card" aria-label="下载来源">
+          <h3>下载来源</h3>
+          <p className="fy-feature-info-lead">
+            {repo
+              ? "此 Skill 来自 GitHub 仓库，安装后保存在本地目录，并可按仓库检查更新。"
+              : "此 Skill 来自本地导入或 ZIP 安装，当前没有绑定远程仓库。"}
+          </p>
+          <dl className="fy-feature-definition">
+            <dt>来源类型</dt>
+            <dd>{sourceLabel}</dd>
+            {repo && (
+              <>
+                <dt>仓库</dt>
+                <dd>{repo}</dd>
+              </>
+            )}
+            {skill.repoBranch && (
+              <>
+                <dt>分支</dt>
+                <dd>{skill.repoBranch}</dd>
+              </>
+            )}
+            <dt>安装目录</dt>
             <dd>
-              {skill.repoOwner}/{skill.repoName}
+              <CopyablePath value={skillInstallPath(skill)} />
             </dd>
-          </>
-        )}
-        {skill.repoBranch && (
-          <>
-            <dt>分支</dt>
-            <dd>{skill.repoBranch}</dd>
-          </>
-        )}
-      </dl>
-      {skill.readmeUrl && (
-        <Button onClick={() => onOpen(skill.readmeUrl!)}>查看说明</Button>
-      )}
+          </dl>
+          {(repoUrl || skill.readmeUrl) && (
+            <div className="fy-feature-actions">
+              {repoUrl && (
+                <Button onClick={() => onOpen(repoUrl)}>打开仓库</Button>
+              )}
+              {skill.readmeUrl && (
+                <Button onClick={() => onOpen(skill.readmeUrl!)}>
+                  查看说明
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
+        <section className="fy-feature-info-card" aria-label="当前分配">
+          <h3>当前分配</h3>
+          <p className="fy-feature-info-lead">
+            {assigned.length > 0
+              ? `已启用 ${assigned.length} 个应用。需要增减时，使用应用分配开关。`
+              : "尚未分配到任何应用。启用后，对应软件才能加载此 Skill。"}
+          </p>
+          {assigned.length > 0 && (
+            <ul className="fy-feature-app-chips">
+              {assigned.map((app) => (
+                <li key={app.id} className="fy-feature-app-chip">
+                  <img
+                    className="fy-feature-assignment-icon"
+                    src={getSkillTargetIcon(app.id)}
+                    alt=""
+                    aria-hidden="true"
+                  />
+                  {app.label}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section
+          className="fy-feature-info-card fy-feature-info-span"
+          aria-label="安装信息"
+        >
+          <h3>安装信息</h3>
+          <dl className="fy-feature-definition">
+            {skill.installedAt > 0 && (
+              <>
+                <dt>安装时间</dt>
+                <dd>{formatSkillTimestamp(skill.installedAt)}</dd>
+              </>
+            )}
+            <dt>最近更新</dt>
+            <dd>{formatSkillTimestamp(skill.updatedAt)}</dd>
+          </dl>
+        </section>
+      </div>
       {showAssignment && (
         <div className="fy-feature-inline-assignment">
           <AssignmentPanel
@@ -123,24 +233,6 @@ function Detail({
           />
         </div>
       )}
-      <div className="fy-feature-actions">
-        {update && (
-          <Button
-            className="fy-control-button-primary"
-            disabled={busy}
-            onClick={onUpdate}
-          >
-            更新
-          </Button>
-        )}
-        <Button
-          className="fy-control-button-danger"
-          disabled={busy}
-          onClick={onUninstall}
-        >
-          卸载
-        </Button>
-      </div>
     </section>
   );
 }
@@ -430,7 +522,7 @@ export function SkillsPage() {
               }
             />
           ) : (
-            <>
+            <div className="fy-feature-workspace">
               <div className="fy-feature-toolbar">
                 <Input
                   type="search"
@@ -448,7 +540,7 @@ export function SkillsPage() {
               ) : (
                 <div className="fy-feature-master">
                   <section
-                    className="fy-feature-panel"
+                    className="fy-feature-panel fy-feature-list-panel"
                     aria-label="已安装 Skills 列表"
                   >
                     <h2>已安装 · {installed.length}</h2>
@@ -468,6 +560,7 @@ export function SkillsPage() {
                   </section>
                   {selected && (
                     <Detail
+                      key={selected.id}
                       skill={selected}
                       update={updatesById.get(selected.id)}
                       busy={busy}
@@ -487,7 +580,7 @@ export function SkillsPage() {
                     />
                   )}
                   {selected && wideLayout && (
-                    <section className="fy-feature-panel">
+                    <section className="fy-feature-panel fy-feature-assign-scroll">
                       <AssignmentPanel
                         apps={selected.apps}
                         disabled={busy}
@@ -522,7 +615,7 @@ export function SkillsPage() {
                   )}
                 </div>
               )}
-            </>
+            </div>
           )}
         </>
       ) : (

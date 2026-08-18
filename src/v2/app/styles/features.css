@@ -5,6 +5,16 @@
   min-height: 100%;
   padding: 20px;
 }
+.fy-feature-page:has(.fy-feature-workspace) {
+  flex: 1 1 auto;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.fy-feature-page > :not(.fy-feature-workspace) {
+  flex: 0 0 auto;
+}
 .fy-feature-header {
   display: flex;
   flex-wrap: wrap;
@@ -157,6 +167,30 @@
   font-family: ui-monospace, Consolas, monospace;
   background: rgba(9, 29, 48, 0.26);
 }
+.fy-feature-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.fy-feature-path-value {
+  flex: 1 1 auto;
+  display: block;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  background: rgba(9, 29, 48, 0.26);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fy-feature-path .fy-control-button {
+  flex: 0 0 auto;
+}
 .fy-feature-assignments {
   display: grid;
   align-content: start;
@@ -184,6 +218,119 @@
 }
 .fy-feature-inline-assignment {
   display: grid;
+}
+.fy-feature-workspace {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.fy-feature-workspace > .fy-feature-toolbar {
+  flex: 0 0 auto;
+}
+.fy-feature-workspace > .fy-feature-master {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+}
+.fy-feature-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.fy-feature-list-panel > h2 {
+  flex: 0 0 auto;
+}
+.fy-feature-list-panel > .fy-feature-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.fy-feature-detail-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.fy-feature-assign-scroll {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.fy-feature-detail-header {
+  display: grid;
+  gap: 10px;
+}
+.fy-feature-intro {
+  margin: 0;
+  color: var(--fy-text);
+  font-size: 16px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.fy-feature-info-grid {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.fy-feature-info-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(229, 246, 255, 0.06);
+}
+.fy-feature-info-card h3 {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.fy-feature-info-lead {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.fy-feature-info-card .fy-feature-definition {
+  font-size: 13px;
+}
+.fy-feature-info-card .fy-feature-definition dd {
+  color: var(--fy-text);
+  font-size: 13px;
+}
+.fy-feature-app-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fy-feature-app-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 4px 10px 4px 7px;
+  border: 1px solid var(--fy-border);
+  border-radius: 999px;
+  background: rgba(229, 246, 255, 0.1);
+  color: var(--fy-text);
+  font-size: 13px;
 }
 .fy-feature-grid {
   display: grid;
@@ -284,6 +431,14 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
+}
+@media (min-width: 1181px) {
+  .fy-feature-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fy-feature-info-span {
+    grid-column: 1 / -1;
+  }
 }
 @media (max-width: 1180px) {
   .fy-feature-master {
