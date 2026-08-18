@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -244,6 +245,10 @@ test("opens both native-only pages from the self-contained standalone file", asy
   const health = monitorPageHealth(page);
   const reactWarnings = monitorReactWarnings(page);
   const previewPath = path.resolve(process.cwd(), "FyAgent-前端交互预览.html");
+  test.skip(
+    !existsSync(previewPath),
+    "standalone preview is generated locally by mise run build:renderer",
+  );
   const previewUrl = pathToFileURL(previewPath).href;
   const previewHtml = await readFile(previewPath, "utf8");
   const externalRequests: string[] = [];

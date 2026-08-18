@@ -89,15 +89,19 @@ describe("repository change classifier", () => {
     ],
     ["frontend", ["src/components/App.tsx"], domains("frontend")],
     [
-      "V2 renderer tooling and preview",
+      "V2 renderer tooling",
       [
-        "FyAgent-前端交互预览.html",
         "eslint.v2.config.mjs",
         "playwright.v2.config.ts",
         "scripts/build-v2-preview.mjs",
         "tsconfig.v2.json",
         "vitest.v2.config.ts",
       ],
+      domains("contracts", "frontend"),
+    ],
+    [
+      "retired generated standalone preview",
+      ["FyAgent-前端交互预览.html"],
       domains("contracts", "frontend"),
     ],
     [

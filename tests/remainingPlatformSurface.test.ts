@@ -466,13 +466,16 @@ describe("durable supported-platform surface contract", () => {
     );
     expect(checker.isExcludedPath(".codebuddy/agents/example.md")).toBe(true);
     expect(checker.isExcludedPath(".codex/agents/example.md")).toBe(true);
-    expect(checker.isExcludedPath(".agents/skills/example/SKILL.md")).toBe(true);
+    expect(checker.isExcludedPath(".agents/skills/example/SKILL.md")).toBe(
+      true,
+    );
     expect(checker.isTextExcludedPath("pnpm-lock.yaml")).toBe(true);
     expect(checker.isTextExcludedPath("src-tauri/Cargo.lock")).toBe(true);
     expect(checker.isTextExcludedPath("mise.lock")).toBe(false);
 
     const standalone = checker.GENERATED_STANDALONE_PREVIEW_PATH;
     expect(standalone).toBe("FyAgent-前端交互预览.html");
+    expect(checker.listCurrentFiles(ROOT)).not.toContain(standalone);
     expect(checker.isExcludedPath(standalone)).toBe(false);
     expect(checker.isTextExcludedPath(standalone)).toBe(true);
     expect(checker.isTextExcludedPath(`nested/${standalone}`)).toBe(false);

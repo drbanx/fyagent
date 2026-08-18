@@ -91,6 +91,9 @@ Classification invariants:
   contracts plus `windowsNative`;
 - docs and optional Trellis specs/tasks/journals reach docsSpec plus the
   lightweight contracts owner;
+- the generated root `FyAgent-前端交互预览.html` is gitignored and not in the
+  Git index; its retired path still classifies as contracts plus frontend so
+  deletions and history diffs are not unknownPaths;
 - a new path without an owner is returned in sorted `unknownPaths`, printed as
   JSON, and makes the CLI fail;
 - unknown paths are never silently treated as no-op or full CI;
@@ -340,7 +343,8 @@ Labeler is not a CI dependency and cannot satisfy `CI / Required`.
 Required automated fixtures cover:
 
 - docs/spec, frontend, desktop, backend, Windows native, dependency-root,
-  control-plane, multi-path union, rename/delete, and unknown paths;
+  control-plane, multi-path union, rename/delete, unknown paths, and the
+  retired generated standalone preview path;
 - malformed/missing/non-commit base/head revisions and option injection;
 - PR, merge-group, push, and manual event wiring;
 - event-forced full CI for both dev/main pushes and diagnostics;

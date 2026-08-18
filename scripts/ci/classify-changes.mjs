@@ -70,7 +70,6 @@ const FRONTEND_TEST_PREFIXES = Object.freeze([
 ]);
 
 const FRONTEND_ROOT_FILES = new Set([
-  "FyAgent-前端交互预览.html",
   "components.json",
   "deplink.html",
   "eslint.v2.config.mjs",
@@ -111,6 +110,10 @@ const LEGACY_DOCUMENTATION_ROOT_FILES = new Set([
   "README_ZH.md",
   "session-manager.md",
 ]);
+
+// Name-status diffs include deleted paths. Keep the retired generated
+// standalone preview owned so untracking it is not an unknown path.
+const LEGACY_FRONTEND_ROOT_FILES = new Set(["FyAgent-前端交互预览.html"]);
 
 const CODEX_WINDOWS_PREFIXES = Object.freeze([
   "src-tauri/src/codex_desktop/",
@@ -220,7 +223,7 @@ function classifyPath(path, domains) {
     return { matched: true, forceFull: false };
   }
 
-  if (FRONTEND_ROOT_FILES.has(path)) {
+  if (FRONTEND_ROOT_FILES.has(path) || LEGACY_FRONTEND_ROOT_FILES.has(path)) {
     addDomains(domains, ["contracts", "frontend"]);
     return { matched: true, forceFull: false };
   }
@@ -255,10 +258,7 @@ function classifyPath(path, domains) {
     return { matched: true, forceFull: false };
   }
 
-  if (
-    path.startsWith("docs/") ||
-    path.startsWith("LICENSES/")
-  ) {
+  if (path.startsWith("docs/") || path.startsWith("LICENSES/")) {
     addDomains(domains, ["contracts", "docsSpec"]);
     return { matched: true, forceFull: false };
   }

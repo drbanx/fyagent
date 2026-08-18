@@ -193,8 +193,9 @@ Focused Vitest coverage must prove:
 - existing ACL registration/permission coverage, with no new capability entry.
 
 Run the complete V2 and desktop gates listed by
-[V2 Shell Contract](./v2-shell.md), regenerate the standalone preview twice and
-compare SHA-256, then run `mise run check`. A real native smoke is read-only on
+[V2 Shell Contract](./v2-shell.md), then run `mise run check`. Generating the
+gitignored standalone preview is a local optional check, not Required CI
+evidence. A real native smoke is read-only on
 the current profile; actual write HIL is not required without an isolated
 test-hook profile.
 
