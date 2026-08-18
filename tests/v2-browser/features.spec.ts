@@ -98,6 +98,23 @@ for (const feature of [
         page.getByRole("separator", { name: "调整列表与详情的宽度" }),
       ).toBeVisible();
     }
+    const assignmentOverflow = await page
+      .locator(".fy-split-pane .fy-feature-assignment")
+      .evaluateAll((rows) =>
+        rows.flatMap((row) => {
+          const pane = row.closest(".fy-split-pane");
+          if (!(pane instanceof HTMLElement)) {
+            return ["assignment row is missing a split pane"];
+          }
+          const rowBox = row.getBoundingClientRect();
+          const paneBox = pane.getBoundingClientRect();
+          return rowBox.left < paneBox.left - 1 ||
+            rowBox.right > paneBox.right + 1
+            ? [`${row.textContent?.replace(/\s+/g, " ").trim()} overflows pane`]
+            : [];
+        }),
+      );
+    expect(assignmentOverflow).toEqual([]);
     await expectNoHorizontalOverflow(page);
     await expectHealthyPage(page, health);
   });

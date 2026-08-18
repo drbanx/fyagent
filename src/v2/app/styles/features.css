@@ -199,11 +199,22 @@
 }
 .fy-feature-assignment {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 8px 14px;
+  min-width: 0;
   min-height: 31px;
   font-size: 13px;
+}
+.fy-feature-assignment > span {
+  min-width: 0;
+}
+.fy-feature-assignment > span:last-child {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 .fy-feature-assignment-label {
   display: flex;

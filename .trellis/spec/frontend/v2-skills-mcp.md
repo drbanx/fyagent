@@ -163,7 +163,12 @@ interface SettingsPort {
   and assignment, laid out with the shared `SplitPanes` chassis (14px
   gutter, pointer/keyboard resize, independent pane scroll). Each column
   scrolls independently; the content viewport must
-  not grow with the left-hand list. The Discover tab stays a card grid and
+  not grow with the left-hand list. Split-pane children fill the pane height
+  (`min-height: 100%` and `height: 100%`) and scroll inside the pane
+  (`overflow: auto`), matching catalog rails. Do not leave `height: 100%`
+  on a feature panel without overflow, or assignment rows and cards paint
+  past the panel chrome. Assignment rows wrap (`flex-wrap: wrap`,
+  `min-width: 0`) so “全开 / 全关” stay inside the pane. The Discover tab stays a card grid and
   must not use this master-detail chassis. Skill uninstall and MCP edit/delete stay
   in the detail header above source, assignment, and install cards so they
   remain reachable without scrolling the middle pane. MCP details must show
@@ -284,7 +289,8 @@ git diff --check
   eight unique Skill switches, and six unique MCP switches.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
   populated two-/three-column layouts, a single correctly-sized assignment
-  panel, no overflow, no secret rendering, exact invoke payloads, and
+  panel, visible split separators above 760px, assignment rows contained
+  inside their pane, no overflow, no secret rendering, exact invoke payloads, and
   authoritative refetch.
 - Browser tests do not replace native Windows Tauri/WebView2 acceptance,
   actual filesystem/config writes, or 125%/150% display-scale review.
@@ -319,4 +325,32 @@ Correct: use the exhaustive local V2 map and keep the image decorative.
 
 ```tsx
 <img src={getSkillTargetIcon(app.id)} alt="" aria-hidden="true" />
+```
+
+Wrong: fill a split pane with `height: 100%` and leave the feature panel
+overflow visible, so bulk-assign buttons paint past the card.
+
+```css
+.fy-split-pane > * {
+  height: 100%;
+}
+.fy-feature-assignment {
+  display: flex;
+  white-space: nowrap;
+}
+```
+
+Correct: reuse `SplitPanes` child overflow from the catalog rail, and let
+assignment rows wrap inside the pane.
+
+```css
+.fy-split-pane > * {
+  min-height: 100%;
+  height: 100%;
+  overflow: auto;
+}
+.fy-feature-assignment {
+  flex-wrap: wrap;
+  min-width: 0;
+}
 ```

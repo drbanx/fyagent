@@ -28,6 +28,10 @@ const splitCss = readFileSync(
   ),
   "utf8",
 );
+const featuresCss = readFileSync(
+  path.resolve(repositoryRoot, "src", "v2", "app", "styles", "features.css"),
+  "utf8",
+);
 const pageCss = ["agents", "models"]
   .map((page) =>
     readFileSync(
@@ -92,12 +96,28 @@ describe("shared V2 catalog presentation styles", () => {
       /\.fy-catalog-rail,\s*\.fy-catalog-pane\s*\{[^}]*overflow:\s*auto;/s,
     );
     expect(splitCss).toMatch(/\.fy-split-pane\s*\{[^}]*overflow:\s*auto;/s);
+    expect(splitCss).toMatch(
+      /\.fy-split-pane\s*>\s*\*\s*\{[^}]*overflow:\s*auto;/s,
+    );
+    expect(splitCss).toMatch(
+      /\.fy-split-pane\s*>\s*\*\s*\{[^}]*min-height:\s*100%;/s,
+    );
     expect(catalogCss).toMatch(
       /\.fy-catalog-pane\s*>\s*\*\s*\{[^}]*min-height:\s*100%;/s,
     );
     expect(catalogCss).not.toMatch(
       /\.fy-catalog-pane\s*\{[^}]*display:\s*grid/s,
     );
+  });
+
+  it("keeps split-pane children scrolling and assignment rows wrapping", () => {
+    const child = rule(splitCss, ".fy-split-pane > *");
+    expect(child).toMatch(/overflow:\s*auto;/);
+    expect(child).toMatch(/min-height:\s*100%;/);
+    expect(child).toMatch(/height:\s*100%;/);
+    const assignment = rule(featuresCss, ".fy-feature-assignment");
+    expect(assignment).toMatch(/flex-wrap:\s*wrap;/);
+    expect(assignment).toMatch(/min-width:\s*0;/);
   });
 
   it("freezes shared row, frame, and artwork geometry", () => {

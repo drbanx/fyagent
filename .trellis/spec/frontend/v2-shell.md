@@ -257,7 +257,9 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   the user prefers reduced motion. Never combine `layoutId` scale projection
   with `backdrop-filter` on the same node. Fill-height master/detail columns
   use shared `SplitPanes` (`shared/ui/split`); do not copy catalog rail
-  classes onto Skills, MCP, Prompts, or Memory.
+  classes onto Skills, MCP, Prompts, or Memory. Split-pane children fill the
+  pane and scroll inside it (`overflow: auto`). `height: 100%` without
+  overflow lets cards and assignment controls paint past the pane chrome.
 - Keep the chrome row near 68px, brand mark 28px, brand text 19px, navigation
   track 46px, and navigation/tool targets 38px. V2 Overlay chrome adds a
   28px inert drag strip above that chrome row so the window can be dragged and
@@ -431,6 +433,23 @@ show-after-`hidden` replay the same collapsed-origin appear spring.
     )}
   </NavLink>
 </SelectionLensGroup>
+```
+
+Wrong: give split-pane children `height: 100%` with visible overflow, so
+assignment controls paint past the panel.
+
+```css
+.fy-split-pane > * { height: 100%; }
+```
+
+Correct: fill the pane and scroll inside it, the same way catalog rails do.
+
+```css
+.fy-split-pane > * {
+  min-height: 100%;
+  height: 100%;
+  overflow: auto;
+}
 ```
 
 Wrong: make React own native chrome and selected state while depending directly

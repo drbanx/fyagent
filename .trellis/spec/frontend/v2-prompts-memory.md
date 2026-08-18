@@ -130,9 +130,12 @@ The fixed resource mapping is:
   dirty-discard confirmation flow. Do not use `window.confirm`.
 - Prompts and Memory reuse the V2 `fy-feature-*`, `fy-control-*`, shared UI
   primitives, and the shared `SplitPanes` chassis for list/detail/side
-  columns (independent scroll, 14px gutter, pointer/keyboard resize). Page
-  CSS is limited to namespaced editor height, scrolling, and
-  responsive arrangement; it must not create an independent dark-blue theme.
+  columns (independent scroll, 14px gutter, pointer/keyboard resize).
+  Split-pane children fill the pane and scroll inside it; page CSS must not
+  set `height: 100%` without overflow or let editor/assignment rows paint
+  past the panel. Page CSS is limited to namespaced editor height, scrolling,
+  and responsive arrangement; it must not create an independent dark-blue
+  theme.
 
 ### Platform boundary
 

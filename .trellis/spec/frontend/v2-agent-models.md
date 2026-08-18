@@ -199,7 +199,9 @@ mutation arguments only and never query keys or query data.
   `调整目录与详情的宽度`. Other product pages reuse `SplitPanes` without
   catalog rail/list/brand classes.
 - Above 760px the two panes fill the remaining feature-page height and
-  scroll independently. The detail panel is at least the pane height and
+  scroll independently. Split-pane children fill that pane (`height: 100%`,
+  `overflow: auto`), matching the catalog rail. The detail panel is at least
+  the pane height and
   grows with its content so its chrome does not clip overflowing cards.
   Both catalog pages share the feature-page inset: 20px page padding and
   the 16px header-to-pane gap from `.fy-feature-header`. `.fy-catalog-page`
