@@ -257,7 +257,7 @@ fn run_pinned_user_helper(
         let server = OneShotPipeServer::create(context.canonical_sid(), &nonce)?;
         let helper_path = fixed_user_helper_path().map_err(|_| helper_launch_error())?;
         let helper_image = PinnedHelperImage::open(&helper_path)?;
-        Ok((nonce, controls, server, helper_image))
+        Ok::<_, InstallerError>((nonce, controls, server, helper_image))
     })();
     let (nonce, controls, server, helper_image) = match setup {
         Ok(setup) => setup,
