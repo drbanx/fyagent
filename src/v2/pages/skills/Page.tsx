@@ -75,6 +75,40 @@ function githubRepoUrl(owner: string, name: string): string | null {
   return `https://github.com/${owner}/${name}`;
 }
 
+function skillRepoKey(skill: { repoOwner: string; repoName: string }): string {
+  return `${skill.repoOwner}/${skill.repoName}`;
+}
+
+function skillDirectoryNote(skill: {
+  name: string;
+  directory: string;
+}): string {
+  return skill.directory && skill.directory !== skill.name
+    ? skill.directory
+    : "";
+}
+
+function skillCardBody(skill: DiscoverableSkill, hideRepo: boolean): string {
+  const description = skill.description.trim();
+  if (description) return description;
+  const directoryNote = skillDirectoryNote(skill);
+  if (directoryNote) return directoryNote;
+  return hideRepo ? "" : `来自 ${skillRepoKey(skill)}`;
+}
+
+function skillDocsAction(
+  readmeUrl?: string,
+  repoUrl?: string | null,
+): { url: string; label: "说明" | "仓库" } | null {
+  if (readmeUrl) {
+    return {
+      url: readmeUrl,
+      label: /SKILL\.md|\/blob\//i.test(readmeUrl) ? "说明" : "仓库",
+    };
+  }
+  return repoUrl ? { url: repoUrl, label: "仓库" } : null;
+}
+
 function assignedSkillTargets(skill: InstalledSkill) {
   return SKILL_TARGETS.filter((target) => Boolean(skill.apps[target.id]));
 }
@@ -701,10 +735,6 @@ export function SkillsPage() {
   );
 }
 
-function skillRepoKey(skill: { repoOwner: string; repoName: string }): string {
-  return `${skill.repoOwner}/${skill.repoName}`;
-}
-
 function groupSkillsByRepo<T extends { repoOwner: string; repoName: string }>(
   skills: readonly T[],
 ): Array<[string, T[]]> {
@@ -720,12 +750,14 @@ function groupSkillsByRepo<T extends { repoOwner: string; repoName: string }>(
 
 function DiscoveryCard({
   busy,
+  hideRepo,
   installLabel,
   isInstalled,
   skill,
   onInstall,
 }: {
   busy: boolean;
+  hideRepo: boolean;
   installLabel: string;
   isInstalled: boolean;
   skill: DiscoverableSkill & { installs?: number };
@@ -733,22 +765,25 @@ function DiscoveryCard({
 }) {
   const repo = skillRepoKey(skill);
   const repoUrl = githubRepoUrl(skill.repoOwner, skill.repoName);
-  const description = skill.description.trim();
-  const directoryNote =
-    skill.directory && skill.directory !== skill.name ? skill.directory : "";
+  const body = skillCardBody(skill, hideRepo);
+  const docs = skillDocsAction(skill.readmeUrl, repoUrl);
+  const meta = [
+    hideRepo ? null : repo,
+    typeof skill.installs === "number"
+      ? `${skill.installs.toLocaleString()} 次安装`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <article className="fy-feature-card">
       <header className="fy-feature-card-meta">
         <h3>{skill.name}</h3>
         {isInstalled && <Badge tone="accent">已安装</Badge>}
-        <Badge>{repo}</Badge>
-        {typeof skill.installs === "number" && (
-          <Badge>{skill.installs.toLocaleString()} 次安装</Badge>
-        )}
       </header>
-      {description ? <p>{description}</p> : null}
-      {!description && directoryNote ? <p>{directoryNote}</p> : null}
+      {body ? <p>{body}</p> : null}
+      {meta ? <p className="fy-feature-card-note">{meta}</p> : null}
       <footer>
         <Button
           className="fy-control-button-primary"
@@ -757,10 +792,8 @@ function DiscoveryCard({
         >
           {isInstalled ? "已安装" : `安装到 ${installLabel}`}
         </Button>
-        {skill.readmeUrl ? (
-          <ExternalLinkButton url={skill.readmeUrl}>说明</ExternalLinkButton>
-        ) : repoUrl ? (
-          <ExternalLinkButton url={repoUrl}>仓库</ExternalLinkButton>
+        {docs ? (
+          <ExternalLinkButton url={docs.url}>{docs.label}</ExternalLinkButton>
         ) : null}
       </footer>
     </article>
@@ -833,58 +866,12 @@ function Discovery({
   const installLabel =
     SKILL_TARGETS.find((app) => app.id === installTarget)?.label ?? "Claude";
   const groupedSkills = groupSkillsByRepo(skills);
+  const resultSummary =
+    source === "repos"
+      ? `${skills.length} 个 Skill`
+      : `skills.sh · ${skills.length} / ${skillsSh.data?.totalCount ?? skills.length}`;
   return (
     <section className="fy-feature-workspace" ref={resultsTop}>
-      <div className="fy-feature-toolbar">
-        <SelectionLensTrack
-          id="skills-install-target"
-          className="fy-feature-tabs"
-          role="tablist"
-          aria-label="安装目标"
-        >
-          {SKILL_TARGETS.map((app) => (
-            <button
-              key={app.id}
-              type="button"
-              className="fy-feature-tab"
-              role="tab"
-              aria-selected={app.id === installTarget}
-              onClick={() => setInstallTarget(app.id)}
-            >
-              <SelectionLens active={app.id === installTarget} />
-              <span>{app.label}</span>
-            </button>
-          ))}
-        </SelectionLensTrack>
-        <Button onClick={() => setDialog("repos")}>管理仓库</Button>
-      </div>
-      <SelectionLensTrack
-        id="skills-discovery-source-tabs"
-        className="fy-feature-tabs"
-        role="tablist"
-        aria-label="发现来源"
-      >
-        <button
-          type="button"
-          className="fy-feature-tab"
-          role="tab"
-          aria-selected={source === "repos"}
-          onClick={() => setSource("repos")}
-        >
-          <SelectionLens active={source === "repos"} />
-          <span>仓库</span>
-        </button>
-        <button
-          type="button"
-          className="fy-feature-tab"
-          role="tab"
-          aria-selected={source === "skillssh"}
-          onClick={() => setSource("skillssh")}
-        >
-          <SelectionLens active={source === "skillssh"} />
-          <span>skills.sh</span>
-        </button>
-      </SelectionLensTrack>
       {source === "repos" ? (
         <div className="fy-feature-toolbar">
           <Input
@@ -894,36 +881,63 @@ function Discovery({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <SelectionLensTrack
-            id="skills-repo-filter"
-            className="fy-feature-tabs"
-            role="tablist"
-            aria-label="仓库筛选"
+          <Button onClick={() => setDialog("repos")}>管理仓库</Button>
+        </div>
+      ) : (
+        <form
+          className="fy-feature-toolbar"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const query = skillsShInput.trim();
+            if (query.length >= 2) {
+              setSkillsShQuery(query);
+              setPage(1);
+            }
+          }}
+        >
+          <Input
+            aria-label="搜索 skills.sh"
+            placeholder="至少输入 2 个字符"
+            value={skillsShInput}
+            onChange={(event) => setSkillsShInput(event.target.value)}
+          />
+          <Button type="submit" disabled={skillsShInput.trim().length < 2}>
+            搜索
+          </Button>
+          <Button type="button" onClick={() => setDialog("repos")}>
+            管理仓库
+          </Button>
+        </form>
+      )}
+      <div className="fy-feature-toolbar">
+        <SelectionLensTrack
+          id="skills-discovery-source-tabs"
+          className="fy-feature-tabs"
+          role="tablist"
+          aria-label="发现来源"
+        >
+          <button
+            type="button"
+            className="fy-feature-tab"
+            role="tab"
+            aria-selected={source === "repos"}
+            onClick={() => setSource("repos")}
           >
-            <button
-              type="button"
-              className="fy-feature-tab"
-              role="tab"
-              aria-selected={repoFilter === "all"}
-              onClick={() => setRepoFilter("all")}
-            >
-              <SelectionLens active={repoFilter === "all"} />
-              <span>全部仓库</span>
-            </button>
-            {repoKeys.map((repo) => (
-              <button
-                key={repo}
-                type="button"
-                className="fy-feature-tab"
-                role="tab"
-                aria-selected={repoFilter === repo}
-                onClick={() => setRepoFilter(repo)}
-              >
-                <SelectionLens active={repoFilter === repo} />
-                <span>{repo}</span>
-              </button>
-            ))}
-          </SelectionLensTrack>
+            <SelectionLens active={source === "repos"} />
+            <span>仓库</span>
+          </button>
+          <button
+            type="button"
+            className="fy-feature-tab"
+            role="tab"
+            aria-selected={source === "skillssh"}
+            onClick={() => setSource("skillssh")}
+          >
+            <SelectionLens active={source === "skillssh"} />
+            <span>skills.sh</span>
+          </button>
+        </SelectionLensTrack>
+        {source === "repos" && (
           <SelectionLensTrack
             id="skills-install-status"
             className="fy-feature-tabs"
@@ -950,29 +964,67 @@ function Discovery({
               </button>
             ))}
           </SelectionLensTrack>
-        </div>
-      ) : (
-        <form
-          className="fy-feature-toolbar"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const query = skillsShInput.trim();
-            if (query.length >= 2) {
-              setSkillsShQuery(query);
-              setPage(1);
-            }
-          }}
+        )}
+      </div>
+      <div className="fy-feature-toolbar">
+        <SelectionLensTrack
+          id="skills-install-target"
+          className="fy-feature-tabs fy-feature-target-tabs"
+          role="tablist"
+          aria-label="安装目标"
         >
-          <Input
-            aria-label="搜索 skills.sh"
-            placeholder="至少输入 2 个字符"
-            value={skillsShInput}
-            onChange={(event) => setSkillsShInput(event.target.value)}
-          />
-          <Button type="submit" disabled={skillsShInput.trim().length < 2}>
-            搜索
-          </Button>
-        </form>
+          {SKILL_TARGETS.map((app) => (
+            <button
+              key={app.id}
+              type="button"
+              className="fy-feature-tab"
+              role="tab"
+              aria-selected={app.id === installTarget}
+              onClick={() => setInstallTarget(app.id)}
+            >
+              <SelectionLens active={app.id === installTarget} />
+              <img
+                className="fy-feature-assignment-icon"
+                src={getSkillTargetIcon(app.id)}
+                alt=""
+                aria-hidden="true"
+              />
+              <span>{app.label}</span>
+            </button>
+          ))}
+        </SelectionLensTrack>
+      </div>
+      {source === "repos" && repoKeys.length > 1 && (
+        <SelectionLensTrack
+          id="skills-repo-filter"
+          className="fy-feature-tabs"
+          role="tablist"
+          aria-label="仓库筛选"
+        >
+          <button
+            type="button"
+            className="fy-feature-tab"
+            role="tab"
+            aria-selected={repoFilter === "all"}
+            onClick={() => setRepoFilter("all")}
+          >
+            <SelectionLens active={repoFilter === "all"} />
+            <span>全部仓库</span>
+          </button>
+          {repoKeys.map((repo) => (
+            <button
+              key={repo}
+              type="button"
+              className="fy-feature-tab"
+              role="tab"
+              aria-selected={repoFilter === repo}
+              onClick={() => setRepoFilter(repo)}
+            >
+              <SelectionLens active={repoFilter === repo} />
+              <span>{repo}</span>
+            </button>
+          ))}
+        </SelectionLensTrack>
       )}
       {installed.error && installed.data !== undefined && (
         <InlineNotice tone="error">
@@ -1073,27 +1125,35 @@ function Discovery({
         />
       ) : (
         <div className="fy-feature-detail-scroll" aria-label="可发现 Skills">
-          {groupedSkills.map(([repo, items]) => (
-            <section key={repo} aria-label={repo}>
-              {groupedSkills.length > 1 ? (
-                <h3>
-                  {repo} · {items.length}
-                </h3>
-              ) : null}
-              <div className="fy-feature-grid">
-                {items.map((skill) => (
-                  <DiscoveryCard
-                    key={skill.key}
-                    busy={busy}
-                    installLabel={installLabel}
-                    isInstalled={isDiscoverableInstalled(skill, installedItems)}
-                    skill={skill}
-                    onInstall={onInstall}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
+          <p className="fy-feature-description">{resultSummary}</p>
+          {groupedSkills.map(([repo, items]) => {
+            const showHeading = items.length > 1;
+            return (
+              <section key={repo} aria-label={repo}>
+                {showHeading ? (
+                  <h3>
+                    {repo} · {items.length}
+                  </h3>
+                ) : null}
+                <div className="fy-feature-grid">
+                  {items.map((skill) => (
+                    <DiscoveryCard
+                      key={skill.key}
+                      busy={busy}
+                      hideRepo={showHeading}
+                      installLabel={installLabel}
+                      isInstalled={isDiscoverableInstalled(
+                        skill,
+                        installedItems,
+                      )}
+                      skill={skill}
+                      onInstall={onInstall}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
       {source === "skillssh" && totalPages > 1 && (

@@ -860,10 +860,16 @@ describe("V2 Skills management", () => {
     expect(
       screen.queryByRole("combobox", { name: "安装目标" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("searchbox", { name: "搜索仓库 Skills" }),
+    ).toBeVisible();
     expect(screen.getByRole("tablist", { name: "安装目标" })).toBeVisible();
     expect(
       screen.getByRole("tab", { name: "Claude", selected: true }),
     ).toBeVisible();
+    expect(
+      screen.queryByRole("tablist", { name: "仓库筛选" }),
+    ).not.toBeInTheDocument();
     const card = screen
       .getByRole("heading", { name: "Review Skill" })
       .closest("article");
@@ -872,6 +878,7 @@ describe("V2 Skills management", () => {
       within(card as HTMLElement).getByText("Review changes"),
     ).toBeVisible();
     expect(within(card as HTMLElement).getByText("acme/skills")).toBeVisible();
+    expect(screen.getByText("1 个 Skill")).toBeVisible();
     await user.click(
       within(card as HTMLElement).getByRole("button", { name: "说明" }),
     );
@@ -879,6 +886,65 @@ describe("V2 Skills management", () => {
     expect(
       await screen.findByRole("button", { name: "安装到 Claude" }),
     ).toBeVisible();
+  });
+
+  it("renders skills.sh results with source note, install count, and repo link", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    const openExternal = vi.fn(async () => undefined);
+    ports.settings.openExternal = openExternal;
+    ports.skills.getRepos = async () => [
+      { owner: "acme", name: "skills", branch: "main", enabled: true },
+    ];
+    ports.skills.discover = async () => [discoverableSkill()];
+    ports.skills.searchSkillsSh = async () => ({
+      query: "find",
+      totalCount: 48,
+      skills: [
+        {
+          key: "vercel-labs/agent-skills/find-skills",
+          name: "find-skills",
+          directory: "find-skills",
+          repoOwner: "vercel-labs",
+          repoName: "agent-skills",
+          repoBranch: "main",
+          installs: 1234,
+          readmeUrl: "https://github.com/vercel-labs/agent-skills",
+        },
+      ],
+    });
+
+    renderFeature(<SkillsPage />, ports);
+    await screen.findByText("还没有安装 Skill");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    await user.click(screen.getByRole("tab", { name: "skills.sh" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "搜索 skills.sh" }),
+      "find",
+    );
+    await user.click(screen.getByRole("button", { name: "搜索" }));
+
+    const card = await screen.findByRole("heading", { name: "find-skills" });
+    const article = card.closest("article");
+    expect(article).not.toBeNull();
+    expect(
+      within(article as HTMLElement).getByText("来自 vercel-labs/agent-skills"),
+    ).toBeVisible();
+    expect(
+      within(article as HTMLElement).getByText(
+        (_, element) =>
+          element?.classList.contains("fy-feature-card-note") === true &&
+          (element.textContent ?? "").includes("vercel-labs/agent-skills") &&
+          (element.textContent ?? "").includes("次安装"),
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("skills.sh · 1 / 48")).toBeVisible();
+    await user.click(
+      within(article as HTMLElement).getByRole("button", { name: "仓库" }),
+    );
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://github.com/vercel-labs/agent-skills",
+    );
   });
 
   it("blocks discovery installation when installed authority is unavailable", async () => {

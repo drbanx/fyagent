@@ -183,14 +183,18 @@ function ExternalLinkButton(props: {
   (`overflow: auto`), matching catalog rails. Do not leave `height: 100%`
   on a feature panel without overflow, or assignment rows and cards paint
   past the panel chrome. Assignment rows wrap (`flex-wrap: wrap`,
-  `min-width: 0`) so “全开 / 全关” stay inside the pane. The Discover tab
-  stays a card grid and must not use this master-detail chassis. Skill
-  Discover cards show the
-  name, repository, install state, optional install count, and either a
-  description or the directory note. Install target, repository, and
-  install-status filters use `SelectionLens` tracks, not a `<select>`.
-  Cards open the README when present, otherwise the GitHub repository,
-  through `ExternalLinkButton`. Do not group cards by wrapping a second
+  `min-width: 0`) so “全开 / 全关” stay inside the pane.   The Discover tab
+  stays a card grid and must not use this master-detail chassis. Discovery
+  chrome puts search first, then source/status and the install-target
+  `SelectionLens` tracks; do not use a `<select>`. Install-target tabs
+  may show decorative app icons. Repository chips appear only when more
+  than one repository is loaded. Skill Discover cards show the name and
+  install state in the header, a description or directory/source note,
+  then a text meta line of repository and optional install count. Group
+  headings appear only when a repository has two or more skills; those
+  cards omit the repeated repository. Cards open a document URL as
+  “说明”, otherwise the GitHub repository as “仓库”, through
+  `ExternalLinkButton`. Do not group cards by wrapping a second
   card around `DiscoveryCard`. Skill uninstall and MCP edit/delete stay
   in the detail header above source, assignment, and install cards so they
   remain reachable without scrolling the middle pane. MCP details must show
