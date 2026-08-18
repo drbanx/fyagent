@@ -14,6 +14,7 @@ import { errorMessage, isNativeOnlyError } from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
 import {
   featureKeys,
+  usePromptLibraries,
   usePromptLiveFile,
   usePrompts,
 } from "../../shared/features/queries";
@@ -163,6 +164,7 @@ export function PromptsPage() {
   const { ports, notify } = useFeatures();
   const [app, setApp] = useState<PromptAppId>("claude");
   const promptsQuery = usePrompts(app);
+  const promptLibraries = usePromptLibraries();
   const liveFileQuery = usePromptLiveFile(app);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -182,9 +184,21 @@ export function PromptsPage() {
   const selected =
     editor?.mode === "new"
       ? null
-      : (filtered.find((prompt) => prompt.id === selectedId) ??
-        filtered[0] ??
-        null);
+      : selectedId
+        ? (prompts.find((prompt) => prompt.id === selectedId) ?? null)
+        : (filtered[0] ?? null);
+  const enabledByApp = useMemo(() => {
+    const counts = {} as Record<PromptAppId, number | null>;
+    for (const [index, id] of PROMPT_APP_IDS.entries()) {
+      const query = promptLibraries[index];
+      counts[id] = query?.data
+        ? query.data.filter((prompt) => prompt.enabled).length
+        : query?.isPending
+          ? null
+          : 0;
+    }
+    return counts;
+  }, [promptLibraries]);
 
   const editorDirty =
     editor !== null &&
@@ -566,7 +580,11 @@ export function PromptsPage() {
                   key={id}
                   asset={getPromptAppBrand(id)}
                   label={APP_LABELS[id]}
-                  summary={id === app ? `${enabledCount} 条已启用` : "提示词库"}
+                  summary={
+                    enabledByApp[id] === null
+                      ? "读取中"
+                      : `${enabledByApp[id]} 条已启用`
+                  }
                   selected={id === app}
                   disabled={busy}
                   testId={`prompt-app-${id}`}

@@ -80,7 +80,11 @@ paths above.
 ### Prompt behavior
 
 - The page defaults to Claude. Application selection is page-local state and is
-  not written to preferences.
+  not written to preferences. The application rail shows each application's
+  authoritative enabled count, not a generic “提示词库” placeholder.
+- Search filters the library list only. It must not replace the selected
+  prompt with `filtered[0]`. A selected prompt stays in the editor even
+  when the current query hides that row.
 - Each application has an independent prompt collection and live-file query.
   Enabling one prompt uses the backend's single-enabled invariant; the result
   shown in the UI comes from the authoritative reread.

@@ -157,6 +157,14 @@ describe("PromptsPage native business management", () => {
       "true",
     );
     expect(
+      await within(screen.getByTestId("prompt-app-claude")).findByText(
+        "1 条已启用",
+      ),
+    ).toBeVisible();
+    expect(
+      within(screen.getByTestId("prompt-app-codex")).getByText("0 条已启用"),
+    ).toBeVisible();
+    expect(
       PROMPT_APP_IDS.map((id) => screen.getByTestId(`prompt-app-${id}`)),
     ).toHaveLength(7);
 
@@ -196,6 +204,33 @@ describe("PromptsPage native business management", () => {
     expect(screen.getByText("没有匹配的提示词")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "清空搜索" }));
     expect(await screen.findByText("Reply rule")).toBeVisible();
+  });
+
+  it("keeps the selected prompt while search hides it from the list", async () => {
+    const { ports } = statefulPorts({
+      claude: [
+        prompt("review", "Review rule", false, "inspect regressions"),
+        prompt("reply", "Reply rule", false, "answer briefly"),
+      ],
+    });
+    const user = userEvent.setup();
+    renderPrompts(ports);
+    await screen.findByRole("heading", { name: "Review rule" });
+    await user.click(screen.getByRole("button", { name: /Reply rule/ }));
+    expect(
+      await screen.findByRole("heading", { name: "Reply rule" }),
+    ).toBeVisible();
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索提示词" }),
+      "regressions",
+    );
+    const library = screen.getByRole("region", { name: "提示词列表" });
+    expect(within(library).queryByText("Reply rule")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Reply rule" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue(
+      "answer briefly",
+    );
   });
 
   it("creates and edits inline with legacy ids and timestamps", async () => {

@@ -431,9 +431,44 @@ export function SkillsPage() {
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>Skills</h1>
-          <p>安装、更新并分配 Skills 到所选应用。</p>
+          <p>
+            {tab === "discovery"
+              ? "从仓库或 skills.sh 浏览可安装的 Skills。"
+              : "安装、更新并分配 Skills 到所选应用。"}
+          </p>
         </div>
         <div className="fy-feature-actions">
+          {tab === "discovery" && (
+            <>
+              <SelectionLensTrack
+                id="skills-install-target"
+                className="fy-feature-tabs fy-feature-target-tabs"
+                role="tablist"
+                aria-label="安装目标"
+              >
+                {SKILL_TARGETS.map((app) => (
+                  <button
+                    key={app.id}
+                    type="button"
+                    className="fy-feature-tab"
+                    role="tab"
+                    aria-selected={app.id === installTarget}
+                    onClick={() => setInstallTarget(app.id)}
+                  >
+                    <SelectionLens active={app.id === installTarget} />
+                    <img
+                      className="fy-feature-assignment-icon"
+                      src={getSkillTargetIcon(app.id)}
+                      alt=""
+                      aria-hidden="true"
+                    />
+                    <span>{app.label}</span>
+                  </button>
+                ))}
+              </SelectionLensTrack>
+              <Button onClick={() => setDialog("repos")}>管理仓库</Button>
+            </>
+          )}
           {tab === "installed" && (
             <>
               <Button
@@ -668,7 +703,6 @@ export function SkillsPage() {
       ) : (
         <Discovery
           installTarget={installTarget}
-          setInstallTarget={setInstallTarget}
           busy={busy}
           setDialog={setDialog}
           onInstall={(skill) =>
@@ -782,7 +816,7 @@ function DiscoveryCard({
         <h3>{skill.name}</h3>
         {isInstalled && <Badge tone="accent">已安装</Badge>}
       </header>
-      {body ? <p>{body}</p> : null}
+      {body ? <p className="fy-feature-card-body">{body}</p> : null}
       {meta ? <p className="fy-feature-card-note">{meta}</p> : null}
       <footer>
         <Button
@@ -802,13 +836,11 @@ function DiscoveryCard({
 
 function Discovery({
   installTarget,
-  setInstallTarget,
   busy,
   setDialog,
   onInstall,
 }: {
   installTarget: SkillTargetId;
-  setInstallTarget: (app: SkillTargetId) => void;
   busy: boolean;
   setDialog: (name: DialogName) => void;
   onInstall: (skill: DiscoverableSkill) => Promise<void>;
@@ -868,8 +900,8 @@ function Discovery({
   const groupedSkills = groupSkillsByRepo(skills);
   const resultSummary =
     source === "repos"
-      ? `${skills.length} 个 Skill`
-      : `skills.sh · ${skills.length} / ${skillsSh.data?.totalCount ?? skills.length}`;
+      ? `${skills.length} 个 Skill · 将安装到 ${installLabel}`
+      : `skills.sh · ${skills.length} / ${skillsSh.data?.totalCount ?? skills.length} · 将安装到 ${installLabel}`;
   return (
     <section className="fy-feature-workspace" ref={resultsTop}>
       {source === "repos" ? (
@@ -881,7 +913,6 @@ function Discovery({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <Button onClick={() => setDialog("repos")}>管理仓库</Button>
         </div>
       ) : (
         <form
@@ -896,6 +927,7 @@ function Discovery({
           }}
         >
           <Input
+            type="search"
             aria-label="搜索 skills.sh"
             placeholder="至少输入 2 个字符"
             value={skillsShInput}
@@ -903,9 +935,6 @@ function Discovery({
           />
           <Button type="submit" disabled={skillsShInput.trim().length < 2}>
             搜索
-          </Button>
-          <Button type="button" onClick={() => setDialog("repos")}>
-            管理仓库
           </Button>
         </form>
       )}
@@ -965,34 +994,6 @@ function Discovery({
             ))}
           </SelectionLensTrack>
         )}
-      </div>
-      <div className="fy-feature-toolbar">
-        <SelectionLensTrack
-          id="skills-install-target"
-          className="fy-feature-tabs fy-feature-target-tabs"
-          role="tablist"
-          aria-label="安装目标"
-        >
-          {SKILL_TARGETS.map((app) => (
-            <button
-              key={app.id}
-              type="button"
-              className="fy-feature-tab"
-              role="tab"
-              aria-selected={app.id === installTarget}
-              onClick={() => setInstallTarget(app.id)}
-            >
-              <SelectionLens active={app.id === installTarget} />
-              <img
-                className="fy-feature-assignment-icon"
-                src={getSkillTargetIcon(app.id)}
-                alt=""
-                aria-hidden="true"
-              />
-              <span>{app.label}</span>
-            </button>
-          ))}
-        </SelectionLensTrack>
       </div>
       {source === "repos" && repoKeys.length > 1 && (
         <SelectionLensTrack

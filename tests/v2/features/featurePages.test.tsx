@@ -878,7 +878,7 @@ describe("V2 Skills management", () => {
       within(card as HTMLElement).getByText("Review changes"),
     ).toBeVisible();
     expect(within(card as HTMLElement).getByText("acme/skills")).toBeVisible();
-    expect(screen.getByText("1 个 Skill")).toBeVisible();
+    expect(screen.getByText("1 个 Skill · 将安装到 Claude")).toBeVisible();
     await user.click(
       within(card as HTMLElement).getByRole("button", { name: "说明" }),
     );
@@ -919,7 +919,7 @@ describe("V2 Skills management", () => {
     await user.click(screen.getByRole("tab", { name: "发现" }));
     await user.click(screen.getByRole("tab", { name: "skills.sh" }));
     await user.type(
-      screen.getByRole("textbox", { name: "搜索 skills.sh" }),
+      screen.getByRole("searchbox", { name: "搜索 skills.sh" }),
       "find",
     );
     await user.click(screen.getByRole("button", { name: "搜索" }));
@@ -938,7 +938,9 @@ describe("V2 Skills management", () => {
           (element.textContent ?? "").includes("次安装"),
       ),
     ).toBeVisible();
-    expect(screen.getByText("skills.sh · 1 / 48")).toBeVisible();
+    expect(
+      screen.getByText("skills.sh · 1 / 48 · 将安装到 Claude"),
+    ).toBeVisible();
     await user.click(
       within(article as HTMLElement).getByRole("button", { name: "仓库" }),
     );

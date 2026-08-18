@@ -4,6 +4,10 @@
   max-width: 100%;
 }
 
+.fy-skills-page .fy-feature-header .fy-feature-tabs {
+  margin-bottom: 0;
+}
+
 .fy-skills-page .fy-feature-toolbar {
   align-items: center;
 }
