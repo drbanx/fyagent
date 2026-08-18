@@ -838,6 +838,49 @@ describe("V2 Skills management", () => {
     expect(getInstalled).toHaveBeenCalledTimes(2);
   });
 
+  it("renders Skill discovery as a marketplace card grid without select switchers", async () => {
+    const user = userEvent.setup();
+    const discoverable = {
+      ...discoverableSkill(),
+      readmeUrl:
+        "https://github.com/acme/skills/blob/main/review-skill/SKILL.md",
+    };
+    const ports = createBrowserFeaturePorts();
+    const openExternal = vi.fn(async () => undefined);
+    ports.settings.openExternal = openExternal;
+    ports.skills.getRepos = async () => [
+      { owner: "acme", name: "skills", branch: "main", enabled: true },
+    ];
+    ports.skills.discover = async () => [discoverable];
+
+    renderFeature(<SkillsPage />, ports);
+    await screen.findByText("还没有安装 Skill");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+
+    expect(
+      screen.queryByRole("combobox", { name: "安装目标" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "安装目标" })).toBeVisible();
+    expect(
+      screen.getByRole("tab", { name: "Claude", selected: true }),
+    ).toBeVisible();
+    const card = screen
+      .getByRole("heading", { name: "Review Skill" })
+      .closest("article");
+    expect(card).not.toBeNull();
+    expect(
+      within(card as HTMLElement).getByText("Review changes"),
+    ).toBeVisible();
+    expect(within(card as HTMLElement).getByText("acme/skills")).toBeVisible();
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "说明" }),
+    );
+    expect(openExternal).toHaveBeenCalledWith(discoverable.readmeUrl);
+    expect(
+      await screen.findByRole("button", { name: "安装到 Claude" }),
+    ).toBeVisible();
+  });
+
   it("blocks discovery installation when installed authority is unavailable", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();

@@ -54,6 +54,8 @@ import {
 } from "../../shared/ui/SelectionLens";
 import { SplitPanes } from "../../shared/ui/split";
 
+import "./page.css";
+
 type SkillsTab = "installed" | "discovery";
 type DialogName =
   | "more"
@@ -699,6 +701,72 @@ export function SkillsPage() {
   );
 }
 
+function skillRepoKey(skill: { repoOwner: string; repoName: string }): string {
+  return `${skill.repoOwner}/${skill.repoName}`;
+}
+
+function groupSkillsByRepo<T extends { repoOwner: string; repoName: string }>(
+  skills: readonly T[],
+): Array<[string, T[]]> {
+  const groups = new Map<string, T[]>();
+  for (const skill of skills) {
+    const key = skillRepoKey(skill);
+    const current = groups.get(key) ?? [];
+    current.push(skill);
+    groups.set(key, current);
+  }
+  return [...groups.entries()];
+}
+
+function DiscoveryCard({
+  busy,
+  installLabel,
+  isInstalled,
+  skill,
+  onInstall,
+}: {
+  busy: boolean;
+  installLabel: string;
+  isInstalled: boolean;
+  skill: DiscoverableSkill & { installs?: number };
+  onInstall: (skill: DiscoverableSkill) => Promise<void>;
+}) {
+  const repo = skillRepoKey(skill);
+  const repoUrl = githubRepoUrl(skill.repoOwner, skill.repoName);
+  const description = skill.description.trim();
+  const directoryNote =
+    skill.directory && skill.directory !== skill.name ? skill.directory : "";
+
+  return (
+    <article className="fy-feature-card">
+      <header className="fy-feature-card-meta">
+        <h3>{skill.name}</h3>
+        {isInstalled && <Badge tone="accent">已安装</Badge>}
+        <Badge>{repo}</Badge>
+        {typeof skill.installs === "number" && (
+          <Badge>{skill.installs.toLocaleString()} 次安装</Badge>
+        )}
+      </header>
+      {description ? <p>{description}</p> : null}
+      {!description && directoryNote ? <p>{directoryNote}</p> : null}
+      <footer>
+        <Button
+          className="fy-control-button-primary"
+          disabled={busy || isInstalled}
+          onClick={() => void onInstall(skill)}
+        >
+          {isInstalled ? "已安装" : `安装到 ${installLabel}`}
+        </Button>
+        {skill.readmeUrl ? (
+          <ExternalLinkButton url={skill.readmeUrl}>说明</ExternalLinkButton>
+        ) : repoUrl ? (
+          <ExternalLinkButton url={repoUrl}>仓库</ExternalLinkButton>
+        ) : null}
+      </footer>
+    </article>
+  );
+}
+
 function Discovery({
   installTarget,
   setInstallTarget,
@@ -759,23 +827,35 @@ function Discovery({
           ...skill,
           description: "",
         }));
+  const repoKeys = Array.from(
+    new Set((discovery.data ?? []).map((skill) => skillRepoKey(skill))),
+  );
+  const installLabel =
+    SKILL_TARGETS.find((app) => app.id === installTarget)?.label ?? "Claude";
+  const groupedSkills = groupSkillsByRepo(skills);
   return (
-    <section ref={resultsTop}>
+    <section className="fy-feature-workspace" ref={resultsTop}>
       <div className="fy-feature-toolbar">
-        <select
-          className="fy-control-select"
+        <SelectionLensTrack
+          id="skills-install-target"
+          className="fy-feature-tabs"
+          role="tablist"
           aria-label="安装目标"
-          value={installTarget}
-          onChange={(event) =>
-            setInstallTarget(event.target.value as SkillTargetId)
-          }
         >
           {SKILL_TARGETS.map((app) => (
-            <option key={app.id} value={app.id}>
-              安装到 {app.label}
-            </option>
+            <button
+              key={app.id}
+              type="button"
+              className="fy-feature-tab"
+              role="tab"
+              aria-selected={app.id === installTarget}
+              onClick={() => setInstallTarget(app.id)}
+            >
+              <SelectionLens active={app.id === installTarget} />
+              <span>{app.label}</span>
+            </button>
           ))}
-        </select>
+        </SelectionLensTrack>
         <Button onClick={() => setDialog("repos")}>管理仓库</Button>
       </div>
       <SelectionLensTrack
@@ -814,33 +894,62 @@ function Discovery({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <select
-            className="fy-control-select"
+          <SelectionLensTrack
+            id="skills-repo-filter"
+            className="fy-feature-tabs"
+            role="tablist"
             aria-label="仓库筛选"
-            value={repoFilter}
-            onChange={(event) => setRepoFilter(event.target.value)}
           >
-            <option value="all">全部仓库</option>
-            {Array.from(
-              new Set(
-                (discovery.data ?? []).map(
-                  (skill) => `${skill.repoOwner}/${skill.repoName}`,
-                ),
-              ),
-            ).map((repo) => (
-              <option key={repo}>{repo}</option>
+            <button
+              type="button"
+              className="fy-feature-tab"
+              role="tab"
+              aria-selected={repoFilter === "all"}
+              onClick={() => setRepoFilter("all")}
+            >
+              <SelectionLens active={repoFilter === "all"} />
+              <span>全部仓库</span>
+            </button>
+            {repoKeys.map((repo) => (
+              <button
+                key={repo}
+                type="button"
+                className="fy-feature-tab"
+                role="tab"
+                aria-selected={repoFilter === repo}
+                onClick={() => setRepoFilter(repo)}
+              >
+                <SelectionLens active={repoFilter === repo} />
+                <span>{repo}</span>
+              </button>
             ))}
-          </select>
-          <select
-            className="fy-control-select"
+          </SelectionLensTrack>
+          <SelectionLensTrack
+            id="skills-install-status"
+            className="fy-feature-tabs"
+            role="tablist"
             aria-label="安装状态"
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
           >
-            <option value="all">全部状态</option>
-            <option value="installed">已安装</option>
-            <option value="uninstalled">未安装</option>
-          </select>
+            {(
+              [
+                ["all", "全部状态"],
+                ["uninstalled", "未安装"],
+                ["installed", "已安装"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className="fy-feature-tab"
+                role="tab"
+                aria-selected={status === value}
+                onClick={() => setStatus(value)}
+              >
+                <SelectionLens active={status === value} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </SelectionLensTrack>
         </div>
       ) : (
         <form
@@ -963,33 +1072,28 @@ function Discovery({
           }
         />
       ) : (
-        <div className="fy-feature-grid">
-          {skills.map((skill) => {
-            const isInstalled = isDiscoverableInstalled(skill, installedItems);
-            return (
-              <article className="fy-feature-card" key={skill.key}>
-                <h3>{skill.name}</h3>
-                {skill.description && <p>{skill.description}</p>}
-                <Badge>
-                  {skill.repoOwner}/{skill.repoName}
-                </Badge>
-                {"installs" in skill && typeof skill.installs === "number" && (
-                  <p>安装量：{skill.installs.toLocaleString()}</p>
-                )}
-                <footer>
-                  <Button
-                    className="fy-control-button-primary"
-                    disabled={busy || isInstalled}
-                    onClick={() => void onInstall(skill)}
-                  >
-                    {isInstalled
-                      ? "已安装"
-                      : `安装到 ${SKILL_TARGETS.find((app) => app.id === installTarget)?.label}`}
-                  </Button>
-                </footer>
-              </article>
-            );
-          })}
+        <div className="fy-feature-detail-scroll" aria-label="可发现 Skills">
+          {groupedSkills.map(([repo, items]) => (
+            <section key={repo} aria-label={repo}>
+              {groupedSkills.length > 1 ? (
+                <h3>
+                  {repo} · {items.length}
+                </h3>
+              ) : null}
+              <div className="fy-feature-grid">
+                {items.map((skill) => (
+                  <DiscoveryCard
+                    key={skill.key}
+                    busy={busy}
+                    installLabel={installLabel}
+                    isInstalled={isDiscoverableInstalled(skill, installedItems)}
+                    skill={skill}
+                    onInstall={onInstall}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       )}
       {source === "skillssh" && totalPages > 1 && (

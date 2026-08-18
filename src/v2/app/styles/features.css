@@ -339,6 +339,15 @@
   border-radius: 14px;
   background: var(--fy-surface-soft);
 }
+.fy-feature-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.fy-feature-card-meta h3 {
+  margin-right: 4px;
+}
 .fy-feature-card h3,
 .fy-feature-card p {
   margin: 0;

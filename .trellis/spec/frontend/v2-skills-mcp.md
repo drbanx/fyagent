@@ -183,8 +183,15 @@ function ExternalLinkButton(props: {
   (`overflow: auto`), matching catalog rails. Do not leave `height: 100%`
   on a feature panel without overflow, or assignment rows and cards paint
   past the panel chrome. Assignment rows wrap (`flex-wrap: wrap`,
-  `min-width: 0`) so “全开 / 全关” stay inside the pane. The Discover tab stays a card grid and
-  must not use this master-detail chassis. Skill uninstall and MCP edit/delete stay
+  `min-width: 0`) so “全开 / 全关” stay inside the pane. The Discover tab
+  stays a card grid and must not use this master-detail chassis. Skill
+  Discover cards show the
+  name, repository, install state, optional install count, and either a
+  description or the directory note. Install target, repository, and
+  install-status filters use `SelectionLens` tracks, not a `<select>`.
+  Cards open the README when present, otherwise the GitHub repository,
+  through `ExternalLinkButton`. Do not group cards by wrapping a second
+  card around `DiscoveryCard`. Skill uninstall and MCP edit/delete stay
   in the detail header above source, assignment, and install cards so they
   remain reachable without scrolling the middle pane. MCP details must show
   install provenance and current assignment chips, matching Skills.
@@ -245,26 +252,26 @@ function ExternalLinkButton(props: {
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                        | Required result                                                       |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Browser performs a feature read                                  | Return an empty collection or settings snapshot without a side effect |
-| Browser performs a feature write                                 | Reject with the native-only error; never show a success toast         |
-| Initial authority read fails                                     | Show an error/retry state, not an empty-state success                 |
-| Refresh fails after old data exists                              | Keep old data and show an inline error                                |
-| Batch write partially fails                                      | Report counts, keep no stale optimistic claim, and reread authority   |
-| MCP search term matches only an env/header value                 | Return no match                                                       |
-| MCP search term matches only a URL query secret or sensitive arg | Return no match                                                       |
-| env/header line has no delimiter or an empty key                 | Show a line error and block save                                      |
-| Advanced JSON is invalid, an array, or an `mcpServers` container | Stay in advanced mode and block save                                  |
-| New MCP ID is blank or duplicates an authoritative ID            | Block save before invoking Tauri                                      |
-| A backend error may contain MCP configuration                    | Show a fixed secret-safe message                                      |
-| Imported shared ID has a different executable specification      | Reject that application's import without partial persistence          |
-| OpenCode/Hermes source entry has `enabled: false`                | Keep it disabled; do not create or activate a managed assignment      |
-| MCP live cleanup fails while disabling or deleting               | Retain the failed assignment and retryable authoritative record       |
-| A Skill response omits either new external target                | Default that target to false without changing any legacy assignment   |
-| QoderWork or TRAE Work is submitted to direct MCP assignment     | Type/runtime adapter rejects before invoke                            |
-| A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image |
-| An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name |
+| Condition                                                        | Required result                                                         |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Browser performs a feature read                                  | Return an empty collection or settings snapshot without a side effect   |
+| Browser performs a feature write                                 | Reject with the native-only error; never show a success toast           |
+| Initial authority read fails                                     | Show an error/retry state, not an empty-state success                   |
+| Refresh fails after old data exists                              | Keep old data and show an inline error                                  |
+| Batch write partially fails                                      | Report counts, keep no stale optimistic claim, and reread authority     |
+| MCP search term matches only an env/header value                 | Return no match                                                         |
+| MCP search term matches only a URL query secret or sensitive arg | Return no match                                                         |
+| env/header line has no delimiter or an empty key                 | Show a line error and block save                                        |
+| Advanced JSON is invalid, an array, or an `mcpServers` container | Stay in advanced mode and block save                                    |
+| New MCP ID is blank or duplicates an authoritative ID            | Block save before invoking Tauri                                        |
+| A backend error may contain MCP configuration                    | Show a fixed secret-safe message                                        |
+| Imported shared ID has a different executable specification      | Reject that application's import without partial persistence            |
+| OpenCode/Hermes source entry has `enabled: false`                | Keep it disabled; do not create or activate a managed assignment        |
+| MCP live cleanup fails while disabling or deleting               | Retain the failed assignment and retryable authoritative record         |
+| A Skill response omits either new external target                | Default that target to false without changing any legacy assignment     |
+| QoderWork or TRAE Work is submitted to direct MCP assignment     | Type/runtime adapter rejects before invoke                              |
+| A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image   |
+| An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name   |
 | Viewport changes between two- and three-column layouts           | Render exactly one panel: eight unique Skill or six unique MCP switches |
 | Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`        |
 | A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                  |

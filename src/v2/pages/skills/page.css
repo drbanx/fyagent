@@ -1,0 +1,26 @@
+.fy-skills-page .fy-feature-tabs {
+  flex-wrap: wrap;
+  width: auto;
+  max-width: 100%;
+}
+
+.fy-skills-page .fy-feature-toolbar .fy-feature-tabs {
+  flex: 1 1 auto;
+}
+
+.fy-skills-page .fy-feature-workspace > .fy-feature-detail-scroll {
+  display: grid;
+  gap: 18px;
+  min-height: 0;
+}
+
+.fy-skills-page
+  .fy-feature-workspace
+  > .fy-feature-detail-scroll
+  > section
+  > h3 {
+  margin: 0 0 10px;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+}
