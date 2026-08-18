@@ -48,10 +48,9 @@ import {
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
 import { CopyablePath } from "../../shared/ui/CopyablePath";
 import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
-import {
-  SelectionLens,
-  SelectionLensTrack,
-} from "../../shared/ui/SelectionLens";
+import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
+import { FeatureSearch } from "../../shared/ui/FeatureSearch";
+import { FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
 
 import "./page.css";
@@ -482,33 +481,16 @@ export function SkillsPage() {
           )}
         </div>
       </header>
-      <SelectionLensTrack
+      <FeatureTabs
         id="skills-view-tabs"
-        className="fy-feature-tabs"
-        role="tablist"
-        aria-label="Skills 视图"
-      >
-        <button
-          type="button"
-          className="fy-feature-tab"
-          role="tab"
-          aria-selected={tab === "installed"}
-          onClick={() => setTab("installed")}
-        >
-          <SelectionLens active={tab === "installed"} />
-          <span>已安装</span>
-        </button>
-        <button
-          type="button"
-          className="fy-feature-tab"
-          role="tab"
-          aria-selected={tab === "discovery"}
-          onClick={() => setTab("discovery")}
-        >
-          <SelectionLens active={tab === "discovery"} />
-          <span>发现</span>
-        </button>
-      </SelectionLensTrack>
+        label="Skills 视图"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { id: "installed", label: "已安装" },
+          { id: "discovery", label: "发现" },
+        ]}
+      />
       {progress && (
         <>
           <div
@@ -567,12 +549,11 @@ export function SkillsPage() {
           ) : (
             <div className="fy-feature-workspace">
               <div className="fy-feature-toolbar">
-                <Input
-                  type="search"
-                  aria-label="搜索已安装 Skills"
+                <FeatureSearch
+                  ariaLabel="搜索已安装 Skills"
                   placeholder="搜索名称、说明或仓库"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onValueChange={setSearch}
                 />
               </div>
               {filtered.length === 0 ? (
@@ -587,24 +568,18 @@ export function SkillsPage() {
                     aria-label="已安装 Skills 列表"
                   >
                     <h2>已安装 · {installed.length}</h2>
-                    <SelectionLensTrack
-                      id="skills-installed-list"
-                      className="fy-feature-list"
-                    >
+                    <FeatureList id="skills-installed-list">
                       {filtered.map((skill) => (
-                        <button
+                        <FeatureListItem
                           key={skill.id}
-                          type="button"
-                          className="fy-feature-list-item"
-                          aria-current={skill.id === selected?.id}
-                          onClick={() => setSelectedId(skill.id)}
+                          selected={skill.id === selected?.id}
+                          title={skill.name}
+                          onSelect={() => setSelectedId(skill.id)}
                         >
-                          <SelectionLens active={skill.id === selected?.id} />
-                          <strong>{skill.name}</strong>
                           <span>{skill.description || "暂无说明"}</span>
-                        </button>
+                        </FeatureListItem>
                       ))}
-                    </SelectionLensTrack>
+                    </FeatureList>
                   </section>
                   {selected && (
                     <Detail
@@ -875,12 +850,11 @@ function Discovery({
     <section className="fy-feature-workspace" ref={resultsTop}>
       {source === "repos" ? (
         <div className="fy-feature-toolbar">
-          <Input
-            type="search"
-            aria-label="搜索仓库 Skills"
+          <FeatureSearch
+            ariaLabel="搜索仓库 Skills"
             placeholder="搜索 Skill 或仓库"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onValueChange={setSearch}
           />
           <Button onClick={() => setDialog("repos")}>管理仓库</Button>
         </div>
@@ -896,11 +870,11 @@ function Discovery({
             }
           }}
         >
-          <Input
-            aria-label="搜索 skills.sh"
+          <FeatureSearch
+            ariaLabel="搜索 skills.sh"
             placeholder="至少输入 2 个字符"
             value={skillsShInput}
-            onChange={(event) => setSkillsShInput(event.target.value)}
+            onValueChange={setSkillsShInput}
           />
           <Button type="submit" disabled={skillsShInput.trim().length < 2}>
             搜索
@@ -911,121 +885,64 @@ function Discovery({
         </form>
       )}
       <div className="fy-feature-toolbar">
-        <SelectionLensTrack
+        <FeatureTabs
           id="skills-discovery-source-tabs"
-          className="fy-feature-tabs"
-          role="tablist"
-          aria-label="发现来源"
-        >
-          <button
-            type="button"
-            className="fy-feature-tab"
-            role="tab"
-            aria-selected={source === "repos"}
-            onClick={() => setSource("repos")}
-          >
-            <SelectionLens active={source === "repos"} />
-            <span>仓库</span>
-          </button>
-          <button
-            type="button"
-            className="fy-feature-tab"
-            role="tab"
-            aria-selected={source === "skillssh"}
-            onClick={() => setSource("skillssh")}
-          >
-            <SelectionLens active={source === "skillssh"} />
-            <span>skills.sh</span>
-          </button>
-        </SelectionLensTrack>
+          label="发现来源"
+          value={source}
+          onChange={setSource}
+          options={[
+            { id: "repos", label: "仓库" },
+            { id: "skillssh", label: "skills.sh" },
+          ]}
+        />
         {source === "repos" && (
-          <SelectionLensTrack
+          <FeatureTabs
             id="skills-install-status"
-            className="fy-feature-tabs"
-            role="tablist"
-            aria-label="安装状态"
-          >
-            {(
-              [
-                ["all", "全部状态"],
-                ["uninstalled", "未安装"],
-                ["installed", "已安装"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className="fy-feature-tab"
-                role="tab"
-                aria-selected={status === value}
-                onClick={() => setStatus(value)}
-              >
-                <SelectionLens active={status === value} />
-                <span>{label}</span>
-              </button>
-            ))}
-          </SelectionLensTrack>
+            label="安装状态"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { id: "all", label: "全部状态" },
+              { id: "uninstalled", label: "未安装" },
+              { id: "installed", label: "已安装" },
+            ]}
+          />
         )}
       </div>
       <div className="fy-feature-toolbar">
-        <SelectionLensTrack
+        <FeatureTabs
           id="skills-install-target"
-          className="fy-feature-tabs fy-feature-target-tabs"
-          role="tablist"
-          aria-label="安装目标"
-        >
-          {SKILL_TARGETS.map((app) => (
-            <button
-              key={app.id}
-              type="button"
-              className="fy-feature-tab"
-              role="tab"
-              aria-selected={app.id === installTarget}
-              onClick={() => setInstallTarget(app.id)}
-            >
-              <SelectionLens active={app.id === installTarget} />
-              <img
-                className="fy-feature-assignment-icon"
-                src={getSkillTargetIcon(app.id)}
-                alt=""
-                aria-hidden="true"
-              />
-              <span>{app.label}</span>
-            </button>
-          ))}
-        </SelectionLensTrack>
+          className="fy-feature-target-tabs"
+          label="安装目标"
+          value={installTarget}
+          onChange={setInstallTarget}
+          options={SKILL_TARGETS.map((app) => ({
+            id: app.id,
+            label: (
+              <>
+                <img
+                  className="fy-feature-assignment-icon"
+                  src={getSkillTargetIcon(app.id)}
+                  alt=""
+                  aria-hidden="true"
+                />
+                <span>{app.label}</span>
+              </>
+            ),
+          }))}
+        />
       </div>
       {source === "repos" && repoKeys.length > 1 && (
-        <SelectionLensTrack
+        <FeatureTabs
           id="skills-repo-filter"
-          className="fy-feature-tabs"
-          role="tablist"
-          aria-label="仓库筛选"
-        >
-          <button
-            type="button"
-            className="fy-feature-tab"
-            role="tab"
-            aria-selected={repoFilter === "all"}
-            onClick={() => setRepoFilter("all")}
-          >
-            <SelectionLens active={repoFilter === "all"} />
-            <span>全部仓库</span>
-          </button>
-          {repoKeys.map((repo) => (
-            <button
-              key={repo}
-              type="button"
-              className="fy-feature-tab"
-              role="tab"
-              aria-selected={repoFilter === repo}
-              onClick={() => setRepoFilter(repo)}
-            >
-              <SelectionLens active={repoFilter === repo} />
-              <span>{repo}</span>
-            </button>
-          ))}
-        </SelectionLensTrack>
+          label="仓库筛选"
+          value={repoFilter}
+          onChange={setRepoFilter}
+          options={[
+            { id: "all", label: "全部仓库" },
+            ...repoKeys.map((repo) => ({ id: repo, label: repo })),
+          ]}
+        />
       )}
       {installed.error && installed.data !== undefined && (
         <InlineNotice tone="error">

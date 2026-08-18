@@ -919,7 +919,7 @@ describe("V2 Skills management", () => {
     await user.click(screen.getByRole("tab", { name: "发现" }));
     await user.click(screen.getByRole("tab", { name: "skills.sh" }));
     await user.type(
-      screen.getByRole("textbox", { name: "搜索 skills.sh" }),
+      screen.getByRole("searchbox", { name: "搜索 skills.sh" }),
       "find",
     );
     await user.click(screen.getByRole("button", { name: "搜索" }));

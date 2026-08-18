@@ -69,7 +69,8 @@
 .fy-control-secret .fy-control-input {
   padding-right: 46px;
 }
-.fy-control-secret-toggle {
+.fy-control-secret-toggle,
+.fy-feature-search-clear {
   position: absolute;
   top: 50%;
   right: 5px;
@@ -95,11 +96,14 @@
   transform: translateY(-50%);
   cursor: pointer;
 }
-.fy-control-secret-toggle svg {
+.fy-control-secret-toggle svg,
+.fy-feature-search-clear svg {
   display: block;
 }
 .fy-control-secret-toggle:hover:not(:disabled),
-.fy-control-secret-toggle:focus-visible {
+.fy-control-secret-toggle:focus-visible,
+.fy-feature-search-clear:hover:not(:disabled),
+.fy-feature-search-clear:focus-visible {
   border-color: var(--fy-selected-border);
   color: var(--fy-text);
   background-color: var(--fy-selected);
@@ -109,9 +113,26 @@
   color: var(--fy-text);
   background-color: var(--fy-selected);
 }
-.fy-control-secret-toggle:disabled {
+.fy-control-secret-toggle:disabled,
+.fy-feature-search-clear:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+.fy-feature-search {
+  position: relative;
+  min-width: 0;
+}
+.fy-feature-search .fy-control-input {
+  padding-left: 34px;
+  padding-right: 36px;
+}
+.fy-feature-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  color: var(--fy-text-secondary);
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 .fy-control-textarea {
   resize: vertical;

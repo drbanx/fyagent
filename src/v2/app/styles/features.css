@@ -50,6 +50,13 @@
 .fy-feature-toolbar > .fy-control-button {
   flex: 0 0 auto;
 }
+.fy-feature-toolbar > .fy-feature-search {
+  flex: 1 1 240px;
+}
+.fy-feature-toolbar > .fy-feature-tabs {
+  flex: 0 1 auto;
+  margin-bottom: 0;
+}
 .fy-feature-tabs {
   display: flex;
   gap: 4px;

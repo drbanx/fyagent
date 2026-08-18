@@ -19,12 +19,12 @@ import { DEFAULT_NEW_APPS } from "./constants";
 import { InstallDialog } from "./InstallDialog";
 import { currentMcpLaunchPlatform } from "../../shared/features/mcpLaunch";
 import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
+import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import {
   Badge,
   Button,
   ConfirmDialog,
   EmptyState,
-  Input,
 } from "../../shared/ui/primitives";
 import type { McpServer, McpTargetId } from "../../shared/features/types";
 
@@ -124,12 +124,11 @@ export function McpDiscovery({
   return (
     <div className="fy-mcp-discovery">
       <div className="fy-feature-toolbar">
-        <Input
-          type="search"
-          aria-label="搜索精选 MCP"
+        <FeatureSearch
+          ariaLabel="搜索精选 MCP"
           placeholder="搜索名称、描述、标签或厂商"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onValueChange={setSearch}
         />
         <select
           className="fy-control-select"

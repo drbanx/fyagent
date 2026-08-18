@@ -317,6 +317,64 @@ describe("FyAgent V2 architecture boundary", () => {
     expect(source).not.toMatch(/top\.set\(inset\)/);
   });
 
+  it("reuses shared feature chrome instead of page-local copies", () => {
+    const pages: Array<{
+      relative: string;
+      owners: string[];
+      forbidden: string[];
+    }> = [
+      {
+        relative: "pages/skills/Page.tsx",
+        owners: ["FeatureTabs", "FeatureSearch", "FeatureList"],
+        forbidden: ['className="fy-feature-tab"'],
+      },
+      {
+        relative: "pages/mcp/Page.tsx",
+        owners: ["FeatureTabs", "FeatureSearch", "FeatureList"],
+        forbidden: ['className="fy-feature-tab"'],
+      },
+      {
+        relative: "pages/mcp/Discovery.tsx",
+        owners: ["FeatureSearch"],
+        forbidden: [],
+      },
+      {
+        relative: "pages/memory/Page.tsx",
+        owners: ["FeatureTabs", "FeatureSearch", "FeatureList"],
+        forbidden: ['className="fy-feature-tab"'],
+      },
+      {
+        relative: "pages/prompts/Page.tsx",
+        owners: ["FeatureSearch", "FeatureList"],
+        forbidden: [],
+      },
+      {
+        relative: "pages/models/modelChips.tsx",
+        owners: ["FeatureSearch"],
+        forbidden: [],
+      },
+    ];
+    const violations = pages.flatMap(({ relative, owners, forbidden }) => {
+      const source = fs.readFileSync(path.join(v2Root, relative), "utf8");
+      const missing = owners.flatMap((owner) =>
+        source.includes(`from "../../shared/ui/${owner}"`)
+          ? []
+          : [`${relative} does not import ${owner}`],
+      );
+      const handRolled = forbidden.flatMap((token) =>
+        source.includes(token)
+          ? [`${relative} still hand-rolls ${token}`]
+          : [],
+      );
+      return [...missing, ...handRolled];
+    });
+
+    expect(
+      violations,
+      `Feature pages must reuse shared chrome:\n${violations.join("\n")}`,
+    ).toEqual([]);
+  });
+
   it("keeps import targets statically auditable", () => {
     const violations = parsedModules.flatMap(
       ({ file, nonLiteralDynamicImports }) =>

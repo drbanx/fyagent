@@ -40,10 +40,9 @@ import {
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
 import { CopyablePath } from "../../shared/ui/CopyablePath";
 import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
-import {
-  SelectionLens,
-  SelectionLensTrack,
-} from "../../shared/ui/SelectionLens";
+import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
+import { FeatureSearch } from "../../shared/ui/FeatureSearch";
+import { FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
 import { findCatalogItem, MCP_PROVENANCE_LABEL } from "./catalog";
 import { DEFAULT_NEW_APPS } from "./constants";
@@ -356,33 +355,16 @@ export function McpPage() {
           </Button>
         </div>
       </header>
-      <SelectionLensTrack
+      <FeatureTabs
         id="mcp-view-tabs"
-        className="fy-feature-tabs"
-        role="tablist"
-        aria-label="MCP 视图"
-      >
-        <button
-          type="button"
-          className="fy-feature-tab"
-          role="tab"
-          aria-selected={tab === "installed"}
-          onClick={() => setTab("installed")}
-        >
-          <SelectionLens active={tab === "installed"} />
-          <span>已安装</span>
-        </button>
-        <button
-          type="button"
-          className="fy-feature-tab"
-          role="tab"
-          aria-selected={tab === "discovery"}
-          onClick={() => setTab("discovery")}
-        >
-          <SelectionLens active={tab === "discovery"} />
-          <span>发现</span>
-        </button>
-      </SelectionLensTrack>
+        label="MCP 视图"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { id: "installed", label: "已安装" },
+          { id: "discovery", label: "发现" },
+        ]}
+      />
       {progress && (
         <>
           <div className="fy-feature-progress">
@@ -455,12 +437,11 @@ export function McpPage() {
       ) : (
         <div className="fy-feature-workspace">
           <div className="fy-feature-toolbar">
-            <Input
-              type="search"
-              aria-label="搜索 MCP"
+            <FeatureSearch
+              ariaLabel="搜索 MCP"
               placeholder="搜索名称、命令、标签或来源"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onValueChange={setSearch}
             />
           </div>
           {filtered.length === 0 ? (
@@ -475,20 +456,14 @@ export function McpPage() {
                 aria-label="MCP 列表"
               >
                 <h2>已安装 · {servers.length}</h2>
-                <SelectionLensTrack
-                  id="mcp-server-list"
-                  className="fy-feature-list"
-                >
+                <FeatureList id="mcp-server-list">
                   {filtered.map((server) => (
-                    <button
+                    <FeatureListItem
                       key={server.id}
-                      type="button"
-                      className="fy-feature-list-item"
-                      aria-current={server.id === selected?.id}
-                      onClick={() => setSelectedId(server.id)}
+                      selected={server.id === selected?.id}
+                      title={server.name}
+                      onSelect={() => setSelectedId(server.id)}
                     >
-                      <SelectionLens active={server.id === selected?.id} />
-                      <strong>{server.name}</strong>
                       <span>
                         {server.description ||
                           server.tags?.join(" · ") ||
@@ -500,9 +475,9 @@ export function McpPage() {
                         }{" "}
                         Agent
                       </span>
-                    </button>
+                    </FeatureListItem>
                   ))}
-                </SelectionLensTrack>
+                </FeatureList>
               </section>
               {selected && (
                 <ServerDetail
@@ -858,33 +833,17 @@ function McpEditor({
             onChange={(event) => setDocs(event.target.value)}
           />
         </label>
-        <SelectionLensTrack
+        <FeatureTabs
           id="mcp-editor-mode-tabs"
-          className="fy-feature-form-span fy-feature-tabs"
-          role="tablist"
-          aria-label="编辑模式"
-        >
-          <button
-            type="button"
-            className="fy-feature-tab"
-            role="tab"
-            aria-selected={mode === "quick"}
-            onClick={() => switchMode("quick")}
-          >
-            <SelectionLens active={mode === "quick"} />
-            <span>快速配置</span>
-          </button>
-          <button
-            type="button"
-            className="fy-feature-tab"
-            role="tab"
-            aria-selected={mode === "advanced"}
-            onClick={() => switchMode("advanced")}
-          >
-            <SelectionLens active={mode === "advanced"} />
-            <span>JSON 编辑</span>
-          </button>
-        </SelectionLensTrack>
+          className="fy-feature-form-span"
+          label="编辑模式"
+          value={mode}
+          onChange={switchMode}
+          options={[
+            { id: "quick", label: "快速配置" },
+            { id: "advanced", label: "JSON 编辑" },
+          ]}
+        />
         {mode === "quick" ? (
           <>
             <label className="fy-control-field">

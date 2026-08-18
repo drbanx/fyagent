@@ -25,15 +25,13 @@ import {
   ConfirmDialog,
   EmptyState,
   InlineNotice,
-  Input,
   Spinner,
   Switch,
 } from "../../shared/ui/primitives";
 import { usePrimaryBlocker } from "../../shared/ui/PrimaryBlocker";
-import {
-  SelectionLens,
-  SelectionLensTrack,
-} from "../../shared/ui/SelectionLens";
+import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
+import { FeatureSearch } from "../../shared/ui/FeatureSearch";
+import { FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { CopyablePath } from "../../shared/ui/CopyablePath";
 import { SplitPanes } from "../../shared/ui/split";
 
@@ -201,33 +199,16 @@ export function MemoryPage() {
           </p>
         </div>
       </header>
-      <SelectionLensTrack
+      <FeatureTabs
         id="memory-type-tabs"
-        className="fy-feature-tabs"
-        role="tablist"
-        aria-label="记忆类型"
-      >
-        <button
-          type="button"
-          className="fy-feature-tab"
-          role="tab"
-          aria-selected={activeTab === "long-term"}
-          onClick={() => switchTab("long-term")}
-        >
-          <SelectionLens active={activeTab === "long-term"} />
-          <span>长期记忆</span>
-        </button>
-        <button
-          type="button"
-          className="fy-feature-tab"
-          role="tab"
-          aria-selected={activeTab === "daily"}
-          onClick={() => switchTab("daily")}
-        >
-          <SelectionLens active={activeTab === "daily"} />
-          <span>每日记忆</span>
-        </button>
-      </SelectionLensTrack>
+        label="记忆类型"
+        value={activeTab}
+        onChange={switchTab}
+        options={[
+          { id: "long-term", label: "长期记忆" },
+          { id: "daily", label: "每日记忆" },
+        ]}
+      />
       <div className="fy-feature-workspace">
         {activeTab === "long-term" ? (
           <LongTermView
@@ -411,31 +392,25 @@ function LongTermView({
       >
         <section className="fy-feature-panel" aria-label="长期记忆资源">
           <h2>长期记忆</h2>
-          <SelectionLensTrack
-            id="memory-document-list"
-            className="fy-feature-list"
-          >
+          <FeatureList id="memory-document-list">
             {(["OpenClaw", "Hermes"] as const).map((source) => (
               <div key={source} className="fy-memory-source-group">
                 <h3>{source}</h3>
                 {MEMORY_DOCUMENTS.filter(
                   (document) => document.source === source,
                 ).map((document) => (
-                  <button
+                  <FeatureListItem
                     key={document.id}
-                    type="button"
-                    className="fy-feature-list-item"
-                    aria-current={document.id === selectedId}
-                    onClick={() => selectDocument(document.id)}
+                    selected={document.id === selectedId}
+                    title={document.title}
+                    onSelect={() => selectDocument(document.id)}
                   >
-                    <SelectionLens active={document.id === selectedId} />
-                    <strong>{document.title}</strong>
                     <span>{document.description}</span>
-                  </button>
+                  </FeatureListItem>
                 ))}
               </div>
             ))}
-          </SelectionLensTrack>
+          </FeatureList>
         </section>
         <LongTermEditor
           key={selectedId}
@@ -766,12 +741,11 @@ function DailyView({
         <InlineNotice tone={notice.tone}>{notice.message}</InlineNotice>
       )}
       <div className="fy-feature-toolbar">
-        <Input
-          type="search"
-          aria-label="搜索每日记忆"
+        <FeatureSearch
+          ariaLabel="搜索每日记忆"
           placeholder="搜索每日记录"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onValueChange={setSearch}
         />
         <Button disabled={directoryBusy} onClick={() => void openDirectory()}>
           打开记忆目录
@@ -830,29 +804,26 @@ function DailyView({
             <h2>
               {debouncedSearch ? "搜索结果" : "每日文件"} · {rows.length}
             </h2>
-            <SelectionLensTrack
+            <FeatureList
               id="memory-daily-list"
-              className="fy-feature-list fy-memory-daily-list"
+              className="fy-memory-daily-list"
             >
               {rows.map((file) => (
-                <button
+                <FeatureListItem
                   key={file.filename}
-                  type="button"
-                  className="fy-feature-list-item"
-                  aria-current={file.filename === resolvedFile}
-                  onClick={() => selectFile(file.filename)}
+                  selected={file.filename === resolvedFile}
+                  title={file.filename}
+                  onSelect={() => selectFile(file.filename)}
                 >
-                  <SelectionLens active={file.filename === resolvedFile} />
-                  <strong>{file.filename}</strong>
                   <span>
                     {"matchCount" in file
                       ? `${file.matchCount} 处匹配 · ${file.snippet}`
                       : file.preview || file.date}
                   </span>
                   <span>{fileMeta(file)}</span>
-                </button>
+                </FeatureListItem>
               ))}
-            </SelectionLensTrack>
+            </FeatureList>
           </section>
           {resolvedFile ? (
             fileQuery.isLoading ? (

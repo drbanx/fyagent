@@ -11,6 +11,12 @@ the tree and is still covered by the non-V2 Vitest suite; the guidelines
 below stay authoritative for that leftover renderer. They are not the
 production shell contract.
 
+Reuse is the default frontend preference for both V2 and leftover work. Search
+shared owners first. If a new component, helper, hook, or CSS recipe will be
+used by another current or later module, put it in the shared layer on the
+first commit. Do not wait for a third copy. The executable contract is
+[Frontend Reuse](./reuse.md).
+
 ## Pre-Development Checklist
 
 Before changing renderer code:
@@ -21,8 +27,12 @@ Before changing renderer code:
    the guidelines below remain authoritative outside V2.
 2. Read the nearest relevant guideline and inspect the existing feature,
    primitive, and executable tests.
-3. Locate the existing Tauri API facade, query hook, type, schema, and test
-   family before creating another one.
+3. Locate the existing Tauri API facade, query hook, type, schema, shared UI,
+   and test family before creating another one. Read the
+   [Frontend Reuse Contract](./reuse.md). Reuse is the default: prefer
+   existing shared chrome; if a new component will be used by another module,
+   add it under `shared/` on the first commit. Do not wait until a third
+   page copies it.
 4. Classify state as local UI state, Context state, or backend/resource state.
 5. For leftover renderer text, locate the matching keys in all four registered
    locale files before adding a literal string. V2 pages use hardcoded Chinese
@@ -51,6 +61,7 @@ Before changing renderer code:
 
 | Guide                                                                      | Use it for                                                                                               |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [Frontend Reuse Contract](./reuse.md)                                  | Default frontend preference: reuse existing owners; place chrome that other modules will use in `shared/` on first commit; do not wait for a third copy; port pre-V2 behavior without importing leftover UI. |
 | [V2 Shell Contract](./v2-shell.md)                                         | Isolated V2 routes, styles, layer/platform boundaries, Overlay drag strip, lifecycle, and V2-only gates. |
 | [Main Window Layout](../backend/main-window-layout.md)                     | Host maximize/min-size invariants; Windows overflow is not a renderer chrome bug.                        |
 | [V2 Agent and Models Contract](./v2-agent-models.md)                       | Catalog v3 six-entry order (TRAE Work CN), shared geometry, Qoder unsupported third-party models, TRAE/OpenCode native persist, Codex installer, WorkBuddy, Provider quick setup, vendor icons, and secrets. |
@@ -78,7 +89,8 @@ commit does not replace post-merge shell/browser validation.
 
 ## Quality Check
 
-For frontend code changes, run the checks applicable to the affected behavior:
+For frontend code changes, run the checks applicable to the affected behavior.
+Confirm new UI follows [Frontend Reuse](./reuse.md) before merge.
 
 ```bash
 mise run typecheck

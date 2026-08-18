@@ -23,7 +23,7 @@ src/
    |- shared/
    |  |- config/              # navigation source
    |  |- assets/              # agent and app icons
-   |  |- ui/                  # primitives, catalog, split, SelectionLens, ExternalLinkButton
+   |  |- ui/                  # primitives, catalog, split, SelectionLens, FeatureTabs/Search/List, ExternalLinkButton
    |  |- features/            # ports, types, queries, FeatureProvider
    |  |- platform/            # tauri/browser adapters, runtime, lifecycle
    |  |- design-system/
@@ -36,6 +36,11 @@ src/
   inside `AppShell`). It is window chrome, not a feature route.
 - Feature pages talk to native code only through `shared/features` ports and
   `shared/platform` adapters.
+- Reuse is the default. Put chrome, helpers, and hooks that another route or
+  later sibling module will use under `shared/ui` or `shared/features` on the
+  first commit. Exclusive tracks, management search, and feature lists use
+  `FeatureTabs` / `FeatureSearch` / `FeatureList`. See
+  [Frontend Reuse](./reuse.md).
 
 ## Leftover V1 Layout
 
@@ -72,6 +77,8 @@ product pages there.
   `widgets`, `app`, or `dev`. Current pages also use `shared/design-system`
   and the V2 `shared/codex-desktop` panel; do not treat `ui` / `features` /
   `assets` as an exclusive allowlist.
+- Do not add a second tabs, search, or list recipe under `pages/<route>/`
+  when [Frontend Reuse](./reuse.md) already names a shared owner.
 - Widgets import `shared/**` and sibling widget modules. They must not import
   `pages`, `app`, or `dev`.
 - Tauri `invoke` stays under `shared/platform/tauri/**`.

@@ -11,7 +11,10 @@ not authorize new Tauri commands, ACL entries, arbitrary filesystem access,
 database migrations, automatic imports, automatic file writes, or cross-tool
 memory synchronization. V2 pages must not import legacy hooks or Tauri APIs
 directly; all effects cross `FeaturePorts` and the existing
-`src/v2/shared/platform/**` boundary.
+`src/v2/shared/platform/**` boundary. Reuse is the default: Prompts and
+Memory share `FeatureSearch`, `FeatureList`, and Memory type `FeatureTabs`.
+New chrome that the other page will need goes in `src/v2/shared/ui` on the
+first commit. See [Frontend Reuse](./reuse.md).
 
 ## 2. Signatures
 
@@ -87,7 +90,9 @@ paths above.
 - Creating and editing happen inline in the detail pane. The prompt body is
   the first readable surface after the compact title row. Name and
   description stay on a secondary identity row and must not sit above a
-  min-height textarea that hides the body. Deletion and dirty-discard use
+  min-height textarea that hides the body. The library list uses
+  `FeatureList`; the workspace search uses `FeatureSearch`. Deletion and
+  dirty-discard use
   the shared ConfirmDialog. An enabled prompt must be disabled before
   deletion. Do not open a Dialog to read or edit prompt content.
 - Import is explicit. Initial load only reads; it never imports, enables, or
@@ -117,7 +122,8 @@ The fixed resource mapping is:
   runtime may truncate it.
 - Daily memory is restricted to OpenClaw `workspace/memory/YYYY-MM-DD.md`.
   The adapter validates the filename before invoke, and the backend validates
-  it again.
+  it again. Long-term vs daily uses `FeatureTabs`; document and daily files
+  use `FeatureList`; daily search uses `FeatureSearch`.
 - Open-today creates no file until Save. Search is debounced by 300 ms. Daily
   deletion always requires shared confirmation.
 - Opening the OpenClaw workspace or memory folder uses

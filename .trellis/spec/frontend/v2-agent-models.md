@@ -8,7 +8,11 @@ WorkBuddy model ports, Claude/Codex Provider quick setup, or the sanitized
 Provider summary boundary.
 The common shell, native-chrome, router, and layer rules remain in
 [V2 Shell](./v2-shell.md). Skills/MCP and Prompt/Memory have separate feature
-contracts and must not be folded into the Agent capability catalog.
+contracts and must not be folded into the Agent capability catalog. Reuse is
+the default: Agents and Models share `CatalogMasterDetail` / `SplitPanes`;
+TRAE and OpenCode share `modelsShared` / `modelChips` rather than forking
+panel chrome. New chrome both panels will need goes in that shared module
+on the first commit. See [Frontend Reuse](./reuse.md).
 
 The product boundary is deliberately asymmetric. Agents and Models share one
 `CatalogMasterDetail` geometry and local brand metadata, but each detail keeps

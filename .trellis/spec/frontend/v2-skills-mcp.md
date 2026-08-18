@@ -18,7 +18,11 @@ shared/platform/tauri  -> @tauri-apps/api/core.invoke
 ```
 
 Legacy renderer modules are not a compatibility layer for V2. Do not import
-from `src/components`, `src/hooks`, `src/lib`, or `src/i18n`.
+from `src/components`, `src/hooks`, `src/lib`, or `src/i18n`. Reuse is the
+default: Skills and MCP must share `FeatureTabs`, `FeatureSearch`,
+`FeatureList`, `AssignmentPanel`, and `SplitPanes`. New chrome that the other
+page will need goes in `src/v2/shared/ui` on the first commit. See
+[Frontend Reuse](./reuse.md).
 
 ## 2. Signatures
 
@@ -196,7 +200,10 @@ function ExternalLinkButton(props: {
   sensitive command arguments.
 - Installed Skills and MCP use the same three-column workspace: list, detail,
   and assignment, laid out with the shared `SplitPanes` chassis (14px
-  gutter, pointer/keyboard resize, independent pane scroll). Each column
+  gutter, pointer/keyboard resize, independent pane scroll). Installed lists
+  use `FeatureList` / `FeatureListItem`; installed/discovery and MCP editor
+  tracks use `FeatureTabs`; management search uses `FeatureSearch`. Do not
+  add a page-local tabs, search, or list clone. Each column
   scrolls independently; the content viewport must
   not grow with the left-hand list. Split-pane children fill the pane height
   (`min-height: 100%` and `height: 100%`) and scroll inside the pane
@@ -205,8 +212,8 @@ function ExternalLinkButton(props: {
   past the panel chrome. Assignment rows wrap (`flex-wrap: wrap`,
   `min-width: 0`) so “全开 / 全关” stay inside the pane.   The Discover tab
   stays a card grid and must not use this master-detail chassis. Discovery
-  chrome puts search first, then source/status and the install-target
-  `SelectionLens` tracks; do not use a `<select>`. Install-target tabs
+  chrome puts search first (`FeatureSearch`), then source/status and the
+  install-target `FeatureTabs`; do not use a `<select>`. Install-target tabs
   may show decorative app icons. Repository chips appear only when more
   than one repository is loaded. Skill Discover cards show the name and
   install state in the header, a description or directory/source note,

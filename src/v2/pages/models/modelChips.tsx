@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { resolveModelVendorIcon } from "../../shared/assets/models";
 import { classNames } from "../../shared/design-system/classNames";
-import { Input } from "../../shared/ui/primitives";
+import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { groupModelIds } from "./workBuddyModels";
 
 export function ModelVendorIcon({
@@ -151,14 +151,12 @@ export function ModelSearchField({
   return (
     <label className="fy-control-field fy-models-search" htmlFor={id}>
       {label}
-      <Input
+      <FeatureSearch
         id={id}
-        type="search"
+        ariaLabel={label}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onValueChange={onChange}
         placeholder="按模型 ID 筛选"
-        autoComplete="off"
-        spellCheck={false}
       />
     </label>
   );

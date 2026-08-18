@@ -8,15 +8,6 @@
   align-items: center;
 }
 
-.fy-skills-page .fy-feature-toolbar .fy-control-input {
-  flex: 1 1 240px;
-}
-
-.fy-skills-page .fy-feature-toolbar .fy-feature-tabs {
-  flex: 0 1 auto;
-  margin-bottom: 0;
-}
-
 .fy-skills-page .fy-feature-workspace > .fy-feature-detail-scroll {
   display: grid;
   gap: 18px;

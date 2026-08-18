@@ -1,6 +1,11 @@
 # Code Reuse Thinking Guide
 
-> **Purpose**: Stop and think before creating new code - does it already exist?
+> **Purpose**: Stop and think before creating new code — does it already exist,
+> and if it is new, will another module need it?
+>
+> Frontend default: reuse existing owners; if a new component will be used by
+> another module, put it in `shared/` on the first commit. See
+> [Frontend Reuse](../frontend/reuse.md).
 
 ---
 
@@ -35,7 +40,8 @@ rg -n "keyword" <relevant-paths>
 | Does a similar function exist?                 | Use or extend it                                                  |
 | Is this pattern used elsewhere?                | Follow the existing pattern                                       |
 | Could this be a shared utility?                | Create it in the right place                                      |
-| Am I copying leftover `src/` UI into `src/v2`? | **STOP** — reuse V2 shared/widgets; read [V2 Shell](../frontend/v2-shell.md) |
+| Am I copying leftover `src/` UI into `src/v2`? | **STOP** — reuse V2 shared/widgets; read [V2 Shell](../frontend/v2-shell.md) and [Frontend Reuse](../frontend/reuse.md) |
+| Will another route or module use this new component? | Put it in `src/v2/shared/ui` or `shared/features` on the first commit |
 | Am I copying code from another file?           | **STOP** - extract to shared                                      |
 
 ---
@@ -71,19 +77,27 @@ cast. For the wire-contract rules, read
 
 ---
 
-## When to Abstract
+## When to Share
 
-**Abstract when**:
+Frontend default (see [Frontend Reuse](../frontend/reuse.md)): reuse existing
+owners; if a new component will be used by another module, put it in
+`shared/` on the first commit. Do not wait for a third copy of page chrome.
 
-- Same code appears 3+ times
-- Logic is complex enough to have bugs
-- Multiple people might need this
+**Share on the first commit when**:
 
-**Don't abstract when**:
+- An existing shared owner already does this job
+- Another current route, widget, or leftover feature will use it
+- A sibling module is expected next (the other five product routes, Skills vs
+  MCP, Prompts vs Memory, TRAE vs OpenCode, catalog vs feature lists)
 
-- Only used once
-- Trivial one-liner
-- Abstraction would be more complex than duplication
+**Keep it local when**:
+
+- Only this page, with no plausible second consumer
+- One-off form or single dialog
+- Trivial one-liner where a shared wrapper would be heavier than the copy
+
+**Don't**: treat "appears 3+ times" as the frontend trigger for tabs, search,
+lists, assignment rows, or other chrome sibling routes already have.
 
 ---
 
@@ -109,6 +123,9 @@ table. For renderer state ownership, read
 
 - [ ] Searched for existing similar code
 - [ ] No copy-pasted logic that should be shared
+- [ ] New multi-module UI landed in `shared/`, not `pages/<route>/`
+- [ ] Feature tabs / search / lists use `FeatureTabs` / `FeatureSearch` /
+      `FeatureList` instead of a page-local fork
 - [ ] No repeated untyped payload field extraction outside a shared decoder
 - [ ] Constants defined in one place
 - [ ] Similar patterns follow same structure

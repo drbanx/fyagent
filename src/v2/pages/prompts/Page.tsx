@@ -40,10 +40,8 @@ import {
   Switch,
 } from "../../shared/ui/primitives";
 import { usePrimaryBlocker } from "../../shared/ui/PrimaryBlocker";
-import {
-  SelectionLens,
-  SelectionLensTrack,
-} from "../../shared/ui/SelectionLens";
+import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
+import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { SplitPanes } from "../../shared/ui/split";
 
 import "./page.css";
@@ -461,24 +459,21 @@ export function PromptsPage() {
             {enabledCount} 条已启用
           </span>
         </h2>
-        <SelectionLensTrack id="prompts-list" className="fy-feature-list">
+        <FeatureList id="prompts-list">
           {filtered.map((prompt) => (
-            <button
+            <FeatureListItem
               key={prompt.id}
-              type="button"
-              className="fy-feature-list-item"
-              aria-current={prompt.id === selected?.id}
-              onClick={() => requestSelect(prompt.id)}
+              selected={prompt.id === selected?.id}
+              title={prompt.name}
+              onSelect={() => requestSelect(prompt.id)}
             >
-              <SelectionLens active={prompt.id === selected?.id} />
-              <strong>{prompt.name}</strong>
               <span>
                 {prompt.description || "暂无描述"} ·{" "}
                 {prompt.enabled ? "已启用" : "未启用"}
               </span>
-            </button>
+            </FeatureListItem>
           ))}
-        </SelectionLensTrack>
+        </FeatureList>
       </section>
       {activeEditor ? (
         <PromptEditorPane
@@ -579,13 +574,12 @@ export function PromptsPage() {
             <div className="fy-feature-toolbar">
               <label className="fy-control-field">
                 搜索
-                <Input
-                  type="search"
-                  aria-label="搜索提示词"
+                <FeatureSearch
+                  ariaLabel="搜索提示词"
                   placeholder="搜索名称、描述、内容或 ID"
                   value={search}
                   disabled={nativeUnavailable}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onValueChange={setSearch}
                 />
               </label>
             </div>

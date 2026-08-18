@@ -23,7 +23,9 @@ src/v2/
 
 Do not create empty `entities`, store, or service layers speculatively.
 Existing `shared/features` is the approved port/query module, not a
-speculative FSD `features` layer.
+speculative FSD `features` layer. Reuse is the default V2 preference: search
+[Frontend Reuse](./reuse.md) before adding page-local chrome, and put a new
+component in `shared/` on the first commit when another module will use it.
 Tauri `titleBarStyle: Overlay` is the host native title bar; it does not
 hand window geometry to V2. Caption buttons stay system chrome. The inert
 macOS drag strip is V2-owned Overlay React chrome in
@@ -102,6 +104,11 @@ export function selectionLensCollapsedOrigin(box: {
   y: number;
 }): { x: number; y: number; width: number; height: number };
 ```
+
+Feature-page exclusive tracks, management search, and feature lists must
+reuse `FeatureTabs`, `FeatureSearch`, and `FeatureList` from
+[Frontend Reuse](./reuse.md). Do not hand-roll those recipes in a page, and
+do not add a page-local variant "just for this screen".
 
 `LiquidGlassLens` wraps `@samasante/liquid-glass@0.1.1` with balanced optics
 plus `dispersion: 0`, `live={false}`, and `filterResolution={1}`. The sliding
@@ -267,10 +274,13 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   production instance, inside the active `NavLink`; do not stretch it across
   the navigation track, tools, popovers, content plane, or background.
 - Use `SelectionLens` for interruptible exclusive option tracks: primary nav,
-  catalog lists, feature tabs, feature lists, and UI Lab tabs. One
+  catalog lists, feature tabs, feature lists, and UI Lab tabs. Feature pages
+  must go through `FeatureTabs` / `FeatureList` rather than hand-rolling
+  `fy-feature-tab` or `fy-feature-list-item`. One
   `SelectionLensGroup` per track; at most one active pill per group. A page
   may host several groups. Do not use it for Switch, Checkbox, `<select>`,
-  pagination, or independent tool buttons.
+  pagination, or independent tool buttons. Management-list search uses
+  `FeatureSearch`. See [Frontend Reuse](./reuse.md).
 - The pill is CSS interactive glass (`--fy-glass-interactive`,
   `--fy-shadow-control`, inset highlight, backdrop fallback). Host selected
   backgrounds must not also paint a static fill, or the next item will flash
