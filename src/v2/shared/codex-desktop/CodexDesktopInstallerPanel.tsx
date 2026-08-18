@@ -199,7 +199,7 @@ export function CodexDesktopInstallerPanel() {
           <InlineNotice tone="error">
             {installer.error.code === "METADATA_CHANGED"
               ? "版本信息已更新，请刷新后重新确认安装。"
-              : "安装未完成，请重试。"}
+              : `安装未完成，请重试。${installer.error.code}`}
           </InlineNotice>
         )}
         {installer.operationFailed && !installer.error && (

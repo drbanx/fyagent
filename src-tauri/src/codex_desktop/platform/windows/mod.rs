@@ -11,7 +11,11 @@ mod helper;
 #[cfg(target_os = "windows")]
 mod package_bridge;
 
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    path::Path,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::future::BoxFuture;
 
@@ -37,7 +41,7 @@ use super::{
 };
 use crate::codex_desktop::{
     download::DownloadedArtifact,
-    error::{InstallerError, InstallerErrorCode},
+    error::{agent_debug_log, InstallerError, InstallerErrorCode},
     types::{
         CpuArchitecture, DesktopPlatform, InstalledApplication, InstalledApplicationSummary,
         LaunchTarget, LocalInstallStatus, PlatformVersion, ReleaseDescriptor, UnsupportedReason,
@@ -594,13 +598,67 @@ fn install_current_user(
     }
 
     let context_revalidator = install_dependencies.context_revalidator.as_ref();
-    require_current_context(context_revalidator, user_context)?;
-    let before_records = inventory_records(package_manager, user_context)?;
-    package.revalidate_artifact()?;
-    let pin = install_dependencies.pin_factory.open(package)?;
-    pin.recheck()?;
-    require_current_context(context_revalidator, user_context)?;
+    let privilege = crate::windows_runtime::runtime_privilege_status();
+    // #region agent log
+    agent_debug_log(
+        "A",
+        "platform/windows/mod.rs:install_current_user",
+        "install_enter",
+        serde_json::json!({
+            "elevated": privilege.elevated,
+            "localAdministrator": privilege.local_administrator,
+            "interactiveUserMatch": format!("{:?}", privilege.interactive_user_match),
+            "packageSize": package.actual_size(),
+        }),
+    );
+    // #endregion
+    require_current_context(context_revalidator, user_context).map_err(|error| {
+        log_install_step_error("B", "context_before_inventory", &error);
+        error
+    })?;
+    let before_records = inventory_records(package_manager, user_context).map_err(|error| {
+        log_install_step_error("D", "inventory_before", &error);
+        error
+    })?;
+    let revalidate_started = Instant::now();
+    package.revalidate_artifact().map_err(|error| {
+        log_install_step_error("C", "revalidate_artifact", &error);
+        error
+    })?;
+    // #region agent log
+    agent_debug_log(
+        "C",
+        "platform/windows/mod.rs:revalidate_artifact",
+        "revalidate_ok",
+        serde_json::json!({ "elapsedMs": revalidate_started.elapsed().as_millis() }),
+    );
+    // #endregion
+    let pin_started = Instant::now();
+    let pin = install_dependencies
+        .pin_factory
+        .open(package)
+        .map_err(|error| {
+            log_install_step_error("C", "pin_open", &error);
+            error
+        })?;
+    pin.recheck().map_err(|error| {
+        log_install_step_error("C", "pin_recheck", &error);
+        error
+    })?;
+    // #region agent log
+    agent_debug_log(
+        "C",
+        "platform/windows/mod.rs:pin",
+        "pin_ok",
+        serde_json::json!({ "elapsedMs": pin_started.elapsed().as_millis() }),
+    );
+    // #endregion
+    require_current_context(context_revalidator, user_context).map_err(|error| {
+        log_install_step_error("B", "context_before_helper", &error);
+        error
+    })?;
 
+    let helper_started = Instant::now();
     let helper_result = install_dependencies.helper_runner.run(
         user_context,
         job_id,
@@ -608,8 +666,22 @@ fn install_current_user(
         progress,
         install_dependencies.deadlines,
     );
-    require_current_context(context_revalidator, user_context)?;
-    helper_result?;
+    require_current_context(context_revalidator, user_context).map_err(|error| {
+        log_install_step_error("B", "context_after_helper", &error);
+        error
+    })?;
+    helper_result.map_err(|error| {
+        log_install_step_error("D", "helper_run", &error);
+        error
+    })?;
+    // #region agent log
+    agent_debug_log(
+        "D",
+        "platform/windows/mod.rs:helper_run",
+        "helper_ok",
+        serde_json::json!({ "elapsedMs": helper_started.elapsed().as_millis() }),
+    );
+    // #endregion
 
     let records = inventory_records(package_manager, user_context)?;
     require_current_context(context_revalidator, user_context)?;
@@ -662,6 +734,26 @@ fn require_current_context(
         .then_some(())
         .ok_or_else(deployment::interactive_context_error)
 }
+
+// #region agent log
+fn log_install_step_error(
+    hypothesis_id: &'static str,
+    message: &'static str,
+    error: &InstallerError,
+) {
+    let dto = error.to_dto();
+    agent_debug_log(
+        hypothesis_id,
+        "platform/windows/mod.rs:step_error",
+        message,
+        serde_json::json!({
+            "code": format!("{:?}", dto.code),
+            "redactedMessage": dto.details.redacted_message,
+            "platformErrorCode": dto.details.platform_error_code,
+        }),
+    );
+}
+// #endregion
 
 fn launch(
     package_manager: &dyn WindowsPackageManager,

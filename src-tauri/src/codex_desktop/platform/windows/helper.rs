@@ -72,7 +72,7 @@ use super::{
 };
 use crate::{
     codex_desktop::{
-        error::{InstallerError, InstallerErrorCode},
+        error::{agent_debug_log, InstallerError, InstallerErrorCode},
         types::{JobProgress, ProgressPhase},
         verify::verify_reader,
     },
@@ -210,13 +210,46 @@ fn run_pinned_user_helper(
     {
         return Err(package_pin_error());
     }
+    let bridge_started = Instant::now();
     let bridge = ProtectedPackageBridge::create(
         context.canonical_sid(),
         &mut source_file,
         expected_size,
         pin.expected_sha256(),
-    )?;
+    );
     drop(source_file);
+    let bridge = match bridge {
+        Ok(bridge) => {
+            // #region agent log
+            agent_debug_log(
+                "B",
+                "platform/windows/helper.rs:bridge",
+                "bridge_ok",
+                serde_json::json!({
+                    "elapsedMs": bridge_started.elapsed().as_millis(),
+                    "expectedSize": expected_size,
+                }),
+            );
+            // #endregion
+            bridge
+        }
+        Err(error) => {
+            // #region agent log
+            let dto = error.to_dto();
+            agent_debug_log(
+                "B",
+                "platform/windows/helper.rs:bridge",
+                "bridge_failed",
+                serde_json::json!({
+                    "elapsedMs": bridge_started.elapsed().as_millis(),
+                    "code": format!("{:?}", dto.code),
+                    "redactedMessage": dto.details.redacted_message,
+                }),
+            );
+            // #endregion
+            return Err(error);
+        }
+    };
 
     let setup = (|| {
         let nonce = generate_nonce()?;
@@ -229,23 +262,84 @@ fn run_pinned_user_helper(
     let (nonce, controls, server, helper_image) = match setup {
         Ok(setup) => setup,
         Err(error) => {
+            // #region agent log
+            let dto = error.to_dto();
+            agent_debug_log(
+                "A",
+                "platform/windows/helper.rs:setup",
+                "helper_setup_failed",
+                serde_json::json!({
+                    "code": format!("{:?}", dto.code),
+                    "redactedMessage": dto.details.redacted_message,
+                    "currentExeName": current_exe_file_name(),
+                    "helperSidecarNames": helper_sidecar_names(),
+                }),
+            );
+            // #endregion
             let _ = bridge.cleanup();
             gate.finish();
             return Err(error);
         }
     };
+    // #region agent log
+    agent_debug_log(
+        "A",
+        "platform/windows/helper.rs:setup",
+        "helper_setup_ok",
+        serde_json::json!({
+            "currentExeName": current_exe_file_name(),
+            "helperSidecarNames": helper_sidecar_names(),
+        }),
+    );
+    // #endregion
     let mut lifetime = HelperLifetime::new(pin, bridge, helper_image, controls, server);
 
     match launch_fyagent_user_helper_as_user(job_id, &nonce) {
-        UserHelperLaunchOutcome::Confirmed => {}
+        UserHelperLaunchOutcome::Confirmed => {
+            // #region agent log
+            agent_debug_log(
+                "D",
+                "platform/windows/helper.rs:launch",
+                "helper_launch",
+                serde_json::json!({ "outcome": "Confirmed" }),
+            );
+            // #endregion
+        }
         UserHelperLaunchOutcome::MayHaveLaunched => {
+            // #region agent log
+            agent_debug_log(
+                "D",
+                "platform/windows/helper.rs:launch",
+                "helper_launch",
+                serde_json::json!({ "outcome": "MayHaveLaunched" }),
+            );
+            // #endregion
             return fail_before_admission(gate, lifetime, helper_launch_pending_error());
         }
-        UserHelperLaunchOutcome::NotInvoked(_) => {
+        UserHelperLaunchOutcome::NotInvoked(error) => {
+            // #region agent log
+            agent_debug_log(
+                "D",
+                "platform/windows/helper.rs:launch",
+                "helper_launch",
+                serde_json::json!({
+                    "outcome": "NotInvoked",
+                    "launchError": format!("{error:?}"),
+                }),
+            );
+            // #endregion
             return fail_before_admission(gate, lifetime, helper_launch_error());
         }
     }
     if lifetime.server().connect(deadlines.connect).is_err() {
+        // #region agent log
+        agent_debug_log(
+            "D",
+            "platform/windows/helper.rs:connect",
+            "helper_pipe_connect_failed",
+            serde_json::json!({}),
+        );
+        // #endregion
         return fail_before_admission(
             gate,
             lifetime,
@@ -1500,6 +1594,42 @@ fn helper_quarantine_error() -> InstallerError {
         "a prior current-user helper lifetime remains retained without terminal proof",
     )
 }
+
+// #region agent log
+fn current_exe_file_name() -> Option<String> {
+    std::env::current_exe()
+        .ok()?
+        .file_name()?
+        .to_str()
+        .map(str::to_owned)
+}
+
+fn helper_sidecar_names() -> Vec<String> {
+    let Some(directory) = std::env::current_exe()
+        .ok()
+        .as_ref()
+        .and_then(|path| path.parent())
+        .map(PathBuf::from)
+    else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    let mut names = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            name.starts_with("fyagent-user-helper")
+                .then(|| name.into_owned())
+        })
+        .take(8)
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+// #endregion
 
 #[cfg(test)]
 mod tests {
