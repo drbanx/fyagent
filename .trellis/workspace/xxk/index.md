@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
-- **Last Active**: 2026-08-13
+- **Total Sessions**: 2
+- **Last Active**: 2026-08-18
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~28 | Active |
+| `journal-1.md` | ~66 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-08-18 | MCP curated discovery and install paths | `9ae4fea6` | `dev/xk` |
 | 1 | 2026-08-13 | Complete V2 Skills and MCP internal UI | `499a5c55` | `dev/xk` |
 <!-- @@@/auto:session-history -->
 
