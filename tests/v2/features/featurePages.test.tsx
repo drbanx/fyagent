@@ -460,6 +460,58 @@ describe("V2 MCP management", () => {
     );
     expect(document.body).not.toHaveTextContent("amap-query-secret");
   });
+
+  it("installs a zero-config China catalog item onto the default MCP targets", async () => {
+    const user = userEvent.setup();
+    const store: Record<string, McpServer> = {};
+    const upsert = vi.fn(async (server: McpServer) => {
+      store[server.id] = server;
+    });
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = vi.fn(async () => ({ ...store }));
+    ports.mcp.upsert = upsert;
+    renderFeature(<McpPage />, ports);
+
+    await screen.findByText("还没有 MCP 服务");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    const card = screen
+      .getByRole("heading", { name: "AntV 图表 MCP" })
+      .closest("article");
+    expect(card).not.toBeNull();
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "安装" }),
+    );
+
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
+    const installed = upsert.mock.calls[0]?.[0];
+    expect(installed?.id).toBe("antv-chart");
+    expect(installed?.server.type).toBe("stdio");
+    expect(installed?.server.args).toEqual(
+      expect.arrayContaining(["-y", "@antv/mcp-server-chart"]),
+    );
+  });
+
+  it("filters the discovery catalog by install mode", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    renderFeature(<McpPage />, ports);
+
+    await screen.findByText("还没有 MCP 服务");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    await user.selectOptions(screen.getByLabelText("分类筛选"), "ready");
+    expect(
+      screen.getByRole("heading", { name: "Playwright MCP" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "高德地图 MCP" }),
+    ).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("分类筛选"), "configure");
+    expect(screen.getByRole("heading", { name: "高德地图 MCP" })).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Playwright MCP" }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("V2 Skills management", () => {

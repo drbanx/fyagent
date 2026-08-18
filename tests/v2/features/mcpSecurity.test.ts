@@ -15,6 +15,16 @@ describe("MCP secret redaction", () => {
     expect(
       mcpUrlSearchToken("https://mcp.amap.com/mcp?key=amap-query-secret"),
     ).toBe("https://mcp.amap.com/mcp");
+    expect(
+      redactMcpUrl(
+        "https://mcp.lexiang-app.com/mcp?company_from=acme&access_token=lexiang-secret",
+      ),
+    ).toBe(
+      "https://mcp.lexiang-app.com/mcp?company_from=acme&access_token=••••••",
+    );
+    expect(redactMcpUrl("https://example.com/mcp?secretKey=cloud-secret")).toBe(
+      "https://example.com/mcp?secretKey=••••••",
+    );
   });
 
   it("masks sensitive command arguments after known flags", () => {

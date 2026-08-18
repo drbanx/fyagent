@@ -19,7 +19,11 @@ function emptyValues(fields: readonly McpInstallField[]): McpInstallValues {
   return Object.fromEntries(
     fields.map((field) => [
       field.key,
-      field.type === "multi-select" ? [] : "",
+      field.type === "multi-select"
+        ? []
+        : field.type === "select"
+          ? (field.options?.[0]?.value ?? "")
+          : "",
     ]),
   );
 }
@@ -144,6 +148,30 @@ function InstallFieldInput({
   value: string | string[] | undefined;
   onChange: (value: string | string[]) => void;
 }) {
+  if (field.type === "select") {
+    const text = typeof value === "string" ? value : "";
+    return (
+      <label className="fy-control-field fy-feature-form-span">
+        {field.label}
+        {field.required ? " *" : ""}
+        <select
+          className="fy-control-select"
+          value={text}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {(field.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {field.help && (
+          <span className="fy-feature-description">{field.help}</span>
+        )}
+      </label>
+    );
+  }
+
   if (field.type === "multi-select") {
     const selected = new Set(Array.isArray(value) ? value : []);
     return (

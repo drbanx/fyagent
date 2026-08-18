@@ -169,8 +169,14 @@ interface SettingsPort {
   directory when `cwd` or an absolute stdio command path is available; npx,
   uvx, and remote transports show that no local directory exists.
 - MCP has permanent Installed and Discover tabs. Discover is a static curated
-  catalog that upserts through the existing MCP port; it does not add a market
-  API, persist catalog metadata, or widen the six-target assignment set.
+  catalog of about 20–30 installable items: each card is either one-click or a
+  credential/config form. Discover classification is only “直接安装” versus
+  “配置安装”, plus an “全部” default. Prefer popular no-credential stdio/HTTP
+  recipes for the remaining slots. It does not add a market API, persist catalog
+  metadata, or widen the six-target assignment set. Entries that need OAuth,
+  post-start login, SSE-only transport, or unverified high-privilege cloud
+  control stay out of the catalog. New remote recipes use Streamable HTTP
+  only.
 - Quick and advanced modes share one canonical `McpServerSpec`. Quick edits
   replace known fields while preserving unknown extension fields, unknown
   top-level fields, and hidden application flags.

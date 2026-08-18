@@ -2,11 +2,16 @@ import { useMemo, useState } from "react";
 
 import {
   MCP_CATALOG,
-  MCP_CATALOG_CATEGORIES,
+  MCP_CATALOG_FILTERS,
+  MCP_MATURITY_LABEL,
+  MCP_PRIVILEGE_LABEL,
   MCP_PROVENANCE_LABEL,
+  catalogInstallModeLabel,
+  catalogRequiresConfig,
   catalogSearchText,
+  catalogTransportLabel,
   matchesCatalogRecipe,
-  type McpCatalogCategory,
+  type McpCatalogFilterId,
   type McpCatalogItem,
   type McpInstallValues,
 } from "./catalog";
@@ -37,16 +42,6 @@ function requirementText(item: McpCatalogItem): string {
     .join(" · ");
 }
 
-function categoryLabels(item: McpCatalogItem): string {
-  return item.categories
-    .map(
-      (category) =>
-        MCP_CATALOG_CATEGORIES.find((entry) => entry.id === category)?.label ??
-        category,
-    )
-    .join(" · ");
-}
-
 export function McpDiscovery({
   servers,
   busy,
@@ -62,7 +57,7 @@ export function McpDiscovery({
 }) {
   const platform = currentMcpLaunchPlatform();
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<"all" | McpCatalogCategory>("all");
+  const [category, setCategory] = useState<McpCatalogFilterId>("all");
   const [dialogItem, setDialogItem] = useState<McpCatalogItem | null>(null);
   const [overwrite, setOverwrite] = useState(false);
   const [confirmItem, setConfirmItem] = useState<McpCatalogItem | null>(null);
@@ -75,7 +70,8 @@ export function McpDiscovery({
   const items = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return MCP_CATALOG.filter((item) => {
-      if (category !== "all" && !item.categories.includes(category)) {
+      if (category === "ready" && catalogRequiresConfig(item)) return false;
+      if (category === "configure" && !catalogRequiresConfig(item)) {
         return false;
       }
       if (!query) return true;
@@ -104,6 +100,9 @@ export function McpDiscovery({
     apps: readonly McpTargetId[],
     replaceExisting: boolean,
   ) => {
+    if (!item.installable) {
+      throw new Error(item.disabledReason ?? "暂未开放安装");
+    }
     const existing = installedById.get(item.id);
     if (existing && !replaceExisting) {
       throw new Error("该 MCP 已存在");
@@ -112,6 +111,7 @@ export function McpDiscovery({
   };
 
   const startInstall = (item: McpCatalogItem, replaceExisting: boolean) => {
+    if (!item.installable) return;
     const existing = installedById.get(item.id);
     if (existing && !replaceExisting) return;
     if (item.fields.length > 0) {
@@ -137,10 +137,10 @@ export function McpDiscovery({
           aria-label="分类筛选"
           value={category}
           onChange={(event) =>
-            setCategory(event.target.value as "all" | McpCatalogCategory)
+            setCategory(event.target.value as McpCatalogFilterId)
           }
         >
-          {MCP_CATALOG_CATEGORIES.map((entry) => (
+          {MCP_CATALOG_FILTERS.map((entry) => (
             <option key={entry.id} value={entry.id}>
               {entry.label}
             </option>
@@ -156,25 +156,49 @@ export function McpDiscovery({
         <div className="fy-feature-grid" aria-label="精选 MCP">
           {items.map((item) => {
             const existing = installedById.get(item.id);
-            const sameRecipe = existing
-              ? matchesCatalogRecipe(item, existing, platform)
-              : false;
+            const sameRecipe =
+              item.installable && existing
+                ? matchesCatalogRecipe(item, existing, platform)
+                : false;
             const pending = busy || installingId === item.id;
+            const maturityLabel = MCP_MATURITY_LABEL[item.maturity];
             return (
               <article key={item.id} className="fy-feature-card">
                 <header className="fy-mcp-card-meta">
                   <h3>{item.name}</h3>
-                  {item.recommended && <Badge tone="accent">推荐</Badge>}
+                  <Badge tone="accent">{catalogInstallModeLabel(item)}</Badge>
                   <Badge>{MCP_PROVENANCE_LABEL[item.provenance]}</Badge>
+                  <Badge>{catalogTransportLabel(item)}</Badge>
+                  {item.privilege && (
+                    <Badge
+                      tone={item.privilege === "read" ? "neutral" : "warning"}
+                    >
+                      {MCP_PRIVILEGE_LABEL[item.privilege]}
+                    </Badge>
+                  )}
+                  {maturityLabel && (
+                    <Badge tone="warning">{maturityLabel}</Badge>
+                  )}
                 </header>
                 <p>{item.description}</p>
-                <p className="fy-mcp-card-note">{categoryLabels(item)}</p>
                 <p className="fy-mcp-card-note">
                   {requirementText(item)} · 认证：{item.authLabel}
                 </p>
                 {item.risk && <p className="fy-mcp-card-note">{item.risk}</p>}
+                {item.disabledReason && (
+                  <p className="fy-mcp-card-note">{item.disabledReason}</p>
+                )}
                 <footer>
-                  {existing && sameRecipe ? (
+                  {!item.installable ? (
+                    <>
+                      <Button disabled>暂未开放安装</Button>
+                      {existing && (
+                        <Button onClick={() => onViewInstalled(item.id)}>
+                          查看
+                        </Button>
+                      )}
+                    </>
+                  ) : existing && sameRecipe ? (
                     <>
                       <Button disabled>已安装</Button>
                       <Button onClick={() => onViewInstalled(item.id)}>
