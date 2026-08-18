@@ -943,6 +943,10 @@ function officialLinkKey(
   return `${entry.id}:${link.id}`;
 }
 
+function officialLinkActionLabel(link: AgentOfficialLink): string {
+  return /官方/.test(link.label) ? link.label : `打开 ${link.label} 官网`;
+}
+
 function AgentDetail({
   entry,
   openingKey,
@@ -971,7 +975,36 @@ function AgentDetail({
           </div>
           <p className="fy-feature-description">{entry.description}</p>
         </div>
+        {entry.officialLinks.length > 0 && (
+          <div
+            className="fy-agent-official-links"
+            role="group"
+            aria-label="官方网站"
+          >
+            {entry.officialLinks.map((link) => {
+              const opening = openingKey === officialLinkKey(entry, link);
+              return (
+                <Button
+                  key={link.id}
+                  className={
+                    officialOnly ? "fy-control-button-primary" : undefined
+                  }
+                  disabled={
+                    openingKey !== null ||
+                    (productCapability?.mode !== "direct" &&
+                      productCapability?.mode !== "assisted")
+                  }
+                  onClick={() => onOpenOfficial(link)}
+                >
+                  {opening ? "正在打开…" : officialLinkActionLabel(link)}
+                </Button>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {entry.id === "codex" && <CodexDesktopInstallerPanel />}
 
       <section className="fy-agent-section" aria-label="可用功能">
         <h3>可用功能</h3>
@@ -985,37 +1018,18 @@ function AgentDetail({
         <ExternalMcpValidationPanel agentId={entry.id} />
       )}
 
-      {entry.id === "codex" && <CodexDesktopInstallerPanel />}
-
-      <div className="fy-agent-action-row">
-        {entry.officialLinks.map((link) => {
-          const opening = openingKey === officialLinkKey(entry, link);
-          return (
-            <Button
-              key={link.id}
-              className={officialOnly ? "fy-control-button-primary" : undefined}
-              disabled={
-                openingKey !== null ||
-                (productCapability?.mode !== "direct" &&
-                  productCapability?.mode !== "assisted")
-              }
-              onClick={() => onOpenOfficial(link)}
-            >
-              {opening ? "正在打开…" : link.label}
-            </Button>
-          );
-        })}
-        {target &&
-          (modelCapability?.mode === "direct" ||
-            modelCapability?.mode === "assisted") && (
+      {target &&
+        (modelCapability?.mode === "direct" ||
+          modelCapability?.mode === "assisted") && (
+          <div className="fy-agent-action-row">
             <Button
               className="fy-control-button-primary"
               onClick={() => navigate(`/models?target=${target}`)}
             >
               配置模型
             </Button>
-          )}
-      </div>
+          </div>
+        )}
 
       <p className="fy-agent-evidence">
         支持 {entry.capabilities.length} 项操作
@@ -1072,7 +1086,10 @@ export function AgentsPage() {
   };
 
   return (
-    <div className="fy-feature-page fy-agents-page" data-testid="agents-page">
+    <div
+      className="fy-feature-page fy-catalog-page fy-agents-page"
+      data-testid="agents-page"
+    >
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>Agent 目录</h1>

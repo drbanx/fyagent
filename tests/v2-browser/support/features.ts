@@ -228,6 +228,25 @@ export async function installRichTauriFeatureFixture(
           ],
           capabilities: catalogCapabilities("claude-code"),
         },
+        {
+          id: "opencode",
+          variantId: "opencode",
+          displayName: "OpenCode",
+          description: "请在 OpenCode 中完成模型设置。",
+          officialLinks: [
+            {
+              id: "product",
+              label: "打开 OpenCode 官方页面",
+              url: "https://opencode.ai",
+            },
+            {
+              id: "cli",
+              label: "OpenCode CLI",
+              url: "https://opencode.ai/docs/cli",
+            },
+          ],
+          capabilities: catalogCapabilities("opencode"),
+        },
       ],
     };
     const quickSetupIds = {

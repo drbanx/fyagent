@@ -36,24 +36,40 @@ function rule(selector: string): string {
 }
 
 describe("shared V2 catalog presentation styles", () => {
-  it("owns the only catalog rail geometry and keeps both panels intrinsic", () => {
+  it("owns the only catalog rail geometry and independently scrolling panes", () => {
     const layout = rule(".fy-catalog-master-detail");
     expect(layout).toMatch(
       /--fy-catalog-rail-width:\s*clamp\(220px,\s*24vw,\s*268px\);/,
     );
     expect(layout).toMatch(/--fy-catalog-gap:\s*14px;/);
     expect(layout).toMatch(
-      /grid-template-columns:\s*var\(--fy-catalog-rail-width\)\s+minmax\(0,\s*1fr\);/,
+      /grid-template-columns:\s*var\(--fy-catalog-rail-width\)\s+var\(--fy-catalog-gap\)\s+minmax\(0,\s*1fr\);/,
     );
-    expect(layout).toMatch(/align-items:\s*start;/);
+    expect(layout).toMatch(/align-items:\s*stretch;/);
     expect(catalogCss).toMatch(
       /@media\s*\(max-width:\s*760px\)[\s\S]*?\.fy-catalog-master-detail\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/,
     );
-    expect(rule(".fy-content-viewport:has(.fy-catalog-master-detail)")).toMatch(
-      /scrollbar-gutter:\s*stable;/,
+    expect(catalogCss).toMatch(
+      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.fy-catalog-resize-handle\s*\{[\s\S]*?display:\s*none;/,
+    );
+    expect(rule(".fy-feature-page.fy-catalog-page")).toMatch(/gap:\s*0;/);
+    expect(pageCss).not.toMatch(
+      /\.fy-(?:agents|models)-page\s*\{[^}]*(?:gap|padding-top)\s*:/s,
+    );
+    expect(
+      rule(".fy-content-viewport:has(> :not([hidden]) .fy-catalog-page)"),
+    ).toMatch(/overflow:\s*hidden;/);
+    expect(
+      rule(".fy-content-viewport:has(> :not([hidden]) .fy-catalog-page)"),
+    ).toMatch(/scrollbar-gutter:\s*stable;/);
+    expect(catalogCss).toMatch(
+      /\.fy-catalog-rail,\s*\.fy-catalog-pane\s*\{[^}]*overflow:\s*auto;/s,
+    );
+    expect(catalogCss).toMatch(
+      /\.fy-catalog-pane\s*>\s*\*\s*\{[^}]*min-height:\s*100%;/s,
     );
     expect(catalogCss).not.toMatch(
-      /\.fy-catalog-(?:rail|detail)\s*\{[^}]*(?:height|overflow)\s*:/s,
+      /\.fy-catalog-pane\s*\{[^}]*display:\s*grid/s,
     );
   });
 

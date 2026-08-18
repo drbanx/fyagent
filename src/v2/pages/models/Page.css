@@ -1,9 +1,11 @@
-.fy-models-page {
-  gap: 16px;
-}
-
 .fy-models-target-stack {
   min-width: 0;
+  min-height: 100%;
+}
+
+.fy-models-target-stack > :not([hidden]) {
+  min-width: 0;
+  min-height: 100%;
 }
 
 .fy-models-config-panel h2,
@@ -15,6 +17,7 @@
   display: grid;
   align-content: start;
   gap: 14px;
+  min-height: 100%;
 }
 
 .fy-models-config-heading {

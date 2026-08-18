@@ -188,21 +188,38 @@ mutation arguments only and never query keys or query data.
 
 - Render a keyboard-accessible left selector and right detail. The selected
   button owns `aria-current`; initial selection follows native catalog order.
-- Both pages use the shared rail `clamp(220px, 24vw, 268px)`, 14px gap, 56px
-  rows, 36px list frames, 64px detail frames, stable scrollbar gutter, the
-  760px master/detail stack (list becomes two columns), and the 520px list
-  collapse to one column. Page CSS must not redefine catalog columns,
-  brand-ID sizing, or another responsive rail.
+- Both pages use the shared `CatalogMasterDetail` geometry: default rail
+  `clamp(220px, 24vw, 268px)`, 14px separator gutter, 56px rows, 36px list
+  frames, 64px detail frames, stable scrollbar gutter, the 760px
+  master/detail stack (list becomes two columns; the separator is hidden),
+  and the 520px list collapse to one column. Page CSS must not redefine
+  catalog columns, brand-ID sizing, or another responsive rail.
+- Above 760px the two panes fill the remaining feature-page height and
+  scroll independently. The detail panel is at least the pane height and
+  grows with its content so its chrome does not clip overflowing cards.
+  Both catalog pages share the feature-page inset: 20px page padding and
+  the 16px header-to-pane gap from `.fy-feature-header`. `.fy-catalog-page`
+  sets `gap: 0`. Page CSS must not add another `gap` or `padding-top` on
+  `.fy-agents-page` / `.fy-models-page`.
+  A keyboard-accessible vertical separator resizes the
+  rail between 220px and min(420px, remaining width minus a 360px detail
+  floor). Width is session-local component state and never enters the URL or
+  storage. Double-click restores the default clamp.
 - QoderWork/TRAE/WorkBuddy/OpenCode and Claude link actions call only
   `settings.openExternal(link.url)` from the catalog. Models selects an explicit
   `product` link when it needs product guidance; it never depends on array
   position. These actions do not inspect login state, download packages, read
   private config, persist notes, accept an API key, or emit configuration
   success.
+- Official catalog links render in the Agent detail identity, top-right.
+  Display copy for labels that already contain `官方` stays as catalog text;
+  `cli`/`desktop` labels become `打开 {catalog label} 官网`. The renderer
+  does not rewrite Rust labels or URLs.
 - The Agent detail keeps one external-open lock and one pending link ID. A
   failure renders fixed text without echoing the URL. Codex renders no official
   link region and mounts the managed installer panel only while Codex is
-  selected; leaving Codex releases its event subscription.
+  selected, immediately below the identity heading; leaving Codex releases its
+  event subscription.
 - WorkBuddy status and Provider summaries are lazy/bounded observations. A read
   failure is `unknown/unavailable`, never `not installed`, `not configured`, or
   verified absence.
@@ -334,7 +351,7 @@ mutation arguments only and never query keys or query data.
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | Catalog version/order/ID/link/capability/evidence state drifts                             | Exact Rust/V2 contract test fails                                                                       |
 | V1 `officialUrl`, catalog v2/future, unknown enum, duplicate ID, non-HTTPS URL, or Codex link arrives | Runtime parse fails; catalog is unavailable                                                  |
-| Codex is selected                                                                          | Show the managed installer and no official-link button                                                  |
+| Codex is selected                                                                          | Show the managed installer below the identity heading and no official-link button                       |
 | A non-Codex entry is selected                                                              | Do not read or subscribe to the Codex installer                                                         |
 | Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
 | QoderWork/TRAE selected                                                                    | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
@@ -371,9 +388,9 @@ mutation arguments only and never query keys or query data.
   `reachable` as a local preflight rather than vendor configuration success.
 - Good: Qoder Hooks saves a previewed revisioned request and reports the
   required restart without claiming the running process consumed it.
-- Good: Claude Code renders independent CLI and Desktop actions, while Codex
-  renders no link and reuses the existing native installer contract through a
-  V2 port.
+- Good: Claude Code renders independent CLI and Desktop official-site actions
+  in the detail identity, while Codex renders no link and reuses the existing
+  native installer contract through a V2 port, placed below the title.
 - Good: a Codex quick setup passes one minimum request to Rust, applies under the
   shared config lock, returns request-attributed non-secret warnings/live-change
   state, clears the key, and describes a matching `currentId` reread only as
@@ -409,8 +426,12 @@ Required focused coverage includes:
   behavior, and command registration;
 - six local assets, official Qoder/TRAE digests/passive formats, Qoder default,
   exact Models order, master/detail keyboard/ARIA, four maintained viewports;
-- exact official-link IPC, per-link lock/error behavior, Codex negative-link
-  behavior, and negative download/login/config behavior;
+- exact official-link IPC, renderer official-site display labels in the
+  identity, per-link lock/error behavior, Codex negative-link behavior, and
+  negative download/login/config behavior;
+- independently scrolling catalog panes, a clamped keyboard/pointer separator,
+  the 760px stack hiding that separator, and the shared catalog page inset
+  (`gap: 0`, no extra Agents/Models page `gap` or `padding-top`);
 - normal browser native-only reads/writes and rich fake-Tauri test isolation;
 - WorkBuddy discovery success/truncation/failure/duplicate lock, revision,
   frozen overwrite, expired token, external-edit TOCTOU, authoritative reread,
@@ -483,3 +504,15 @@ let Codex use the managed installer port.
 const productLink = entry.officialLinks.find((link) => link.id === "product");
 if (productLink) await ports.settings.openExternal(productLink.url);
 ```
+
+Wrong: stack a Models page flex gap on top of the shared feature header
+margin, so the catalog columns sit lower than Agent directory.
+
+```css
+.fy-models-page {
+  gap: 16px;
+}
+```
+
+Correct: both catalog pages use only `.fy-feature-page` padding (20px) and
+`.fy-feature-header` margin-bottom (16px). `.fy-catalog-page` keeps `gap: 0`.

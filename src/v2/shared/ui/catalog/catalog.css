@@ -8,19 +8,91 @@
   --fy-catalog-detail-artwork-size: 48px;
 
   display: grid;
-  grid-template-columns: var(--fy-catalog-rail-width) minmax(0, 1fr);
-  align-items: start;
-  gap: var(--fy-catalog-gap);
+  flex: 1 1 auto;
+  grid-template-columns:
+    var(--fy-catalog-rail-width) var(--fy-catalog-gap)
+    minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
   min-width: 0;
+  min-height: 0;
 }
 
-.fy-content-viewport:has(.fy-catalog-master-detail) {
+.fy-content-viewport:has(> :not([hidden]) .fy-catalog-page) {
+  overflow: hidden;
   scrollbar-gutter: stable;
 }
 
+.fy-content-viewport > :has(> .fy-catalog-page):not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.fy-feature-page.fy-catalog-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  gap: 0;
+}
+
 .fy-catalog-rail,
-.fy-catalog-detail {
+.fy-catalog-pane {
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.fy-catalog-pane > * {
+  min-width: 0;
+  min-height: 100%;
+}
+
+.fy-catalog-resize-handle {
+  position: relative;
+  width: var(--fy-catalog-gap);
+  min-width: var(--fy-catalog-gap);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  align-self: stretch;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.fy-catalog-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 1px;
+  border-radius: 1px;
+  background: var(--fy-border);
+  transform: translateX(-50%);
+}
+
+.fy-catalog-resize-handle:hover::before,
+.fy-catalog-resize-handle:focus-visible::before,
+.fy-catalog-master-detail[data-resizing="true"]
+  .fy-catalog-resize-handle::before {
+  width: 2px;
+  background: var(--fy-accent);
+}
+
+.fy-catalog-resize-handle:focus-visible {
+  outline: 2px solid var(--fy-focus);
+  outline-offset: -2px;
+}
+
+.fy-catalog-master-detail[data-resizing="true"] {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .fy-catalog-rail-heading {
@@ -142,6 +214,19 @@
 @media (max-width: 760px) {
   .fy-catalog-master-detail {
     grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: var(--fy-catalog-gap);
+    overflow: auto;
+  }
+
+  .fy-catalog-resize-handle {
+    display: none;
+  }
+
+  .fy-catalog-rail,
+  .fy-catalog-pane {
+    overflow: visible;
+    height: auto;
   }
 
   .fy-catalog-list {
@@ -166,6 +251,8 @@
 @media (prefers-reduced-motion: reduce) {
   .fy-catalog-master-detail,
   .fy-catalog-rail,
+  .fy-catalog-pane,
+  .fy-catalog-resize-handle,
   .fy-catalog-list-item,
   .fy-catalog-brand-frame,
   .fy-catalog-brand-artwork,

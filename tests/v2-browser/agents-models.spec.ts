@@ -18,6 +18,7 @@ const agentOrder = [
   "WorkBuddy",
   "Codex",
   "Claude Code",
+  "OpenCode",
 ] as const;
 
 const modelTargetOrder = [
@@ -26,12 +27,14 @@ const modelTargetOrder = [
   "WorkBuddy",
   "Codex",
   "Claude Code",
+  "OpenCode",
 ] as const;
 
 const modelTargetIconSources = [
   "qoderwork.svg",
   "trae-work.png",
   "workbuddy.png",
+  "inline-svg",
   "inline-svg",
   "inline-svg",
 ] as const;
@@ -72,7 +75,7 @@ test("Agent catalog keeps exact native order and accessible master-detail select
     page.getByRole("heading", { level: 1, name: "Agent 目录" }),
   ).toBeVisible();
   const items = agentSelector(page).locator(".fy-catalog-list-item");
-  await expect(items).toHaveCount(5);
+  await expect(items).toHaveCount(6);
   expect(
     await items.evaluateAll((elements) =>
       elements.map(
@@ -152,7 +155,7 @@ test("Agents and Models share exact catalog geometry, stable gutters, and the 76
 
   const agentRail = agentSelector(page);
   const agentRows = agentRail.locator(".fy-catalog-list-item");
-  await expect(agentRows).toHaveCount(5);
+  await expect(agentRows).toHaveCount(6);
   const agentRailBox = await requiredBox(agentRail, "Agent catalog rail");
   const agentRowGeometry = await agentRows.evaluateAll((rows) =>
     rows.map((row) => {
@@ -177,28 +180,39 @@ test("Agents and Models share exact catalog geometry, stable gutters, and the 76
   }
 
   const railHeightBeforeSelection = agentRailBox.height;
+  await expect(
+    page.getByRole("separator", { name: "调整目录与详情的宽度" }),
+  ).toBeVisible();
+  expect(
+    await agentRail.evaluate((el) => getComputedStyle(el).overflowY),
+  ).toMatch(/auto|scroll/);
+  expect(
+    await page
+      .locator(".fy-catalog-pane")
+      .evaluate((el) => getComputedStyle(el).overflowY),
+  ).toMatch(/auto|scroll/);
   await agentItem(page, "Codex").click();
   const railAfterSelection = await requiredBox(
     agentRail,
     "selected Agent rail",
   );
-  const detailAfterSelection = await requiredBox(
-    page.getByRole("region", { name: "Codex 详情" }),
-    "Codex detail",
+  const paneAfterSelection = await requiredBox(
+    page.locator(".fy-catalog-pane"),
+    "catalog pane",
   );
   expect(
     Math.abs(railAfterSelection.height - railHeightBeforeSelection),
   ).toBeLessThanOrEqual(1);
-  expect(detailAfterSelection.height).toBeGreaterThan(
-    railAfterSelection.height,
-  );
+  expect(
+    Math.abs(paneAfterSelection.height - railAfterSelection.height),
+  ).toBeLessThanOrEqual(2);
 
   await openV2Page(page, "/models");
   const modelRail = page.getByRole("complementary", {
     name: "模型配置目标",
   });
   const modelRows = modelRail.locator(".fy-catalog-list-item");
-  await expect(modelRows).toHaveCount(5);
+  await expect(modelRows).toHaveCount(6);
   const modelRailBox = await requiredBox(modelRail, "Models catalog rail");
   expect(Math.abs(modelRailBox.x - agentRailBox.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(modelRailBox.width - agentRailBox.width)).toBeLessThanOrEqual(
@@ -249,6 +263,9 @@ test("Agents and Models share exact catalog geometry, stable gutters, and the 76
     1,
   );
   expect(stackedDetailBox.y).toBeGreaterThan(stackedRailBox.y);
+  await expect(
+    page.getByRole("separator", { name: "调整目录与详情的宽度" }),
+  ).toHaveCount(0);
 
   await page.setViewportSize({ width: 761, height: 900 });
   await openV2Page(page, "/models");
@@ -261,6 +278,9 @@ test("Agents and Models share exact catalog geometry, stable gutters, and the 76
     "761px detail",
   );
   expect(splitDetailBox.x).toBeGreaterThan(splitRailBox.x + splitRailBox.width);
+  await expect(
+    page.getByRole("separator", { name: "调整目录与详情的宽度" }),
+  ).toBeVisible();
 
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);
@@ -299,8 +319,12 @@ test("Agent catalog links invoke exact official URLs and Codex has no external a
   const claudeDetail = page.getByRole("region", {
     name: "Claude Code 详情",
   });
-  await claudeDetail.getByRole("button", { name: "Claude Code CLI" }).click();
-  await claudeDetail.getByRole("button", { name: "Claude Desktop" }).click();
+  await claudeDetail
+    .getByRole("button", { name: "打开 Claude Code CLI 官网" })
+    .click();
+  await claudeDetail
+    .getByRole("button", { name: "打开 Claude Desktop 官网" })
+    .click();
 
   await agentItem(page, "Codex").click();
   const codexDetail = page.getByRole("region", { name: "Codex 详情" });
@@ -548,7 +572,7 @@ test("Agent catalog failure stays explicit and never falls back to a static supp
   await expectHealthyPage(page, health);
 });
 
-test("Models keeps five targets and runs only the bounded TRAE preflight", async ({
+test("Models keeps six targets and runs only the bounded TRAE preflight", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
@@ -558,7 +582,7 @@ test("Models keeps five targets and runs only the bounded TRAE preflight", async
   const modelPage = page.getByTestId("models-page");
   await expect(modelPage).toBeVisible();
   const targetButtons = modelPage.locator('[data-testid^="model-target-"]');
-  await expect(targetButtons).toHaveCount(5);
+  await expect(targetButtons).toHaveCount(6);
   expect(
     await targetButtons.evaluateAll((elements) =>
       elements.map(
@@ -567,7 +591,7 @@ test("Models keeps five targets and runs only the bounded TRAE preflight", async
     ),
   ).toEqual([...modelTargetOrder]);
   const targetIcons = targetButtons.locator("img");
-  await expect(targetIcons).toHaveCount(5);
+  await expect(targetIcons).toHaveCount(6);
   expect(
     await targetIcons.evaluateAll((elements) =>
       elements.map((element) => ({

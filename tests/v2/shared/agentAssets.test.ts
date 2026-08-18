@@ -65,6 +65,7 @@ describe("V2 Agent catalog assets", () => {
       "workbuddy",
       "codex",
       "claude-code",
+      "opencode",
     ]);
     expect(Object.keys(agentIconById)).toEqual(agentIconIds);
     expect(Object.keys(agentBrandById)).toEqual(agentIconIds);

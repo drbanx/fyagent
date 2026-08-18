@@ -236,11 +236,21 @@ describe("V2 Agent directory", () => {
     ports.settings.openExternal = vi.fn(async () => undefined);
     renderPage(ports);
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: "打开 QoderWork CN 官方页面",
-      }),
-    );
+    const qoderDetail = await screen.findByRole("region", {
+      name: "QoderWork CN 详情",
+    });
+    const qoderOfficial = within(qoderDetail).getByRole("button", {
+      name: "打开 QoderWork CN 官方页面",
+    });
+    expect(
+      within(qoderDetail).getByRole("group", { name: "官方网站" }),
+    ).toBeVisible();
+    expect(
+      qoderOfficial.compareDocumentPosition(
+        within(qoderDetail).getByRole("heading", { name: "可用功能" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await user.click(qoderOfficial);
     await user.click(await screen.findByRole("button", { name: /TRAE Work/ }));
     expect(
       screen.queryByRole("button", { name: "配置模型" }),
@@ -255,14 +265,29 @@ describe("V2 Agent directory", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Claude Code/ }));
-    await user.click(screen.getByRole("button", { name: "Claude Code CLI" }));
-    await user.click(screen.getByRole("button", { name: "Claude Desktop" }));
+    await user.click(
+      screen.getByRole("button", { name: "打开 Claude Code CLI 官网" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "打开 Claude Desktop 官网" }),
+    );
 
     await user.click(screen.getByRole("button", { name: /^Codex/ }));
     const codexDetail = screen.getByRole("region", { name: "Codex 详情" });
     expect(
+      within(codexDetail).queryByRole("group", { name: "官方网站" }),
+    ).not.toBeInTheDocument();
+    expect(
       within(codexDetail).queryByRole("button", { name: /官方|CLI/ }),
     ).not.toBeInTheDocument();
+    const installer = within(codexDetail).getByRole("region", {
+      name: "Codex Desktop 安装器",
+    });
+    expect(
+      installer.compareDocumentPosition(
+        within(codexDetail).getByRole("heading", { name: "可用功能" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     expect(ports.settings.openExternal).toHaveBeenCalledTimes(5);
     expect(ports.settings.openExternal).toHaveBeenNthCalledWith(
@@ -300,9 +325,11 @@ describe("V2 Agent directory", () => {
     await user.click(
       await screen.findByRole("button", { name: /Claude Code/ }),
     );
-    const cliLink = screen.getByRole("button", { name: "Claude Code CLI" });
+    const cliLink = screen.getByRole("button", {
+      name: "打开 Claude Code CLI 官网",
+    });
     const desktopLink = screen.getByRole("button", {
-      name: "Claude Desktop",
+      name: "打开 Claude Desktop 官网",
     });
     await user.click(cliLink);
     expect(cliLink).toHaveTextContent("正在打开…");

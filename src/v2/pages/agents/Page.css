@@ -5,16 +5,31 @@
 }
 
 .fy-agent-identity {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 14px;
 }
 
 .fy-agent-identity-copy {
   display: grid;
+  flex: 1 1 160px;
   gap: 7px;
   min-width: 0;
+}
+
+.fy-agent-identity > .fy-catalog-brand-frame {
+  flex: 0 0 auto;
+}
+
+.fy-agent-official-links {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .fy-agent-identity-title {
