@@ -118,11 +118,11 @@ Plan snapshot 必须重算并阻断安装的触发条件：
 - 不增加外网请求；既有本机数据源采集优先，必要时仅读取本地缓存/元数据。
 
 ### 3.2 API 层
-建议新增一个“安装快照聚合”接口（可复用现有列表）：
-- `GET /codex-desktop/install/{install_id}/contract`
-返回 `InstallContractState`。
-- `POST /codex-desktop/install/{install_id}/contract/reconfirm`
-在 `snapshot_stale=true` 时触发重建并重写 `snapshot_id`。
+建议新增一个“安装快照聚合”接口（**独立于 Codex Desktop MSIX**）：
+- `agent_install_get_contract(agentId)` 返回四层 `InstallContract`。
+- `agent_install_reconfirm_plan(snapshotId)` 在 `snapshot_stale=true` 时重建
+  `snapshot_id`。
+- `agent_install_start_install({ snapshotId })` 是唯一执行入口。
 
 ### 3.3 迁移约束
 - 低风险灰度：先支持字段写入，再逐步切到 UI 渲染。

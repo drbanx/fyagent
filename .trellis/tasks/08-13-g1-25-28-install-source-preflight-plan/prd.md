@@ -10,9 +10,14 @@
 - 交付物：
   - 高保真原型图：`prototype/installer-decoder-prototype.png`
   - PRD、详细设计、前端设计、概要设计三份文本
-  - 下阶段子执行清单（Sol 模型）用于单一执行者在 Git 内顺序推进
+  - 下阶段子执行清单见公开合同，不再使用 Sol-fast 分发
 
-![installer-decoder-prototype](/Users/serendipity/.codex/worktrees/9a56/fyagent/.trellis/tasks/08-13-g1-25-28-install-source-preflight-plan/prototype/installer-decoder-prototype.png)
+![installer-decoder-prototype](./prototype/installer-decoder-prototype.png)
+
+**执行面更正（2026-08-18）：** 四层契约挂在新域 `agent_install_*`，**不是**
+`GET /codex-desktop/install/{id}/contract`。Codex Desktop MSIX 保持原锁定
+IPC。公开说明见
+[`docs/fyagent/development/agent-install-contract.md`](../../../docs/fyagent/development/agent-install-contract.md)。
 
 ## 1. 用户问题清单（Issue 组视角）
 

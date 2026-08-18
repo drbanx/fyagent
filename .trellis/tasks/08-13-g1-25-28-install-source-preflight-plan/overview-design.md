@@ -13,7 +13,7 @@ sequenceDiagram
   participant PKG as Integrity Layer
   participant ENV as Preflight Engine
   participant PLAN as Plan Engine
-  UI->>API: 请求安装会话 contract
+  UI->>API: agent_install_get_contract(agentId)
   API->>SRC: 读取来源元数据
   API->>PKG: 读取 hash/signature/revocation
   API->>ENV: 执行环境预检（facts）
@@ -26,7 +26,7 @@ sequenceDiagram
     UI-->>用户: 允许安装
   end
   用户->>UI: 点击继续安装
-  UI->>API: start_install（带 snapshot_id + precheck token）
+  UI->>API: agent_install_start_install({ snapshotId })
   API->>API: 再次校验 snapshot_id 和 plan hash（防重放）
   API-->>UI: 安装执行开始
 ```
