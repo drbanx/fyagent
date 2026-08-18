@@ -84,10 +84,12 @@ paths above.
 - Each application has an independent prompt collection and live-file query.
   Enabling one prompt uses the backend's single-enabled invariant; the result
   shown in the UI comes from the authoritative reread.
-- Creating and editing happen inline in the detail pane. Deletion and
-  dirty-discard use the shared ConfirmDialog. An enabled prompt must be
-  disabled before deletion. Do not open a Dialog to read or edit prompt
-  content.
+- Creating and editing happen inline in the detail pane. The prompt body is
+  the first readable surface after the compact title row. Name and
+  description stay on a secondary identity row and must not sit above a
+  min-height textarea that hides the body. Deletion and dirty-discard use
+  the shared ConfirmDialog. An enabled prompt must be disabled before
+  deletion. Do not open a Dialog to read or edit prompt content.
 - Import is explicit. Initial load only reads; it never imports, enables, or
   writes a prompt.
 - The live-file inspector is collapsed by default under the editor. It
@@ -101,12 +103,12 @@ paths above.
 
 The fixed resource mapping is:
 
-| Resource ID          | Native resource                  | Editable title/path |
-| -------------------- | -------------------------------- | ------------------- |
-| `openclaw-memory`    | `workspace/MEMORY.md`            | No                  |
-| `openclaw-user`      | `workspace/USER.md`              | No                  |
-| `hermes-memory`      | `memories/MEMORY.md` / `memory`  | No                  |
-| `hermes-user`        | `memories/USER.md` / `user`      | No                  |
+| Resource ID       | Native resource                 | Editable title/path |
+| ----------------- | ------------------------------- | ------------------- |
+| `openclaw-memory` | `workspace/MEMORY.md`           | No                  |
+| `openclaw-user`   | `workspace/USER.md`             | No                  |
+| `hermes-memory`   | `memories/MEMORY.md` / `memory` | No                  |
+| `hermes-user`     | `memories/USER.md` / `user`     | No                  |
 
 - Missing OpenClaw long-term files render as not yet created and are created
   only by an explicit Save.
@@ -138,7 +140,11 @@ The fixed resource mapping is:
 - Prompts select the application with `CatalogMasterDetail`, not a
   `<select>`. The workspace is a two-pane list + inline editor. Memory is
   a two-pane source/file list + inline editor. Do not keep a third
-  “记忆信息” or “使用说明” column. Users must be able to read the body
+  “记忆信息” or “使用说明” column. Path, character count, Hermes toggle,
+  and directory actions stay in a compact editor head. The body textarea
+  fills the remaining pane height with `min-height: 0` and pane overflow;
+  do not use a 220/330/450px editor min-height that forces users to drag
+  a splitter before they can read. Users must be able to read the body
   without dragging a splitter.
 - Prompts and Memory reuse the V2 `fy-feature-*`, `fy-control-*`, shared UI
   primitives, `CatalogMasterDetail` where a source rail is needed, and the
@@ -161,24 +167,24 @@ The fixed resource mapping is:
 
 ## 4. Validation & Error Matrix
 
-| Condition                                      | Required result |
-| ---------------------------------------------- | --------------- |
-| Unsupported prompt app                         | Reject before native invoke |
-| Unknown long-term resource                     | Reject before native invoke |
-| Daily filename outside `YYYY-MM-DD.md`          | Reject before native invoke |
-| Malformed prompt, limit, file, or search IPC    | Fail closed; render an error, never typed fake state |
-| Browser operation                              | Native-only state, not empty success or sample data |
-| Initial page load                              | Reads only; no import, enable, save, or file creation |
-| Empty collection                               | Application-specific empty state |
-| Search matches nothing                         | No-results state distinct from empty collection |
-| Missing OpenClaw long-term file                | Not-created state; file remains absent until Save |
-| Enabled prompt deletion                        | Block deletion and require disable first |
-| Mutation is already pending                    | Disable/ignore duplicate action; one native invoke |
-| Native mutation fails                          | Preserve baseline; report failure; no success claim |
-| Mutation succeeds, authoritative reread fails  | Preserve cached baseline and show refresh warning |
-| Dirty transition requested                     | Confirm discard before changing app/resource/tab/file/route |
-| Hermes content exceeds native character limit  | Warn visibly but allow explicit Save |
-| Prompt/Memory page introduces private theme    | Static/style review and browser acceptance fail |
+| Condition                                     | Required result                                             |
+| --------------------------------------------- | ----------------------------------------------------------- |
+| Unsupported prompt app                        | Reject before native invoke                                 |
+| Unknown long-term resource                    | Reject before native invoke                                 |
+| Daily filename outside `YYYY-MM-DD.md`        | Reject before native invoke                                 |
+| Malformed prompt, limit, file, or search IPC  | Fail closed; render an error, never typed fake state        |
+| Browser operation                             | Native-only state, not empty success or sample data         |
+| Initial page load                             | Reads only; no import, enable, save, or file creation       |
+| Empty collection                              | Application-specific empty state                            |
+| Search matches nothing                        | No-results state distinct from empty collection             |
+| Missing OpenClaw long-term file               | Not-created state; file remains absent until Save           |
+| Enabled prompt deletion                       | Block deletion and require disable first                    |
+| Mutation is already pending                   | Disable/ignore duplicate action; one native invoke          |
+| Native mutation fails                         | Preserve baseline; report failure; no success claim         |
+| Mutation succeeds, authoritative reread fails | Preserve cached baseline and show refresh warning           |
+| Dirty transition requested                    | Confirm discard before changing app/resource/tab/file/route |
+| Hermes content exceeds native character limit | Warn visibly but allow explicit Save                        |
+| Prompt/Memory page introduces private theme   | Static/style review and browser acceptance fail             |
 
 ## 5. Good / Base / Bad Cases
 

@@ -2,33 +2,33 @@
 
 ## 0. Git
 
-- [ ] 确认当前分支是 `cursor/prompt-memory-frontend-align-06e7`，且 `origin/dev/laiyongjie` 是祖先。
-- [ ] 确认没有 upstream 指向 `origin/dev/laiyongjie`。push 只用 `git push -u origin cursor/prompt-memory-frontend-align-06e7`。
-- [ ] PR base 设为 `dev/laiyongjie`。
+- [x] 确认当前分支是 `cursor/prompt-memory-frontend-align-06e7`，且 `origin/dev/laiyongjie` 是祖先。
+- [x] 确认没有 upstream 指向 `origin/dev/laiyongjie`。push 只用 `git push -u origin cursor/prompt-memory-frontend-align-06e7`。
+- [x] PR base 设为 `dev/laiyongjie`。
 
 ## 1. Spec
 
-- [ ] 在 `v2-prompts-memory.md` 增加目录轨、就地编辑、折叠 live file、记忆元数据进编辑头。
-- [ ] 不改 port 签名、资源 ID、失败矩阵。
-- [ ] 记下 OpenClaw 图标回退。
+- [x] 在 `v2-prompts-memory.md` 增加目录轨、就地编辑、折叠 live file、记忆元数据进编辑头。
+- [x] 不改 port 签名、资源 ID、失败矩阵。
+- [x] 记下 OpenClaw 图标回退。
 
 ## 2. 提示词页
 
-- [ ] 用 `CatalogMasterDetail` 替换 `<select>`；七个应用，Claude 默认。
-- [ ] 搜索移进 workspace。
-- [ ] 中间栏就地编辑；去掉编辑 Dialog。
-- [ ] live file 改为默认折叠的检视。
-- [ ] 保留导入、启用、删除、写锁、回读警告、脏确认。
-- [ ] 更新单测与 browser 用例：不再假设三栏常驻和 toolbar `<select>`。
+- [x] 用 `CatalogMasterDetail` 替换 `<select>`；七个应用，Claude 默认。
+- [x] 搜索移进 workspace。
+- [x] 中间栏就地编辑；去掉编辑 Dialog。
+- [x] live file 改为默认折叠的检视。
+- [x] 保留导入、启用、删除、写锁、回读警告、脏确认。
+- [x] 更新单测与 browser 用例：不再假设三栏常驻和 toolbar `<select>`。
 
 ## 3. 记忆页
 
-- [ ] 长期：OpenClaw / Hermes 分组轨；去掉「记忆信息」第三栏。
-- [ ] Hermes 开关、字符上限、可复制路径、打开目录进编辑头。
-- [ ] 每日：搜索 + 列表 + 编辑两栏。
-- [ ] 页头文案改为准确范围。
-- [ ] 保留 missing create-on-save、写锁、回读警告、脏确认。
-- [ ] 更新单测与 browser 用例。
+- [x] 长期：OpenClaw / Hermes 分组轨；去掉「记忆信息」第三栏。
+- [x] Hermes 开关、字符上限、可复制路径、打开目录进编辑头。
+- [x] 每日：搜索 + 列表 + 编辑两栏。
+- [x] 页头文案改为准确范围。
+- [x] 保留 missing create-on-save、写锁、回读警告、脏确认。
+- [x] 更新单测与 browser 用例。
 
 ## 4. 验证
 

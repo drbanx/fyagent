@@ -443,7 +443,11 @@ export function PromptsPage() {
       actions={<Button onClick={() => setSearch("")}>清空搜索</Button>}
     />
   ) : (
-    <SplitPanes separatorLabels={PROMPT_SPLIT_LABELS}>
+    <SplitPanes
+      maxWidths={[240]}
+      minWidths={[200, 380]}
+      separatorLabels={PROMPT_SPLIT_LABELS}
+    >
       <section
         className="fy-feature-panel fy-prompts-library"
         aria-label="提示词列表"
@@ -495,7 +499,10 @@ export function PromptsPage() {
           }
         />
       ) : (
-        <section className="fy-feature-panel fy-feature-detail">
+        <section
+          className="fy-feature-panel fy-prompts-editor-pane"
+          aria-label="提示词详情"
+        >
           <EmptyState
             title="选择一条提示词"
             description="从左侧打开提示词后即可直接阅读和编辑正文。"
@@ -612,6 +619,46 @@ export function PromptsPage() {
   );
 }
 
+function PromptIdentityFields({
+  autoFocusName = false,
+  busy,
+  description,
+  name,
+  onDraftChange,
+}: {
+  autoFocusName?: boolean;
+  busy: boolean;
+  description: string;
+  name: string;
+  onDraftChange: (
+    field: keyof PromptDraft,
+  ) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+}) {
+  return (
+    <div className="fy-prompts-editor-identity">
+      <label className="fy-control-field">
+        名称
+        <Input
+          autoFocus={autoFocusName}
+          aria-label="名称"
+          value={name}
+          disabled={busy}
+          onChange={onDraftChange("name")}
+        />
+      </label>
+      <label className="fy-control-field">
+        描述
+        <Input
+          aria-label="描述"
+          value={description}
+          disabled={busy}
+          onChange={onDraftChange("description")}
+        />
+      </label>
+    </div>
+  );
+}
+
 function PromptEditorPane({
   appLabel,
   busy,
@@ -648,7 +695,7 @@ function PromptEditorPane({
 
   return (
     <section
-      className="fy-feature-panel fy-feature-detail fy-prompts-editor-pane"
+      className="fy-feature-panel fy-prompts-editor-pane"
       aria-label="提示词详情"
     >
       <form
@@ -656,38 +703,65 @@ function PromptEditorPane({
         className="fy-prompts-editor-form"
         onSubmit={onSave}
       >
-        <div className="fy-feature-detail-title">
-          <h2>{title}</h2>
-          {editor.mode === "edit" && (
-            <Badge tone={enabled ? "accent" : "neutral"}>
-              {enabled ? "已启用" : "未启用"}
-            </Badge>
-          )}
-        </div>
-        <p className="fy-feature-description">
-          {editor.mode === "new"
-            ? "保存后会写入该应用的提示词库，但不会自动启用。"
-            : `${appLabel} · 更新于 ${formatTimestamp(editor.prompt?.updatedAt)}`}
-        </p>
-        <label className="fy-control-field">
-          名称
-          <Input
-            autoFocus={editor.mode === "new"}
-            aria-label="名称"
-            value={editor.draft.name}
-            disabled={busy}
-            onChange={onDraftChange("name")}
+        <header className="fy-prompts-editor-head">
+          <div className="fy-feature-detail-title">
+            <h2>{title}</h2>
+            {editor.mode === "edit" && (
+              <Badge tone={enabled ? "accent" : "neutral"}>
+                {enabled ? "已启用" : "未启用"}
+              </Badge>
+            )}
+          </div>
+          {editor.prompt && onToggle ? (
+            <Switch
+              checked={enabled}
+              disabled={busy}
+              label={`${enabled ? "停用" : "启用"}${editor.prompt.name}`}
+              onCheckedChange={onToggle}
+            />
+          ) : null}
+          <div className="fy-feature-actions">
+            <Button
+              className="fy-control-button-primary"
+              disabled={busy || !editor.draft.name.trim()}
+              type="submit"
+            >
+              {busy ? "保存中…" : "保存"}
+            </Button>
+            {editor.mode === "new" ? (
+              <Button disabled={busy} onClick={onCloseNew} type="button">
+                取消
+              </Button>
+            ) : (
+              <Button
+                className="fy-control-button-danger"
+                disabled={busy}
+                onClick={onDelete}
+                type="button"
+              >
+                删除
+              </Button>
+            )}
+          </div>
+        </header>
+        {editor.mode === "new" ? (
+          <p className="fy-feature-description">
+            保存后会写入该应用的提示词库，但不会自动启用。
+          </p>
+        ) : (
+          <p className="fy-prompts-editor-meta">
+            {appLabel} · 更新于 {formatTimestamp(editor.prompt?.updatedAt)}
+          </p>
+        )}
+        {editor.mode === "new" ? (
+          <PromptIdentityFields
+            autoFocusName
+            busy={busy}
+            description={editor.draft.description}
+            name={editor.draft.name}
+            onDraftChange={onDraftChange}
           />
-        </label>
-        <label className="fy-control-field">
-          描述
-          <Input
-            aria-label="描述"
-            value={editor.draft.description}
-            disabled={busy}
-            onChange={onDraftChange("description")}
-          />
-        </label>
+        ) : null}
         <label className="fy-control-field fy-prompts-editor-content-field">
           内容
           <textarea
@@ -699,45 +773,14 @@ function PromptEditorPane({
             onChange={onDraftChange("content")}
           />
         </label>
-        {editor.prompt && onToggle && (
-          <div className="fy-feature-assignment">
-            <span>{enabled ? "当前正在使用此提示词" : "启用此提示词"}</span>
-            <Switch
-              checked={enabled}
-              disabled={busy}
-              label={`${enabled ? "停用" : "启用"}${editor.prompt.name}`}
-              onCheckedChange={onToggle}
-            />
-          </div>
-        )}
-        {enabled && (
-          <InlineNotice tone="warning">
-            启用项不能直接删除，请先停用。
-          </InlineNotice>
-        )}
-        <div className="fy-feature-actions">
-          <Button
-            className="fy-control-button-primary"
-            disabled={busy || !editor.draft.name.trim()}
-            type="submit"
-          >
-            {busy ? "保存中…" : "保存"}
-          </Button>
-          {editor.mode === "new" ? (
-            <Button disabled={busy} onClick={onCloseNew} type="button">
-              取消
-            </Button>
-          ) : (
-            <Button
-              className="fy-control-button-danger"
-              disabled={busy}
-              onClick={onDelete}
-              type="button"
-            >
-              删除
-            </Button>
-          )}
-        </div>
+        {editor.mode === "edit" ? (
+          <PromptIdentityFields
+            busy={busy}
+            description={editor.draft.description}
+            name={editor.draft.name}
+            onDraftChange={onDraftChange}
+          />
+        ) : null}
       </form>
       <details className="fy-prompts-live">
         <summary>当前使用的内容 · {appLabel}</summary>

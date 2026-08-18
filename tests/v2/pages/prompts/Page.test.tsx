@@ -137,6 +137,14 @@ describe("PromptsPage native business management", () => {
     expect(
       await screen.findByRole("heading", { name: "Claude rule" }),
     ).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "内容" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue(
+      "Claude rule content",
+    );
+    expect(document.querySelector(".fy-prompts-live")).not.toHaveAttribute(
+      "open",
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByTestId("prompts-page")).toHaveAttribute(
       "data-data-source",
       "native",

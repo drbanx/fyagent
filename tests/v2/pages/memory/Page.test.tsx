@@ -193,6 +193,9 @@ describe("MemoryPage native business management", () => {
     expect(screen.getByRole("textbox", { name: "记忆内容" })).toHaveValue(
       "openclaw memory",
     );
+    expect(screen.getByRole("textbox", { name: "记忆内容" })).toBeVisible();
+    expect(screen.queryByText("记忆信息")).not.toBeInTheDocument();
+    expect(screen.queryByText("使用说明")).not.toBeInTheDocument();
 
     const selections: ReadonlyArray<[RegExp, MemoryDocumentId, string]> = [
       [/OpenClaw · USER\.md/, "openclaw-user", "openclaw user"],
