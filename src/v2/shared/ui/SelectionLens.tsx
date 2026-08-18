@@ -37,6 +37,31 @@ const SelectionLensContext = createContext<SelectionLensContextValue | null>(
   null,
 );
 
+function isHiddenFromLayout(element: HTMLElement): boolean {
+  let node: HTMLElement | null = element;
+  while (node) {
+    if (node.hidden) return true;
+    node = node.parentElement;
+  }
+  return false;
+}
+
+function observeHiddenAncestors(
+  start: HTMLElement,
+  onChange: () => void,
+): () => void {
+  const observer = new MutationObserver(onChange);
+  let node: HTMLElement | null = start;
+  while (node) {
+    observer.observe(node, {
+      attributes: true,
+      attributeFilter: ["hidden"],
+    });
+    node = node.parentElement;
+  }
+  return () => observer.disconnect();
+}
+
 export function SelectionLensGroup({
   id,
   inset = 0,
@@ -49,8 +74,10 @@ export function SelectionLensGroup({
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLElement | null>(null);
+  const hiddenRef = useRef(false);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [box, setBox] = useState<LensBox | null>(null);
+  const [revealKey, setRevealKey] = useState(0);
   const reduceMotion = useReducedMotion() === true;
 
   const syncBox = useCallback(() => {
@@ -60,15 +87,34 @@ export function SelectionLensGroup({
       return;
     }
 
+    if (isHiddenFromLayout(scope)) {
+      hiddenRef.current = true;
+      return;
+    }
+
     const scopeRect = scope.getBoundingClientRect();
     const hostRect = nextHost.getBoundingClientRect();
-    setBox({
+    if (hiddenRef.current) {
+      hiddenRef.current = false;
+      setRevealKey((key) => key + 1);
+    }
+    const nextBox = {
       x: hostRect.left - scopeRect.left + inset,
       y: hostRect.top - scopeRect.top + inset,
       width: Math.max(0, hostRect.width - inset * 2),
       height: Math.max(0, hostRect.height - inset * 2),
       borderRadius: getComputedStyle(nextHost).borderRadius,
-    });
+    };
+    setBox((current) =>
+      current &&
+      current.x === nextBox.x &&
+      current.y === nextBox.y &&
+      current.width === nextBox.width &&
+      current.height === nextBox.height &&
+      current.borderRadius === nextBox.borderRadius
+        ? current
+        : nextBox,
+    );
   }, [inset]);
 
   const register = useCallback((nextHost: HTMLElement | null) => {
@@ -85,6 +131,10 @@ export function SelectionLensGroup({
   }, []);
 
   useLayoutEffect(() => {
+    syncBox();
+  });
+
+  useLayoutEffect(() => {
     const scope = scopeRef.current;
     if (!scope || !host) {
       return;
@@ -99,11 +149,13 @@ export function SelectionLensGroup({
     observer?.observe(scope);
     observer?.observe(host);
     window.addEventListener("resize", syncBox);
+    const stopHiddenWatch = observeHiddenAncestors(scope, syncBox);
     syncBox();
 
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", syncBox);
+      stopHiddenWatch();
     };
   }, [host, syncBox]);
 
@@ -118,18 +170,26 @@ export function SelectionLensGroup({
         {children}
         {host && box ? (
           <motion.div
+            key={revealKey}
             className="fy-selection-lens"
-            initial={false}
+            initial={
+              reduceMotion
+                ? false
+                : { left: inset, top: inset, width: 0, height: 0 }
+            }
             animate={{
               left: box.x,
               top: box.y,
               width: box.width,
               height: box.height,
             }}
-            transition={reduceMotion ? { duration: 0 } : selectionLensTransition}
+            transition={
+              reduceMotion ? { duration: 0 } : selectionLensTransition
+            }
             style={{ borderRadius: box.borderRadius }}
             aria-hidden
             data-testid="selection-lens"
+            data-selection-lens-reveal={revealKey}
           />
         ) : null}
       </div>

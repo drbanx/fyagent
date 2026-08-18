@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -55,5 +56,56 @@ describe("SelectionLens", () => {
     );
 
     expect(screen.getByTestId("selection-lens")).toBeVisible();
+  });
+
+  it("replays the appear spring after a hidden ancestor is shown again", async () => {
+    function Track({ hide }: { hide: boolean }) {
+      return (
+        <div hidden={hide ? true : undefined}>
+          <SelectionLensGroup id="hidden-track">
+            <button type="button">
+              <SelectionLens active />
+              Current
+            </button>
+          </SelectionLensGroup>
+        </div>
+      );
+    }
+
+    const { rerender } = render(<Track hide={false} />);
+    expect(screen.getByTestId("selection-lens")).toHaveAttribute(
+      "data-selection-lens-reveal",
+      "0",
+    );
+
+    rerender(<Track hide />);
+    rerender(<Track hide={false} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("selection-lens")).toHaveAttribute(
+        "data-selection-lens-reveal",
+        "1",
+      );
+    });
+  });
+
+  it("still uses one pill when the active option is chosen from local state", () => {
+    function Track() {
+      const [current, setCurrent] = useState("one");
+      return (
+        <SelectionLensTrack id="state-track">
+          <button type="button" onClick={() => setCurrent("one")}>
+            <SelectionLens active={current === "one"} />
+            One
+          </button>
+          <button type="button" onClick={() => setCurrent("two")}>
+            <SelectionLens active={current === "two"} />
+            Two
+          </button>
+        </SelectionLensTrack>
+      );
+    }
+
+    render(<Track />);
+    expect(screen.getAllByTestId("selection-lens")).toHaveLength(1);
   });
 });
