@@ -816,3 +816,24 @@ layoutId 非等比 scale 叠加 backdrop-filter 会压扁滑块并拉糊顶栏�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 26: V2 catalog models Skills/MCP parity
+
+**Date**: 2026-08-18
+**Task**: V2 catalog models Skills/MCP parity
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Aligned V2 agent catalog, models, and Skills/MCP: TRAE Work CN URL and native persist, OpenCode model CRUD, Qoder unsupported third-party models, catalog-aligned Skills/MCP targets including WorkBuddy, then updated specs and archived the task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bbeb0921` | (see git log) |
+
+### Status
+
+[OK] **Completed**
