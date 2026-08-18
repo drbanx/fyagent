@@ -453,7 +453,7 @@ export function PromptsPage() {
         </>
       }
     />
-  ) : filtered.length === 0 && activeEditor?.mode !== "new" ? (
+  ) : filtered.length === 0 && activeEditor?.mode !== "new" && !selected ? (
     <EmptyState
       title="没有匹配的提示词"
       description={`已加载 ${prompts.length} 条 ${APP_LABELS[app]} 提示词，可清空或调整搜索条件。`}
@@ -475,7 +475,17 @@ export function PromptsPage() {
             {enabledCount} 条已启用
           </span>
         </h2>
+        {selected &&
+        search.trim() &&
+        !filtered.some((prompt) => prompt.id === selected.id) ? (
+          <p className="fy-feature-description">
+            当前编辑的提示词不在搜索结果中。
+          </p>
+        ) : null}
         <SelectionLensTrack id="prompts-list" className="fy-feature-list">
+          {filtered.length === 0 ? (
+            <p className="fy-feature-description">没有匹配的提示词</p>
+          ) : null}
           {filtered.map((prompt) => (
             <button
               key={prompt.id}

@@ -46,7 +46,7 @@ git diff --check
 - [x] `git diff origin/dev/laiyongjie` 不含 MCP Catalog、安装器、`dev/xk` 未合内容。
 - [x] 不出现对 `origin/dev/laiyongjie` 的 push。
 
-人工验收清单：`handoff.md`。A 节给提示词页；B 节给 Windows 官方 check + 三页桌面。
+人工验收清单：`handoff.md` 分发；`handoff-prompts.md` 给提示词测试机；`handoff-windows.md` 给 Windows 官方 check + 三页桌面。
 
 ## 回滚
 

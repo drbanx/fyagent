@@ -440,6 +440,11 @@ export function SkillsPage() {
         <div className="fy-feature-actions">
           {tab === "discovery" && (
             <>
+              <p className="fy-feature-description">
+                将安装到{" "}
+                {SKILL_TARGETS.find((app) => app.id === installTarget)?.label ??
+                  "Claude"}
+              </p>
               <SelectionLensTrack
                 id="skills-install-target"
                 className="fy-feature-tabs fy-feature-target-tabs"

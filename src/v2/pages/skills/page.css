@@ -8,6 +8,12 @@
   margin-bottom: 0;
 }
 
+.fy-skills-page .fy-feature-actions > .fy-feature-description {
+  flex: 0 0 auto;
+  margin: 0;
+  align-self: center;
+}
+
 .fy-skills-page .fy-feature-toolbar {
   align-items: center;
 }

@@ -231,6 +231,17 @@ describe("PromptsPage native business management", () => {
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue(
       "answer briefly",
     );
+
+    await user.clear(screen.getByRole("searchbox", { name: "搜索提示词" }));
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索提示词" }),
+      "missing",
+    );
+    expect(screen.getByRole("heading", { name: "Reply rule" })).toBeVisible();
+    expect(screen.getByText("当前编辑的提示词不在搜索结果中。")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "清空搜索" }),
+    ).not.toBeInTheDocument();
   });
 
   it("creates and edits inline with legacy ids and timestamps", async () => {
