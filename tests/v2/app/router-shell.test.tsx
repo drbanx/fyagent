@@ -322,8 +322,11 @@ describe("FyAgent V2 primary page persistence", () => {
     await expectPath(router, "/prompts");
     expect(screen.getByTestId("skills-page")).not.toBeVisible();
 
-    await user.selectOptions(screen.getByLabelText("当前应用"), "gemini");
-    expect(screen.getByLabelText("当前应用")).toHaveValue("gemini");
+    await user.click(screen.getByTestId("prompt-app-gemini"));
+    expect(screen.getByTestId("prompt-app-gemini")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
     await user.click(screen.getByRole("link", { name: "记忆" }));
     await expectPath(router, "/memory");
     expect(screen.getByTestId("prompts-page")).not.toBeVisible();
@@ -346,7 +349,10 @@ describe("FyAgent V2 primary page persistence", () => {
       "true",
     );
     await user.click(screen.getByRole("link", { name: "提示词" }));
-    expect(screen.getByLabelText("当前应用")).toHaveValue("gemini");
+    expect(screen.getByTestId("prompt-app-gemini")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
     await user.click(screen.getByRole("link", { name: "记忆" }));
     expect(screen.getByRole("tab", { name: "每日记忆" })).toHaveAttribute(
       "aria-selected",

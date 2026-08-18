@@ -271,7 +271,7 @@ describe("MemoryPage native business management", () => {
         "status",
       ),
     ).toHaveTextContent(/超过 Hermes 的\s*5\s*字符上限/);
-    expect(screen.getByText("6 / 5")).toBeVisible();
+    expect(screen.getByText(/6 \/ 5/)).toBeVisible();
 
     const toggle = screen.getByRole("switch", {
       name: "在 Hermes 中停用 Hermes · MEMORY.md",

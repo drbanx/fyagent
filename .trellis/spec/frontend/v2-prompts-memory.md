@@ -84,12 +84,16 @@ paths above.
 - Each application has an independent prompt collection and live-file query.
   Enabling one prompt uses the backend's single-enabled invariant; the result
   shown in the UI comes from the authoritative reread.
-- Creating and editing use the shared Dialog. Deletion and dirty-discard use
-  the shared ConfirmDialog. An enabled prompt must be disabled before deletion.
+- Creating and editing happen inline in the detail pane. Deletion and
+  dirty-discard use the shared ConfirmDialog. An enabled prompt must be
+  disabled before deletion. Do not open a Dialog to read or edit prompt
+  content.
 - Import is explicit. Initial load only reads; it never imports, enables, or
   writes a prompt.
-- The live-file panel reports the current native file content. It is not an
-  editable second source of truth.
+- The live-file inspector is collapsed by default under the editor. It
+  reports the current native file content and is not an editable second
+  source of truth. Do not keep it as a third always-open column that steals
+  width from the prompt body.
 - Claude Desktop is intentionally absent because the native prompt backend does
   not support it.
 
@@ -131,14 +135,19 @@ The fixed resource mapping is:
   completed but refresh failed; do not announce synchronized state.
 - Application, document, tab, daily-file, and route transitions share the same
   dirty-discard confirmation flow. Do not use `window.confirm`.
+- Prompts select the application with `CatalogMasterDetail`, not a
+  `<select>`. The workspace is a two-pane list + inline editor. Memory is
+  a two-pane source/file list + inline editor. Do not keep a third
+  “记忆信息” or “使用说明” column. Users must be able to read the body
+  without dragging a splitter.
 - Prompts and Memory reuse the V2 `fy-feature-*`, `fy-control-*`, shared UI
-  primitives, and the shared `SplitPanes` chassis for list/detail/side
-  columns (independent scroll, 14px gutter, pointer/keyboard resize).
-  Split-pane children fill the pane and scroll inside it; page CSS must not
-  set `height: 100%` without overflow or let editor/assignment rows paint
-  past the panel. Page CSS is limited to namespaced editor height, scrolling,
-  and responsive arrangement; it must not create an independent dark-blue
-  theme.
+  primitives, `CatalogMasterDetail` where a source rail is needed, and the
+  shared `SplitPanes` chassis (independent scroll, 14px gutter,
+  pointer/keyboard resize). Split-pane children fill the pane and scroll
+  inside it; page CSS must not set `height: 100%` without overflow or let
+  editor/assignment rows paint past the panel. Page CSS is limited to
+  namespaced editor height, scrolling, and responsive arrangement; it must
+  not create an independent dark-blue theme.
 
 ### Platform boundary
 

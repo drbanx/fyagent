@@ -34,13 +34,14 @@ import {
   SelectionLens,
   SelectionLensTrack,
 } from "../../shared/ui/SelectionLens";
+import { CopyablePath } from "../../shared/ui/CopyablePath";
 import { SplitPanes } from "../../shared/ui/split";
 
 import "./page.css";
 
 type MemoryTab = "long-term" | "daily";
-const LONG_TERM_SPLIT_LABELS = ["调整列表与编辑的宽度", "调整编辑与信息的宽度"];
-const DAILY_SPLIT_LABELS = ["调整列表与编辑的宽度", "调整编辑与说明的宽度"];
+const LONG_TERM_SPLIT_LABELS = ["调整来源与编辑的宽度"];
+const DAILY_SPLIT_LABELS = ["调整列表与编辑的宽度"];
 type Notice = { tone: "info" | "error" | "warning"; message: string };
 type TransitionRequest = (transition: () => void) => void;
 type DiscardIntent =
@@ -194,7 +195,10 @@ export function MemoryPage() {
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>记忆</h1>
-          <p>管理 OpenClaw 与 Hermes 的长期记忆和每日记录。</p>
+          <p>
+            管理 OpenClaw 与 Hermes 的长期文件，以及 OpenClaw
+            的每日记录。点开后直接阅读正文。
+          </p>
         </div>
       </header>
       <SelectionLensTrack
@@ -402,83 +406,52 @@ function LongTermView({
         separatorLabels={LONG_TERM_SPLIT_LABELS}
       >
         <section className="fy-feature-panel" aria-label="长期记忆资源">
-          <h2>长期记忆 · 4</h2>
+          <h2>长期记忆</h2>
           <SelectionLensTrack
             id="memory-document-list"
             className="fy-feature-list"
           >
-            {MEMORY_DOCUMENTS.map((document) => (
-              <button
-                key={document.id}
-                type="button"
-                className="fy-feature-list-item"
-                aria-current={document.id === selectedId}
-                onClick={() => selectDocument(document.id)}
-              >
-                <SelectionLens active={document.id === selectedId} />
-                <strong>{document.title}</strong>
-                <span>{document.description}</span>
-              </button>
+            {(["OpenClaw", "Hermes"] as const).map((source) => (
+              <div key={source} className="fy-memory-source-group">
+                <h3>{source}</h3>
+                {MEMORY_DOCUMENTS.filter(
+                  (document) => document.source === source,
+                ).map((document) => (
+                  <button
+                    key={document.id}
+                    type="button"
+                    className="fy-feature-list-item"
+                    aria-current={document.id === selectedId}
+                    onClick={() => selectDocument(document.id)}
+                  >
+                    <SelectionLens active={document.id === selectedId} />
+                    <strong>{document.title}</strong>
+                    <span>{document.description}</span>
+                  </button>
+                ))}
+              </div>
             ))}
           </SelectionLensTrack>
         </section>
         <LongTermEditor
           key={selectedId}
           busy={busyOperation !== null}
+          directoryBusy={directoryBusy}
+          hermesEnabled={hermesEnabled}
+          hermesError={limitsQuery.error}
+          hermesLoading={limitsQuery.isLoading}
           initialContent={documentQuery.data ?? null}
           limit={hermesLimit}
           resource={selected}
           onDirtyChange={onDirtyChange}
+          onOpenDirectory={() => void openDirectory("workspace")}
           onSave={save}
+          onToggleHermes={
+            selected.hermesKind
+              ? (enabled) => void toggleHermes(selected.hermesKind!, enabled)
+              : undefined
+          }
         />
-        <section className="fy-feature-panel fy-feature-detail">
-          <h2>记忆信息</h2>
-          <dl className="fy-feature-definition">
-            <dt>来源</dt>
-            <dd>{selected.source}</dd>
-            <dt>状态</dt>
-            <dd>{documentQuery.data === null ? "尚未创建" : "可编辑"}</dd>
-          </dl>
-          {selected.hermesKind && (
-            <>
-              <div className="fy-feature-assignment">
-                <span>Hermes 中启用</span>
-                {limitsQuery.isLoading ? (
-                  <Spinner label="正在读取 Hermes 状态" />
-                ) : (
-                  <Switch
-                    checked={hermesEnabled ?? false}
-                    disabled={busyOperation !== null || limitsQuery.isError}
-                    label={`在 Hermes 中${
-                      hermesEnabled ? "停用" : "启用"
-                    } ${selected.title}`}
-                    onCheckedChange={(enabled) =>
-                      void toggleHermes(selected.hermesKind!, enabled)
-                    }
-                  />
-                )}
-              </div>
-              <dl className="fy-feature-definition">
-                <dt>字符上限</dt>
-                <dd>{hermesLimit ?? "无法读取"}</dd>
-              </dl>
-              {limitsQuery.error && (
-                <InlineNotice tone="error">
-                  无法读取 Hermes 限额和启停状态：
-                  {errorMessage(limitsQuery.error)}
-                </InlineNotice>
-              )}
-            </>
-          )}
-          {selected.source === "OpenClaw" && (
-            <Button
-              disabled={directoryBusy}
-              onClick={() => void openDirectory("workspace")}
-            >
-              打开 OpenClaw 工作区
-            </Button>
-          )}
-        </section>
       </SplitPanes>
     </>
   );
@@ -486,18 +459,30 @@ function LongTermView({
 
 function LongTermEditor({
   busy,
+  directoryBusy,
+  hermesEnabled,
+  hermesError,
+  hermesLoading,
   initialContent,
   limit,
   resource,
   onDirtyChange,
+  onOpenDirectory,
   onSave,
+  onToggleHermes,
 }: {
   busy: boolean;
+  directoryBusy: boolean;
+  hermesEnabled?: boolean;
+  hermesError: unknown;
+  hermesLoading: boolean;
   initialContent: string | null;
   limit?: number;
   resource: MemoryDocumentDefinition;
   onDirtyChange: (dirty: boolean) => void;
+  onOpenDirectory: () => void;
   onSave: (content: string) => Promise<string | null | undefined>;
+  onToggleHermes?: (enabled: boolean) => void;
 }) {
   const [baseline, setBaseline] = useState(initialContent ?? "");
   const [draft, setDraft] = useState(baseline);
@@ -519,13 +504,40 @@ function LongTermEditor({
         {dirty && <Badge tone="warning">未保存</Badge>}
       </div>
       <p className="fy-feature-description">{resource.description}</p>
-      <dl className="fy-feature-definition">
-        <dt>字符数</dt>
-        <dd>
-          {characterCount}
-          {limit !== undefined ? ` / ${limit}` : ""}
-        </dd>
-      </dl>
+      <CopyablePath label="路径" value={resource.path} />
+      <p className="fy-feature-description">
+        {resource.source} · {characterCount}
+        {limit !== undefined ? ` / ${limit}` : ""} 字符
+        {missing ? " · 尚未创建" : " · 可编辑"}
+      </p>
+      {resource.hermesKind && onToggleHermes && (
+        <div className="fy-feature-assignment">
+          <span>Hermes 中启用</span>
+          {hermesLoading ? (
+            <Spinner label="正在读取 Hermes 状态" />
+          ) : (
+            <Switch
+              checked={hermesEnabled ?? false}
+              disabled={busy || Boolean(hermesError)}
+              label={`在 Hermes 中${
+                hermesEnabled ? "停用" : "启用"
+              } ${resource.title}`}
+              onCheckedChange={onToggleHermes}
+            />
+          )}
+        </div>
+      )}
+      {hermesError != null && resource.hermesKind && (
+        <InlineNotice tone="error">
+          无法读取 Hermes 限额和启停状态：
+          {errorMessage(hermesError)}
+        </InlineNotice>
+      )}
+      {resource.source === "OpenClaw" && (
+        <Button disabled={directoryBusy} onClick={onOpenDirectory}>
+          打开 OpenClaw 工作区
+        </Button>
+      )}
       {missing && (
         <InlineNotice>此内容尚未创建。点击“保存”后即可创建。</InlineNotice>
       )}
@@ -874,16 +886,10 @@ function DailyView({
             <section className="fy-feature-panel">
               <EmptyState
                 title="选择每日记忆"
-                description="从左侧选择一个文件，或打开今天的记录。"
+                description="从左侧选择一个 OpenClaw 每日文件，或打开今天的记录。"
               />
             </section>
           )}
-          <section className="fy-feature-panel fy-feature-detail">
-            <h2>使用说明</h2>
-            <p className="fy-feature-description">
-              每日记忆按日期整理。选择记录后即可编辑、保存或删除。
-            </p>
-          </section>
         </SplitPanes>
       )}
       <ConfirmDialog
@@ -931,10 +937,9 @@ function DailyEditor({
         </Badge>
         {dirty && <Badge tone="warning">未保存</Badge>}
       </div>
-      <dl className="fy-feature-definition">
-        <dt>字符数</dt>
-        <dd>{characterCount}</dd>
-      </dl>
+      <p className="fy-feature-description">
+        OpenClaw 每日记录 · {characterCount} 字符
+      </p>
       {missing && (
         <InlineNotice>今天的记录尚未创建。点击“保存”后即可创建。</InlineNotice>
       )}

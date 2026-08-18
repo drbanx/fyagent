@@ -66,6 +66,12 @@
 - [ ] AC7. `mise run lint:v2`、`typecheck:v2`、`test:v2`、`test:v2:browser`、`build:renderer`、`format:check` 通过。
 - [ ] AC8. `v2-prompts-memory.md` 补上目录轨、就地编辑、折叠检视，且不放松现有 command 边界。
 
+## Interaction defects this sprint must close
+
+- 点开提示词后先看到应用 / ID / 时间定义列表，正文缩在只读框里，再点「编辑」才进 Dialog。人类阅读路径过长。
+- 三栏默认宽度加 `min-height: 330/450` 的 textarea，常见窗口下正文被挤没，必须手动拉分隔条才看得到。这是错误交互，不是可接受的进阶调节。
+- 记忆第三栏「记忆信息 / 使用说明」和中间栏重复，进一步抢走正文宽度。
+
 ## Open questions
 
-无阻断问题。产品对象沿用基线 native 合同；今晚只补信息架构。
+无阻断问题。产品对象沿用基线 native 合同；今晚只补信息架构与上述阅读/分栏缺陷。

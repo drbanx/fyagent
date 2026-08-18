@@ -209,7 +209,7 @@ test("switches all six routes and keeps Prompt and Memory controls reachable", a
   await navigation.getByRole("link", { name: "提示词", exact: true }).click();
   await expectPromptNativeOnly(page);
   for (const control of [
-    page.getByRole("combobox", { name: "当前应用" }),
+    page.getByTestId("prompt-app-claude"),
     page.getByRole("searchbox", { name: "搜索提示词" }),
     page.getByRole("button", { name: "从文件导入" }),
     page.getByRole("button", { name: "新建提示词" }),

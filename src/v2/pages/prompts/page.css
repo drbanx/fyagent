@@ -2,17 +2,23 @@
   margin-bottom: 12px;
 }
 
-.fy-prompts-page .fy-feature-toolbar {
-  margin-bottom: 12px;
+.fy-prompts-page .fy-feature-workspace {
+  min-height: 0;
 }
 
-.fy-prompts-app-field {
-  flex: 0 1 260px;
+.fy-prompts-page .fy-catalog-detail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.fy-prompts-page .fy-feature-toolbar {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
 }
 
 .fy-prompts-library {
   min-height: 0;
-  overflow: auto;
 }
 
 .fy-prompts-library h2 {
@@ -28,52 +34,48 @@
   font-weight: 500;
 }
 
-.fy-prompts-content,
-.fy-prompts-live-content,
-.fy-prompts-editor-content {
-  font-family: ui-monospace, Consolas, monospace;
-  white-space: pre-wrap;
-}
-
-.fy-prompts-content {
-  min-height: 210px;
-  resize: vertical;
-}
-
-.fy-prompts-live-content {
-  min-height: 330px;
-  resize: vertical;
+.fy-prompts-editor-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .fy-prompts-editor-form {
   display: grid;
-  gap: 14px;
+  flex: 1 1 auto;
+  align-content: start;
+  gap: 12px;
   min-height: 0;
 }
 
 .fy-prompts-editor-content-field {
-  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(220px, 1fr);
+  min-height: 220px;
 }
 
-.fy-prompts-editor-content {
-  min-height: 300px;
+.fy-prompts-editor-content,
+.fy-prompts-live-content {
+  min-width: 0;
+  min-height: 220px;
   resize: vertical;
+  font-family: ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
 }
 
-@media (max-width: 1180px) {
-  .fy-prompts-live-content {
-    min-height: 190px;
-  }
+.fy-prompts-live {
+  flex: 0 0 auto;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fy-border);
 }
 
-@media (max-width: 760px) {
-  .fy-prompts-app-field {
-    flex-basis: 100%;
-  }
+.fy-prompts-live summary {
+  cursor: pointer;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+}
 
-  .fy-prompts-content,
-  .fy-prompts-live-content,
-  .fy-prompts-editor-content {
-    min-height: 180px;
-  }
+.fy-prompts-live[open] .fy-prompts-live-content {
+  margin-top: 10px;
 }

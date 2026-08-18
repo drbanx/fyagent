@@ -144,16 +144,20 @@ describe("PromptsPage native business management", () => {
     expect(
       screen.queryByText(/前端原型|注入目标|已保存到前端预览/),
     ).not.toBeInTheDocument();
-    const app = screen.getByRole("combobox", { name: "当前应用" });
-    expect(app).toHaveValue("claude");
-    expect(within(app).getAllByRole("option")).toHaveLength(7);
+    expect(screen.getByTestId("prompt-app-claude")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(
+      PROMPT_APP_IDS.map((id) => screen.getByTestId(`prompt-app-${id}`)),
+    ).toHaveLength(7);
 
-    await user.selectOptions(app, "codex");
+    await user.click(screen.getByTestId("prompt-app-codex"));
     expect(
       await screen.findByRole("heading", { name: "Codex rule" }),
     ).toBeVisible();
     expect(screen.queryByText("Claude rule")).not.toBeInTheDocument();
-    await user.selectOptions(app, "claude");
+    await user.click(screen.getByTestId("prompt-app-claude"));
     expect(
       await screen.findByRole("heading", { name: "Claude rule" }),
     ).toBeVisible();
@@ -186,7 +190,7 @@ describe("PromptsPage native business management", () => {
     expect(await screen.findByText("Reply rule")).toBeVisible();
   });
 
-  it("creates and edits through the shared dialog with legacy ids and timestamps", async () => {
+  it("creates and edits inline with legacy ids and timestamps", async () => {
     const { ports, stores } = statefulPorts({
       claude: [prompt("existing", "Existing")],
     });
@@ -195,24 +199,19 @@ describe("PromptsPage native business management", () => {
     await screen.findByRole("heading", { name: "Existing" });
 
     await user.click(screen.getByRole("button", { name: "新建提示词" }));
-    const createDialog = screen.getByRole("dialog", {
-      name: "新建 Claude 提示词",
-    });
+    expect(
+      screen.getByRole("heading", { name: "新建 Claude 提示词" }),
+    ).toBeVisible();
+    await user.type(screen.getByRole("textbox", { name: "名称" }), "New rule");
     await user.type(
-      within(createDialog).getByRole("textbox", { name: "名称" }),
-      "New rule",
-    );
-    await user.type(
-      within(createDialog).getByRole("textbox", { name: "描述" }),
+      screen.getByRole("textbox", { name: "描述" }),
       "New description",
     );
     await user.type(
-      within(createDialog).getByRole("textbox", { name: "内容" }),
+      screen.getByRole("textbox", { name: "内容" }),
       "New content",
     );
-    await user.click(
-      within(createDialog).getByRole("button", { name: "保存" }),
-    );
+    await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(
       await screen.findByRole("heading", { name: "New rule" }),
@@ -225,17 +224,14 @@ describe("PromptsPage native business management", () => {
     expect(created?.updatedAt).toEqual(expect.any(Number));
     expect(created?.enabled).toBe(false);
 
-    await user.click(screen.getByRole("button", { name: "编辑" }));
-    const editDialog = screen.getByRole("dialog", { name: "编辑 New rule" });
-    const description = within(editDialog).getByRole("textbox", {
-      name: "描述",
-    });
+    const description = screen.getByRole("textbox", { name: "描述" });
     await user.clear(description);
     await user.type(description, "Updated description");
-    await user.click(within(editDialog).getByRole("button", { name: "保存" }));
-    expect(
-      (await screen.findAllByText("Updated description")).length,
-    ).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(screen.getByRole("textbox", { name: "描述" })).toHaveValue(
+      "Updated description",
+    );
+    expect(await screen.findByText(/Updated description/)).toBeVisible();
     expect(
       stores.claude.find((candidate) => candidate.id === created?.id)
         ?.description,
@@ -253,7 +249,12 @@ describe("PromptsPage native business management", () => {
     renderPrompts(ports);
     await screen.findByRole("heading", { name: "First" });
 
-    await user.click(screen.getByRole("button", { name: /^Second / }));
+    await user.click(
+      screen.getByRole("button", { name: /Second description/ }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Second" }),
+    ).toBeVisible();
     await user.click(screen.getByRole("switch", { name: "启用Second" }));
     expect(
       await screen.findByRole("switch", { name: "停用Second" }),
@@ -331,21 +332,15 @@ describe("PromptsPage native business management", () => {
     const user = userEvent.setup();
     renderPrompts(ports);
     await screen.findByRole("heading", { name: "Existing" });
-    await user.click(screen.getByRole("button", { name: "编辑" }));
-    const dialog = screen.getByRole("dialog", { name: "编辑 Existing" });
-    const save = within(dialog).getByRole("button", { name: "保存" });
+    const save = screen.getByRole("button", { name: "保存" });
 
     await user.click(save);
-    expect(
-      within(dialog).getByRole("button", { name: "保存中…" }),
-    ).toBeDisabled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "保存中…" }));
+    expect(screen.getByRole("button", { name: "保存中…" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "保存中…" }));
     expect(ports.prompts.upsert).toHaveBeenCalledTimes(1);
     resolveWrite();
     await waitFor(() =>
-      expect(
-        screen.queryByRole("dialog", { name: "编辑 Existing" }),
-      ).not.toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
     );
   });
 
@@ -362,9 +357,7 @@ describe("PromptsPage native business management", () => {
     const user = userEvent.setup();
     renderPrompts(ports);
     await screen.findByRole("heading", { name: "Existing" });
-    await user.click(screen.getByRole("button", { name: "编辑" }));
-    const dialog = screen.getByRole("dialog", { name: "编辑 Existing" });
-    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(
       await screen.findByText(
@@ -389,18 +382,15 @@ describe("PromptsPage native business management", () => {
     const user = userEvent.setup();
     renderPrompts(ports);
     await screen.findByRole("heading", { name: "Existing" });
-    await user.click(screen.getByRole("button", { name: "编辑" }));
-    const dialog = screen.getByRole("dialog", { name: "编辑 Existing" });
-    const name = within(dialog).getByRole("textbox", { name: "名称" });
+    const name = screen.getByRole("textbox", { name: "名称" });
     await user.clear(name);
     await user.type(name, "Changed");
-    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(
       await screen.findByText("提示词已保存失败：请稍后重试。"),
     ).toBeVisible();
     expect(screen.queryByText("save rejected")).not.toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "编辑 Existing" })).toBeVisible();
     expect(name).toHaveValue("Changed");
     expect(
       screen.queryByText("提示词已保存", { exact: true }),
@@ -415,25 +405,20 @@ describe("PromptsPage native business management", () => {
     const user = userEvent.setup();
     renderPrompts(ports);
     await screen.findByRole("heading", { name: "Claude rule" });
-    const appSelect = screen.getByRole("combobox", { name: "当前应用" });
-    await user.click(screen.getByRole("button", { name: "编辑" }));
     await user.type(screen.getByRole("textbox", { name: "描述" }), " dirty");
 
-    fireEvent.change(appSelect, {
-      target: { value: "codex" },
-    });
+    await user.click(screen.getByTestId("prompt-app-codex"));
     const confirm = screen.getByRole("dialog", {
       name: "放弃未保存的提示词更改",
     });
     await user.click(within(confirm).getByRole("button", { name: "取消" }));
-    expect(appSelect).toHaveValue("claude");
-    expect(
-      screen.getByRole("dialog", { name: "编辑 Claude rule" }),
-    ).toBeVisible();
+    expect(screen.getByTestId("prompt-app-claude")).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(screen.getByRole("heading", { name: "Claude rule" })).toBeVisible();
 
-    fireEvent.change(appSelect, {
-      target: { value: "codex" },
-    });
+    await user.click(screen.getByTestId("prompt-app-codex"));
     await user.click(
       within(
         screen.getByRole("dialog", { name: "放弃未保存的提示词更改" }),
@@ -451,7 +436,6 @@ describe("PromptsPage native business management", () => {
     const router = renderPrompts(ports);
     const user = userEvent.setup();
     await screen.findByRole("heading", { name: "Existing" });
-    await user.click(screen.getByRole("button", { name: "编辑" }));
     await user.type(screen.getByRole("textbox", { name: "内容" }), " dirty");
 
     await act(async () => {

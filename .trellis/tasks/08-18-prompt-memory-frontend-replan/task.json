@@ -3,7 +3,7 @@
   "name": "prompt-memory-frontend-replan",
   "title": "提示词与记忆前端重规划",
   "description": "以 origin/dev/laiyongjie@59acaceb 为合并基线，在独立功能分支上把提示词/记忆 IA 对齐到 Agent/MCP 同一代；dev/xk 已在基线内。不在赖永杰分支上直接开发。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": "frontend",
   "scope": "src/v2/pages/prompts, src/v2/pages/memory, v2-prompts-memory spec",
   "package": null,
