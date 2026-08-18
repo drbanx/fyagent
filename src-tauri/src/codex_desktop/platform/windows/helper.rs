@@ -291,6 +291,7 @@ fn run_pinned_user_helper(
             "helperSidecarNames": helper_sidecar_names(),
         }),
     );
+    clear_helper_debug_breadcrumb();
     // #endregion
     let mut lifetime = HelperLifetime::new(pin, bridge, helper_image, controls, server);
 
@@ -337,7 +338,10 @@ fn run_pinned_user_helper(
             "D",
             "platform/windows/helper.rs:connect",
             "helper_pipe_connect_failed",
-            serde_json::json!({}),
+            serde_json::json!({
+                "helperDebugPresent": helper_debug_breadcrumb_present(),
+                "lastHelperMessage": last_helper_debug_message(),
+            }),
         );
         // #endregion
         return fail_before_admission(
@@ -1628,6 +1632,32 @@ fn helper_sidecar_names() -> Vec<String> {
         .collect::<Vec<_>>();
     names.sort();
     names
+}
+
+fn helper_debug_breadcrumb_path() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(|parent| parent.join("fyagent-user-helper-debug.ndjson"))
+}
+
+fn clear_helper_debug_breadcrumb() {
+    if let Some(path) = helper_debug_breadcrumb_path() {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn helper_debug_breadcrumb_present() -> bool {
+    helper_debug_breadcrumb_path().is_some_and(|path| path.is_file())
+}
+
+fn last_helper_debug_message() -> Option<String> {
+    let path = helper_debug_breadcrumb_path()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    text.lines()
+        .filter(|line| line.contains("a50673"))
+        .last()
+        .map(str::to_owned)
 }
 // #endregion
 

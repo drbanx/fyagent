@@ -17,6 +17,8 @@ fn main() -> ExitCode {
     let request = match parse_cli_args(std::env::args_os().skip(1)) {
         Ok(request) => request,
         Err(error) => {
+            #[cfg(target_os = "windows")]
+            windows::helper_debug_log("parse_failed", "{}");
             eprintln!("fyagent-user-helper: {error}\n{USAGE}");
             return ExitCode::from(2);
         }

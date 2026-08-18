@@ -11,7 +11,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use windows::{
@@ -147,6 +147,19 @@ impl std::fmt::Display for HelperRunError {
 impl std::error::Error for HelperRunError {}
 
 pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError> {
+    // #region agent log
+    helper_debug_log(
+        "boot",
+        &format!(
+            "{{\"debug\":{}}}",
+            if cfg!(debug_assertions) {
+                "true"
+            } else {
+                "false"
+            }
+        ),
+    );
+    // #endregion
     let executable = std::env::current_exe()
         .map_err(|_| HelperRunError::OperationFailed(HelperErrorCode::InstallLayoutInvalid))?;
     if executable.file_name().is_none_or(|name| {
@@ -1377,6 +1390,9 @@ impl ParentControls {
         // into an admission bypass after a launch timeout.
         let admission = open_sync_event(&admission_event_name(request.pipe_nonce()))?;
         let cancel = open_sync_event(&cancel_event_name(request.pipe_nonce()))?;
+        // #region agent log
+        helper_debug_log("events_ok", "{}");
+        // #endregion
         Ok(Self { admission, cancel })
     }
 
@@ -1403,10 +1419,22 @@ impl ParentControls {
 fn open_sync_event(name: &str) -> Result<OwnedKernelHandle, HelperRunError> {
     let name: Vec<u16> = OsStr::new(name).encode_wide().chain(Some(0)).collect();
     let access = SYNCHRONIZATION_ACCESS_RIGHTS(USER_HELPER_CONTROL_EVENT_ACCESS_MASK);
-    let handle = unsafe { OpenEventW(access, false, PCWSTR(name.as_ptr())) }
-        .map_err(|_| HelperRunError::PipeUnavailable)?;
+    let handle = unsafe { OpenEventW(access, false, PCWSTR(name.as_ptr())) }.map_err(|error| {
+        // #region agent log
+        helper_debug_log(
+            "events_failed",
+            &format!("{{\"hresult\":{}}}", error.code().0),
+        );
+        // #endregion
+        HelperRunError::PipeUnavailable
+    })?;
     let handle = OwnedKernelHandle::new(handle).map_err(|_| HelperRunError::PipeUnavailable)?;
-    verify_builtin_administrators_owner(handle.raw())?;
+    if let Err(error) = verify_builtin_administrators_owner(handle.raw()) {
+        // #region agent log
+        helper_debug_log("event_owner_rejected", "{}");
+        // #endregion
+        return Err(error);
+    }
     Ok(handle)
 }
 
@@ -1530,10 +1558,26 @@ impl PipeChannel {
                 None,
             )
         }
-        .map_err(|_| HelperRunError::PipeUnavailable)?;
+        .map_err(|error| {
+            // #region agent log
+            helper_debug_log(
+                "pipe_connect_failed",
+                &format!("{{\"hresult\":{}}}", error.code().0),
+            );
+            // #endregion
+            HelperRunError::PipeUnavailable
+        })?;
 
         let owned = unsafe { OwnedHandle::from_raw_handle(handle.0) };
-        verify_builtin_administrators_owner(HANDLE(owned.as_raw_handle()))?;
+        if let Err(error) = verify_builtin_administrators_owner(HANDLE(owned.as_raw_handle())) {
+            // #region agent log
+            helper_debug_log("pipe_owner_rejected", "{}");
+            // #endregion
+            return Err(error);
+        }
+        // #region agent log
+        helper_debug_log("pipe_connect_ok", "{}");
+        // #endregion
         Ok(Self {
             state: Mutex::new(PipeState {
                 handle: owned,
@@ -1787,6 +1831,34 @@ fn wait_for_overlapped_io(
 const fn hresult_from_win32(value: u32) -> HRESULT {
     HRESULT::from_win32(value)
 }
+
+// #region agent log
+pub(crate) fn helper_debug_log(message: &str, data: &str) {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let Some(path) = std::env::current_exe().ok().and_then(|executable| {
+        executable
+            .parent()
+            .map(|parent| parent.join("fyagent-user-helper-debug.ndjson"))
+    }) else {
+        return;
+    };
+    let line = format!(
+        "{{\"sessionId\":\"a50673\",\"runId\":\"win-post-download\",\"hypothesisId\":\"D\",\"location\":\"user-helper\",\"message\":\"{message}\",\"data\":{data},\"timestamp\":{timestamp}}}\n"
+    );
+    let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    else {
+        return;
+    };
+    use std::io::Write;
+    let _ = file.write_all(line.as_bytes());
+}
+// #endregion
 
 #[cfg(test)]
 mod tests {
