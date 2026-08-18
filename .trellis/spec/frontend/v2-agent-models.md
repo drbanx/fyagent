@@ -224,27 +224,43 @@ mutation arguments only and never query keys or query data.
 - All six selectors use the same reviewed local Agent asset map. No selector
   image is loaded from a remote URL.
 - Target state is component-local. API keys and form content never enter the
-  hash, URL query, local/session storage, or cross-target state. Target change
-  and unmount clear sensitive values and stale write intent.
+  hash, URL query, local/session storage, or cross-target state. The Models
+  page stays mounted after its first visit: leaving for another primary route
+  hides it (`hidden`/`inert`) instead of unmounting, so in-session form
+  content including API keys remains until a write's terminal outcome or the
+  persistent page actually unmounts. The other five primary routes keep the same
+  in-session page. Target panels that have been opened stay
+  mounted and hidden the same way. Process reload still starts empty.
 - TRAE model setup requires explicit connection-test consent, calls native
   validation before the probe, echoes the backend UUID into the probe/cancel
   commands, accepts only closed terminal results, and clears the API key on
-  success, rejection, error, timeout, cancel, target change, route leave, and
-  unmount. A reachable result proves only the FyAgent preflight; final save
-  remains in TRAE Work.
+  success, rejection, error, timeout, and cancel. A reachable result proves
+  only the FyAgent preflight; final save remains in TRAE Work. Switching
+  Models targets or hiding the page for another primary route does not clear
+  the in-session form; those values still never enter query cache, URL, or
+  storage. Actual unmount of the persistent Models page still clears the key
+  and cancels an in-flight probe.
 
 ### WorkBuddy
 
 - Cache only sanitized status and model-ID DTOs. The API key lives in component
   memory and native discovery/save requests. A successful or failed fetch keeps
-  the key so the user can review the draft and save without re-entering it. The
-  key still clears on save terminal outcomes, target change, route leave, and
-  unmount. A visibility toggle may reveal the value in the input only; it never
-  enters query cache, URL, storage, notices, or logs.
-- Existing third-party model IDs are a read-only observation grouped by model
-  family. Fetch and manual entry share one draft list: pull merges remote IDs,
-  fill adds typed IDs, and save splits the draft back into selected versus
-  manual IDs. The panel does not display backup or configuration-file status.
+  the key so the user can review the draft and save without re-entering it.
+  Save terminal outcomes still clear the key. Switching Models targets, hiding
+  the page behind another primary route, and in-session keep-alive do not.
+  Actual unmount of the persistent Models page still clears it. A visibility
+  toggle may reveal the value in the input only; it never enters query cache,
+  URL, storage, notices, or logs.
+- Existing third-party model IDs are grouped by model family and start
+  collapsed. Clicking a chip remove asks for confirmation that the model
+  configuration will be deleted and cannot be recovered; confirming writes
+  immediately via `removedModelIds` and does not wait for 「保存并应用」. The
+  renderer may auto-replay one backend overwrite token after that UI
+  confirmation so the user is not asked twice. Fetch and manual entry share one
+  draft list: pull merges remote IDs, fill adds typed IDs, and save splits the
+  draft back into selected versus manual IDs. Both the existing list and the
+  draft list can be filtered by model ID. The panel does not display backup,
+  configuration-file status, or the persisted-key-clear checkbox.
 - Discovery, revision, overwrite capability, atomic persistence, concurrent
   modification, and authoritative reread follow the backend WorkBuddy
   contract. The UI freezes one exact overwrite request and replays it only with
@@ -253,7 +269,10 @@ mutation arguments only and never query keys or query data.
   fails closed before DTO/query/DOM construction. The frontend repeats the
   collision rejection before save as defense in depth.
 - Saving is disabled while authoritative status/model IDs are unavailable.
-  Reread copy says "confirmed" only after both queries succeed.
+  Reread copy says "confirmed" only after both queries succeed. The save
+  control lives in the sticky detail heading with the panel title, not in a
+  trailing section below the form. Unsaved draft IDs or connection input show
+  a `待保存` badge.
 
 ### Claude Code and Codex
 
@@ -288,7 +307,8 @@ mutation arguments only and never query keys or query data.
   ID. This is not proof that the reread contains this request's exact bytes: a
   later serialized writer may legitimately have replaced the same reserved
   row. A failed/mismatched reread is unconfirmed even when apply returned
-  success.
+  success. The apply control lives in the sticky detail heading with the panel
+  title, not at the end of the form.
 - Codex may report live-byte change and stable warning codes. Restart, process
   availability, model availability, login, subscription reuse, and endpoint
   health are separate and remain unclaimed.
@@ -406,11 +426,15 @@ Required focused coverage includes:
   as exact configuration-content confirmation;
 - Provider summary app allowlist, credential carriers, exact DTO, key/ID/current
   consistency, Tauri runtime parser, React Query/DOM secret-negative scans;
-- StrictMode replay, unmount/target-change cleanup, repeat-click locks, no API
+- StrictMode replay, repeat-click locks, no API
   key in DOM/hash/localStorage/sessionStorage/query cache or logged fixtures.
+  Models page keep-alive across primary-route switches and previously opened
+  target panels; the other primary routes keep the same in-session page.
+  Secrets stay in component memory only. Immediate WorkBuddy
+  existing-model delete after an unrecoverable-delete confirmation.
 - exact external status/launch, Qoder read/save/token, external MCP validation,
-  and TRAE validate/probe/cancel IPC payloads and result parsers; terminal,
-  target-change, route-leave, and unmount secret cleanup.
+  and TRAE validate/probe/cancel IPC payloads and result parsers; terminal
+  probe outcomes still clear the TRAE key.
 
 Browser tests prove renderer/IPC wiring only. Rust tests prove service/command
 contracts. Real Windows Tauri HIL and an isolated/reversible native mutation are

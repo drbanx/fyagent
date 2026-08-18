@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { CheckCircleIcon } from "@phosphor-icons/react/dist/csr/CheckCircle";
 import { WarningCircleIcon } from "@phosphor-icons/react/dist/csr/WarningCircle";
 import { useState, type ReactNode } from "react";

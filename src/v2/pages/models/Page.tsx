@@ -1,8 +1,8 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
 import { classNames } from "../../shared/design-system/classNames";
@@ -20,6 +20,7 @@ import type {
   TraeModelProbeResult,
   TraeWorkModelRequest,
 } from "../../shared/features/types";
+import { PersistentSurface } from "../../shared/ui/PersistentSurface";
 import {
   Badge,
   Button,
@@ -59,6 +60,7 @@ import {
 } from "./quickSetup";
 import {
   addUniqueModelIds,
+  filterModelIds,
   groupModelIds,
   splitWorkBuddyDraft,
 } from "./workBuddyModels";
@@ -67,6 +69,8 @@ import "./Page.css";
 type WorkBuddySaveRequest = Parameters<
   FeaturePorts["workbuddy"]["saveModels"]
 >[0];
+
+const EMPTY_MODEL_IDS: readonly string[] = [];
 
 const TARGET_PRESENTATION: Record<
   ModelTarget,
@@ -89,20 +93,58 @@ const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
   opencode: "opencode",
 };
 
-type WorkBuddyNoticeField = "baseUrl" | "apiKey" | "fetch" | "draft" | "save";
+type WorkBuddyNoticeField =
+  | "baseUrl"
+  | "apiKey"
+  | "fetch"
+  | "draft"
+  | "save"
+  | "existing";
 
 function NoticeView({ notice }: { notice: Notice | null }) {
   return <FieldFeedback notice={notice} />;
 }
 
+function ModelsPanelHeader({
+  title,
+  summary,
+  pending = false,
+  children,
+}: {
+  title: string;
+  summary: string;
+  pending?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <header
+      className="fy-models-config-heading fy-models-commit-heading"
+      data-pending={pending || undefined}
+    >
+      <div>
+        <h2>{title}</h2>
+        <p>{summary}</p>
+      </div>
+      {children ? (
+        <div className="fy-models-commit" data-testid="models-commit">
+          {pending ? <Badge tone="warning">待保存</Badge> : null}
+          {children}
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
 function GroupedModelChips({
   ids,
   removable = false,
+  removeDisabled = false,
   onRemove,
   emptyLabel,
 }: {
   ids: readonly string[];
   removable?: boolean;
+  removeDisabled?: boolean;
   onRemove?: (modelId: string) => void;
   emptyLabel: string;
 }) {
@@ -154,6 +196,7 @@ function GroupedModelChips({
                         type="button"
                         className="fy-models-chip-remove"
                         aria-label={`移除模型 ${modelId}`}
+                        disabled={removeDisabled}
                         onClick={() => onRemove?.(modelId)}
                       >
                         <XIcon size={12} aria-hidden />
@@ -170,6 +213,33 @@ function GroupedModelChips({
   );
 }
 
+function ModelSearchField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="fy-control-field fy-models-search" htmlFor={id}>
+      {label}
+      <Input
+        id={id}
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="按模型 ID 筛选"
+        autoComplete="off"
+        spellCheck={false}
+      />
+    </label>
+  );
+}
+
 function workBuddyErrorCode(error: unknown): string | null {
   if (typeof error !== "object" || error === null || !("code" in error)) {
     return null;
@@ -177,29 +247,32 @@ function workBuddyErrorCode(error: unknown): string | null {
   return typeof error.code === "string" ? error.code : null;
 }
 
-function WorkBuddyPanel() {
+function WorkBuddyPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
-  const statusQuery = useWorkBuddyStatus(true);
-  const modelIdsQuery = useWorkBuddyModelIds(true);
+  const statusQuery = useWorkBuddyStatus(active);
+  const modelIdsQuery = useWorkBuddyModelIds(active);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
   const [allowNoApiKey, setAllowNoApiKey] = useState(false);
-  const [clearExistingApiKeys, setClearExistingApiKeys] = useState(false);
   const [manualDraft, setManualDraft] = useState("");
   const [draftModelIds, setDraftModelIds] = useState<string[]>([]);
   const [fetchedSourceIds, setFetchedSourceIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [existingOpen, setExistingOpen] = useState(true);
+  const [existingSearch, setExistingSearch] = useState("");
+  const [draftSearch, setDraftSearch] = useState("");
+  const [existingOpen, setExistingOpen] = useState(false);
   const [truncated, setTruncated] = useState(false);
-  const [busy, setBusy] = useState<"fetch" | "save" | null>(null);
-  const { notices, show, clear, dismiss } = useFieldNotices<WorkBuddyNoticeField>();
+  const [busy, setBusy] = useState<"fetch" | "save" | "delete" | null>(null);
+  const { notices, show, clear, dismiss } =
+    useFieldNotices<WorkBuddyNoticeField>();
   const [pendingOverwrite, setPendingOverwrite] = useState<{
     request: WorkBuddySaveRequest;
     token: string;
     existingIds: string[];
   } | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const writeLock = useRef(false);
   const mountedRef = useRef(true);
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
@@ -369,13 +442,15 @@ function WorkBuddyPanel() {
       allowNoApiKey,
       selectedModelIds,
       manualModelIds,
-      clearExistingApiKeys,
+      removedModelIds: [],
+      clearExistingApiKeys: false,
       expectedRevision:
         modelIdsQuery.data?.revision ?? statusQuery.data?.revision ?? null,
     } satisfies WorkBuddySaveRequest;
 
     Object.freeze(request.selectedModelIds);
     Object.freeze(request.manualModelIds);
+    Object.freeze(request.removedModelIds);
     return Object.freeze(request);
   };
 
@@ -488,8 +563,18 @@ function WorkBuddyPanel() {
   };
 
   const startSave = () => {
-    if (writeLock.current || !validateConnection()) return;
+    if (writeLock.current) return;
     const draftIds = collectDraftIds();
+    const hasDraft = draftIds.length > 0;
+    if (!hasDraft) {
+      show("draft", {
+        tone: "error",
+        title: "请至少添加一个模型 ID",
+      });
+      focusControl(manualModelsInputRef.current);
+      return;
+    }
+    if (!validateConnection()) return;
     const request = buildSaveRequest(draftIds);
     const submittedApiKey = request.apiKey.trim();
     if (
@@ -504,14 +589,6 @@ function WorkBuddyPanel() {
         title: "模型 ID 不能包含 API Key",
         description: "请检查模型 ID 后重试。",
       });
-      focusControl(manualModelsInputRef.current);
-      return;
-    }
-    if (
-      request.selectedModelIds.length === 0 &&
-      request.manualModelIds.length === 0
-    ) {
-      show("draft", { tone: "error", title: "请至少选择或填写一个模型 ID" });
       focusControl(manualModelsInputRef.current);
       return;
     }
@@ -532,7 +609,84 @@ function WorkBuddyPanel() {
     });
   };
 
-  const modelIds = modelIdsQuery.data?.ids ?? [];
+  const deleteExistingModel = async (modelId: string) => {
+    if (writeLock.current) return;
+    writeLock.current = true;
+    setBusy("delete");
+    dismiss("existing");
+    const selectedModelIds: string[] = [];
+    const manualModelIds: string[] = [];
+    const removedModelIds = [modelId];
+    const request = {
+      baseUrl: "",
+      apiKey: "",
+      allowNoApiKey: false,
+      selectedModelIds,
+      manualModelIds,
+      removedModelIds,
+      clearExistingApiKeys: false,
+      expectedRevision:
+        modelIdsQuery.data?.revision ?? statusQuery.data?.revision ?? null,
+    } satisfies WorkBuddySaveRequest;
+    Object.freeze(request.selectedModelIds);
+    Object.freeze(request.manualModelIds);
+    Object.freeze(request.removedModelIds);
+
+    let notice: Notice | null = null;
+    try {
+      let result = await ports.workbuddy.saveModels(request);
+      if (result.state === "overwrite_confirmation_required" && result.token) {
+        result = await ports.workbuddy.saveModels({
+          ...request,
+          overwriteToken: result.token,
+        });
+      }
+      if (!mountedRef.current) return;
+      switch (result.state) {
+        case "saved":
+          setPendingDeleteId(null);
+          notice = { tone: "info", title: "已删除该模型配置" };
+          break;
+        case "concurrent_modification":
+          notice = {
+            tone: "warning",
+            title: "配置已被其他操作修改",
+            description: "已刷新当前设置，请检查后再删除。",
+          };
+          break;
+        case "overwrite_confirmation_required":
+          notice = {
+            tone: "error",
+            title: "删除确认已失效",
+            description: "请刷新当前设置后重新删除。",
+          };
+          break;
+      }
+    } catch {
+      if (mountedRef.current) {
+        notice = {
+          tone: "error",
+          title: "删除失败",
+          description: "请刷新当前设置后重试。",
+        };
+      }
+    } finally {
+      await refreshAuthoritativeState();
+      if (mountedRef.current && notice) show("existing", notice);
+      if (mountedRef.current) setBusy(null);
+      writeLock.current = false;
+    }
+  };
+
+  const modelIds = modelIdsQuery.data?.ids ?? EMPTY_MODEL_IDS;
+  const filteredExistingIds = useMemo(
+    () => filterModelIds(modelIds, existingSearch),
+    [modelIds, existingSearch],
+  );
+  const filteredDraftIds = useMemo(
+    () => filterModelIds(draftModelIds, draftSearch),
+    [draftModelIds, draftSearch],
+  );
   const loading = statusQuery.isLoading || modelIdsQuery.isLoading;
   const readFailed = statusQuery.isError || modelIdsQuery.isError;
 
@@ -541,12 +695,25 @@ function WorkBuddyPanel() {
       className="fy-models-config-panel"
       ariaLabel="WorkBuddy 模型配置"
     >
-      <header className="fy-models-config-heading">
-        <div>
-          <h2>WorkBuddy</h2>
-          <p>查看并管理 WorkBuddy 的模型设置。出错时提示会出现在对应输入旁边。</p>
-        </div>
-      </header>
+      <ModelsPanelHeader
+        title="WorkBuddy"
+        summary="查看并管理 WorkBuddy 的模型设置。添加或修改后请保存并应用。"
+        pending={
+          draftModelIds.length > 0 ||
+          Boolean(manualDraft.trim()) ||
+          Boolean(baseUrl.trim()) ||
+          Boolean(apiKey.trim())
+        }
+      >
+        <Button
+          className="fy-control-button-primary fy-models-commit-button"
+          disabled={busy !== null || loading || readFailed}
+          onClick={startSave}
+        >
+          {busy === "save" ? "保存中…" : "保存并应用"}
+        </Button>
+      </ModelsPanelHeader>
+      <FieldFeedback id="workbuddy-save-error" notice={notices.save} />
 
       {loading && <Spinner label="正在读取 WorkBuddy 状态" />}
       {readFailed && (
@@ -557,6 +724,7 @@ function WorkBuddyPanel() {
       <section
         className="fy-models-existing"
         data-testid="workbuddy-model-ids"
+        data-invalid={isErrorNotice(notices.existing) || undefined}
         aria-label="当前已有的第三方模型 ID"
       >
         <button
@@ -583,14 +751,41 @@ function WorkBuddyPanel() {
           </span>
         </button>
         {existingOpen ? (
-          <GroupedModelChips ids={modelIds} emptyLabel="未观察到模型 ID" />
+          <>
+            {modelIds.length > 0 ? (
+              <ModelSearchField
+                id="workbuddy-existing-search"
+                label="搜索已有模型"
+                value={existingSearch}
+                onChange={setExistingSearch}
+              />
+            ) : null}
+            <GroupedModelChips
+              ids={filteredExistingIds}
+              removable
+              removeDisabled={busy !== null || loading || readFailed}
+              onRemove={(modelId) => {
+                if (busy !== null || writeLock.current) return;
+                setPendingDeleteId(modelId);
+              }}
+              emptyLabel={
+                existingSearch.trim() ? "没有匹配的模型 ID" : "未观察到模型 ID"
+              }
+            />
+            <FieldFeedback
+              id="workbuddy-existing-error"
+              notice={notices.existing}
+            />
+          </>
         ) : null}
       </section>
 
       <ModelsSection
         title="连接设置"
         titleId="workbuddy-connection-title"
-        invalid={isErrorNotice(notices.baseUrl) || isErrorNotice(notices.apiKey)}
+        invalid={
+          isErrorNotice(notices.baseUrl) || isErrorNotice(notices.apiKey)
+        }
       >
         <div className="fy-models-form">
           <label className="fy-control-field">
@@ -643,7 +838,7 @@ function WorkBuddyPanel() {
               notice={notices.apiKey}
             />
           </div>
-          <div className="fy-models-checkbox-row fy-models-checkbox-row-inline">
+          <div className="fy-models-checkbox-row fy-models-checkbox-row-inline fy-models-form-wide">
             <Checkbox
               checked={allowNoApiKey}
               onCheckedChange={(checked) => {
@@ -671,15 +866,6 @@ function WorkBuddyPanel() {
               </button>
             </Tooltip>
           </div>
-          <div className="fy-models-checkbox-row">
-            <Checkbox
-              checked={clearExistingApiKeys}
-              onCheckedChange={setClearExistingApiKeys}
-              label="清除已有模型的 API Key"
-              disabled={busy !== null}
-            />
-            <span>更新时清除已保存的 API Key</span>
-          </div>
         </div>
       </ModelsSection>
 
@@ -693,15 +879,28 @@ function WorkBuddyPanel() {
         {truncated ? (
           <p className="fy-models-muted">已达到可显示的模型数量上限。</p>
         ) : null}
+        {draftModelIds.length > 0 ? (
+          <ModelSearchField
+            id="workbuddy-draft-search"
+            label="搜索待保存模型"
+            value={draftSearch}
+            onChange={setDraftSearch}
+          />
+        ) : null}
         <GroupedModelChips
-          ids={draftModelIds}
+          ids={filteredDraftIds}
           removable
+          removeDisabled={busy !== null}
           onRemove={(modelId) =>
             setDraftModelIds((current) =>
               current.filter((id) => id !== modelId),
             )
           }
-          emptyLabel="尚未添加模型。可拉取远程模型，或手动填入模型 ID。"
+          emptyLabel={
+            draftSearch.trim()
+              ? "没有匹配的模型 ID"
+              : "尚未添加模型。可拉取远程模型，或手动填入模型 ID。"
+          }
         />
         <div className="fy-models-action-block">
           <div className="fy-models-actions">
@@ -750,27 +949,12 @@ function WorkBuddyPanel() {
           </Button>
         </div>
         <FieldFeedback id="workbuddy-draft-error" notice={notices.draft} />
-        <p className="fy-models-muted">已选择 {draftModelIds.length} 个模型</p>
+        <p className="fy-models-muted">
+          {draftModelIds.length > 0
+            ? `已选择 ${draftModelIds.length} 个模型，保存并应用后才会写入配置。`
+            : "已选择 0 个模型"}
+        </p>
       </section>
-
-      <ModelsSection
-        title="保存"
-        titleId="workbuddy-save-title"
-        invalid={isErrorNotice(notices.save)}
-      >
-        <div className="fy-models-action-block">
-          <div className="fy-models-actions">
-            <Button
-              className="fy-control-button-primary"
-              disabled={busy !== null || loading || readFailed}
-              onClick={startSave}
-            >
-              {busy === "save" ? "保存中…" : "保存并应用"}
-            </Button>
-          </div>
-          <FieldFeedback id="workbuddy-save-error" notice={notices.save} />
-        </div>
-      </ModelsSection>
 
       <Dialog
         open={Boolean(pendingOverwrite)}
@@ -803,6 +987,39 @@ function WorkBuddyPanel() {
       >
         <p>确认后将使用当前选择覆盖已有模型。</p>
       </Dialog>
+      <Dialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open && busy !== "delete") setPendingDeleteId(null);
+        }}
+        title="确认删除模型"
+        description="此操作将会删除该模型配置，不可恢复，是否确认删除"
+        actions={
+          <>
+            <Button
+              disabled={busy === "delete"}
+              onClick={() => setPendingDeleteId(null)}
+            >
+              取消
+            </Button>
+            <Button
+              className="fy-control-button-danger"
+              disabled={busy === "delete" || pendingDeleteId === null}
+              onClick={() => {
+                if (pendingDeleteId) void deleteExistingModel(pendingDeleteId);
+              }}
+            >
+              {busy === "delete" ? "删除中…" : "确认删除"}
+            </Button>
+          </>
+        }
+      >
+        {pendingDeleteId ? (
+          <p>
+            将删除 <code>{pendingDeleteId}</code>。
+          </p>
+        ) : null}
+      </Dialog>
     </CatalogDetail>
   );
 }
@@ -830,15 +1047,17 @@ function sanitizeWarningCodes(
 
 function ProviderPanel({
   app,
+  active,
   writesBlocked,
   onBlockWrites,
 }: {
   app: ProviderAppId;
+  active: boolean;
   writesBlocked: boolean;
   onBlockWrites: (app: ProviderAppId) => void;
 }) {
   const { ports } = useFeatures();
-  const summaryQuery = useProviderSummary(app, true);
+  const summaryQuery = useProviderSummary(app, active);
   const [name, setName] = useState(
     app === "codex" ? "FyAgent Codex" : "FyAgent Claude",
   );
@@ -1009,12 +1228,23 @@ function ProviderPanel({
       className="fy-models-config-panel"
       ariaLabel={`${label} 模型配置`}
     >
-      <header className="fy-models-config-heading">
-        <div>
-          <h2>{label}</h2>
-          <p>配置服务地址、模型和 API Key，并设为当前配置。</p>
-        </div>
-      </header>
+      <ModelsPanelHeader
+        title={label}
+        summary="配置服务地址、模型和 API Key，并设为当前配置。"
+        pending={Boolean(baseUrl.trim() || apiKey.trim() || modelId.trim())}
+      >
+        <Button
+          className="fy-control-button-primary fy-models-commit-button"
+          disabled={busy || writesBlocked || queryPending || queryUnavailable}
+          onClick={() => void submit()}
+        >
+          {busy
+            ? "配置中…"
+            : writesBlocked
+              ? "暂时无法确认当前设置"
+              : "保存并设为当前配置"}
+        </Button>
+      </ModelsPanelHeader>
 
       {queryPending && <Spinner label={`正在读取 ${label} 配置`} />}
       {queryUnavailable && (
@@ -1023,7 +1253,10 @@ function ProviderPanel({
         </InlineNotice>
       )}
       {!queryUnavailable && !queryPending && (
-        <div className="fy-models-status-grid" data-testid="provider-status">
+        <div
+          className="fy-models-status-grid"
+          data-testid={active ? "provider-status" : undefined}
+        >
           <div className="fy-models-status-item">
             <span>保存的配置</span>
             <strong>{providerExists ? "已有设置，将更新" : "尚未设置"}</strong>
@@ -1161,19 +1394,6 @@ function ProviderPanel({
             </div>
           </div>
         )}
-        <div className="fy-models-actions">
-          <Button
-            className="fy-control-button-primary"
-            disabled={busy || writesBlocked || queryPending || queryUnavailable}
-            onClick={() => void submit()}
-          >
-            {busy
-              ? "配置中…"
-              : writesBlocked
-                ? "暂时无法确认当前设置"
-                : "保存并设为当前配置"}
-          </Button>
-        </div>
       </div>
 
       <NoticeView notice={notice} />
@@ -1191,10 +1411,10 @@ function ProviderPanel({
   );
 }
 
-function QoderGuidancePanel() {
+function QoderGuidancePanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
   const navigate = useNavigate();
-  const catalogQuery = useAgentCatalog();
+  const catalogQuery = useAgentCatalog(active);
   const [opening, setOpening] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const openLock = useRef(false);
@@ -1288,10 +1508,10 @@ function QoderGuidancePanel() {
   );
 }
 
-function OpenCodeGuidancePanel() {
+function OpenCodeGuidancePanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
   const navigate = useNavigate();
-  const catalogQuery = useAgentCatalog();
+  const catalogQuery = useAgentCatalog(active);
   const [opening, setOpening] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const openLock = useRef(false);
@@ -1420,9 +1640,9 @@ const traeProbeCopy: Readonly<
   },
 };
 
-function TraePreflightPanel() {
+function TraePreflightPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
-  const catalogQuery = useAgentCatalog();
+  const catalogQuery = useAgentCatalog(active);
   const [apiFormat, setApiFormat] = useState<TraeWorkModelRequest["apiFormat"]>(
     "openai_chat_completions",
   );
@@ -1472,6 +1692,14 @@ function TraePreflightPanel() {
           .catch(() => undefined);
     };
   }, [ports.traeWork]);
+
+  useEffect(() => {
+    if (active) return;
+    const requestId = activeRequestIdRef.current;
+    if (!requestId) return;
+    cancelRequestedRef.current = true;
+    void ports.traeWork.cancelModelEndpoint(requestId).catch(() => undefined);
+  }, [active, ports.traeWork]);
 
   const buildRequest = (): TraeWorkModelRequest | null => {
     const trimmedUrl = url.trim();
@@ -1776,43 +2004,77 @@ function TraePreflightPanel() {
   );
 }
 
-function TargetPanel({
-  target,
-  blockedProviderWrites,
-  onBlockProviderWrites,
-}: {
-  target: ModelTarget;
-  blockedProviderWrites: Partial<Record<ProviderAppId, boolean>>;
-  onBlockProviderWrites: (app: ProviderAppId) => void;
-}) {
+function renderTargetPanel(
+  target: ModelTarget,
+  active: boolean,
+  blockedProviderWrites: Partial<Record<ProviderAppId, boolean>>,
+  onBlockProviderWrites: (app: ProviderAppId) => void,
+) {
   switch (target) {
     case "workbuddy":
-      return <WorkBuddyPanel />;
+      return <WorkBuddyPanel active={active} />;
     case "codex":
     case "claude":
       return (
         <ProviderPanel
           app={target}
+          active={active}
           writesBlocked={Boolean(blockedProviderWrites[target])}
           onBlockWrites={onBlockProviderWrites}
         />
       );
     case "qoderwork":
-      return <QoderGuidancePanel />;
+      return <QoderGuidancePanel active={active} />;
     case "trae":
-      return <TraePreflightPanel />;
+      return <TraePreflightPanel active={active} />;
     case "opencode":
-      return <OpenCodeGuidancePanel />;
+      return <OpenCodeGuidancePanel active={active} />;
   }
 }
 
 export function ModelsPage() {
+  const { pathname } = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const pageActive = pathname === "/models";
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
     Partial<Record<ProviderAppId, boolean>>
   >({});
-  const target = parseModelTarget(searchParams.get("target"));
+  const rawTarget = searchParams.get("target");
+  const [sessionTarget, setSessionTarget] = useState(() =>
+    parseModelTarget(rawTarget),
+  );
+  if (pageActive && rawTarget !== null) {
+    const parsed = parseModelTarget(rawTarget);
+    if (parsed !== sessionTarget) setSessionTarget(parsed);
+  }
+  const target =
+    pageActive && rawTarget !== null
+      ? parseModelTarget(rawTarget)
+      : sessionTarget;
+  const [visitedTargets, setVisitedTargets] = useState(
+    () => new Set<ModelTarget>([target]),
+  );
   const targets = useMemo(() => MODEL_TARGETS, []);
+
+  if (!visitedTargets.has(target)) {
+    const next = new Set(visitedTargets);
+    next.add(target);
+    setVisitedTargets(next);
+  }
+
+  useEffect(() => {
+    if (!pageActive) return;
+    if (searchParams.get("target") !== null) return;
+    if (sessionTarget === "qoderwork") return;
+    setSearchParams({ target: sessionTarget }, { replace: true });
+  }, [pageActive, searchParams, sessionTarget, setSearchParams]);
+
+  const blockProviderWrites = (app: ProviderAppId) => {
+    setBlockedProviderWrites((current) => ({
+      ...current,
+      [app]: true,
+    }));
+  };
 
   return (
     <div
@@ -1848,17 +2110,23 @@ export function ModelsPage() {
             })}
           </CatalogList>
         </CatalogRail>
-        <TargetPanel
-          key={target}
-          target={target}
-          blockedProviderWrites={blockedProviderWrites}
-          onBlockProviderWrites={(app) =>
-            setBlockedProviderWrites((current) => ({
-              ...current,
-              [app]: true,
-            }))
-          }
-        />
+        <div className="fy-models-target-stack">
+          {MODEL_TARGETS.filter((candidate) =>
+            visitedTargets.has(candidate),
+          ).map((candidate) => (
+            <PersistentSurface
+              key={candidate}
+              active={pageActive && candidate === target}
+            >
+              {renderTargetPanel(
+                candidate,
+                pageActive && candidate === target,
+                blockedProviderWrites,
+                blockProviderWrites,
+              )}
+            </PersistentSurface>
+          ))}
+        </div>
       </CatalogMasterDetail>
     </div>
   );

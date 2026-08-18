@@ -123,3 +123,12 @@ export function splitWorkBuddyDraft(
 
   return { selectedModelIds, manualModelIds };
 }
+
+export function filterModelIds(
+  ids: readonly string[],
+  query: string,
+): string[] {
+  const needle = query.trim().toLocaleLowerCase("en-US");
+  if (!needle) return [...ids];
+  return ids.filter((id) => id.toLocaleLowerCase("en-US").includes(needle));
+}
