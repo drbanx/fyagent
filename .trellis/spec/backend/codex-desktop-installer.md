@@ -154,6 +154,13 @@ Immediately before helper launch it:
 4. passes only locally computed actual size/hash into the protected bridge;
 5. launches the fixed sibling `fyagent-user-helper.exe` through Explorer.
 
+The parent-created helper pipe DACL remains Alice-only for
+`FILE_READ_DATA|FILE_WRITE_DATA|READ_CONTROL|SYNCHRONIZE`. Because the
+formal Windows process is High integrity, that pipe security descriptor MUST
+also include a Medium no-write-up mandatory label (`S:(ML;;NW;;;ME)`);
+otherwise MIC `NO_WRITE_UP` denies the asInvoker helper's `CreateFileW` with
+`ERROR_ACCESS_DENIED` even when the DACL ACE matches.
+
 The helper command remains exactly:
 
 ```text

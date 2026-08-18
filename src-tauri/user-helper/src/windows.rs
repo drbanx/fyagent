@@ -36,14 +36,16 @@ use windows::{
             AccessCheck, AclSizeInformation,
             Authorization::{GetSecurityInfo, SE_FILE_OBJECT, SE_KERNEL_OBJECT},
             CheckTokenMembership, CopySid, CreateWellKnownSid, DuplicateToken, EqualSid, GetAce,
-            GetAclInformation, GetLengthSid, GetSecurityDescriptorControl, GetTokenInformation,
-            IsValidSid, IsWellKnownSid, SecurityImpersonation, TokenUser, WinAuthenticatedUserSid,
+            GetAclInformation, GetLengthSid, GetSecurityDescriptorControl, GetSidSubAuthority,
+            GetSidSubAuthorityCount, GetTokenInformation, IsValidSid, IsWellKnownSid,
+            SecurityImpersonation, TokenIntegrityLevel, TokenUser, WinAuthenticatedUserSid,
             WinBuiltinAdministratorsSid, WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL_REVISION,
             ACL_SIZE_INFORMATION, DACL_SECURITY_INFORMATION, GENERIC_MAPPING,
             GROUP_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PRIVILEGE_SET,
             PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE, SE_DACL_AUTO_INHERITED,
             SE_DACL_AUTO_INHERIT_REQ, SE_DACL_DEFAULTED, SE_DACL_PRESENT, SE_DACL_PROTECTED,
-            SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE, TOKEN_QUERY, TOKEN_USER,
+            SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE, TOKEN_MANDATORY_LABEL,
+            TOKEN_QUERY, TOKEN_USER,
         },
         Storage::FileSystem::{
             CreateFileW, FileAttributeTagInfo, FileStandardInfo, GetDriveTypeW,
@@ -151,12 +153,15 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
     helper_debug_log(
         "boot",
         &format!(
-            "{{\"debug\":{}}}",
+            "{{\"debug\":{},\"integrityRid\":{}}}",
             if cfg!(debug_assertions) {
                 "true"
             } else {
                 "false"
-            }
+            },
+            process_integrity_rid()
+                .map(|rid| rid.to_string())
+                .unwrap_or_else(|| "null".to_owned())
         ),
     );
     // #endregion
@@ -1113,6 +1118,49 @@ fn aligned_words(byte_length: usize) -> Vec<usize> {
     vec![0_usize; byte_length.div_ceil(size_of::<usize>()).max(1)]
 }
 
+// #region agent log
+fn process_integrity_rid() -> Option<u32> {
+    let mut token = HANDLE::default();
+    unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.ok()?;
+    let token = OwnedKernelHandle::new(token).ok()?;
+    let mut required = 0_u32;
+    let _ =
+        unsafe { GetTokenInformation(token.raw(), TokenIntegrityLevel, None, 0, &mut required) };
+    if required < size_of::<TOKEN_MANDATORY_LABEL>() as u32 {
+        return None;
+    }
+    let mut buffer = aligned_words(required as usize);
+    unsafe {
+        GetTokenInformation(
+            token.raw(),
+            TokenIntegrityLevel,
+            Some(buffer.as_mut_ptr().cast()),
+            required,
+            &mut required,
+        )
+    }
+    .ok()?;
+    let label = unsafe { &*buffer.as_ptr().cast::<TOKEN_MANDATORY_LABEL>() };
+    let sid = label.Label.Sid;
+    if sid.0.is_null() || !unsafe { IsValidSid(sid) }.as_bool() {
+        return None;
+    }
+    let count_ptr = unsafe { GetSidSubAuthorityCount(sid) };
+    if count_ptr.is_null() {
+        return None;
+    }
+    let count = unsafe { *count_ptr };
+    if count == 0 {
+        return None;
+    }
+    let authority = unsafe { GetSidSubAuthority(sid, u32::from(count) - 1) };
+    if authority.is_null() {
+        return None;
+    }
+    Some(unsafe { *authority })
+}
+// #endregion
+
 #[derive(Clone, Copy)]
 enum ExactBridgeAcl {
     StableDirectory,
@@ -1562,7 +1610,13 @@ impl PipeChannel {
             // #region agent log
             helper_debug_log(
                 "pipe_connect_failed",
-                &format!("{{\"hresult\":{}}}", error.code().0),
+                &format!(
+                    "{{\"hresult\":{},\"integrityRid\":{}}}",
+                    error.code().0,
+                    process_integrity_rid()
+                        .map(|rid| rid.to_string())
+                        .unwrap_or_else(|| "null".to_owned())
+                ),
             );
             // #endregion
             HelperRunError::PipeUnavailable

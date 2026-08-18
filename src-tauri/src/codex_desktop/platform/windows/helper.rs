@@ -826,10 +826,29 @@ impl OneShotPipeServer {
             )
         };
         if handle.is_invalid() {
+            // #region agent log
+            agent_debug_log(
+                "D",
+                "platform/windows/helper.rs:create_pipe",
+                "pipe_create_failed",
+                serde_json::json!({
+                    "lastError": unsafe { GetLastError() }.0,
+                    "mediumLabel": true,
+                }),
+            );
+            // #endregion
             return Err(helper_pipe_error(
                 "the one-shot user-helper pipe could not be created",
             ));
         }
+        // #region agent log
+        agent_debug_log(
+            "D",
+            "platform/windows/helper.rs:create_pipe",
+            "pipe_create_ok",
+            serde_json::json!({ "mediumLabel": true }),
+        );
+        // #endregion
         Ok(Self {
             handle: unsafe { OwnedHandle::from_raw_handle(handle.0) },
         })
@@ -1247,7 +1266,12 @@ struct PipeSecurityDescriptor(PSECURITY_DESCRIPTOR);
 
 impl PipeSecurityDescriptor {
     fn new(shell_sid: &str) -> Result<Self, InstallerError> {
-        let sddl = format!("O:BAG:BAD:P(A;;0x00120003;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)");
+        // The elevated parent would otherwise create a High-IL pipe. Explorer's
+        // asInvoker helper is typically Medium; MIC NO_WRITE_UP then denies
+        // FILE_READ_DATA|FILE_WRITE_DATA even when the Alice DACL ACE matches.
+        let sddl = format!(
+            "O:BAG:BAD:P(A;;0x00120003;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)S:(ML;;NW;;;ME)"
+        );
         let sddl = wide_null(&sddl);
         let mut descriptor = PSECURITY_DESCRIPTOR::default();
         unsafe {
@@ -1770,7 +1794,9 @@ mod tests {
         assert!(source.contains("PIPE_REJECT_REMOTE_CLIENTS"));
         assert!(source.contains("PIPE_ACCESS_DUPLEX"));
         assert!(source.contains("BRIDGE_CONTROL_BYTES as u32"));
-        assert!(source.contains("O:BAG:BAD:P(A;;0x00120003;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)"));
+        assert!(source.contains(
+            "O:BAG:BAD:P(A;;0x00120003;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)S:(ML;;NW;;;ME)"
+        ));
         assert!(source.contains("GetNamedPipeClientProcessId"));
         assert!(source.contains("ImpersonateNamedPipeClient"));
         assert!(source.contains("OpenThreadToken"));
