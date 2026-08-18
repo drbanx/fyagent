@@ -866,3 +866,32 @@ Aligned V2 agent catalog, models, and Skills/MCP: TRAE Work CN URL and native pe
 ### Status
 
 [OK] **Completed**
+
+
+## Session 28: V2 功能页签/搜索/列表共享与复用规格
+
+**Date**: 2026-08-19
+**Task**: V2 功能页签/搜索/列表共享与复用规格
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+抽出 FeatureTabs/FeatureSearch/FeatureList，Skills/MCP/Prompts/Memory 接入；规格把复用写成前端默认偏好，新组件若会被其他模块使用则第一次提交就放 shared/。
+
+### Main Changes
+
+- 新增 reuse.md；思考指南去掉「出现三次再抽象」；architecture 测试锁定共享 chrome 进口。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `66e979da` | (see git log) |
+
+### Testing
+
+- [OK] mise run lint:v2 typecheck:v2 test:v2（242 passed）。
+
+### Status
+
+[OK] **Completed**
