@@ -45,15 +45,15 @@ use windows::{
                 ConvertStringSecurityDescriptorToSecurityDescriptorW, ConvertStringSidToSidW,
                 GetSecurityInfo, SDDL_REVISION_1, SE_FILE_OBJECT,
             },
-            DuplicateToken, EqualSid, GetAce, GetAclInformation, GetLengthSid,
-            GetSecurityDescriptorControl, GetTokenInformation, IsValidSid, IsWellKnownSid,
-            SecurityImpersonation, TokenUser, WinAuthenticatedUserSid, WinBuiltinAdministratorsSid,
-            WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL_REVISION, ACL_SIZE_INFORMATION,
-            DACL_SECURITY_INFORMATION, GENERIC_MAPPING, GROUP_SECURITY_INFORMATION,
-            OWNER_SECURITY_INFORMATION, PRIVILEGE_SET, PSECURITY_DESCRIPTOR, PSID,
-            SE_DACL_AUTO_INHERITED, SE_DACL_AUTO_INHERIT_REQ, SE_DACL_DEFAULTED, SE_DACL_PRESENT,
-            SE_DACL_PROTECTED, SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE,
-            TOKEN_QUERY, TOKEN_USER,
+            CheckTokenMembership, CreateWellKnownSid, DuplicateToken, EqualSid, GetAce,
+            GetAclInformation, GetLengthSid, GetSecurityDescriptorControl, GetTokenInformation,
+            IsValidSid, IsWellKnownSid, SecurityImpersonation, TokenUser, WinAuthenticatedUserSid,
+            WinBuiltinAdministratorsSid, WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL_REVISION,
+            ACL_SIZE_INFORMATION, DACL_SECURITY_INFORMATION, GENERIC_MAPPING,
+            GROUP_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PRIVILEGE_SET,
+            PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE, SE_DACL_AUTO_INHERITED,
+            SE_DACL_AUTO_INHERIT_REQ, SE_DACL_DEFAULTED, SE_DACL_PRESENT, SE_DACL_PROTECTED,
+            SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE, TOKEN_QUERY, TOKEN_USER,
         },
         Storage::FileSystem::{
             FileDispositionInfo, FileIdBothDirectoryInfo, FileIdBothDirectoryRestartInfo,
@@ -84,7 +84,7 @@ use windows::{
 };
 
 use crate::{
-    codex_desktop::error::{InstallerError, InstallerErrorCode},
+    codex_desktop::error::{agent_debug_log, InstallerError, InstallerErrorCode},
     windows_runtime::is_canonical_sid,
 };
 
@@ -632,10 +632,42 @@ impl ProgramDataAnchor {
                 | WRITE_OWNER.0
                 | FILE_WRITE_EA.0
                 | FILE_WRITE_ATTRIBUTES.0;
-            if granted & dangerous != 0 {
+            let granted_dangerous = granted & dangerous;
+            // A non-administrator Alice must not be able to delete or re-ACL
+            // C:\ or ProgramData. Built-in Administrator / UAC-disabled Explorer
+            // tokens already have those OS rights; fail-closed would block install
+            // without reducing capability. Exact child ACLs still apply.
+            if ancestor_mutation_rejected(
+                granted_dangerous,
+                token_is_local_administrator(token.raw())?,
+            ) {
+                // #region agent log
+                agent_debug_log(
+                    "B",
+                    "platform/windows/package_bridge.rs:ancestor_access",
+                    "ancestor_mutation_rejected",
+                    serde_json::json!({
+                        "granted": granted,
+                        "grantedDangerous": granted_dangerous,
+                    }),
+                );
+                // #endregion
                 return Err(bridge_integrity_error(
                     "the Shell user could mutate a ProgramData bridge ancestor",
                 ));
+            }
+            if granted_dangerous != 0 {
+                // #region agent log
+                agent_debug_log(
+                    "B",
+                    "platform/windows/package_bridge.rs:ancestor_access",
+                    "ancestor_admin_bypass",
+                    serde_json::json!({
+                        "granted": granted,
+                        "grantedDangerous": granted_dangerous,
+                    }),
+                );
+                // #endregion
             }
         }
         Ok(())
@@ -1705,6 +1737,37 @@ fn effective_file_access(file: &File, token: HANDLE) -> Result<u32, InstallerErr
     Ok(granted)
 }
 
+fn ancestor_mutation_rejected(granted_dangerous: u32, token_is_administrator: bool) -> bool {
+    granted_dangerous != 0 && !token_is_administrator
+}
+
+fn token_is_local_administrator(token: HANDLE) -> Result<bool, InstallerError> {
+    let word_size = size_of::<usize>();
+    let mut administrators = vec![0_usize; (SECURITY_MAX_SID_SIZE as usize).div_ceil(word_size)];
+    let mut administrators_len = SECURITY_MAX_SID_SIZE;
+    let administrators_sid = PSID(administrators.as_mut_ptr().cast());
+    unsafe {
+        CreateWellKnownSid(
+            WinBuiltinAdministratorsSid,
+            None,
+            Some(administrators_sid),
+            &mut administrators_len,
+        )
+    }
+    .map_err(|_| {
+        bridge_integrity_error("the Administrators SID could not be created for ancestor access")
+    })?;
+    let mut member = BOOL::default();
+    unsafe { CheckTokenMembership(Some(token), administrators_sid, &mut member) }.map_err(
+        |_| {
+            bridge_integrity_error(
+                "the Explorer Shell Administrators membership could not be queried",
+            )
+        },
+    )?;
+    Ok(member.as_bool())
+}
+
 fn decode_sha256(value: &str) -> Option<[u8; 32]> {
     if value.len() != 64
         || value
@@ -1869,5 +1932,19 @@ mod tests {
             | WRITE_OWNER.0;
         assert_eq!(OPERATION_DIRECTORY_ACES[2].mask & forbidden_mutation, 0);
         assert_eq!(PACKAGE_LEAF_ACES[2].mask & forbidden_mutation, 0);
+    }
+
+    #[test]
+    fn os_owned_ancestors_fail_closed_only_for_a_non_administrator_shell() {
+        let dangerous = FILE_DELETE_CHILD.0
+            | DELETE.0
+            | WRITE_DAC.0
+            | WRITE_OWNER.0
+            | FILE_WRITE_EA.0
+            | FILE_WRITE_ATTRIBUTES.0;
+        assert!(ancestor_mutation_rejected(dangerous, false));
+        assert!(!ancestor_mutation_rejected(dangerous, true));
+        assert!(!ancestor_mutation_rejected(0, false));
+        assert!(!ancestor_mutation_rejected(0, true));
     }
 }

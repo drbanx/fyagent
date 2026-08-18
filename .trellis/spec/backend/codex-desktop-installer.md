@@ -180,7 +180,9 @@ PackageBridge continues to copy from the duplicated pinned source handle into a
 fixed ProgramData hierarchy. Protected ACLs, local-fixed-NTFS checks, exact
 frozen-SID access, file identity/link/reparse/placeholder checks, same-file
 actual size/hash checks, flush/finalize/reopen, stable ancestor handles, and
-known-only cleanup remain required.
+known-only cleanup remain required. ProgramData-parent effective-access
+fail-closed applies to a non-administrator Shell token; an Administrators-enabled
+Explorer token is not rejected for OS-owned ancestor rights it already holds.
 
 After a successful helper terminal result, the adapter captures the exact
 SID/Main inventory again. The current job result is selected as follows:

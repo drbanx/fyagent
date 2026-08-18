@@ -488,6 +488,9 @@ describe("Codex current-user helper static contract", () => {
       expect(helperAcl, exactBoundary).toContain(exactBoundary);
     }
     expect(helperAcl).not.toMatch(/AclBytesFree|AclBytesInUse/u);
+    expect(runtime).toContain("CheckTokenMembership");
+    expect(runtime).toContain("is_local_administrator");
+    expect(runtime).toContain("forbidden_access_rejected");
     expect(runtime).not.toMatch(
       /std::env::(?:var|var_os|current_dir|temp_dir)|C:\\+ProgramData/iu,
     );
@@ -628,7 +631,7 @@ describe("Codex current-user helper static contract", () => {
     const dangerousRights = section(
       packageBridge,
       "let dangerous = FILE_DELETE_CHILD.0",
-      "if granted & dangerous != 0",
+      "if ancestor_mutation_rejected",
     );
     for (const right of [
       "FILE_DELETE_CHILD",
@@ -640,6 +643,9 @@ describe("Codex current-user helper static contract", () => {
     ]) {
       expect(dangerousRights).toContain(right);
     }
+    expect(packageBridge).toContain("CheckTokenMembership");
+    expect(packageBridge).toContain("token_is_local_administrator");
+    expect(packageBridge).toContain("ancestor_mutation_rejected");
   });
 
   it("copies, hashes, flushes, renames without replacement, and reopens the final leaf", () => {
