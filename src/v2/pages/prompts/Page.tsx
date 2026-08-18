@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -118,6 +117,26 @@ function createEditEditor(prompt: ManagedPrompt): EditorState {
   };
 }
 
+function resolveEditor(
+  editor: EditorState | null,
+  selected: ManagedPrompt | null,
+): EditorState | null {
+  if (editor?.mode === "new") return editor;
+  const dirty =
+    editor !== null &&
+    (editor.baseline === null || !isSameDraft(editor.draft, editor.baseline));
+  if (dirty) return editor;
+  if (!selected) return null;
+  if (
+    editor?.prompt?.id === selected.id &&
+    editor.baseline !== null &&
+    isSameDraft(editor.baseline, toDraft(selected))
+  ) {
+    return editor;
+  }
+  return createEditEditor(selected);
+}
+
 function formatTimestamp(timestamp: number | undefined): string {
   if (timestamp === undefined) return "—";
   const milliseconds =
@@ -178,23 +197,7 @@ export function PromptsPage() {
   const blocker = usePrimaryBlocker(shouldBlockNavigation);
   const activeDiscardIntent: DiscardIntent =
     discardIntent ?? (blocker.state === "blocked" ? { kind: "route" } : null);
-
-  useEffect(() => {
-    if (editor?.mode === "new" || editorDirty) return;
-    if (!selected) {
-      if (editor !== null) setEditor(null);
-      return;
-    }
-    const next = createEditEditor(selected);
-    if (
-      editor?.prompt?.id === selected.id &&
-      editor.baseline !== null &&
-      isSameDraft(editor.baseline, next.baseline ?? next.draft)
-    ) {
-      return;
-    }
-    setEditor(next);
-  }, [editor, editorDirty, selected]);
+  const activeEditor = resolveEditor(editor, selected);
 
   const refresh = async (targetApp: PromptAppId): Promise<boolean> => {
     await Promise.all([
@@ -332,29 +335,30 @@ export function PromptsPage() {
     (field: keyof PromptDraft) =>
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const value = event.target.value;
-      setEditor((current) =>
-        current
-          ? { ...current, draft: { ...current.draft, [field]: value } }
-          : current,
-      );
+      setEditor((current) => {
+        const base = current ?? (selected ? createEditEditor(selected) : null);
+        return base
+          ? { ...base, draft: { ...base.draft, [field]: value } }
+          : current;
+      });
       setWriteError(null);
     };
 
   const saveEditor = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!editor || busy || !editor.draft.name.trim()) return;
+    if (!activeEditor || busy || !activeEditor.draft.name.trim()) return;
     const now = Math.floor(Date.now() / 1000);
     const prompt: ManagedPrompt = {
-      id: editor.prompt?.id ?? `prompt-${Date.now()}`,
-      name: editor.draft.name.trim(),
-      description: editor.draft.description.trim() || undefined,
-      content: editor.draft.content.trim(),
-      enabled: editor.prompt?.enabled ?? false,
-      createdAt: editor.prompt?.createdAt ?? now,
+      id: activeEditor.prompt?.id ?? `prompt-${Date.now()}`,
+      name: activeEditor.draft.name.trim(),
+      description: activeEditor.draft.description.trim() || undefined,
+      content: activeEditor.draft.content.trim(),
+      enabled: activeEditor.prompt?.enabled ?? false,
+      createdAt: activeEditor.prompt?.createdAt ?? now,
       updatedAt: now,
     };
     const result = await write(
-      editor.mode === "new" ? "提示词已创建" : "提示词已保存",
+      activeEditor.mode === "new" ? "提示词已创建" : "提示词已保存",
       () => ports.prompts.upsert(app, prompt),
     );
     if (result !== "failed") {
@@ -395,7 +399,6 @@ export function PromptsPage() {
     promptsQuery.data === undefined && isNativeOnlyError(promptsQuery.error);
   const readFailed = promptsQuery.error && promptsQuery.data === undefined;
   const enabledCount = prompts.filter((prompt) => prompt.enabled).length;
-  const activeEditor = editor;
 
   const workspaceBody = nativeUnavailable ? (
     <EmptyState
