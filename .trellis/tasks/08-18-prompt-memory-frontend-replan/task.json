@@ -16,7 +16,7 @@
   "base_branch": "dev/laiyongjie",
   "worktree_path": null,
   "commit": null,
-  "pr_url": null,
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/111",
   "subtasks": [],
   "children": [],
   "parent": null,
