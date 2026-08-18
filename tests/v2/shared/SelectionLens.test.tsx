@@ -7,6 +7,7 @@ import {
   SelectionLens,
   SelectionLensGroup,
   SelectionLensTrack,
+  selectionLensCollapsedOrigin,
   selectionLensTransition,
 } from "@/v2/shared/ui/SelectionLens";
 
@@ -17,6 +18,21 @@ describe("SelectionLens", () => {
       stiffness: 520,
       damping: 42,
       mass: 0.62,
+    });
+  });
+
+  it("collapses appear origin to the active host top-left, not the track origin", () => {
+    expect(selectionLensCollapsedOrigin({ x: 24, y: 88 })).toEqual({
+      x: 24,
+      y: 88,
+      width: 0,
+      height: 0,
+    });
+    expect(selectionLensCollapsedOrigin({ x: 24, y: 88 })).not.toEqual({
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
     });
   });
 

@@ -306,6 +306,17 @@ describe("FyAgent V2 architecture boundary", () => {
     expect(source).not.toMatch(/\bLayoutGroup\b/);
   });
 
+  it("does not collapse the selection pill to the track origin", () => {
+    const source = fs.readFileSync(
+      path.join(v2Root, "shared/ui/SelectionLens.tsx"),
+      "utf8",
+    );
+
+    expect(source).toMatch(/\bselectionLensCollapsedOrigin\b/);
+    expect(source).not.toMatch(/left\.set\(inset\)/);
+    expect(source).not.toMatch(/top\.set\(inset\)/);
+  });
+
   it("keeps import targets statically auditable", () => {
     const violations = parsedModules.flatMap(
       ({ file, nonLiteralDynamicImports }) =>

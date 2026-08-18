@@ -96,6 +96,11 @@ export const selectionLensTransition = {
   damping: 42,
   mass: 0.62,
 } as const;
+
+export function selectionLensCollapsedOrigin(box: {
+  x: number;
+  y: number;
+}): { x: number; y: number; width: number; height: number };
 ```
 
 `LiquidGlassLens` wraps `@samasante/liquid-glass@0.1.1` with balanced optics
@@ -104,8 +109,12 @@ selection pill is a separate V2 adapter, `SelectionLens`. `SelectionLensGroup`
 owns one overlay pill and springs `left` / `top` / `width` / `height` with
 `selectionLensTransition`. Drive those values with Motion values so a later
 click retargets from the live geometry. Do not unmount or `key=` the overlay
-when the active host changes: that restarts from the collapsed origin instead
-of interrupting. Do not use Motion `layoutId` or `LayoutGroup` scale
+when the active host changes: that restarts the appear spring instead of
+interrupting. Appear and show-after-`hidden` collapse through
+`selectionLensCollapsedOrigin` to the active host's top-left with size 0, then
+spring open there. Do not collapse to the track origin (`inset`, `inset`): that
+flies the pill from the parent top-left on every page mount. Callers must not
+reimplement this origin. Do not use Motion `layoutId` or `LayoutGroup` scale
 projection for this pill: non-uniform `scaleX` plus `backdrop-filter` smears
 the capsule and the label. `SelectionLens` only registers the active host; it
 is not the painted node. Do not import `framer-motion` outside
@@ -270,9 +279,10 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   spring from the overlay's current geometry, not from the previous host's
   rest box, and must not remount the overlay. When a group first appears, or
   is shown again after an ancestor `hidden` (including a keep-alive primary
-  surface), the same overlay springs from a collapsed origin at the track
-  start; do not give catalog rails a second slider. Do not interpolate size
-  with `transform: scale`.
+  surface), the same overlay uses `selectionLensCollapsedOrigin` of the active
+  host (that host's top-left, size 0) and springs open in place. Do not
+  collapse to the track origin (`inset`, `inset`). Do not give catalog rails a
+  second slider. Do not interpolate size with `transform: scale`.
 - The `NavLink` owns hit area, focus, accessible name, and `aria-current`.
   Refraction is decorative enhancement. Project CSS must independently express
   tint, selected border/color/shadow, edge/highlight, and backdrop fallback.
@@ -347,6 +357,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Empty hash, root route, or unknown route                               | Redirect to `#/models`; Models alone has `aria-current="page"`                     |
 | A `layoutId` pill uses non-uniform scale with `backdrop-filter`            | Architecture test fails; overlay must spring `left`/`top`/`width`/`height` and must not animate `transform: scale` |
 | Changing the active option remounts the overlay or restarts from `{width:0}` | Unit test fails; the same overlay node must keep identity and retarget from current geometry |
+| First show or show-after-`hidden` collapses to the track origin (`inset`, `inset`) | Unit and architecture tests fail; appear must use `selectionLensCollapsedOrigin` of the active host |
 | Any normal production route                                            | Exactly one active primary link, one production `LiquidGlassLens`, and one nav `SelectionLens` overlay; other tracks may each have their own pill |
 | UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
@@ -375,9 +386,11 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
   `LiquidGlassLens`, remains keyboard-focusable, and the nav track keeps one
   overlay `SelectionLens` aligned to that link. A second click before the
   spring settles keeps the same overlay node and continues from its current
-  box. The Agent directory renders its approved master/detail UI with its own
-  catalog pill. Models, Skills, MCP, Prompts, and Memory render only their
-  approved bounded feature surfaces.
+  box. Opening a page with a catalog or feature rail expands that page's pill
+  from the selected row's top-left, not from the rail's parent origin. The
+  Agent directory renders its approved master/detail UI with its own catalog
+  pill. Models, Skills, MCP, Prompts, and Memory render only their approved
+  bounded feature surfaces.
 - **Base:** Opening without a route lands on `#/models`, with six links and
   three tools visible. Browser preview has no system or simulated controls.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
@@ -402,7 +415,9 @@ mise run build:renderer
 - Unit tests assert default/wildcard redirects, six-route order, Router-owned
   selection, `aria-current`, a sole production `LiquidGlassLens`, one nav
   `SelectionLens` overlay on the track, the L1 control spring, stable overlay
-  node identity when the active option changes, no lens outside a
+  node identity when the active option changes, appear origin at the active
+  host top-left via `selectionLensCollapsedOrigin` (not the track origin), no
+  lens outside a
   group, no `layoutId` / `LayoutGroup` on the pill adapter, the TopBar's
   nine-stop primary
   tab order, stable accessible names, inert tool clicks, absence of custom
@@ -413,7 +428,8 @@ mise run build:renderer
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract. They keep `framer-motion` behind
   `shared/ui/SelectionLens.tsx`, reject `layoutId` / `LayoutGroup` on that
-  adapter, and keep `@samasante/liquid-glass` behind
+  adapter, reject collapsing the pill to `left.set(inset)` / `top.set(inset)`,
+  and keep `@samasante/liquid-glass` behind
   `LiquidGlassLens`. They keep HTTP(S) jumps on `ExternalLinkButton` /
   `useOpenExternal`. They positively allow only the exact neutral Codex
   shared boundary and negatively prove that a neighboring shared path remains
@@ -452,19 +468,25 @@ acceptance evidence unless a task explicitly requires them.
 
 Wrong: morph the pill with `layoutId` scale projection (or a CSS transition
 queue). Non-uniform `scaleX` plus `backdrop-filter` deforms the capsule and
-smears the label.
+smears the label. Collapsing appear to the track origin flies the pill from
+the parent top-left on every page mount.
 
 ```tsx
 <motion.div layoutId="nav" className="fy-selection-lens" />
 <motion.div key={activeId} animate={{ left, width }} transition={{ duration: 0.25 }} />
 setHost(null); // on every option change, then mount at the new rest box
+left.set(inset);
+top.set(inset);
+width.set(0);
+height.set(0);
 ```
 
 Correct: one overlay pill per exclusive track; spring `left` / `top` /
 `width` / `height` from the current overlay values so a later click
 interrupts without scale and without remounting. Catalog rails, feature
 lists, tabs, and primary nav all use this adapter. First show and
-show-after-`hidden` replay the same collapsed-origin appear spring.
+show-after-`hidden` replay `selectionLensCollapsedOrigin(activeHostBox)` so
+the pill expands from that host's top-left, not from the track origin.
 
 ```tsx
 <SelectionLensGroup id="primary-nav" inset={1}>

@@ -33,6 +33,20 @@ type LensBox = {
   borderRadius: string;
 };
 
+export function selectionLensCollapsedOrigin(box: Pick<LensBox, "x" | "y">): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  return {
+    x: box.x,
+    y: box.y,
+    width: 0,
+    height: 0,
+  };
+}
+
 type SelectionLensContextValue = {
   register: (host: HTMLElement | null) => void;
   unregister: (host: HTMLElement) => void;
@@ -87,8 +101,8 @@ export function SelectionLensGroup({
   const [box, setBox] = useState<LensBox | null>(null);
   const [revealKey, setRevealKey] = useState(0);
   const reduceMotion = useReducedMotion() === true;
-  const left = useMotionValue(inset);
-  const top = useMotionValue(inset);
+  const left = useMotionValue(0);
+  const top = useMotionValue(0);
   const width = useMotionValue(0);
   const height = useMotionValue(0);
 
@@ -188,10 +202,11 @@ export function SelectionLensGroup({
     }
 
     const collapseToOrigin = () => {
-      left.set(inset);
-      top.set(inset);
-      width.set(0);
-      height.set(0);
+      const origin = selectionLensCollapsedOrigin(box);
+      left.set(origin.x);
+      top.set(origin.y);
+      width.set(origin.width);
+      height.set(origin.height);
     };
 
     if (reduceMotion === true) {
@@ -224,7 +239,7 @@ export function SelectionLensGroup({
         control.stop();
       }
     };
-  }, [box, height, inset, left, reduceMotion, revealKey, top, width]);
+  }, [box, height, left, reduceMotion, revealKey, top, width]);
 
   return (
     <SelectionLensContext.Provider value={{ register, unregister }}>
