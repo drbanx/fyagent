@@ -1087,7 +1087,7 @@ export function AgentsPage() {
 
   return (
     <div
-      className="fy-feature-page fy-catalog-page fy-agents-page"
+      className="fy-feature-page fy-split-page fy-catalog-page fy-agents-page"
       data-testid="agents-page"
     >
       <header className="fy-feature-header">

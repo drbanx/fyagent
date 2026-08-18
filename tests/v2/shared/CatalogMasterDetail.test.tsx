@@ -144,9 +144,11 @@ describe("CatalogMasterDetail", () => {
     const root = document.querySelector(
       ".fy-catalog-master-detail",
     ) as HTMLElement;
-    const rail = screen.getByRole("complementary", { name: "目录目标" });
+    const pane0 = root.querySelector(
+      '.fy-split-pane[data-index="0"]',
+    ) as HTMLElement;
     mockBox(root, { width: 900, left: 0 });
-    mockBox(rail, { width: 240, left: 0 });
+    mockBox(pane0, { width: 240, left: 0 });
 
     const handle = screen.getByRole("separator", {
       name: "调整目录与详情的宽度",

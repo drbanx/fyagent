@@ -37,6 +37,7 @@ import {
   SelectionLens,
   SelectionLensTrack,
 } from "../../shared/ui/SelectionLens";
+import { SplitPanes } from "../../shared/ui/split";
 
 import "./page.css";
 
@@ -51,6 +52,10 @@ const APP_LABELS: Record<PromptAppId, string> = {
 };
 
 const REFRESH_WARNING = "写入可能已完成，但状态刷新失败";
+const PROMPT_SPLIT_LABELS = [
+  "调整列表与详情的宽度",
+  "调整详情与当前内容的宽度",
+];
 
 interface PromptDraft {
   name: string;
@@ -334,7 +339,7 @@ export function PromptsPage() {
 
   return (
     <div
-      className="fy-feature-page fy-prompts-page"
+      className="fy-feature-page fy-split-page fy-prompts-page"
       data-testid="prompts-page"
       data-data-source="native"
     >
@@ -452,7 +457,7 @@ export function PromptsPage() {
           actions={<Button onClick={() => setSearch("")}>清空搜索</Button>}
         />
       ) : (
-        <div className="fy-feature-master">
+        <SplitPanes separatorLabels={PROMPT_SPLIT_LABELS}>
           <section
             className="fy-feature-panel fy-prompts-library"
             aria-label="提示词列表"
@@ -587,7 +592,7 @@ export function PromptsPage() {
               </InlineNotice>
             )}
           </section>
-        </div>
+        </SplitPanes>
       )}
 
       {editor && activeDiscardIntent === null && (

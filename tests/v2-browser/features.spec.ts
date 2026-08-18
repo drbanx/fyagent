@@ -89,10 +89,15 @@ for (const feature of [
     );
     expect(new Set(switchNames).size).toBe(feature.targetCount);
 
-    const panelCount = await page
-      .locator(".fy-feature-master > .fy-feature-panel")
+    const paneCount = await page
+      .locator(".fy-split-panes > .fy-split-pane")
       .count();
-    expect(panelCount).toBe(page.viewportSize()!.width > 1180 ? 3 : 2);
+    expect(paneCount).toBe(page.viewportSize()!.width > 1180 ? 3 : 2);
+    if ((page.viewportSize()?.width ?? 0) > 760) {
+      await expect(
+        page.getByRole("separator", { name: "调整列表与详情的宽度" }),
+      ).toBeVisible();
+    }
     await expectNoHorizontalOverflow(page);
     await expectHealthyPage(page, health);
   });

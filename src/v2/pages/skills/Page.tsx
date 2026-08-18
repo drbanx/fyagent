@@ -51,6 +51,7 @@ import {
   SelectionLens,
   SelectionLensTrack,
 } from "../../shared/ui/SelectionLens";
+import { SplitPanes } from "../../shared/ui/split";
 
 type SkillsTab = "installed" | "discovery";
 type DialogName =
@@ -74,6 +75,8 @@ function githubRepoUrl(owner: string, name: string): string | null {
 function assignedSkillTargets(skill: InstalledSkill) {
   return SKILL_TARGETS.filter((target) => Boolean(skill.apps[target.id]));
 }
+
+const INSTALLED_SPLIT_LABELS = ["调整列表与详情的宽度", "调整详情与分配的宽度"];
 
 const invalidations = [
   featureKeys.skills,
@@ -397,7 +400,10 @@ export function SkillsPage() {
   };
 
   return (
-    <div className="fy-feature-page fy-skills-page" data-testid="skills-page">
+    <div
+      className="fy-feature-page fy-split-page fy-skills-page"
+      data-testid="skills-page"
+    >
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>Skills</h1>
@@ -551,7 +557,7 @@ export function SkillsPage() {
                   description="请调整搜索关键词"
                 />
               ) : (
-                <div className="fy-feature-master">
+                <SplitPanes separatorLabels={INSTALLED_SPLIT_LABELS}>
                   <section
                     className="fy-feature-panel fy-feature-list-panel"
                     aria-label="已安装 Skills 列表"
@@ -631,7 +637,7 @@ export function SkillsPage() {
                       ))}
                     </section>
                   )}
-                </div>
+                </SplitPanes>
               )}
             </div>
           )}

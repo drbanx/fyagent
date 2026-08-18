@@ -188,12 +188,16 @@ mutation arguments only and never query keys or query data.
 
 - Render a keyboard-accessible left selector and right detail. The selected
   button owns `aria-current`; initial selection follows native catalog order.
-- Both pages use the shared `CatalogMasterDetail` geometry: default rail
+- Both pages use the shared `CatalogMasterDetail` geometry, backed by the
+  shared `SplitPanes` chassis: default rail
   `clamp(220px, 24vw, 268px)`, 14px separator gutter, 56px rows, 36px list
   frames, 64px detail frames, stable scrollbar gutter, the 760px
   master/detail stack (list becomes two columns; the separator is hidden),
   and the 520px list collapse to one column. Page CSS must not redefine
   catalog columns, brand-ID sizing, or another responsive rail.
+  `CatalogMasterDetail` keeps the catalog brand list and the separator name
+  `调整目录与详情的宽度`. Other product pages reuse `SplitPanes` without
+  catalog rail/list/brand classes.
 - Above 760px the two panes fill the remaining feature-page height and
   scroll independently. The detail panel is at least the pane height and
   grows with its content so its chrome does not clip overflowing cards.

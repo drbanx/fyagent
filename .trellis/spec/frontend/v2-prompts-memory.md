@@ -128,8 +128,10 @@ The fixed resource mapping is:
   completed but refresh failed; do not announce synchronized state.
 - Application, document, tab, daily-file, and route transitions share the same
   dirty-discard confirmation flow. Do not use `window.confirm`.
-- Prompts and Memory reuse the V2 `fy-feature-*`, `fy-control-*`, and shared UI
-  primitives. Page CSS is limited to namespaced editor height, scrolling, and
+- Prompts and Memory reuse the V2 `fy-feature-*`, `fy-control-*`, shared UI
+  primitives, and the shared `SplitPanes` chassis for list/detail/side
+  columns (independent scroll, 14px gutter, pointer/keyboard resize). Page
+  CSS is limited to namespaced editor height, scrolling, and
   responsive arrangement; it must not create an independent dark-blue theme.
 
 ### Platform boundary

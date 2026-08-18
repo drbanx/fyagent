@@ -51,20 +51,30 @@
 }
 
 .fy-memory-daily-list {
-  max-height: 520px;
-  overflow-y: auto;
   scrollbar-width: thin;
 }
 
 @media (max-width: 1180px) {
-  .fy-memory-master > .fy-feature-panel:last-child {
-    grid-column: 2;
+  .fy-memory-master.fy-split-panes[data-panes="3"] {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .fy-memory-master.fy-split-panes[data-panes="3"]
+    > .fy-split-pane[data-index="2"] {
+    grid-column: 3;
+    grid-row: 2;
   }
 }
 
 @media (max-width: 760px) {
-  .fy-memory-master > .fy-feature-panel:last-child {
+  .fy-memory-master.fy-split-panes[data-panes="3"] {
+    grid-template-rows: none;
+  }
+
+  .fy-memory-master.fy-split-panes[data-panes="3"]
+    > .fy-split-pane[data-index="2"] {
     grid-column: auto;
+    grid-row: auto;
   }
 
   .fy-memory-editor-panel {

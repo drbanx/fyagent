@@ -253,7 +253,9 @@
 }
 
 .fy-content-frame:has(
-  .fy-content-viewport > :not([hidden]) .fy-feature-workspace
+  .fy-content-viewport
+    > :not([hidden])
+    :is(.fy-split-page, .fy-feature-workspace)
 ) {
   display: flex;
   flex-direction: column;
@@ -282,14 +284,17 @@
   -webkit-backdrop-filter: blur(12px) saturate(1.08);
 }
 
-.fy-content-viewport:has(> :not([hidden]) .fy-feature-workspace) {
+.fy-content-viewport:has(
+  > :not([hidden]) :is(.fy-split-page, .fy-feature-workspace)
+) {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   overflow: hidden;
 }
 
-.fy-content-viewport > :has(> .fy-feature-workspace):not([hidden]) {
+.fy-content-viewport
+  > :has(> :is(.fy-split-page, .fy-feature-workspace)):not([hidden]) {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;

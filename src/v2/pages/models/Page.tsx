@@ -2078,7 +2078,7 @@ export function ModelsPage() {
 
   return (
     <div
-      className="fy-feature-page fy-catalog-page fy-models-page"
+      className="fy-feature-page fy-split-page fy-catalog-page fy-models-page"
       data-testid="models-page"
       aria-labelledby="fy-models-title"
     >

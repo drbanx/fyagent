@@ -34,10 +34,13 @@ import {
   SelectionLens,
   SelectionLensTrack,
 } from "../../shared/ui/SelectionLens";
+import { SplitPanes } from "../../shared/ui/split";
 
 import "./page.css";
 
 type MemoryTab = "long-term" | "daily";
+const LONG_TERM_SPLIT_LABELS = ["调整列表与编辑的宽度", "调整编辑与信息的宽度"];
+const DAILY_SPLIT_LABELS = ["调整列表与编辑的宽度", "调整编辑与说明的宽度"];
 type Notice = { tone: "info" | "error" | "warning"; message: string };
 type TransitionRequest = (transition: () => void) => void;
 type DiscardIntent =
@@ -184,7 +187,10 @@ export function MemoryPage() {
   };
 
   return (
-    <div className="fy-feature-page fy-memory-page" data-testid="memory-page">
+    <div
+      className="fy-feature-page fy-split-page fy-memory-page"
+      data-testid="memory-page"
+    >
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>记忆</h1>
@@ -391,7 +397,10 @@ function LongTermView({
           {errorMessage(documentQuery.error)}
         </InlineNotice>
       )}
-      <div className="fy-feature-master fy-memory-master">
+      <SplitPanes
+        className="fy-memory-master"
+        separatorLabels={LONG_TERM_SPLIT_LABELS}
+      >
         <section className="fy-feature-panel" aria-label="长期记忆资源">
           <h2>长期记忆 · 4</h2>
           <SelectionLensTrack
@@ -470,7 +479,7 @@ function LongTermView({
             </Button>
           )}
         </section>
-      </div>
+      </SplitPanes>
     </>
   );
 }
@@ -795,7 +804,10 @@ function DailyView({
           description="请尝试其他关键词。"
         />
       ) : (
-        <div className="fy-feature-master fy-memory-master">
+        <SplitPanes
+          className="fy-memory-master"
+          separatorLabels={DAILY_SPLIT_LABELS}
+        >
           <section className="fy-feature-panel" aria-label="每日记忆列表">
             <h2>
               {debouncedSearch ? "搜索结果" : "每日文件"} · {rows.length}
@@ -872,7 +884,7 @@ function DailyView({
               每日记忆按日期整理。选择记录后即可编辑、保存或删除。
             </p>
           </section>
-        </div>
+        </SplitPanes>
       )}
       <ConfirmDialog
         open={deleteTarget !== null}

@@ -43,6 +43,7 @@ import {
   SelectionLens,
   SelectionLensTrack,
 } from "../../shared/ui/SelectionLens";
+import { SplitPanes } from "../../shared/ui/split";
 import { findCatalogItem, MCP_PROVENANCE_LABEL } from "./catalog";
 import { DEFAULT_NEW_APPS } from "./constants";
 import { McpDiscovery } from "./Discovery";
@@ -58,6 +59,8 @@ function transportOf(server: McpServer): "stdio" | "http" | "sse" {
 function assignedMcpTargets(server: McpServer) {
   return MCP_TARGETS.filter((target) => Boolean(server.apps[target.id]));
 }
+
+const INSTALLED_SPLIT_LABELS = ["调整列表与详情的宽度", "调整详情与分配的宽度"];
 
 function ServerDetail({
   server,
@@ -343,7 +346,10 @@ export function McpPage() {
       });
     });
   return (
-    <div className="fy-feature-page fy-mcp-page" data-testid="mcp-page">
+    <div
+      className="fy-feature-page fy-split-page fy-mcp-page"
+      data-testid="mcp-page"
+    >
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>MCP</h1>
@@ -476,7 +482,7 @@ export function McpPage() {
               description="为保护敏感信息，密钥和请求头不会参与搜索。"
             />
           ) : (
-            <div className="fy-feature-master">
+            <SplitPanes separatorLabels={INSTALLED_SPLIT_LABELS}>
               <section
                 className="fy-feature-panel fy-feature-list-panel"
                 aria-label="MCP 列表"
@@ -554,7 +560,7 @@ export function McpPage() {
                   ))}
                 </section>
               )}
-            </div>
+            </SplitPanes>
           )}
         </div>
       )}

@@ -16,6 +16,18 @@ const catalogCss = readFileSync(
   ),
   "utf8",
 );
+const splitCss = readFileSync(
+  path.resolve(
+    repositoryRoot,
+    "src",
+    "v2",
+    "shared",
+    "ui",
+    "split",
+    "split.css",
+  ),
+  "utf8",
+);
 const pageCss = ["agents", "models"]
   .map((page) =>
     readFileSync(
@@ -25,46 +37,61 @@ const pageCss = ["agents", "models"]
   )
   .join("\n");
 
-function rule(selector: string): string {
+function rule(css: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = catalogCss.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
-  expect(
-    match,
-    `missing shared catalog CSS rule for ${selector}`,
-  ).not.toBeNull();
+  const match = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+  expect(match, `missing CSS rule for ${selector}`).not.toBeNull();
   return match?.[1] ?? "";
 }
 
 describe("shared V2 catalog presentation styles", () => {
   it("owns the only catalog rail geometry and independently scrolling panes", () => {
-    const layout = rule(".fy-catalog-master-detail");
-    expect(layout).toMatch(
+    const tokens = rule(catalogCss, ".fy-catalog-master-detail");
+    expect(tokens).toMatch(
       /--fy-catalog-rail-width:\s*clamp\(220px,\s*24vw,\s*268px\);/,
     );
-    expect(layout).toMatch(/--fy-catalog-gap:\s*14px;/);
-    expect(layout).toMatch(
-      /grid-template-columns:\s*var\(--fy-catalog-rail-width\)\s+var\(--fy-catalog-gap\)\s+minmax\(0,\s*1fr\);/,
+    expect(tokens).toMatch(/--fy-catalog-gap:\s*14px;/);
+    expect(tokens).toMatch(
+      /--fy-split-pane-0:\s*var\(--fy-catalog-rail-width\);/,
     );
-    expect(layout).toMatch(/align-items:\s*stretch;/);
-    expect(catalogCss).toMatch(
-      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.fy-catalog-master-detail\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/,
+    expect(tokens).not.toMatch(/grid-template-columns:/);
+    expect(rule(splitCss, ".fy-split-panes")).toMatch(
+      /--fy-split-gap:\s*14px;/,
     );
-    expect(catalogCss).toMatch(
-      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.fy-catalog-resize-handle\s*\{[\s\S]*?display:\s*none;/,
+    expect(rule(splitCss, '.fy-split-panes[data-panes="2"]')).toMatch(
+      /grid-template-columns:\s*var\(--fy-split-pane-0\)\s+var\(--fy-split-gap\)\s+minmax\(0,\s*1fr\);/,
     );
-    expect(rule(".fy-feature-page.fy-catalog-page")).toMatch(/gap:\s*0;/);
+    expect(splitCss).toMatch(
+      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.fy-split-panes\[data-panes="2"\][\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/,
+    );
+    expect(splitCss).toMatch(
+      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.fy-split-resize-handle[\s\S]*?display:\s*none;/,
+    );
+    expect(rule(catalogCss, ".fy-feature-page.fy-catalog-page")).toMatch(
+      /gap:\s*0;/,
+    );
+    expect(rule(splitCss, ".fy-feature-page.fy-split-page")).toMatch(
+      /gap:\s*0;/,
+    );
     expect(pageCss).not.toMatch(
       /\.fy-(?:agents|models)-page\s*\{[^}]*(?:gap|padding-top)\s*:/s,
     );
     expect(
-      rule(".fy-content-viewport:has(> :not([hidden]) .fy-catalog-page)"),
+      rule(
+        splitCss,
+        ".fy-content-viewport:has(> :not([hidden]) .fy-split-page)",
+      ),
     ).toMatch(/overflow:\s*hidden;/);
     expect(
-      rule(".fy-content-viewport:has(> :not([hidden]) .fy-catalog-page)"),
+      rule(
+        splitCss,
+        ".fy-content-viewport:has(> :not([hidden]) .fy-split-page)",
+      ),
     ).toMatch(/scrollbar-gutter:\s*stable;/);
     expect(catalogCss).toMatch(
       /\.fy-catalog-rail,\s*\.fy-catalog-pane\s*\{[^}]*overflow:\s*auto;/s,
     );
+    expect(splitCss).toMatch(/\.fy-split-pane\s*\{[^}]*overflow:\s*auto;/s);
     expect(catalogCss).toMatch(
       /\.fy-catalog-pane\s*>\s*\*\s*\{[^}]*min-height:\s*100%;/s,
     );
@@ -74,13 +101,13 @@ describe("shared V2 catalog presentation styles", () => {
   });
 
   it("freezes shared row, frame, and artwork geometry", () => {
-    const layout = rule(".fy-catalog-master-detail");
+    const layout = rule(catalogCss, ".fy-catalog-master-detail");
     expect(layout).toMatch(/--fy-catalog-row-min-height:\s*56px;/);
     expect(layout).toMatch(/--fy-catalog-list-frame-size:\s*36px;/);
     expect(layout).toMatch(/--fy-catalog-list-artwork-size:\s*28px;/);
     expect(layout).toMatch(/--fy-catalog-detail-frame-size:\s*64px;/);
     expect(layout).toMatch(/--fy-catalog-detail-artwork-size:\s*48px;/);
-    expect(rule(".fy-catalog-list-item")).toMatch(
+    expect(rule(catalogCss, ".fy-catalog-list-item")).toMatch(
       /min-height:\s*var\(--fy-catalog-row-min-height\);/,
     );
     expect(catalogCss).not.toMatch(/transition:\s*all/);

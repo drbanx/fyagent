@@ -1,10 +1,9 @@
-.fy-prompts-page {
-  gap: 12px;
+.fy-prompts-page .fy-feature-header {
+  margin-bottom: 12px;
 }
 
-.fy-prompts-page .fy-feature-header,
 .fy-prompts-page .fy-feature-toolbar {
-  margin-bottom: 0;
+  margin-bottom: 12px;
 }
 
 .fy-prompts-app-field {
@@ -62,10 +61,6 @@
 }
 
 @media (max-width: 1180px) {
-  .fy-prompts-page .fy-feature-master > :last-child {
-    grid-column: 1 / -1;
-  }
-
   .fy-prompts-live-content {
     min-height: 190px;
   }
@@ -74,10 +69,6 @@
 @media (max-width: 760px) {
   .fy-prompts-app-field {
     flex-basis: 100%;
-  }
-
-  .fy-prompts-page .fy-feature-master > :last-child {
-    grid-column: auto;
   }
 
   .fy-prompts-content,

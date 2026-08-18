@@ -255,7 +255,9 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   `prefers-reduced-motion`. `SelectionLens` is the only approved layout
   animation; it springs overlay geometry and collapses to an instant swap when
   the user prefers reduced motion. Never combine `layoutId` scale projection
-  with `backdrop-filter` on the same node.
+  with `backdrop-filter` on the same node. Fill-height master/detail columns
+  use shared `SplitPanes` (`shared/ui/split`); do not copy catalog rail
+  classes onto Skills, MCP, Prompts, or Memory.
 - Keep the chrome row near 68px, brand mark 28px, brand text 19px, navigation
   track 46px, and navigation/tool targets 38px. V2 Overlay chrome adds a
   28px inert drag strip above that chrome row so the window can be dragged and

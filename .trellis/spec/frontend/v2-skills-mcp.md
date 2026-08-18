@@ -160,8 +160,11 @@ interface SettingsPort {
   dialog. Ordinary details must redact sensitive URL query values and
   sensitive command arguments.
 - Installed Skills and MCP use the same three-column workspace: list, detail,
-  and assignment. Each column scrolls independently; the content viewport must
-  not grow with the left-hand list. Skill uninstall and MCP edit/delete stay
+  and assignment, laid out with the shared `SplitPanes` chassis (14px
+  gutter, pointer/keyboard resize, independent pane scroll). Each column
+  scrolls independently; the content viewport must
+  not grow with the left-hand list. The Discover tab stays a card grid and
+  must not use this master-detail chassis. Skill uninstall and MCP edit/delete stay
   in the detail header above source, assignment, and install cards so they
   remain reachable without scrolling the middle pane. MCP details must show
   install provenance and current assignment chips, matching Skills.
