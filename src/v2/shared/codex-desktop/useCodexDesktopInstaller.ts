@@ -100,7 +100,8 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
   }, []);
 
   const acceptSnapshot = useCallback((incoming: JobSnapshot): boolean => {
-    if (!shouldAcceptJobSnapshot(acceptedJobRef.current, incoming)) {
+    const accepted = shouldAcceptJobSnapshot(acceptedJobRef.current, incoming);
+    if (!accepted) {
       return false;
     }
 
@@ -320,49 +321,50 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     [effectiveJob, performLocked, readRemote],
   );
 
-  const runPrimaryAction = useCallback(
-    async () =>
-      performLocked(async () => {
-        switch (actionState.primaryAction) {
-          case "install":
-          case "update": {
-            if (!remote) return;
-            const snapshot = await port.startInstall(remote.releaseId);
-            acceptSnapshot(snapshot);
+  const runPrimaryAction = useCallback(async () => {
+    return performLocked(async () => {
+      switch (actionState.primaryAction) {
+        case "install":
+        case "update": {
+          if (!remote) {
             return;
           }
-          case "launch":
-            await port.launch();
-            return;
-          case "refresh":
-            await readRemote(true);
-            if (effectiveJob?.stage === "failed") {
-              setDismissedTerminal(terminalIdentity(effectiveJob));
-            }
-            return;
-          case "retry":
-            if (state === "failed" && remote) {
-              const snapshot = await port.startInstall(remote.releaseId);
-              acceptSnapshot(snapshot);
-            } else {
-              await readRemote(true);
-            }
-            return;
-          case null:
-            return;
+          const snapshot = await port.startInstall(remote.releaseId);
+          acceptSnapshot(snapshot);
+          return;
         }
-      }),
-    [
-      acceptSnapshot,
-      actionState.primaryAction,
-      effectiveJob,
-      performLocked,
-      port,
-      readRemote,
-      remote,
-      state,
-    ],
-  );
+        case "launch":
+          await port.launch();
+          return;
+        case "refresh":
+          await readRemote(true);
+          if (effectiveJob?.stage === "failed") {
+            setDismissedTerminal(terminalIdentity(effectiveJob));
+          }
+          return;
+        case "retry":
+          if (state === "failed" && remote) {
+            const snapshot = await port.startInstall(remote.releaseId);
+            acceptSnapshot(snapshot);
+          } else {
+            await readRemote(true);
+          }
+          return;
+        case null:
+          return;
+      }
+    });
+  }, [
+    acceptSnapshot,
+    actionState.primaryAction,
+    actionState.primaryDisabled,
+    effectiveJob,
+    performLocked,
+    port,
+    readRemote,
+    remote,
+    state,
+  ]);
 
   const cancel = useCallback(
     async () =>
@@ -374,10 +376,11 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     [acceptSnapshot, effectiveJob, performLocked, port],
   );
 
-  const openLogs = useCallback(
-    async () => performLocked(() => port.openLogDirectory()),
-    [performLocked, port],
-  );
+  const openLogs = useCallback(async () => {
+    return performLocked(async () => {
+      await port.openLogDirectory();
+    });
+  }, [performLocked, port]);
 
   return {
     state,
@@ -388,7 +391,7 @@ export function useCodexDesktopInstaller(): CodexDesktopInstallerViewModel {
     primaryAction: actionState.primaryAction,
     primaryDisabled: actionState.primaryDisabled || working,
     canCancel: Boolean(effectiveJob?.cancellable) && !isActing,
-    canOpenLogs: !authorityUnavailable && state !== "hidden" && !isActing,
+    canOpenLogs: !isActing && (state === "failed" || operationFailed),
     isActing,
     isRefreshing: remoteRefetching,
     authorityUnavailable,

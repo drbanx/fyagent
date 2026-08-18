@@ -102,6 +102,7 @@ export function CodexDesktopInstallerPanel() {
     installer.isActing,
   );
   const showDownloadBytes = installer.state === "job_downloading";
+  const jobBusy = installer.state.startsWith("job_");
   const currentBytes = showDownloadBytes
     ? formatBytes(installer.progress?.current ?? null)
     : null;
@@ -116,6 +117,16 @@ export function CodexDesktopInstallerPanel() {
     percent !== null && percent !== undefined && Number.isFinite(percent)
       ? Math.max(0, Math.min(100, percent))
       : null;
+  const downloadComplete =
+    showDownloadBytes && validPercent !== null && validPercent >= 100;
+  const statusText = installer.authorityUnavailable
+    ? "暂时无法读取安装状态。"
+    : downloadComplete
+      ? "下载已完成，正在校验并准备安装。"
+      : stateLabels[installer.state];
+  const jobSpinnerLabel = downloadComplete
+    ? "正在校验并准备安装 Codex Desktop"
+    : "正在处理 Codex Desktop 安装";
 
   return (
     <section
@@ -133,11 +144,18 @@ export function CodexDesktopInstallerPanel() {
       </div>
 
       <div className="fy-codex-installer-body" aria-live="polite">
-        <p className="fy-codex-installer-status">
-          {installer.authorityUnavailable
-            ? "暂时无法读取安装状态。"
-            : stateLabels[installer.state]}
-        </p>
+        <div className="fy-codex-installer-status-row">
+          {jobBusy && <Spinner label={jobSpinnerLabel} />}
+          <p
+            className={
+              jobBusy
+                ? "fy-codex-installer-status is-working"
+                : "fy-codex-installer-status"
+            }
+          >
+            {statusText}
+          </p>
+        </div>
 
         <dl className="fy-codex-installer-versions">
           <div>
@@ -170,8 +188,10 @@ export function CodexDesktopInstallerPanel() {
 
         {showDownloadBytes && (currentBytes || totalBytes) && (
           <p className="fy-codex-installer-download">
-            已下载 {currentBytes ?? "—"} / {totalBytes ?? "—"}
-            {speed ? ` · ${speed}/s` : ""}
+            {downloadComplete
+              ? `已下载 ${currentBytes ?? "—"} / ${totalBytes ?? "—"}。文件较大，校验可能需要一点时间。`
+              : `已下载 ${currentBytes ?? "—"} / ${totalBytes ?? "—"}`}
+            {!downloadComplete && speed ? ` · ${speed}/s` : ""}
           </p>
         )}
 

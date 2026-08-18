@@ -282,7 +282,6 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
                 return Err(error);
             }
             run_blocking(move || {
-                artifact.revalidate()?;
                 validate_release_for_host(&host, &release)?;
                 PreparedInstallPackage::from_prepared_artifact(&release, artifact)
             })

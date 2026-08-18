@@ -193,6 +193,23 @@
   line-height: 1.55;
 }
 
+.fy-codex-installer-status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.fy-codex-installer-status-row .fy-control-spinner {
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+
+.fy-codex-installer-status.is-working {
+  color: var(--fy-text-primary);
+}
+
 .fy-codex-installer-body {
   display: grid;
   gap: 11px;

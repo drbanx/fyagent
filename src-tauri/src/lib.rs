@@ -1152,19 +1152,17 @@ pub fn run() {
             app_state
                 .codex_desktop_service
                 .attach_log_directory_opener(Arc::new(move |directory: &std::path::Path| {
-                    tauri::async_runtime::block_on(
-                        crate::platform::process_launch::open_directory_as_user(
-                            log_opener_handle.clone(),
-                            directory.to_path_buf(),
-                        ),
+                    crate::platform::process_launch::open_directory_as_user_blocking(
+                        log_opener_handle.clone(),
+                        directory.to_path_buf(),
                     )
                     .map_err(|_| {
-                            crate::codex_desktop::error::InstallerError::new(
-                                crate::codex_desktop::error::InstallerErrorCode::InternalError,
-                            )
-                            .with_diagnostic_message(
-                                "the application log directory could not be opened",
-                            )
+                        crate::codex_desktop::error::InstallerError::new(
+                            crate::codex_desktop::error::InstallerErrorCode::InternalError,
+                        )
+                        .with_diagnostic_message(
+                            "the application log directory could not be opened",
+                        )
                     })
                 }));
 

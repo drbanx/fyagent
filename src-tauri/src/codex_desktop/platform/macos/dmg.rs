@@ -76,7 +76,6 @@ pub(crate) fn prepare_install_package(
     artifact: DownloadedArtifact,
 ) -> Result<PreparedInstallPackage, InstallerError> {
     validate_release(release)?;
-    artifact.revalidate()?;
     let artifact_path = artifact.path().to_path_buf();
     validate_downloaded_dmg(filesystem, &artifact_path)?;
     let _ = (runner, host);
@@ -104,13 +103,13 @@ pub(crate) fn install_current_user(
     // Re-open the downloader-owned fixed DMG and bind it to the descriptor
     // immediately before `hdiutil` resolves the path. This closes the gap
     // between the earlier platform preparation and this mount.
-    package.revalidate_artifact()?;
-    validate_downloaded_dmg(filesystem, package.artifact_path())?;
     progress.report_progress(JobProgress::new(
         ProgressPhase::Installation,
         Some(0),
         Some(3),
     ));
+    package.revalidate_artifact()?;
+    validate_downloaded_dmg(filesystem, package.artifact_path())?;
 
     let mut mounted = mount_dmg(runner, filesystem, package.artifact_path())?;
     let result = (|| {

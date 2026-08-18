@@ -306,10 +306,8 @@ impl PreparedInstallPackage {
         release: &ReleaseDescriptor,
         artifact: DownloadedArtifact,
     ) -> Result<Self, InstallerError> {
-        // Platform preparation may take time to complete. Repeat the local
-        // artifact binding while converting its successful result into opaque evidence,
-        // so a replacement just before this boundary cannot become installable.
-        artifact.revalidate()?;
+        // The streaming download hash is the local identity. Installers repeat
+        // the on-disk size/hash check immediately before consumption.
         let artifact_path = artifact.path().to_path_buf();
 
         Ok(Self {

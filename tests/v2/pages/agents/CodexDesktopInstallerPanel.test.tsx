@@ -221,6 +221,107 @@ describe("V2 Codex Desktop installer panel", () => {
     expect(document.body).not.toHaveTextContent("/s");
   });
 
+  it("explains the post-download wait and only offers logs after failure", async () => {
+    let listener: ((value: JobSnapshot) => void) | undefined;
+    const port = createInstallerPort({
+      subscribeJobUpdates: vi.fn(async (next) => {
+        listener = next;
+        return () => undefined;
+      }),
+    });
+    renderPanel(port);
+    await waitFor(() => expect(listener).toBeDefined());
+
+    act(() => {
+      listener?.(
+        snapshot({
+          sequence: 1,
+          stage: "downloading",
+          phase: "download",
+          completed: 1024,
+          total: 4096,
+          percent: 25,
+          updatedAt: "2026-08-14T00:00:01.000Z",
+          cancellable: true,
+        }),
+      );
+      listener?.(
+        snapshot({
+          sequence: 2,
+          stage: "downloading",
+          phase: "download",
+          completed: 2048,
+          total: 4096,
+          percent: 50,
+          updatedAt: "2026-08-14T00:00:02.000Z",
+          cancellable: true,
+        }),
+      );
+    });
+
+    expect(screen.getByText("正在下载 Codex Desktop。")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "打开日志目录" }),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      listener?.(
+        snapshot({
+          sequence: 3,
+          stage: "downloading",
+          phase: "download",
+          completed: 4096,
+          total: 4096,
+          percent: 100,
+          updatedAt: "2026-08-14T00:00:03.000Z",
+          cancellable: true,
+        }),
+      );
+    });
+
+    expect(screen.getByText("下载已完成，正在校验并准备安装。")).toBeVisible();
+    expect(
+      screen.getByRole("status", {
+        name: "正在校验并准备安装 Codex Desktop",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/已下载 4\.00 KB \/ 4\.00 KB/)).toHaveTextContent(
+      "文件较大，校验可能需要一点时间。",
+    );
+    expect(document.body).not.toHaveTextContent("/s");
+    expect(
+      screen.queryByRole("button", { name: "打开日志目录" }),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      listener?.(
+        snapshot({
+          sequence: 4,
+          stage: "failed",
+          error: {
+            code: "DOWNLOAD_FAILED",
+            stage: "failed",
+            messageKey: "secret.backend.message.must.not.render",
+            retryable: true,
+            suggestedAction: "retry",
+            details: {
+              endpointKind: "artifact",
+              attempt: 1,
+              maxAttempts: 3,
+              httpStatus: null,
+              platformErrorCode: null,
+              redactedMessage: "sensitive path C:/Users/private",
+              context: {},
+            },
+          },
+        }),
+      );
+    });
+
+    expect(screen.getByRole("button", { name: "打开日志目录" })).toBeVisible();
+    expect(document.body).not.toHaveTextContent("C:/Users/private");
+  });
+
   it("refreshes METADATA_CHANGED without automatically retrying install", async () => {
     const metadataChanged: InstallerErrorDto = {
       code: "METADATA_CHANGED",
@@ -249,6 +350,9 @@ describe("V2 Codex Desktop installer panel", () => {
     const refresh = await screen.findByRole("button", {
       name: "刷新状态",
     });
+    expect(
+      await screen.findByRole("button", { name: "打开日志目录" }),
+    ).toBeVisible();
     expect(document.body).toHaveTextContent(
       "版本信息已更新，请刷新后重新确认安装。",
     );
@@ -280,6 +384,9 @@ describe("V2 Codex Desktop installer panel", () => {
     renderPanel(port);
 
     expect(await screen.findByText("暂时无法读取安装状态。")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "打开日志目录" }),
+    ).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("sk-secret");
     expect(document.body).not.toHaveTextContent("C:/private");
     expect(screen.getByText("无法确认")).toBeVisible();

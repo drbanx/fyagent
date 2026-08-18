@@ -29,7 +29,10 @@ const PLUTIL_OUTPUT_FORMAT: &str = "json";
 
 /// This script is a fixed program constant. It receives no paths or metadata
 /// as interpolation input, and its JSON output is parsed before it influences
-/// the install decision.
+/// the install decision. It emits only the Stable Codex identity because the
+/// macOS command runner truncates stdout at 16 KiB; a full NSWorkspace dump
+/// exceeds that bound on a typical workstation and was previously parsed as
+/// `MAC_APP_RUNNING`.
 const RUNNING_APPLICATIONS_JXA: &str = r#"
 ObjC.import('AppKit');
 const workspace = $.NSWorkspace.sharedWorkspace;
@@ -37,9 +40,13 @@ const applications = workspace.runningApplications;
 const result = [];
 for (let index = 0; index < applications.count; index += 1) {
   const application = applications.objectAtIndex(index);
+  const bundleIdentifier = application.bundleIdentifier ? ObjC.unwrap(application.bundleIdentifier) : null;
+  if (bundleIdentifier !== "com.openai.codex") {
+    continue;
+  }
   const url = application.bundleURL;
   result.push({
-    bundleIdentifier: application.bundleIdentifier ? ObjC.unwrap(application.bundleIdentifier) : null,
+    bundleIdentifier: bundleIdentifier,
     bundlePath: url ? ObjC.unwrap(url.path) : null,
     processIdentifier: application.processIdentifier,
     launchTimestampMs: application.launchDate
@@ -510,35 +517,7 @@ pub(crate) fn ensure_not_running(
             "running Stable application state could not be determined",
         )
     })?;
-    let output = runner
-        .run(&command(
-            "osascript",
-            vec![
-                OsString::from("-l"),
-                OsString::from("JavaScript"),
-                OsString::from("-e"),
-                OsString::from(RUNNING_APPLICATIONS_JXA),
-            ],
-        ))
-        .map_err(|_| {
-            error(
-                InstallerErrorCode::MacAppRunning,
-                "running Stable application state could not be determined",
-            )
-        })?;
-    if !output.is_success() {
-        return Err(error(
-            InstallerErrorCode::MacAppRunning,
-            "running Stable application state could not be determined",
-        ));
-    }
-    let applications =
-        serde_json::from_slice::<Vec<RunningApplication>>(output.stdout()).map_err(|_| {
-            error(
-                InstallerErrorCode::MacAppRunning,
-                "running Stable application state could not be determined",
-            )
-        })?;
+    let applications = running_applications(runner)?;
     for application in applications {
         if application.bundle_identifier.as_deref() != Some(stable_bundle_id()) {
             continue;
@@ -1268,6 +1247,14 @@ mod tests {
             InstallerErrorCode::PackageParseFailed
         );
         runner.assert_drained();
+    }
+
+    #[test]
+    fn running_applications_script_emits_only_the_stable_bundle_id() {
+        assert!(RUNNING_APPLICATIONS_JXA.contains(stable_bundle_id()));
+        assert!(
+            RUNNING_APPLICATIONS_JXA.contains(r#"if (bundleIdentifier !== "com.openai.codex")"#)
+        );
     }
 
     #[test]

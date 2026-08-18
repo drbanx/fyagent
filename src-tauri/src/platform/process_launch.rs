@@ -288,6 +288,19 @@ pub(crate) async fn open_directory_as_user(
         .map_err(|error| error.public_code().to_owned())
 }
 
+/// Same directory launch as [`open_directory_as_user`], but safe to call from a
+/// synchronous installer opener. Nested `block_on` on Tauri's async command
+/// runtime never returns.
+pub(crate) fn open_directory_as_user_blocking(
+    app: AppHandle,
+    directory: PathBuf,
+) -> Result<(), String> {
+    let request = InteractiveUserLaunch::directory(&directory)
+        .map_err(|error| error.public_code().to_owned())?;
+    dispatch_blocking_with_platform_launcher(app, request)
+        .map_err(|error| error.public_code().to_owned())
+}
+
 /// Opens a fixed, backend-generated terminal batch script through the
 /// interactive user's shell. This is deliberately synchronous because the
 /// existing terminal helpers already run on a blocking path. There is no
@@ -336,6 +349,14 @@ fn dispatch_sync_with_platform_launcher(
     .dispatch(request)
 }
 
+#[cfg(target_os = "windows")]
+fn dispatch_blocking_with_platform_launcher(
+    _app: AppHandle,
+    request: InteractiveUserLaunch,
+) -> Result<(), ProcessLaunchError> {
+    dispatch_sync_with_platform_launcher(request)
+}
+
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
 fn dispatch_sync_with_platform_launcher(
@@ -346,6 +367,14 @@ fn dispatch_sync_with_platform_launcher(
 
 #[cfg(target_os = "macos")]
 async fn dispatch_with_platform_launcher(
+    app: AppHandle,
+    request: InteractiveUserLaunch,
+) -> Result<(), ProcessLaunchError> {
+    dispatch_blocking_with_platform_launcher(app, request)
+}
+
+#[cfg(target_os = "macos")]
+fn dispatch_blocking_with_platform_launcher(
     app: AppHandle,
     request: InteractiveUserLaunch,
 ) -> Result<(), ProcessLaunchError> {

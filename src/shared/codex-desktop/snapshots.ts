@@ -26,12 +26,24 @@ export interface DownloadSpeedSnapshotIdentity {
 
 export interface DownloadSpeedState {
   snapshot: DownloadSpeedSnapshotIdentity | null;
+  origin: DownloadSpeedSample | null;
   sample: DownloadSpeedSample | null;
   measurement: DownloadSpeedMeasurement | null;
 }
 
 export function createDownloadSpeedState(): DownloadSpeedState {
-  return { snapshot: null, sample: null, measurement: null };
+  return { snapshot: null, origin: null, sample: null, measurement: null };
+}
+
+const MIN_AVERAGE_ELAPSED_MS = 1000;
+
+function retainMeasurement(
+  measurement: DownloadSpeedMeasurement | null,
+  job: JobSnapshot,
+): DownloadSpeedMeasurement | null {
+  return measurement && measurement.jobId === job.jobId
+    ? { ...measurement, sequence: job.sequence }
+    : null;
 }
 
 /**
@@ -63,8 +75,8 @@ export function shouldAcceptJobSnapshot(
 }
 
 /**
- * Records one already-accepted snapshot. Only adjacent, increasing byte/time
- * samples from the same download job produce a renderer-only speed value.
+ * Records one already-accepted snapshot. Speed is the job-lifetime average
+ * from the first valid sample, so 100ms progress hops do not flicker.
  */
 export function updateDownloadSpeedState(
   current: DownloadSpeedState,
@@ -90,23 +102,66 @@ export function updateDownloadSpeedState(
     completedBytes < 0 ||
     !Number.isFinite(updatedAtMs)
   ) {
-    return { snapshot: identity, sample: null, measurement: null };
+    return {
+      snapshot: identity,
+      origin: null,
+      sample: null,
+      measurement: null,
+    };
   }
 
   const sample = { jobId: job.jobId, completedBytes, updatedAtMs };
-  if (!current.sample || current.sample.jobId !== sample.jobId) {
-    return { snapshot: identity, sample, measurement: null };
+  if (!current.origin || current.origin.jobId !== sample.jobId) {
+    return { snapshot: identity, origin: sample, sample, measurement: null };
   }
 
-  const elapsedMs = sample.updatedAtMs - current.sample.updatedAtMs;
-  const completedDelta = sample.completedBytes - current.sample.completedBytes;
-  if (elapsedMs <= 0 || completedDelta <= 0) {
-    return { snapshot: identity, sample, measurement: null };
+  const previous = current.sample;
+  if (!previous || previous.jobId !== sample.jobId) {
+    return { snapshot: identity, origin: sample, sample, measurement: null };
   }
 
-  const bytesPerSecond = (completedDelta * 1000) / elapsedMs;
+  const elapsedFromPrevious = sample.updatedAtMs - previous.updatedAtMs;
+  const deltaFromPrevious = sample.completedBytes - previous.completedBytes;
+  if (elapsedFromPrevious < 0 || deltaFromPrevious < 0) {
+    return {
+      snapshot: identity,
+      origin: null,
+      sample: null,
+      measurement: null,
+    };
+  }
+  if (elapsedFromPrevious === 0 && deltaFromPrevious > 0) {
+    return {
+      snapshot: identity,
+      origin: null,
+      sample: null,
+      measurement: null,
+    };
+  }
+  if (deltaFromPrevious === 0) {
+    return {
+      snapshot: identity,
+      origin: current.origin,
+      sample,
+      measurement: retainMeasurement(current.measurement, job),
+    };
+  }
+
+  const elapsedFromOrigin = sample.updatedAtMs - current.origin.updatedAtMs;
+  const deltaFromOrigin = sample.completedBytes - current.origin.completedBytes;
+  if (elapsedFromOrigin < MIN_AVERAGE_ELAPSED_MS || deltaFromOrigin <= 0) {
+    return {
+      snapshot: identity,
+      origin: current.origin,
+      sample,
+      measurement: retainMeasurement(current.measurement, job),
+    };
+  }
+
+  const bytesPerSecond = (deltaFromOrigin * 1000) / elapsedFromOrigin;
   return {
     snapshot: identity,
+    origin: current.origin,
     sample,
     measurement:
       Number.isFinite(bytesPerSecond) && bytesPerSecond >= 0

@@ -183,7 +183,7 @@ describe("neutral Codex Desktop core", () => {
     ).toBe(false);
   });
 
-  it("binds download speed to adjacent accepted job and sequence samples", () => {
+  it("binds download speed to the job-lifetime average", () => {
     const mebibyte = 1024 * 1024;
     const first = makeDownloadJob(1, mebibyte, "2026-08-14T00:00:01.000Z");
     const second = makeDownloadJob(2, 5 * mebibyte, "2026-08-14T00:00:03.000Z");
@@ -211,20 +211,49 @@ describe("neutral Codex Desktop core", () => {
     ).toBeNull();
   });
 
+  it("keeps a stable average when later hops slow down", () => {
+    const mebibyte = 1024 * 1024;
+    let state = updateDownloadSpeedState(
+      createDownloadSpeedState(),
+      makeDownloadJob(1, mebibyte, "2026-08-14T00:00:01.000Z"),
+    );
+    state = updateDownloadSpeedState(
+      state,
+      makeDownloadJob(2, 5 * mebibyte, "2026-08-14T00:00:02.000Z"),
+    );
+    expect(
+      projectInstallerProgress(
+        makeDownloadJob(2, 5 * mebibyte, "2026-08-14T00:00:02.000Z"),
+        state,
+      )?.bytesPerSecond,
+    ).toBe(4 * mebibyte);
+
+    const slowed = makeDownloadJob(3, 6 * mebibyte, "2026-08-14T00:00:06.000Z");
+    state = updateDownloadSpeedState(state, slowed);
+    expect(projectInstallerProgress(slowed, state)?.bytesPerSecond).toBe(
+      mebibyte,
+    );
+  });
+
   it("accepts progress after actual bytes exceed a remote size hint", () => {
-    const job = makeDownloadJob(2, 9 * 1024 * 1024, "2026-08-14T00:00:02.000Z", {
-      progress: {
-        phase: "download",
-        completedBytes: 9 * 1024 * 1024,
-        totalBytes: 8 * 1024 * 1024,
-        percent: 100,
+    const job = makeDownloadJob(
+      2,
+      9 * 1024 * 1024,
+      "2026-08-14T00:00:02.000Z",
+      {
+        progress: {
+          phase: "download",
+          completedBytes: 9 * 1024 * 1024,
+          totalBytes: 8 * 1024 * 1024,
+          percent: 100,
+        },
       },
-    });
+    );
 
     expect(parseJobSnapshot(job).progress).toEqual(job.progress);
   });
 
-  it("clears speed outside download and retains a valid stalled sample as baseline", () => {
+  it("clears speed outside download and keeps the last average while stalled", () => {
     const mebibyte = 1024 * 1024;
     let state = updateDownloadSpeedState(
       createDownloadSpeedState(),
@@ -234,11 +263,15 @@ describe("neutral Codex Desktop core", () => {
       state,
       makeDownloadJob(2, 3 * mebibyte, "2026-08-14T00:00:02.000Z"),
     );
-    state = updateDownloadSpeedState(
-      state,
-      makeDownloadJob(3, 3 * mebibyte, "2026-08-14T00:00:03.000Z"),
+    const stalled = makeDownloadJob(
+      3,
+      3 * mebibyte,
+      "2026-08-14T00:00:03.000Z",
     );
-    expect(state.measurement).toBeNull();
+    state = updateDownloadSpeedState(state, stalled);
+    expect(projectInstallerProgress(stalled, state)?.bytesPerSecond).toBe(
+      2 * mebibyte,
+    );
 
     const recovered = makeDownloadJob(
       4,
@@ -247,7 +280,7 @@ describe("neutral Codex Desktop core", () => {
     );
     state = updateDownloadSpeedState(state, recovered);
     expect(projectInstallerProgress(recovered, state)?.bytesPerSecond).toBe(
-      2 * mebibyte,
+      (4 * mebibyte) / 3,
     );
 
     const installing = makeJob("installing", 5, {

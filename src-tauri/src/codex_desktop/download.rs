@@ -678,12 +678,10 @@ async fn download_attempt(
     if cancellation.is_cancelled() {
         return Err(DownloadAttemptError::terminal(cancelled_error()));
     }
-    let final_file = job_directory
-        .open_final_artifact_for_read(artifact_kind)
-        .map_err(DownloadAttemptError::terminal)?;
+    // Streaming SHA-256 is the local identity. Installers revalidate the
+    // on-disk file immediately before consumption instead of hashing it again
+    // while the job is still downloading.
     let sha256 = format!("{:x}", hasher.finalize());
-    verify::verify_reader(final_file, completed_bytes, &sha256)
-        .map_err(DownloadAttemptError::terminal)?;
     DownloadedArtifact::from_completed_download(job_directory, release, completed_bytes, sha256)
         .map_err(DownloadAttemptError::terminal)
 }
