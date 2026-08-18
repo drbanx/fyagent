@@ -1,5 +1,5 @@
+import { buildNpxCommand } from "./mcpLaunch";
 import type { McpServer } from "./types";
-import { detectNativePlatform } from "../platform/runtime";
 
 export interface McpPreset {
   id: string;
@@ -11,38 +11,14 @@ export interface McpPreset {
   source?: string;
 }
 
-type NativePlatform = ReturnType<typeof detectNativePlatform>;
-
-function isWindows(platform: NativePlatform): boolean {
-  return platform === "windows";
-}
-
-function isMacOS(platform: NativePlatform): boolean {
-  return platform === "macos";
-}
-
-function npxCommand(
-  packageName: string,
-): { command: string; args: string[] } | null {
-  const platform = detectNativePlatform(globalThis.navigator);
-  if (isWindows(platform)) {
-    return { command: "cmd", args: ["/c", "npx", "-y", packageName] };
-  }
-  if (isMacOS(platform)) {
-    return { command: "npx", args: ["-y", packageName] };
-  }
-  return null;
-}
-
 function npxPreset(
   id: string,
   packageName: string,
   tags: string[],
   docs: string,
   homepage: string = docs,
-): McpPreset | null {
-  const command = npxCommand(packageName);
-  if (!command) return null;
+): McpPreset {
+  const command = buildNpxCommand(packageName);
   return {
     id,
     name: packageName,
@@ -62,13 +38,14 @@ export const mcpPresets: readonly McpPreset[] = [
     homepage: "https://github.com/modelcontextprotocol/servers",
     docs: "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
   },
-  npxPreset(
-    "time",
-    "@modelcontextprotocol/server-time",
-    ["stdio", "time", "utility"],
-    "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
-    "https://github.com/modelcontextprotocol/servers",
-  ),
+  {
+    id: "time",
+    name: "mcp-server-time",
+    tags: ["stdio", "time", "utility"],
+    server: { type: "stdio", command: "uvx", args: ["mcp-server-time"] },
+    homepage: "https://github.com/modelcontextprotocol/servers",
+    docs: "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+  },
   npxPreset(
     "memory",
     "@modelcontextprotocol/server-memory",
@@ -90,4 +67,4 @@ export const mcpPresets: readonly McpPreset[] = [
     "https://github.com/upstash/context7/blob/master/README.md",
     "https://context7.com",
   ),
-].filter((preset): preset is McpPreset => preset !== null);
+];

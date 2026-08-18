@@ -1,0 +1,40 @@
+.fy-mcp-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fy-mcp-card-meta h3 {
+  margin-right: 4px;
+}
+
+.fy-mcp-card-note {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fy-mcp-discovery {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.fy-mcp-card-link {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  color: var(--fy-accent-text);
+  background: transparent;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}

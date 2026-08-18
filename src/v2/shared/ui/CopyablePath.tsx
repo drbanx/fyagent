@@ -1,0 +1,42 @@
+import { useEffect, useState } from "react";
+
+import { useFeatures } from "../features/provider";
+import { Button } from "./primitives";
+
+export function CopyablePath({
+  value,
+  label = "安装目录",
+}: {
+  value: string;
+  label?: string;
+}) {
+  const { notify } = useFeatures();
+  const [copied, setCopied] = useState(false);
+  const actionLabel = copied ? `已复制${label}` : `复制${label}`;
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  const copyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+    } catch {
+      notify({ tone: "error", title: `无法复制${label}` });
+    }
+  };
+
+  return (
+    <div className="fy-feature-path">
+      <code className="fy-feature-path-value" title={value}>
+        {value}
+      </code>
+      <Button aria-label={actionLabel} onClick={() => void copyPath()}>
+        {copied ? "已复制" : "复制"}
+      </Button>
+    </div>
+  );
+}

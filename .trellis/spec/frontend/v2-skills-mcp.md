@@ -118,9 +118,8 @@ interface SettingsPort {
 - Browser reads return empty authority snapshots. Browser writes reject with a
   clear native-only error and never report success.
 - MCP presets have one source under `shared/features`: Windows uses
-  `cmd /c npx`, macOS uses direct `npx`, and an unknown platform omits those
-  platform-specific presets. The legacy renderer adapter only re-exports this
-  source.
+  `cmd /c npx`, and every other native platform uses direct `npx`. Time and
+  Fetch use `uvx`. The legacy renderer adapter only re-exports this source.
 - Feature tests inject ports or a page-load Tauri IPC fixture. Production code
   must not contain test routes, fixture switches, or synthetic data.
 
@@ -153,9 +152,33 @@ interface SettingsPort {
 ### MCP configuration and secrets
 
 - List search uses explicit public-field allow-lists. It never recursively
-  stringifies an MCP server and never indexes `env` or `headers`.
-- Ordinary details show only secret-field item counts. Values may appear only
-  in the explicit editor.
+  stringifies an MCP server, never indexes `env` or `headers`, never indexes
+  URL query values, and never indexes argument values that follow sensitive
+  flags such as `-s` or `--token`.
+- Ordinary details show only secret-field item counts for `env` and `headers`.
+  Those values may appear only in the explicit editor or a catalog install
+  dialog. Ordinary details must redact sensitive URL query values and
+  sensitive command arguments.
+- Installed Skills and MCP use the same three-column workspace: list, detail,
+  and assignment. Each column scrolls independently; the content viewport must
+  not grow with the left-hand list. Skill uninstall and MCP edit/delete stay
+  in the detail header above source, assignment, and install cards so they
+  remain reachable without scrolling the middle pane. MCP details must show
+  install provenance and current assignment chips, matching Skills.
+- Installed Skill details show the resolved SSOT install path, not only the
+  directory name. The path stays on one truncated line with a copy action and
+  is computed at list time, not persisted. MCP details show a local install
+  directory when `cwd` or an absolute stdio command path is available; npx,
+  uvx, and remote transports show that no local directory exists.
+- MCP has permanent Installed and Discover tabs. Discover is a static curated
+  catalog of about 20–30 installable items: each card is either one-click or a
+  credential/config form. Discover classification is only “直接安装” versus
+  “配置安装”, plus an “全部” default. Prefer popular no-credential stdio/HTTP
+  recipes for the remaining slots. It does not add a market API, persist catalog
+  metadata, or widen the six-target assignment set. Entries that need OAuth,
+  post-start login, SSE-only transport, or unverified high-privilege cloud
+  control stay out of the catalog. New remote recipes use Streamable HTTP
+  only.
 - Quick and advanced modes share one canonical `McpServerSpec`. Quick edits
   replace known fields while preserving unknown extension fields, unknown
   top-level fields, and hidden application flags.
@@ -200,6 +223,7 @@ interface SettingsPort {
 | Refresh fails after old data exists                              | Keep old data and show an inline error                                |
 | Batch write partially fails                                      | Report counts, keep no stale optimistic claim, and reread authority   |
 | MCP search term matches only an env/header value                 | Return no match                                                       |
+| MCP search term matches only a URL query secret or sensitive arg | Return no match                                                       |
 | env/header line has no delimiter or an empty key                 | Show a line error and block save                                      |
 | Advanced JSON is invalid, an array, or an `mcpServers` container | Stay in advanced mode and block save                                  |
 | New MCP ID is blank or duplicates an authoritative ID            | Block save before invoking Tauri                                      |
@@ -247,9 +271,10 @@ git diff --check
 - Adapter tests assert every command name, exact camel-case payload, return,
   and error propagation across Skills, MCP, Settings, and external links,
   including eight-value Skill and six-value MCP separation.
-- Pure tests cover public-field search, secret exclusion, selection
-  convergence, repository parsing, installed-key matching, pagination,
-  env/header/args parsing, advanced JSON validation, and extension retention.
+- Pure tests cover public-field search, secret exclusion, URL/args redaction,
+  selection convergence, repository parsing, installed-key matching,
+  pagination, env/header/args parsing, advanced JSON validation, extension
+  retention, and each MCP catalog builder.
 - Component tests cover empty, loading, error, pending, write/refetch, dialogs,
   assignment, destructive confirmation, secret-safe presentation, an exhaustive
   eight-ID icon map, eight decodable local assets, decorative icon semantics,

@@ -1,10 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 
+import { getSupportedAppIcon } from "../../shared/assets/apps";
 import {
   buildMcpSearchText,
   convergeSelection,
   errorMessage,
+  mcpInstallDirectory,
   overlayKnownMcpFields,
   parseAdvancedServerJson,
   parseKeyValueLines,
@@ -12,6 +14,7 @@ import {
   sanitizeMcpConfigurationError,
   UserFacingError,
 } from "../../shared/features/helpers";
+import { redactMcpArgs, redactMcpUrl } from "../../shared/features/mcpSecurity";
 import { mcpPresets } from "../../shared/features/presets";
 import { useFeatures } from "../../shared/features/provider";
 import { featureKeys, useMcpServers } from "../../shared/features/queries";
@@ -35,23 +38,25 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
+import { CopyablePath } from "../../shared/ui/CopyablePath";
 import {
   SelectionLens,
   SelectionLensTrack,
 } from "../../shared/ui/SelectionLens";
-
-const DEFAULT_NEW_APPS: McpTargetId[] = [
-  "claude",
-  "codex",
-  "gemini",
-  "grokbuild",
-];
+import { findCatalogItem, MCP_PROVENANCE_LABEL } from "./catalog";
+import { DEFAULT_NEW_APPS } from "./constants";
+import { McpDiscovery } from "./Discovery";
+import "./page.css";
 
 function transportOf(server: McpServer): "stdio" | "http" | "sse" {
   if (server.server.type === "http" || server.server.type === "sse") {
     return server.server.type;
   }
   return "stdio";
+}
+
+function assignedMcpTargets(server: McpServer) {
+  return MCP_TARGETS.filter((target) => Boolean(server.apps[target.id]));
 }
 
 function ServerDetail({
@@ -72,102 +77,168 @@ function ServerDetail({
   showAssignment: boolean;
 }) {
   const spec = server.server;
+  const transport = transportOf(server);
+  const assigned = assignedMcpTargets(server);
+  const catalogItem = findCatalogItem(server.id);
+  const sourceLabel = catalogItem ? "精选目录" : "手动添加";
+  const installDirectory = mcpInstallDirectory(spec);
+  const description =
+    server.description?.trim() || catalogItem?.description || "暂无说明";
+  const homepage = server.homepage || catalogItem?.homepage;
+  const docs = server.docs || catalogItem?.docs;
+
   return (
     <section
-      className="fy-feature-panel fy-feature-detail"
+      className="fy-feature-panel fy-feature-detail fy-feature-detail-scroll"
       aria-label="MCP 详情"
     >
-      <div className="fy-feature-detail-title">
-        <h2>{server.name}</h2>
-        <Badge tone="accent">{transportOf(server)}</Badge>
-      </div>
-      {server.description && (
-        <p className="fy-feature-description">{server.description}</p>
-      )}
-      {server.tags && server.tags.length > 0 && (
-        <div className="fy-feature-actions">
-          {server.tags.map((tag) => (
-            <Badge key={tag}>{tag}</Badge>
-          ))}
+      <div className="fy-feature-detail-header">
+        <div className="fy-feature-detail-title">
+          <h2>{server.name}</h2>
+          <Badge tone="accent">{transport}</Badge>
+          <Badge tone={catalogItem ? "accent" : "neutral"}>{sourceLabel}</Badge>
         </div>
-      )}
-      <dl className="fy-feature-definition">
-        <dt>ID</dt>
-        <dd>
-          <code className="fy-feature-code">{server.id}</code>
-        </dd>
-        {spec.command && (
-          <>
-            <dt>命令</dt>
+        <p className="fy-feature-intro">{description}</p>
+        <div className="fy-feature-actions">
+          <Button onClick={onEdit} disabled={busy}>
+            编辑
+          </Button>
+          <Button
+            className="fy-control-button-danger"
+            onClick={onDelete}
+            disabled={busy}
+          >
+            删除
+          </Button>
+        </div>
+      </div>
+      <div className="fy-feature-info-grid">
+        <section className="fy-feature-info-card" aria-label="安装来源">
+          <h3>安装来源</h3>
+          <p className="fy-feature-info-lead">
+            {catalogItem
+              ? "此 MCP 来自内置精选目录。安装后写入统一配置，并可继续在编辑窗口调整。"
+              : "此 MCP 由手动添加或从现有 Agent 配置导入，没有绑定精选目录条目。"}
+          </p>
+          <dl className="fy-feature-definition">
+            <dt>来源类型</dt>
+            <dd>{sourceLabel}</dd>
+            {catalogItem && (
+              <>
+                <dt>发布方</dt>
+                <dd>{catalogItem.publisher}</dd>
+                <dt>来源标识</dt>
+                <dd>{MCP_PROVENANCE_LABEL[catalogItem.provenance]}</dd>
+              </>
+            )}
+            <dt>ID</dt>
             <dd>
-              <code className="fy-feature-code">{spec.command}</code>
+              <code className="fy-feature-code">{server.id}</code>
             </dd>
-          </>
-        )}
-        {spec.args && spec.args.length > 0 && (
-          <>
-            <dt>参数</dt>
+            <dt>安装目录</dt>
             <dd>
-              {spec.args.map((argument) => (
-                <code className="fy-feature-code" key={argument}>
-                  {argument}
-                </code>
+              {installDirectory ? (
+                <CopyablePath value={installDirectory} />
+              ) : (
+                "无本地安装目录"
+              )}
+            </dd>
+          </dl>
+          {(homepage || docs) && (
+            <div className="fy-feature-actions">
+              {homepage && (
+                <Button onClick={() => onOpen(homepage)}>主页</Button>
+              )}
+              {docs && <Button onClick={() => onOpen(docs)}>文档</Button>}
+            </div>
+          )}
+        </section>
+        <section className="fy-feature-info-card" aria-label="当前分配">
+          <h3>当前分配</h3>
+          <p className="fy-feature-info-lead">
+            {assigned.length > 0
+              ? `已启用 ${assigned.length} 个应用。需要增减时，使用应用分配开关。`
+              : "尚未分配到任何应用。启用后，对应软件才能加载此 MCP。"}
+          </p>
+          {assigned.length > 0 && (
+            <ul className="fy-feature-app-chips">
+              {assigned.map((app) => (
+                <li key={app.id} className="fy-feature-app-chip">
+                  <img
+                    className="fy-feature-assignment-icon"
+                    src={getSupportedAppIcon(app.id)}
+                    alt=""
+                    aria-hidden="true"
+                  />
+                  {app.label}
+                </li>
               ))}
-            </dd>
-          </>
-        )}
-        {spec.cwd && (
-          <>
-            <dt>工作目录</dt>
-            <dd>
-              <code className="fy-feature-code">{spec.cwd}</code>
-            </dd>
-          </>
-        )}
-        {spec.url && (
-          <>
-            <dt>URL</dt>
-            <dd>
-              <code className="fy-feature-code">{spec.url}</code>
-            </dd>
-          </>
-        )}
-        {spec.env && (
-          <>
-            <dt>环境变量</dt>
-            <dd>{Object.keys(spec.env).length} 项（仅在编辑时显示）</dd>
-          </>
-        )}
-        {spec.headers && (
-          <>
-            <dt>请求头</dt>
-            <dd>{Object.keys(spec.headers).length} 项（仅在编辑时显示）</dd>
-          </>
-        )}
-        {server.source && (
-          <>
-            <dt>来源</dt>
-            <dd>{server.source}</dd>
-          </>
-        )}
-      </dl>
-      <div className="fy-feature-actions">
-        {server.homepage && (
-          <Button onClick={() => onOpen(server.homepage!)}>主页</Button>
-        )}
-        {server.docs && (
-          <Button onClick={() => onOpen(server.docs!)}>文档</Button>
-        )}
-        <Button onClick={onEdit} disabled={busy}>
-          编辑
-        </Button>
-        <Button
-          className="fy-control-button-danger"
-          onClick={onDelete}
-          disabled={busy}
+            </ul>
+          )}
+        </section>
+        <section
+          className="fy-feature-info-card fy-feature-info-span"
+          aria-label="安装信息"
         >
-          删除
-        </Button>
+          <h3>安装信息</h3>
+          <dl className="fy-feature-definition">
+            <dt>传输类型</dt>
+            <dd>{transport}</dd>
+            {spec.command && (
+              <>
+                <dt>命令</dt>
+                <dd>
+                  <code className="fy-feature-code">{spec.command}</code>
+                </dd>
+              </>
+            )}
+            {spec.args && spec.args.length > 0 && (
+              <>
+                <dt>参数</dt>
+                <dd>
+                  {redactMcpArgs(spec.args).map((argument, index) => (
+                    <code
+                      className="fy-feature-code"
+                      key={`${argument}-${index}`}
+                    >
+                      {argument}
+                    </code>
+                  ))}
+                </dd>
+              </>
+            )}
+            {spec.cwd && spec.cwd.trim() !== installDirectory && (
+              <>
+                <dt>工作目录</dt>
+                <dd>
+                  <code className="fy-feature-code">{spec.cwd}</code>
+                </dd>
+              </>
+            )}
+            {spec.url && (
+              <>
+                <dt>URL</dt>
+                <dd>
+                  <code className="fy-feature-code">
+                    {redactMcpUrl(spec.url)}
+                  </code>
+                </dd>
+              </>
+            )}
+            {spec.env && (
+              <>
+                <dt>环境变量</dt>
+                <dd>{Object.keys(spec.env).length} 项（仅在编辑时显示）</dd>
+              </>
+            )}
+            {spec.headers && (
+              <>
+                <dt>请求头</dt>
+                <dd>{Object.keys(spec.headers).length} 项（仅在编辑时显示）</dd>
+              </>
+            )}
+          </dl>
+        </section>
       </div>
       {showAssignment && (
         <div className="fy-feature-inline-assignment">
@@ -190,6 +261,7 @@ export function McpPage() {
   const wideLayout = useWideFeatureLayout();
   const query = useMcpServers();
   const servers = useMemo(() => Object.values(query.data ?? {}), [query.data]);
+  const [tab, setTab] = useState<"installed" | "discovery">("installed");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<McpServer | "new" | null>(null);
@@ -211,18 +283,20 @@ export function McpPage() {
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: featureKeys.mcp });
   const write = async (title: string, operation: () => Promise<void>) => {
-    if (writeLock.current) return;
+    if (writeLock.current) return false;
     writeLock.current = true;
     setBusy(true);
     try {
       await operation();
       notify({ tone: "success", title });
+      return true;
     } catch (error) {
       notify({
         tone: "error",
         title: `${title}失败`,
         description: sanitizeMcpConfigurationError(error),
       });
+      return false;
     } finally {
       await refresh();
       setProgress(null);
@@ -288,6 +362,33 @@ export function McpPage() {
           </Button>
         </div>
       </header>
+      <SelectionLensTrack
+        id="mcp-view-tabs"
+        className="fy-feature-tabs"
+        role="tablist"
+        aria-label="MCP 视图"
+      >
+        <button
+          type="button"
+          className="fy-feature-tab"
+          role="tab"
+          aria-selected={tab === "installed"}
+          onClick={() => setTab("installed")}
+        >
+          <SelectionLens active={tab === "installed"} />
+          <span>已安装</span>
+        </button>
+        <button
+          type="button"
+          className="fy-feature-tab"
+          role="tab"
+          aria-selected={tab === "discovery"}
+          onClick={() => setTab("discovery")}
+        >
+          <SelectionLens active={tab === "discovery"} />
+          <span>发现</span>
+        </button>
+      </SelectionLensTrack>
       {progress && (
         <>
           <div className="fy-feature-progress">
@@ -307,7 +408,31 @@ export function McpPage() {
           刷新失败，正在显示上一次成功数据：{errorMessage(query.error)}
         </InlineNotice>
       )}
-      {query.isLoading ? (
+      {tab === "discovery" ? (
+        query.isLoading ? (
+          <EmptyState title="正在加载 MCP" description="正在读取安装状态">
+            <Spinner />
+          </EmptyState>
+        ) : (
+          <div className="fy-feature-workspace">
+            <McpDiscovery
+              servers={servers}
+              busy={busy}
+              onInstall={async (server) =>
+                write("MCP 已安装", async () => {
+                  await ports.mcp.upsert(server);
+                  setSelectedId(server.id);
+                })
+              }
+              onViewInstalled={(id) => {
+                setSelectedId(id);
+                setTab("installed");
+              }}
+              onOpen={openExternal}
+            />
+          </div>
+        )
+      ) : query.isLoading ? (
         <EmptyState title="正在加载 MCP" description="正在读取 MCP 服务">
           <Spinner />
         </EmptyState>
@@ -320,7 +445,7 @@ export function McpPage() {
       ) : servers.length === 0 ? (
         <EmptyState
           title="还没有 MCP 服务"
-          description="添加新的 MCP，或从现有 Agent 配置导入"
+          description="添加新的 MCP，从现有 Agent 配置导入，或到发现页浏览精选"
           actions={
             <>
               <Button onClick={() => void importExisting()}>导入现有</Button>{" "}
@@ -329,17 +454,18 @@ export function McpPage() {
                 onClick={() => setEditing("new")}
               >
                 添加 MCP
-              </Button>
+              </Button>{" "}
+              <Button onClick={() => setTab("discovery")}>浏览发现</Button>
             </>
           }
         />
       ) : (
-        <>
+        <div className="fy-feature-workspace">
           <div className="fy-feature-toolbar">
             <Input
               type="search"
               aria-label="搜索 MCP"
-              placeholder="搜索名称、命令、URL、标签或来源"
+              placeholder="搜索名称、命令、标签或来源"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -351,8 +477,11 @@ export function McpPage() {
             />
           ) : (
             <div className="fy-feature-master">
-              <section className="fy-feature-panel" aria-label="MCP 列表">
-                <h2>MCP 服务 · {servers.length}</h2>
+              <section
+                className="fy-feature-panel fy-feature-list-panel"
+                aria-label="MCP 列表"
+              >
+                <h2>已安装 · {servers.length}</h2>
                 <SelectionLensTrack
                   id="mcp-server-list"
                   className="fy-feature-list"
@@ -370,7 +499,7 @@ export function McpPage() {
                       <span>
                         {server.description ||
                           server.tags?.join(" · ") ||
-                          "无描述"}{" "}
+                          "暂无说明"}{" "}
                         · {transportOf(server)} ·{" "}
                         {
                           MCP_TARGETS.filter((app) => server.apps[app.id])
@@ -394,7 +523,7 @@ export function McpPage() {
                 />
               )}
               {selected && wideLayout && (
-                <section className="fy-feature-panel">
+                <section className="fy-feature-panel fy-feature-assign-scroll">
                   <AssignmentPanel
                     apps={selected.apps}
                     disabled={busy}
@@ -427,7 +556,7 @@ export function McpPage() {
               )}
             </div>
           )}
-        </>
+        </div>
       )}
       {editing !== null && (
         <McpEditor
