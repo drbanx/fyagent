@@ -47,6 +47,7 @@ import {
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
 import { CopyablePath } from "../../shared/ui/CopyablePath";
+import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import {
   SelectionLens,
   SelectionLensTrack,
@@ -93,7 +94,6 @@ function Detail({
   onToggle,
   onUpdate,
   onUninstall,
-  onOpen,
   showAssignment,
 }: {
   skill: InstalledSkill;
@@ -102,7 +102,6 @@ function Detail({
   onToggle: (app: SkillTargetId, enabled: boolean) => void;
   onUpdate: () => void;
   onUninstall: () => void;
-  onOpen: (url: string) => void;
   showAssignment: boolean;
 }) {
   const assigned = assignedSkillTargets(skill);
@@ -179,12 +178,12 @@ function Detail({
           {(repoUrl || skill.readmeUrl) && (
             <div className="fy-feature-actions">
               {repoUrl && (
-                <Button onClick={() => onOpen(repoUrl)}>打开仓库</Button>
+                <ExternalLinkButton url={repoUrl}>打开仓库</ExternalLinkButton>
               )}
               {skill.readmeUrl && (
-                <Button onClick={() => onOpen(skill.readmeUrl!)}>
+                <ExternalLinkButton url={skill.readmeUrl}>
                   查看说明
-                </Button>
+                </ExternalLinkButton>
               )}
             </div>
           )}
@@ -387,17 +386,6 @@ export function SkillsPage() {
       await ports.skills.installFromZip(path, installTarget);
     });
   };
-  const openExternal = async (url: string) => {
-    try {
-      await ports.settings.openExternal(url);
-    } catch (error) {
-      notify({
-        tone: "error",
-        title: "无法打开链接",
-        description: errorMessage(error),
-      });
-    }
-  };
 
   return (
     <div
@@ -599,7 +587,6 @@ export function SkillsPage() {
                       onUninstall={() =>
                         setConfirm({ kind: "uninstall", skill: selected })
                       }
-                      onOpen={openExternal}
                       showAssignment={!wideLayout}
                     />
                   )}

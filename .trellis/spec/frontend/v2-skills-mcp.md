@@ -102,6 +102,21 @@ interface SettingsPort {
   save(settings: FeatureSettings): Promise<boolean>;
   openExternal(url: string): Promise<void>;
 }
+
+function useOpenExternal(): {
+  openExternal: (
+    url: string,
+    options?: { errorTitle?: string },
+  ): Promise<void>;
+  openingUrl: string | null;
+};
+
+function ExternalLinkButton(props: {
+  url?: string;
+  children: ReactNode;
+  errorTitle?: string;
+  busyLabel?: string;
+}): JSX.Element;
 ```
 
 ## 3. Contracts
@@ -187,6 +202,13 @@ interface SettingsPort {
   post-start login, SSE-only transport, or unverified high-privilege cloud
   control stay out of the catalog. New remote recipes use Streamable HTTP
   only.
+- Discover card “文档” / “主页” and installed-detail homepage/docs, plus
+  installed Skill “打开仓库” / “查看说明”, render `ExternalLinkButton`.
+  That control is the only HTTP(S) jump: it calls `useOpenExternal`, which
+  owns one FeatureProvider lock and `settings.openExternal`. Discover shows
+  docs when present, otherwise homepage, never both. Do not add
+  `.fy-mcp-card-link`, `<a href>`, `window.open`, or a page-local
+  `openExternal` wrapper. Failures toast and never echo the URL.
 - Quick and advanced modes share one canonical `McpServerSpec`. Quick edits
   replace known fields while preserving unknown extension fields, unknown
   top-level fields, and hidden application flags.
@@ -244,6 +266,8 @@ interface SettingsPort {
 | A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image |
 | An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name |
 | Viewport changes between two- and three-column layouts           | Render exactly one panel: eight unique Skill or six unique MCP switches |
+| Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`        |
+| A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                  |
 
 ## 5. Good / Base / Bad Cases
 
@@ -286,7 +310,9 @@ git diff --check
 - Component tests cover empty, loading, error, pending, write/refetch, dialogs,
   assignment, destructive confirmation, secret-safe presentation, an exhaustive
   eight-ID icon map, eight decodable local assets, decorative icon semantics,
-  eight unique Skill switches, and six unique MCP switches.
+  eight unique Skill switches, six unique MCP switches, Discover/docs and
+  Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
+  and one shared in-flight lock.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
   populated two-/three-column layouts, a single correctly-sized assignment
   panel, visible split separators above 760px, assignment rows contained
@@ -353,4 +379,19 @@ assignment rows wrap inside the pane.
   flex-wrap: wrap;
   min-width: 0;
 }
+```
+
+Wrong: MCP Discover opens docs through a page-owned callback and a custom
+underline button.
+
+```tsx
+<button className="fy-mcp-card-link" onClick={() => onOpen(item.docs!)}>
+  文档
+</button>
+```
+
+Correct: the same `ExternalLinkButton` used by Skills, Agents, and Models.
+
+```tsx
+<ExternalLinkButton url={item.docs}>文档</ExternalLinkButton>
 ```

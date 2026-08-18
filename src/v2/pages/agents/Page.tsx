@@ -46,6 +46,7 @@ import {
   CatalogMasterDetail,
   CatalogRail,
 } from "../../shared/ui/catalog";
+import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 
 import "./Page.css";
 
@@ -936,26 +937,11 @@ function modelTarget(id: AgentCatalogId): string | null {
   return null;
 }
 
-function officialLinkKey(
-  entry: AgentCatalogEntry,
-  link: AgentOfficialLink,
-): string {
-  return `${entry.id}:${link.id}`;
-}
-
 function officialLinkActionLabel(link: AgentOfficialLink): string {
   return /官方/.test(link.label) ? link.label : `打开 ${link.label} 官网`;
 }
 
-function AgentDetail({
-  entry,
-  openingKey,
-  onOpenOfficial,
-}: {
-  entry: AgentCatalogEntry;
-  openingKey: string | null;
-  onOpenOfficial: (link: AgentOfficialLink) => void;
-}) {
+function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
   const navigate = useNavigate();
   const target = modelTarget(entry.id);
   const officialOnly = entry.id === "qoderwork" || entry.id === "trae-work";
@@ -981,25 +967,22 @@ function AgentDetail({
             role="group"
             aria-label="官方网站"
           >
-            {entry.officialLinks.map((link) => {
-              const opening = openingKey === officialLinkKey(entry, link);
-              return (
-                <Button
-                  key={link.id}
-                  className={
-                    officialOnly ? "fy-control-button-primary" : undefined
-                  }
-                  disabled={
-                    openingKey !== null ||
-                    (productCapability?.mode !== "direct" &&
-                      productCapability?.mode !== "assisted")
-                  }
-                  onClick={() => onOpenOfficial(link)}
-                >
-                  {opening ? "正在打开…" : officialLinkActionLabel(link)}
-                </Button>
-              );
-            })}
+            {entry.officialLinks.map((link) => (
+              <ExternalLinkButton
+                key={link.id}
+                url={link.url}
+                className={
+                  officialOnly ? "fy-control-button-primary" : undefined
+                }
+                disabled={
+                  productCapability?.mode !== "direct" &&
+                  productCapability?.mode !== "assisted"
+                }
+                errorTitle="无法打开官方入口"
+              >
+                {officialLinkActionLabel(link)}
+              </ExternalLinkButton>
+            ))}
           </div>
         )}
       </div>
@@ -1039,14 +1022,11 @@ function AgentDetail({
 }
 
 export function AgentsPage() {
-  const { ports, notify } = useFeatures();
   const { pathname } = useLocation();
   const pageActive = pathname === "/agents";
   const [searchParams, setSearchParams] = useSearchParams();
   const catalogQuery = useAgentCatalog();
   const [selectedId, setSelectedId] = useState<AgentCatalogId | null>(null);
-  const [openingKey, setOpeningKey] = useState<string | null>(null);
-  const openLock = useRef(false);
   const entries = catalogQuery.data?.agents ?? [];
   const requestedTarget = pageActive ? searchParams.get("target") : null;
   const targetFromRoute =
@@ -1063,27 +1043,6 @@ export function AgentsPage() {
     if (!selectedId) return;
     setSearchParams({ target: selectedId }, { replace: true });
   }, [pageActive, searchParams, selectedId, setSearchParams]);
-
-  const openOfficial = async (
-    entry: AgentCatalogEntry,
-    link: AgentOfficialLink,
-  ) => {
-    if (openLock.current) return;
-    openLock.current = true;
-    setOpeningKey(officialLinkKey(entry, link));
-    try {
-      await ports.settings.openExternal(link.url);
-    } catch {
-      notify({
-        tone: "error",
-        title: "无法打开官方入口",
-        description: "请稍后重试。",
-      });
-    } finally {
-      setOpeningKey(null);
-      openLock.current = false;
-    }
-  };
 
   return (
     <div
@@ -1143,11 +1102,7 @@ export function AgentsPage() {
             </CatalogList>
           </CatalogRail>
 
-          <AgentDetail
-            entry={selected}
-            openingKey={openingKey}
-            onOpenOfficial={(link) => void openOfficial(selected, link)}
-          />
+          <AgentDetail entry={selected} />
         </CatalogMasterDetail>
       )}
     </div>

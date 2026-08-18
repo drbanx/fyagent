@@ -27,14 +27,3 @@
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-
-.fy-mcp-card-link {
-  margin-left: auto;
-  padding: 0;
-  border: 0;
-  color: var(--fy-accent-text);
-  background: transparent;
-  font-size: 12px;
-  text-decoration: underline;
-  cursor: pointer;
-}

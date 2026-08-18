@@ -23,7 +23,7 @@ src/
    |- shared/
    |  |- config/              # navigation source
    |  |- assets/              # agent and app icons
-   |  |- ui/                  # primitives, catalog, split, SelectionLens
+   |  |- ui/                  # primitives, catalog, split, SelectionLens, ExternalLinkButton
    |  |- features/            # ports, types, queries, FeatureProvider
    |  |- platform/            # tauri/browser adapters, runtime, lifecycle
    |  |- design-system/

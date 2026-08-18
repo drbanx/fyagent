@@ -114,6 +114,9 @@ The fixed resource mapping is:
   it again.
 - Open-today creates no file until Save. Search is debounced by 300 ms. Daily
   deletion always requires shared confirmation.
+- Opening the OpenClaw workspace or memory folder uses
+  `openOpenClawDirectory`. That is not an HTTP(S) jump; do not route it
+  through `ExternalLinkButton`.
 - No session inventory, tool scan, refinement draft, cross-tool target, or
   simulated synchronization task belongs in this page.
 

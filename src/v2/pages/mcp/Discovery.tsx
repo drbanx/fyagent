@@ -18,6 +18,7 @@ import {
 import { DEFAULT_NEW_APPS } from "./constants";
 import { InstallDialog } from "./InstallDialog";
 import { currentMcpLaunchPlatform } from "../../shared/features/mcpLaunch";
+import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import {
   Badge,
   Button,
@@ -47,13 +48,11 @@ export function McpDiscovery({
   busy,
   onInstall,
   onViewInstalled,
-  onOpen,
 }: {
   servers: readonly McpServer[];
   busy: boolean;
   onInstall: (server: McpServer) => Promise<boolean>;
   onViewInstalled: (id: string) => void;
-  onOpen: (url: string) => void;
 }) {
   const platform = currentMcpLaunchPlatform();
   const [search, setSearch] = useState("");
@@ -233,22 +232,14 @@ export function McpDiscovery({
                     </Button>
                   )}
                   {item.docs && (
-                    <button
-                      type="button"
-                      className="fy-mcp-card-link"
-                      onClick={() => onOpen(item.docs!)}
-                    >
+                    <ExternalLinkButton url={item.docs}>
                       文档
-                    </button>
+                    </ExternalLinkButton>
                   )}
                   {!item.docs && item.homepage && (
-                    <button
-                      type="button"
-                      className="fy-mcp-card-link"
-                      onClick={() => onOpen(item.homepage!)}
-                    >
+                    <ExternalLinkButton url={item.homepage}>
                       主页
-                    </button>
+                    </ExternalLinkButton>
                   )}
                 </footer>
               </article>

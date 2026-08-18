@@ -132,6 +132,41 @@ export function shouldShowMacOverlayDragStrip(
 Do not derive this from `navigator.userAgent` alone. Playwright on a Mac host
 would otherwise render the strip in browser tests.
 
+HTTP(S) jumps share one FeatureProvider outlet. Pages must not wrap
+`ports.settings.openExternal` locally, render `<a href>`, or call
+`window.open`. Opening a directory is a different port and stays out of this
+control:
+
+```ts
+export interface OpenExternalOptions {
+  errorTitle?: string;
+}
+
+export function useOpenExternal(): {
+  openExternal: (url: string, options?: OpenExternalOptions) => Promise<void>;
+  openingUrl: string | null;
+};
+
+export function ExternalLinkButton({
+  url,
+  children,
+  errorTitle,
+  busyLabel,
+  ...props
+}: {
+  url?: string;
+  children: ReactNode;
+  errorTitle?: string;
+  busyLabel?: string;
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "onClick" | "type">): JSX.Element;
+```
+
+`useOpenExternal` keeps one in-flight URL. A second click is ignored until
+the first `settings.openExternal` settles. Failures toast
+`errorTitle` (default `无法打开链接`) plus `errorMessage(error)` and never
+echo the URL. The matching button shows `busyLabel` (default `正在打开…`);
+every other `ExternalLinkButton` disables while `openingUrl` is set.
+
 ## 3. Contracts
 
 ### Navigation and content
@@ -260,6 +295,11 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   classes onto Skills, MCP, Prompts, or Memory. Split-pane children fill the
   pane and scroll inside it (`overflow: auto`). `height: 100%` without
   overflow lets cards and assignment controls paint past the pane chrome.
+- HTTP(S) product/docs/repo jumps use `ExternalLinkButton`. The native
+  command remains `settings.openExternal`; the Tauri adapter still admits
+  only `http:` / `https:`. Do not add page-local open wrappers, custom
+  underline links, or a second lock. Memory directory open stays on
+  `openOpenClawDirectory`.
 - Keep the chrome row near 68px, brand mark 28px, brand text 19px, navigation
   track 46px, and navigation/tool targets 38px. V2 Overlay chrome adds a
   28px inert drag strip above that chrome row so the window can be dragged and
@@ -324,6 +364,9 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Prompts or Memory becomes empty after integration                      | Final task acceptance fails; validate the resolved tree rather than merge messages |
 | Browser Prompts/Memory exposes seeded or private records               | Native-only/preview contract test fails                                             |
 | A supported viewport overflows or overlaps                             | Playwright geometry gate fails                                                     |
+| A page opens HTTP(S) with `<a>`, `window.open`, or a local wrapper     | Unit/architecture test fails; use `ExternalLinkButton`                             |
+| A second HTTP(S) jump starts while one is in flight                    | Ignored; only the in-flight button shows `正在打开…`                               |
+| `settings.openExternal` rejects                                        | Toast fixed title plus `errorMessage`; the URL is not echoed                       |
 
 ## 5. Good / Base / Bad Cases
 
@@ -371,7 +414,8 @@ mise run build:renderer
   window-frame contract. They keep `framer-motion` behind
   `shared/ui/SelectionLens.tsx`, reject `layoutId` / `LayoutGroup` on that
   adapter, and keep `@samasante/liquid-glass` behind
-  `LiquidGlassLens`. They positively allow only the exact neutral Codex
+  `LiquidGlassLens`. They keep HTTP(S) jumps on `ExternalLinkButton` /
+  `useOpenExternal`. They positively allow only the exact neutral Codex
   shared boundary and negatively prove that a neighboring shared path remains
   forbidden.
 - Vitest may mock the third-party filter surface to isolate router and semantic
@@ -505,4 +549,20 @@ V2 feature port.
 ```ts
 import { deriveInstallerViewState } from "@/shared/codex-desktop";
 const local = await ports.codexDesktop.getLocalStatus();
+```
+
+Wrong: give MCP Discover a custom underline control, or wrap
+`ports.settings.openExternal` again on a feature page.
+
+```tsx
+<button className="fy-mcp-card-link" onClick={() => onOpen(item.docs)}>
+  文档
+</button>
+```
+
+Correct: reuse `ExternalLinkButton`. The FeatureProvider lock is the only
+in-flight gate.
+
+```tsx
+<ExternalLinkButton url={item.docs}>文档</ExternalLinkButton>
 ```

@@ -39,6 +39,7 @@ import {
   CatalogMasterDetail,
   CatalogRail,
 } from "../../shared/ui/catalog";
+import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import {
   FieldFeedback,
   focusControl,
@@ -1412,13 +1413,8 @@ function ProviderPanel({
 }
 
 function QoderGuidancePanel({ active }: { active: boolean }) {
-  const { ports } = useFeatures();
   const navigate = useNavigate();
   const catalogQuery = useAgentCatalog(active);
-  const [opening, setOpening] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const openLock = useRef(false);
-  const mountedRef = useRef(true);
   const entry = catalogQuery.data?.agents.find(
     (agent) => agent.id === "qoderwork",
   );
@@ -1428,35 +1424,6 @@ function QoderGuidancePanel({ active }: { active: boolean }) {
   const productCapability = entry?.capabilities.find(
     (capability) => capability.id === "product.open",
   );
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      openLock.current = false;
-    };
-  }, []);
-
-  const openOfficial = async () => {
-    if (!productLink || openLock.current) return;
-    openLock.current = true;
-    setOpening(true);
-    setNotice(null);
-    try {
-      await ports.settings.openExternal(productLink.url);
-    } catch {
-      if (mountedRef.current) {
-        setNotice({
-          tone: "error",
-          title: "无法打开官方设置",
-          description: "请稍后重试。",
-        });
-      }
-    } finally {
-      openLock.current = false;
-      if (mountedRef.current) setOpening(false);
-    }
-  };
 
   return (
     <CatalogDetail
@@ -1491,31 +1458,25 @@ function QoderGuidancePanel({ active }: { active: boolean }) {
         >
           管理 Hooks 和 MCP
         </Button>
-        <Button
+        <ExternalLinkButton
+          url={productLink?.url}
           disabled={
             !productLink ||
             (productCapability?.mode !== "direct" &&
-              productCapability?.mode !== "assisted") ||
-            opening
+              productCapability?.mode !== "assisted")
           }
-          onClick={() => void openOfficial()}
+          errorTitle="无法打开官方设置"
         >
-          {opening ? "正在打开…" : "打开官方设置"}
-        </Button>
+          打开官方设置
+        </ExternalLinkButton>
       </div>
-      <NoticeView notice={notice} />
     </CatalogDetail>
   );
 }
 
 function OpenCodeGuidancePanel({ active }: { active: boolean }) {
-  const { ports } = useFeatures();
   const navigate = useNavigate();
   const catalogQuery = useAgentCatalog(active);
-  const [opening, setOpening] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const openLock = useRef(false);
-  const mountedRef = useRef(true);
   const entry = catalogQuery.data?.agents.find(
     (agent) => agent.id === "opencode",
   );
@@ -1525,35 +1486,6 @@ function OpenCodeGuidancePanel({ active }: { active: boolean }) {
   const productCapability = entry?.capabilities.find(
     (capability) => capability.id === "product.open",
   );
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      openLock.current = false;
-    };
-  }, []);
-
-  const openOfficial = async () => {
-    if (!productLink || openLock.current) return;
-    openLock.current = true;
-    setOpening(true);
-    setNotice(null);
-    try {
-      await ports.settings.openExternal(productLink.url);
-    } catch {
-      if (mountedRef.current) {
-        setNotice({
-          tone: "error",
-          title: "无法打开官方设置",
-          description: "请稍后重试。",
-        });
-      }
-    } finally {
-      openLock.current = false;
-      if (mountedRef.current) setOpening(false);
-    }
-  };
 
   return (
     <CatalogDetail
@@ -1585,19 +1517,18 @@ function OpenCodeGuidancePanel({ active }: { active: boolean }) {
         >
           管理 MCP 和 Skills
         </Button>
-        <Button
+        <ExternalLinkButton
+          url={productLink?.url}
           disabled={
             !productLink ||
             (productCapability?.mode !== "direct" &&
-              productCapability?.mode !== "assisted") ||
-            opening
+              productCapability?.mode !== "assisted")
           }
-          onClick={() => void openOfficial()}
+          errorTitle="无法打开官方设置"
         >
-          {opening ? "正在打开…" : "打开官方设置"}
-        </Button>
+          打开官方设置
+        </ExternalLinkButton>
       </div>
-      <NoticeView notice={notice} />
     </CatalogDetail>
   );
 }
@@ -1657,12 +1588,10 @@ function TraePreflightPanel({ active }: { active: boolean }) {
   const [probeConsent, setProbeConsent] = useState(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [opening, setOpening] = useState(false);
   const mountedRef = useRef(true);
   const activeRequestIdRef = useRef<string | null>(null);
   const cancelRequestedRef = useRef(false);
   const apiKeyRef = useRef("");
-  const openLock = useRef(false);
   const entry = catalogQuery.data?.agents.find(
     (agent) => agent.id === "trae-work",
   );
@@ -1830,26 +1759,6 @@ function TraePreflightPanel({ active }: { active: boolean }) {
     }
   };
 
-  const openOfficial = async () => {
-    if (!productLink || openLock.current) return;
-    openLock.current = true;
-    setOpening(true);
-    try {
-      await ports.settings.openExternal(productLink.url);
-    } catch {
-      if (mountedRef.current) {
-        setNotice({
-          tone: "error",
-          title: "无法打开 TRAE 官方设置",
-          description: "请稍后重试。",
-        });
-      }
-    } finally {
-      openLock.current = false;
-      if (mountedRef.current) setOpening(false);
-    }
-  };
-
   return (
     <CatalogDetail
       className="fy-models-config-panel"
@@ -1985,17 +1894,18 @@ function TraePreflightPanel({ active }: { active: boolean }) {
           {pending && (
             <Button onClick={() => void cancelProbe()}>取消测试</Button>
           )}
-          <Button
+          <ExternalLinkButton
+            url={productLink?.url}
             disabled={
               !productLink ||
               (productCapability?.mode !== "direct" &&
                 productCapability?.mode !== "assisted") ||
-              opening
+              pending
             }
-            onClick={() => void openOfficial()}
+            errorTitle="无法打开 TRAE 官方设置"
           >
-            {opening ? "正在打开…" : "打开 TRAE 官方模型设置"}
-          </Button>
+            打开 TRAE 官方模型设置
+          </ExternalLinkButton>
         </div>
       </div>
       <NoticeView notice={notice} />

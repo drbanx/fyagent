@@ -390,4 +390,43 @@ describe("FyAgent V2 architecture boundary", () => {
       `System-owned native chrome leaked back into V2:\n${violations.join("\n")}`,
     ).toEqual([]);
   });
+
+  it("keeps HTTP(S) jumps behind ExternalLinkButton", () => {
+    const allowed = new Set(["shared/features/provider.tsx"]);
+    const violations: string[] = [];
+
+    for (const { file, sourceFile } of parsedModules) {
+      const relative = relativeV2Path(file);
+      if (allowed.has(relative)) continue;
+      const visit = (node: ts.Node): void => {
+        if (
+          ts.isPropertyAccessExpression(node) &&
+          node.name.text === "openExternal" &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === "settings"
+        ) {
+          violations.push(
+            `${relative}:${lineNumber(sourceFile, node)} calls settings.openExternal`,
+          );
+        }
+        if (
+          ts.isPropertyAccessExpression(node) &&
+          node.name.text === "open" &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === "window"
+        ) {
+          violations.push(
+            `${relative}:${lineNumber(sourceFile, node)} calls window.open`,
+          );
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sourceFile);
+    }
+
+    expect(
+      violations,
+      `HTTP(S) jumps must use ExternalLinkButton / useOpenExternal:\n${violations.join("\n")}`,
+    ).toEqual([]);
+  });
 });

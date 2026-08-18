@@ -211,21 +211,24 @@ mutation arguments only and never query keys or query data.
   rail between 220px and min(420px, remaining width minus a 360px detail
   floor). Width is session-local component state and never enters the URL or
   storage. Double-click restores the default clamp.
-- QoderWork/TRAE/WorkBuddy/OpenCode and Claude link actions call only
-  `settings.openExternal(link.url)` from the catalog. Models selects an explicit
-  `product` link when it needs product guidance; it never depends on array
-  position. These actions do not inspect login state, download packages, read
+- QoderWork/TRAE/WorkBuddy/OpenCode and Claude link actions render
+  `ExternalLinkButton` with the catalog HTTPS URL. That control is the only
+  jump: `useOpenExternal` holds one FeatureProvider lock and calls
+  `settings.openExternal(link.url)`. Models selects an explicit `product`
+  link when it needs product guidance; it never depends on array position.
+  These actions do not inspect login state, download packages, read
   private config, persist notes, accept an API key, or emit configuration
   success.
-- Official catalog links render in the Agent detail identity, top-right.
-  Display copy for labels that already contain `官方` stays as catalog text;
-  `cli`/`desktop` labels become `打开 {catalog label} 官网`. The renderer
-  does not rewrite Rust labels or URLs.
-- The Agent detail keeps one external-open lock and one pending link ID. A
-  failure renders fixed text without echoing the URL. Codex renders no official
-  link region and mounts the managed installer panel only while Codex is
-  selected, immediately below the identity heading; leaving Codex releases its
-  event subscription.
+- Official catalog links render in the Agent detail identity, top-right, as
+  `ExternalLinkButton`. Display copy for labels that already contain `官方`
+  stays as catalog text; `cli`/`desktop` labels become
+  `打开 {catalog label} 官网`. The renderer does not rewrite Rust labels or
+  URLs.
+- FeatureProvider keeps one external-open lock and one pending URL. Agent
+  detail does not keep a second lock. A failure toasts fixed text without
+  echoing the URL. Codex renders no official link region and mounts the
+  managed installer panel only while Codex is selected, immediately below
+  the identity heading; leaving Codex releases its event subscription.
 - WorkBuddy status and Provider summaries are lazy/bounded observations. A read
   failure is `unknown/unavailable`, never `not installed`, `not configured`, or
   verified absence.
@@ -432,9 +435,10 @@ Required focused coverage includes:
   behavior, and command registration;
 - six local assets, official Qoder/TRAE digests/passive formats, Qoder default,
   exact Models order, master/detail keyboard/ARIA, four maintained viewports;
-- exact official-link IPC, renderer official-site display labels in the
-  identity, per-link lock/error behavior, Codex negative-link behavior, and
-  negative download/login/config behavior;
+- exact official-link IPC through `ExternalLinkButton` /
+  `useOpenExternal`, renderer official-site display labels in the
+  identity, one FeatureProvider lock/error behavior, Codex negative-link
+  behavior, and negative download/login/config behavior;
 - independently scrolling catalog panes, a clamped keyboard/pointer separator,
   the 760px stack hiding that separator, and the shared catalog page inset
   (`gap: 0`, no extra Agents/Models page `gap` or `padding-top`);
@@ -508,7 +512,9 @@ let Codex use the managed installer port.
 
 ```ts
 const productLink = entry.officialLinks.find((link) => link.id === "product");
-if (productLink) await ports.settings.openExternal(productLink.url);
+<ExternalLinkButton url={productLink?.url} errorTitle="无法打开官方设置">
+  打开官方设置
+</ExternalLinkButton>
 ```
 
 Wrong: stack a Models page flex gap on top of the shared feature header

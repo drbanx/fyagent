@@ -371,6 +371,26 @@ describe("V2 MCP management", () => {
     });
   });
 
+  it("opens discover docs through the shared external-link outlet", async () => {
+    const user = userEvent.setup();
+    const openExternal = vi.fn(async () => undefined);
+    const ports = createBrowserFeaturePorts();
+    ports.settings.openExternal = openExternal;
+    renderFeature(<McpPage />, ports);
+
+    await user.click(await screen.findByRole("tab", { name: "发现" }));
+    const card = screen
+      .getByRole("heading", { name: "Time" })
+      .closest("article");
+    expect(card).not.toBeNull();
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "文档" }),
+    );
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+    );
+  });
+
   it("does not silently overwrite a conflicting catalog id", async () => {
     const user = userEvent.setup();
     const existing: McpServer = {

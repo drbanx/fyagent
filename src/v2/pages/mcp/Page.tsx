@@ -39,6 +39,7 @@ import {
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
 import { CopyablePath } from "../../shared/ui/CopyablePath";
+import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import {
   SelectionLens,
   SelectionLensTrack,
@@ -68,7 +69,6 @@ function ServerDetail({
   onToggle,
   onEdit,
   onDelete,
-  onOpen,
   showAssignment,
 }: {
   server: McpServer;
@@ -76,7 +76,6 @@ function ServerDetail({
   onToggle: (app: McpTargetId, enabled: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
-  onOpen: (url: string) => void;
   showAssignment: boolean;
 }) {
   const spec = server.server;
@@ -150,9 +149,9 @@ function ServerDetail({
           {(homepage || docs) && (
             <div className="fy-feature-actions">
               {homepage && (
-                <Button onClick={() => onOpen(homepage)}>主页</Button>
+                <ExternalLinkButton url={homepage}>主页</ExternalLinkButton>
               )}
-              {docs && <Button onClick={() => onOpen(docs)}>文档</Button>}
+              {docs && <ExternalLinkButton url={docs}>文档</ExternalLinkButton>}
             </div>
           )}
         </section>
@@ -326,17 +325,6 @@ export function McpPage() {
           `${result.failures.length} 项失败，${result.successes.length} 项成功`,
         );
     });
-  const openExternal = async (url: string) => {
-    try {
-      await ports.settings.openExternal(url);
-    } catch (error) {
-      notify({
-        tone: "error",
-        title: "无法打开链接",
-        description: errorMessage(error),
-      });
-    }
-  };
   const importExisting = () =>
     write("MCP 导入", async () => {
       const count = await ports.mcp.importFromApps();
@@ -434,7 +422,6 @@ export function McpPage() {
                 setSelectedId(id);
                 setTab("installed");
               }}
-              onOpen={openExternal}
             />
           </div>
         )
@@ -524,7 +511,6 @@ export function McpPage() {
                   onToggle={(app, enabled) => toggle(selected, app, enabled)}
                   onEdit={() => setEditing(selected)}
                   onDelete={() => setDeleteTarget(selected)}
-                  onOpen={openExternal}
                   showAssignment={!wideLayout}
                 />
               )}
