@@ -837,3 +837,32 @@ Aligned V2 agent catalog, models, and Skills/MCP: TRAE Work CN URL and native pe
 ### Status
 
 [OK] **Completed**
+
+
+## Session 27: SelectionLens 从选中项左上角展开
+
+**Date**: 2026-08-18
+**Task**: SelectionLens 从选中项左上角展开
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+首次出现不再从轨道父框左上角飞入，而是从当前选中宿主左上角扩散；轨内切换仍打断同一 overlay。
+
+### Main Changes
+
+- SelectionLensGroup 出现/reveal 改为 selectionLensCollapsedOrigin(host box)，调用方不改。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7ef30844` | (see git log) |
+
+### Testing
+
+- [OK] mise run lint:v2 typecheck:v2 test:v2（237 passed）。
+
+### Status
+
+[OK] **Completed**

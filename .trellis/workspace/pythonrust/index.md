@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 26
+- **Total Sessions**: 27
 - **Last Active**: 2026-08-18
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~839 | Active |
+| `journal-1.md` | ~868 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 27 | 2026-08-18 | SelectionLens 从选中项左上角展开 | `7ef30844` | `dev/laiyongjie` |
 | 26 | 2026-08-18 | V2 catalog models Skills/MCP parity | `bbeb0921` | `dev/laiyongjie` |
 | 25 | 2026-08-17 | SelectionLens 去掉 layoutId 缩放变形 | `9bb391d0`, `85e5ebed` | `dev/laiyongjie` |
 | 24 | 2026-08-17 | SelectionLens 可打断滑块移植 | `606c35bd`, `b74d63d3` | `dev/laiyongjie` |
