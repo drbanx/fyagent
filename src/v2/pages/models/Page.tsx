@@ -1,7 +1,6 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
-import { XIcon } from "@phosphor-icons/react/dist/csr/X";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
@@ -17,8 +16,6 @@ import {
 import type {
   CodexProviderMutationWarning,
   ProviderAppId,
-  TraeModelProbeResult,
-  TraeWorkModelRequest,
 } from "../../shared/features/types";
 import { PersistentSurface } from "../../shared/ui/PersistentSurface";
 import {
@@ -59,10 +56,14 @@ import {
   type ModelTarget,
   type QuickSetupErrors,
 } from "./quickSetup";
+import { GroupedModelChips, ModelSearchField, ModelVendorIcon } from "./modelChips";
+import { ModelsPanelHeader, NoticeView } from "./modelsShared";
+import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
+import { TraeModelsPanel } from "./TraeModelsPanel";
 import {
   addUniqueModelIds,
   filterModelIds,
-  groupModelIds,
+  nativeErrorCode,
   splitWorkBuddyDraft,
 } from "./workBuddyModels";
 import "./Page.css";
@@ -77,12 +78,12 @@ const TARGET_PRESENTATION: Record<
   ModelTarget,
   { label: string; summary: string }
 > = {
-  qoderwork: { label: "QoderWork CN", summary: "模型、Hooks 和 MCP" },
-  trae: { label: "TRAE Work", summary: "测试模型连接" },
+  qoderwork: { label: "QoderWork CN", summary: "不支持第三方模型配置" },
+  trae: { label: "TRAE Work CN", summary: "管理模型设置" },
   workbuddy: { label: "WorkBuddy", summary: "管理模型设置" },
   codex: { label: "Codex", summary: "快速配置模型" },
   claude: { label: "Claude Code", summary: "快速配置模型" },
-  opencode: { label: "OpenCode", summary: "在 OpenCode 中完成模型设置" },
+  opencode: { label: "OpenCode", summary: "管理模型设置" },
 };
 
 const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
@@ -102,151 +103,6 @@ type WorkBuddyNoticeField =
   | "save"
   | "existing";
 
-function NoticeView({ notice }: { notice: Notice | null }) {
-  return <FieldFeedback notice={notice} />;
-}
-
-function ModelsPanelHeader({
-  title,
-  summary,
-  pending = false,
-  children,
-}: {
-  title: string;
-  summary: string;
-  pending?: boolean;
-  children?: ReactNode;
-}) {
-  return (
-    <header
-      className="fy-models-config-heading fy-models-commit-heading"
-      data-pending={pending || undefined}
-    >
-      <div>
-        <h2>{title}</h2>
-        <p>{summary}</p>
-      </div>
-      {children ? (
-        <div className="fy-models-commit" data-testid="models-commit">
-          {pending ? <Badge tone="warning">待保存</Badge> : null}
-          {children}
-        </div>
-      ) : null}
-    </header>
-  );
-}
-
-function GroupedModelChips({
-  ids,
-  removable = false,
-  removeDisabled = false,
-  onRemove,
-  emptyLabel,
-}: {
-  ids: readonly string[];
-  removable?: boolean;
-  removeDisabled?: boolean;
-  onRemove?: (modelId: string) => void;
-  emptyLabel: string;
-}) {
-  const groups = useMemo(() => groupModelIds(ids), [ids]);
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-
-  if (ids.length === 0) {
-    return <p className="fy-models-muted">{emptyLabel}</p>;
-  }
-
-  return (
-    <div className="fy-models-groups">
-      {groups.map((group) => {
-        const isCollapsed = collapsed.has(group.type);
-        return (
-          <section key={group.type} className="fy-models-group">
-            <button
-              type="button"
-              className="fy-models-group-toggle"
-              aria-expanded={!isCollapsed}
-              aria-label={`${group.type} 分组`}
-              onClick={() =>
-                setCollapsed((current) => {
-                  const next = new Set(current);
-                  if (next.has(group.type)) next.delete(group.type);
-                  else next.add(group.type);
-                  return next;
-                })
-              }
-            >
-              <span>{group.type}</span>
-              <span className="fy-models-group-count">{group.ids.length}</span>
-              <CaretDownIcon
-                className={classNames(
-                  "fy-models-caret",
-                  isCollapsed && "fy-models-caret-collapsed",
-                )}
-                size={14}
-                aria-hidden
-              />
-            </button>
-            {isCollapsed ? null : (
-              <ul className="fy-models-chips">
-                {group.ids.map((modelId) => (
-                  <li key={modelId} className="fy-models-chip">
-                    <code>{modelId}</code>
-                    {removable ? (
-                      <button
-                        type="button"
-                        className="fy-models-chip-remove"
-                        aria-label={`移除模型 ${modelId}`}
-                        disabled={removeDisabled}
-                        onClick={() => onRemove?.(modelId)}
-                      >
-                        <XIcon size={12} aria-hidden />
-                      </button>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        );
-      })}
-    </div>
-  );
-}
-
-function ModelSearchField({
-  id,
-  label,
-  value,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="fy-control-field fy-models-search" htmlFor={id}>
-      {label}
-      <Input
-        id={id}
-        type="search"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="按模型 ID 筛选"
-        autoComplete="off"
-        spellCheck={false}
-      />
-    </label>
-  );
-}
-
-function workBuddyErrorCode(error: unknown): string | null {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return null;
-  }
-  return typeof error.code === "string" ? error.code : null;
-}
 
 function WorkBuddyPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
@@ -521,7 +377,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     } catch (error) {
       if (mountedRef.current) {
         setPendingOverwrite(null);
-        const code = workBuddyErrorCode(error);
+        const code = nativeErrorCode(error);
         if (
           request.overwriteToken &&
           (code === "WORKBUDDY_OVERWRITE_TOKEN_EXPIRED" ||
@@ -1066,6 +922,9 @@ function ProviderPanel({
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
   const [modelId, setModelId] = useState("");
+  const [fetchedModelIds, setFetchedModelIds] = useState<string[]>([]);
+  const [ownedByById, setOwnedByById] = useState<Record<string, string>>({});
+  const [fetchBusy, setFetchBusy] = useState(false);
   const [imageExtension, setImageExtension] = useState(false);
   const [websockets, setWebsockets] = useState(false);
   const [errors, setErrors] = useState<QuickSetupErrors>({});
@@ -1101,6 +960,49 @@ function ProviderPanel({
   const providerId = QUICK_SETUP_PROVIDER_IDS[app];
   const providerExists = Boolean(summaryQuery.data?.providers[providerId]);
   const currentId = summaryQuery.data?.currentId ?? "";
+
+  const fetchClaudeModels = async () => {
+    if (app !== "claude" || fetchBusy || busy || writesBlocked) return;
+    if (!isHttpUrl(baseUrl.trim())) {
+      setErrors((current) => ({
+        ...current,
+        baseUrl: "请输入有效的服务地址",
+      }));
+      baseUrlInputRef.current?.focus();
+      return;
+    }
+    if (!apiKeyRef.current.trim()) {
+      setErrors((current) => ({ ...current, apiKey: "请输入 API Key" }));
+      apiKeyInputRef.current?.focus();
+      return;
+    }
+    setFetchBusy(true);
+    setErrors((current) => ({ ...current, baseUrl: undefined, apiKey: undefined }));
+    try {
+      const models = await ports.providers.fetchModels(
+        baseUrl.trim(),
+        apiKeyRef.current.trim(),
+      );
+      if (!mountedRef.current) return;
+      const ids = models.map((model) => model.id);
+      const nextOwned: Record<string, string> = {};
+      for (const model of models) {
+        if (model.ownedBy) nextOwned[model.id] = model.ownedBy;
+      }
+      setOwnedByById((current) => ({ ...current, ...nextOwned }));
+      setFetchedModelIds((current) => addUniqueModelIds(current, ids));
+    } catch {
+      if (mountedRef.current) {
+        setNotice({
+          tone: "error",
+          title: "模型读取失败",
+          description: "请检查地址、凭据和服务状态后重试。",
+        });
+      }
+    } finally {
+      if (mountedRef.current) setFetchBusy(false);
+    }
+  };
 
   const submit = async () => {
     if (writeLock.current || writesBlocked) return;
@@ -1349,19 +1251,22 @@ function ProviderPanel({
         </div>
         <div className="fy-control-field">
           <label htmlFor={`${app}-quick-setup-model-id`}>模型 ID</label>
-          <Input
-            ref={modelIdInputRef}
-            id={`${app}-quick-setup-model-id`}
-            name={`${app}-quick-setup-model-id`}
-            value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-            aria-invalid={Boolean(errors.modelId)}
-            aria-describedby={
-              errors.modelId ? `${app}-quick-setup-model-id-error` : undefined
-            }
-          />
+          <div className="fy-models-id-with-icon">
+            <ModelVendorIcon modelId={modelId} />
+            <Input
+              ref={modelIdInputRef}
+              id={`${app}-quick-setup-model-id`}
+              name={`${app}-quick-setup-model-id`}
+              value={modelId}
+              onChange={(event) => setModelId(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={Boolean(errors.modelId)}
+              aria-describedby={
+                errors.modelId ? `${app}-quick-setup-model-id-error` : undefined
+              }
+            />
+          </div>
           {errors.modelId && (
             <span
               id={`${app}-quick-setup-model-id-error`}
@@ -1372,6 +1277,33 @@ function ProviderPanel({
             </span>
           )}
         </div>
+        {app === "claude" ? (
+          <div className="fy-models-form-wide">
+            <div className="fy-models-actions">
+              <Button
+                disabled={busy || fetchBusy || writesBlocked}
+                onClick={() => void fetchClaudeModels()}
+              >
+                {fetchBusy ? "读取中…" : "拉取模型"}
+              </Button>
+            </div>
+            <GroupedModelChips
+              ids={addUniqueModelIds(fetchedModelIds, modelId ? [modelId] : [])}
+              selectedId={modelId}
+              onSelect={setModelId}
+              removable
+              removeDisabled={busy || fetchBusy}
+              ownedByById={ownedByById}
+              onRemove={(id) => {
+                setFetchedModelIds((current) =>
+                  current.filter((item) => item !== id),
+                );
+                if (modelId === id) setModelId("");
+              }}
+              emptyLabel="尚未拉取模型。可点击拉取，或手动填入模型 ID。"
+            />
+          </div>
+        ) : null}
         {app === "codex" && (
           <div
             className="fy-models-codex-features"
@@ -1433,14 +1365,13 @@ function QoderGuidancePanel({ active }: { active: boolean }) {
       <header className="fy-models-config-heading">
         <div>
           <h2>QoderWork CN</h2>
-          <p>在 QoderWork 中选择模型，并在 FyAgent 中管理相关设置。</p>
+          <p>不支持第三方模型配置</p>
         </div>
-        <Badge tone="neutral">在 QoderWork 中完成模型设置</Badge>
+        <Badge tone="neutral">不支持第三方模型配置</Badge>
       </header>
 
       <InlineNotice>
-        可在应用目录中管理 Hooks 和检查 MCP 配置；模型设置请在 QoderWork
-        中完成。
+        不支持第三方模型配置。可在应用目录中管理 Hooks，或打开官方页面。
       </InlineNotice>
 
       {catalogQuery.isLoading && (
@@ -1474,446 +1405,6 @@ function QoderGuidancePanel({ active }: { active: boolean }) {
   );
 }
 
-function OpenCodeGuidancePanel({ active }: { active: boolean }) {
-  const navigate = useNavigate();
-  const catalogQuery = useAgentCatalog(active);
-  const entry = catalogQuery.data?.agents.find(
-    (agent) => agent.id === "opencode",
-  );
-  const productLink = entry?.officialLinks.find(
-    (link) => link.id === "product",
-  );
-  const productCapability = entry?.capabilities.find(
-    (capability) => capability.id === "product.open",
-  );
-
-  return (
-    <CatalogDetail
-      className="fy-models-config-panel"
-      ariaLabel="OpenCode 模型设置"
-    >
-      <header className="fy-models-config-heading">
-        <div>
-          <h2>OpenCode</h2>
-          <p>在 OpenCode 中选择模型，并在 FyAgent 中管理 MCP 与 Skills。</p>
-        </div>
-        <Badge tone="neutral">在 OpenCode 中完成模型设置</Badge>
-      </header>
-
-      <InlineNotice>
-        模型配置请在 OpenCode 中完成；FyAgent 可管理 MCP 与 Skills 同步。
-      </InlineNotice>
-
-      {catalogQuery.isLoading && <Spinner label="正在读取 OpenCode 官方入口" />}
-      {catalogQuery.isError && (
-        <InlineNotice tone="error">
-          暂时无法获取官方网站，请稍后重试。
-        </InlineNotice>
-      )}
-      <div className="fy-models-actions">
-        <Button
-          className="fy-control-button-primary"
-          onClick={() => navigate("/agents?target=opencode")}
-        >
-          管理 MCP 和 Skills
-        </Button>
-        <ExternalLinkButton
-          url={productLink?.url}
-          disabled={
-            !productLink ||
-            (productCapability?.mode !== "direct" &&
-              productCapability?.mode !== "assisted")
-          }
-          errorTitle="无法打开官方设置"
-        >
-          打开官方设置
-        </ExternalLinkButton>
-      </div>
-    </CatalogDetail>
-  );
-}
-
-const traeProbeCopy: Readonly<
-  Record<
-    TraeModelProbeResult["state"],
-    { tone: Notice["tone"]; title: string; description: string }
-  >
-> = {
-  reachable: {
-    tone: "info",
-    title: "连接测试通过",
-    description: "请返回 TRAE 保存设置后继续使用。",
-  },
-  auth_rejected: {
-    tone: "warning",
-    title: "无法验证 API Key",
-    description: "请检查 API Key 后重试。",
-  },
-  model_rejected: {
-    tone: "warning",
-    title: "无法使用该模型 ID",
-    description: "请检查模型 ID 后重试。",
-  },
-  network_rejected: {
-    tone: "warning",
-    title: "无法连接到服务",
-    description: "请检查服务地址、网络和访问权限。",
-  },
-  timeout: {
-    tone: "warning",
-    title: "连接测试超时",
-    description: "请稍后重试。",
-  },
-  cancelled: {
-    tone: "warning",
-    title: "连接测试已取消",
-    description: "你可以调整设置后再次测试。",
-  },
-};
-
-function TraePreflightPanel({ active }: { active: boolean }) {
-  const { ports } = useFeatures();
-  const catalogQuery = useAgentCatalog(active);
-  const [apiFormat, setApiFormat] = useState<TraeWorkModelRequest["apiFormat"]>(
-    "openai_chat_completions",
-  );
-  const [urlMode, setUrlMode] =
-    useState<TraeWorkModelRequest["urlMode"]>("base_url");
-  const [url, setUrl] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [allowNoApiKey, setAllowNoApiKey] = useState(false);
-  const [allowLoopback, setAllowLoopback] = useState(false);
-  const [allowPrivateNetwork, setAllowPrivateNetwork] = useState(false);
-  const [probeConsent, setProbeConsent] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const mountedRef = useRef(true);
-  const activeRequestIdRef = useRef<string | null>(null);
-  const cancelRequestedRef = useRef(false);
-  const apiKeyRef = useRef("");
-  const entry = catalogQuery.data?.agents.find(
-    (agent) => agent.id === "trae-work",
-  );
-  const productLink = entry?.officialLinks.find(
-    (link) => link.id === "product",
-  );
-  const productCapability = entry?.capabilities.find(
-    (capability) => capability.id === "product.open",
-  );
-
-  const clearApiKey = () => {
-    apiKeyRef.current = "";
-    if (mountedRef.current) setApiKey("");
-  };
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      apiKeyRef.current = "";
-      const requestId = activeRequestIdRef.current;
-      activeRequestIdRef.current = null;
-      cancelRequestedRef.current = true;
-      if (requestId)
-        void ports.traeWork
-          .cancelModelEndpoint(requestId)
-          .catch(() => undefined);
-    };
-  }, [ports.traeWork]);
-
-  useEffect(() => {
-    if (active) return;
-    const requestId = activeRequestIdRef.current;
-    if (!requestId) return;
-    cancelRequestedRef.current = true;
-    void ports.traeWork.cancelModelEndpoint(requestId).catch(() => undefined);
-  }, [active, ports.traeWork]);
-
-  const buildRequest = (): TraeWorkModelRequest | null => {
-    const trimmedUrl = url.trim();
-    const trimmedModelId = modelId.trim();
-    if (!trimmedUrl || !trimmedModelId) {
-      setNotice({
-        tone: "error",
-        title: "请填写服务地址和模型 ID",
-      });
-      return null;
-    }
-    try {
-      const parsed = new URL(trimmedUrl);
-      if (
-        (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
-        !parsed.hostname ||
-        parsed.username ||
-        parsed.password ||
-        parsed.search ||
-        parsed.hash
-      )
-        throw new Error("invalid");
-    } catch {
-      setNotice({
-        tone: "error",
-        title: "服务地址无效",
-        description:
-          "请输入有效的 HTTP(S) 服务地址，且不要包含账号信息或额外参数。",
-      });
-      return null;
-    }
-    if (!allowNoApiKey && apiKeyRef.current.trim().length === 0) {
-      setNotice({
-        tone: "error",
-        title: "请填写 API Key 或选择不使用 API Key",
-        description: "API Key 仅用于本次连接测试，结束后不会保留。",
-      });
-      return null;
-    }
-    if (!probeConsent) {
-      setNotice({
-        tone: "error",
-        title: "请确认后开始连接测试",
-        description: "确认后将测试一次连接。",
-      });
-      return null;
-    }
-    return {
-      apiFormat,
-      urlMode,
-      url: trimmedUrl,
-      modelId: trimmedModelId,
-      apiKey: apiKeyRef.current,
-      allowNoApiKey,
-      allowLoopback,
-      allowPrivateNetwork,
-    };
-  };
-
-  const runProbe = async () => {
-    if (pending) return;
-    setNotice(null);
-    const request = buildRequest();
-    if (!request) {
-      clearApiKey();
-      setProbeConsent(false);
-      return;
-    }
-    cancelRequestedRef.current = false;
-    setPending(true);
-    try {
-      const validation = await ports.traeWork.validateModelConfig(request);
-      if (!mountedRef.current) return;
-      activeRequestIdRef.current = validation.requestId;
-      if (cancelRequestedRef.current) {
-        await ports.traeWork.cancelModelEndpoint(validation.requestId);
-        if (mountedRef.current) setNotice(traeProbeCopy.cancelled);
-        return;
-      }
-      const result = await ports.traeWork.testModelEndpoint(
-        validation.requestId,
-        request,
-      );
-      if (!mountedRef.current) return;
-      const copy = traeProbeCopy[result.state];
-      setNotice(copy);
-    } catch {
-      if (mountedRef.current) {
-        setNotice({
-          tone: "error",
-          title: "TRAE 连接测试失败",
-          description: "请检查输入后重试。",
-        });
-      }
-    } finally {
-      activeRequestIdRef.current = null;
-      cancelRequestedRef.current = false;
-      clearApiKey();
-      if (mountedRef.current) {
-        setPending(false);
-        setProbeConsent(false);
-      }
-    }
-  };
-
-  const cancelProbe = async () => {
-    const requestId = activeRequestIdRef.current;
-    cancelRequestedRef.current = true;
-    clearApiKey();
-    if (!requestId) return;
-    try {
-      await ports.traeWork.cancelModelEndpoint(requestId);
-      if (mountedRef.current) {
-        setNotice({
-          tone: "warning",
-          title: "正在取消连接测试",
-          description: "请稍候。",
-        });
-      }
-    } catch {
-      if (mountedRef.current) {
-        setNotice({
-          tone: "warning",
-          title: "暂时无法确认取消结果",
-          description: "请稍候后重试。",
-        });
-      }
-    }
-  };
-
-  return (
-    <CatalogDetail
-      className="fy-models-config-panel"
-      ariaLabel="TRAE Work 模型连接测试"
-    >
-      <header className="fy-models-config-heading">
-        <div>
-          <h2>TRAE Work</h2>
-          <p>测试服务地址和模型是否可用。设置需在 TRAE 中保存。</p>
-        </div>
-        <Badge tone="warning">连接测试</Badge>
-      </header>
-
-      <div className="fy-models-form">
-        <label className="fy-control-field">
-          API 格式
-          <select
-            className="fy-control-input"
-            value={apiFormat}
-            onChange={(event) =>
-              setApiFormat(
-                event.target.value as TraeWorkModelRequest["apiFormat"],
-              )
-            }
-            disabled={pending}
-          >
-            <option value="openai_chat_completions">
-              OpenAI Chat Completions
-            </option>
-            <option value="anthropic_messages">Anthropic Messages</option>
-          </select>
-        </label>
-        <label className="fy-control-field">
-          URL 模式
-          <select
-            className="fy-control-input"
-            value={urlMode}
-            onChange={(event) =>
-              setUrlMode(event.target.value as TraeWorkModelRequest["urlMode"])
-            }
-            disabled={pending}
-          >
-            <option value="base_url">服务地址</option>
-            <option value="complete_url">完整 API 地址</option>
-          </select>
-        </label>
-        <label className="fy-control-field fy-models-form-wide">
-          {urlMode === "base_url" ? "服务地址" : "完整 API 地址"}
-          <Input
-            type="url"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://gateway.example/v1"
-            autoComplete="off"
-            spellCheck={false}
-            disabled={pending}
-          />
-        </label>
-        <label className="fy-control-field">
-          模型 ID
-          <Input
-            value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-            disabled={pending}
-          />
-        </label>
-        <label className="fy-control-field">
-          API Key
-          <SecretInput
-            value={apiKey}
-            onChange={(event) => {
-              apiKeyRef.current = event.target.value;
-              setApiKey(event.target.value);
-            }}
-            autoComplete="off"
-            spellCheck={false}
-            disabled={pending || allowNoApiKey}
-            revealLabel="显示 API Key"
-            hideLabel="隐藏 API Key"
-          />
-        </label>
-        <div className="fy-models-form-wide fy-models-consent-list">
-          <label className="fy-models-checkbox-row">
-            <Checkbox
-              checked={allowNoApiKey}
-              onCheckedChange={(checked) => {
-                setAllowNoApiKey(checked);
-                if (checked) clearApiKey();
-              }}
-              label="允许不使用 API Key"
-              disabled={pending}
-            />
-            允许不使用 API Key
-          </label>
-          <label className="fy-models-checkbox-row">
-            <Checkbox
-              checked={allowLoopback}
-              onCheckedChange={setAllowLoopback}
-              label="允许本机地址"
-              disabled={pending}
-            />
-            我确认目标是本机地址（如适用）
-          </label>
-          <label className="fy-models-checkbox-row">
-            <Checkbox
-              checked={allowPrivateNetwork}
-              onCheckedChange={setAllowPrivateNetwork}
-              label="允许私有网络地址"
-              disabled={pending}
-            />
-            我确认目标是受信任的私有网络地址（如适用）
-          </label>
-          <label className="fy-models-checkbox-row">
-            <Checkbox
-              checked={probeConsent}
-              onCheckedChange={setProbeConsent}
-              label="同意连接测试"
-              disabled={pending}
-            />
-            我同意发起一次连接测试
-          </label>
-        </div>
-        <div className="fy-models-actions">
-          <Button
-            className="fy-control-button-primary"
-            disabled={pending}
-            onClick={() => void runProbe()}
-          >
-            {pending ? "正在测试…" : "测试连接"}
-          </Button>
-          {pending && (
-            <Button onClick={() => void cancelProbe()}>取消测试</Button>
-          )}
-          <ExternalLinkButton
-            url={productLink?.url}
-            disabled={
-              !productLink ||
-              (productCapability?.mode !== "direct" &&
-                productCapability?.mode !== "assisted") ||
-              pending
-            }
-            errorTitle="无法打开 TRAE 官方设置"
-          >
-            打开 TRAE 官方模型设置
-          </ExternalLinkButton>
-        </div>
-      </div>
-      <NoticeView notice={notice} />
-      <InlineNotice>此测试不会保存设置。请返回 TRAE 完成配置。</InlineNotice>
-    </CatalogDetail>
-  );
-}
-
 function renderTargetPanel(
   target: ModelTarget,
   active: boolean,
@@ -1936,9 +1427,9 @@ function renderTargetPanel(
     case "qoderwork":
       return <QoderGuidancePanel active={active} />;
     case "trae":
-      return <TraePreflightPanel active={active} />;
+      return <TraeModelsPanel active={active} />;
     case "opencode":
-      return <OpenCodeGuidancePanel active={active} />;
+      return <OpenCodeModelsPanel active={active} />;
   }
 }
 

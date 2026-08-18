@@ -1,7 +1,7 @@
 //! Skills 命令层
 //!
 //! v3.10.0+ 统一管理架构：
-//! - 使用 Skills 专用的八目标开关；QoderWork/TRAE Work 不进入通用 AppType 域
+//! - 使用 Skills 专用的九目标开关；QoderWork/TRAE Work/WorkBuddy 不进入通用 AppType 域
 //! - SSOT 存储在 ~/.fyagent/skills/
 
 use crate::app_config::{InstalledSkill, SkillTargetId, UnmanagedSkill};
@@ -19,7 +19,7 @@ use tauri::State;
 /// SkillService 状态包装
 pub struct SkillServiceState(pub Arc<SkillService>);
 
-/// 解析 Skills 专用目标；QoderWork/TRAE Work 不进入广义 AppType 域。
+/// 解析 Skills 专用目标；QoderWork/TRAE Work/WorkBuddy 不进入广义 AppType 域。
 fn parse_skill_target(app: &str) -> Result<SkillTargetId, String> {
     SkillTargetId::from_str(app).map_err(|e| e.to_string())
 }

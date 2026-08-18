@@ -1024,8 +1024,14 @@ fn test_parse_mcp_apps() {
     assert!(apps.opencode);
     assert!(apps.hermes);
 
+    let apps = parse_mcp_apps("workbuddy").unwrap();
+    assert!(apps.workbuddy);
+    assert!(!apps.claude);
+
     let err = parse_mcp_apps("invalid").unwrap_err();
     assert!(err.to_string().contains("Invalid app"));
+    assert!(parse_mcp_apps("qoderwork").is_err());
+    assert!(parse_mcp_apps("trae-work").is_err());
 }
 
 #[test]

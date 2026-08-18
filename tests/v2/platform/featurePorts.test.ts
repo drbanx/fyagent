@@ -143,7 +143,7 @@ function catalogEntry(
 function catalogFixture(): AgentCatalogResult {
   return {
     contractVersion: 3,
-    reviewedAt: "2026-08-17",
+    reviewedAt: "2026-08-18",
     agents: [
       catalogEntry("qoderwork", "QoderWork CN", [
         {
@@ -152,11 +152,11 @@ function catalogFixture(): AgentCatalogResult {
           url: "https://qoder.com.cn/qoderwork",
         },
       ]),
-      catalogEntry("trae-work", "TRAE Work", [
+      catalogEntry("trae-work", "TRAE Work CN", [
         {
           id: "product",
-          label: "打开 TRAE Work 官方页面",
-          url: "https://work.trae.cn/",
+          label: "打开 TRAE Work CN 官方页面",
+          url: "https://www.trae.cn/sem-work",
         },
       ]),
       catalogEntry("workbuddy", "WorkBuddy", [
@@ -278,6 +278,12 @@ describe("V2 feature ports", () => {
         allowPrivateNetwork: false,
       }),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.traeWork.getModelIds()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.opencodeModels.getSnapshot()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
     await expect(ports.codexDesktop.getLocalStatus()).rejects.toThrow(
       NATIVE_ONLY_ERROR,
     );
@@ -467,6 +473,117 @@ describe("V2 feature ports", () => {
       ["get_workbuddy_model_ids"],
       ["fetch_workbuddy_models", { request: fetchRequest }],
       ["save_workbuddy_models", { request: saveRequest }],
+    ]);
+  });
+
+  it("uses exact TRAE persist and OpenCode model commands", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/v2/shared/platform/tauri/features"
+    );
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "get_traework_model_ids") {
+        return { modelIds: ["model-a"], revision: "trae-rev", truncated: false };
+      }
+      if (command === "fetch_traework_models") {
+        return { models: [{ id: "model-a", ownedBy: "openai" }], truncated: false };
+      }
+      if (command === "save_traework_models") {
+        return {
+          state: "saved",
+          revision: "trae-rev-2",
+          modelCount: 1,
+          createdEntries: 1,
+          updatedEntries: 0,
+        };
+      }
+      if (command === "get_opencode_model_snapshot") {
+        return {
+          providers: [{ id: "gateway", name: "Gateway", modelIds: ["model-a"] }],
+          revision: "oc-rev",
+        };
+      }
+      if (command === "fetch_opencode_provider_models") {
+        return { models: [{ id: "model-a" }], truncated: false };
+      }
+      if (command === "save_opencode_models") {
+        return {
+          state: "saved",
+          revision: "oc-rev-2",
+          modelCount: 1,
+          createdEntries: 1,
+          updatedEntries: 0,
+        };
+      }
+      throw new Error(`unexpected command ${command}`);
+    });
+
+    const ports = createTauriFeaturePorts();
+    const traeFetch = {
+      apiFormat: "openai_chat_completions" as const,
+      urlMode: "base_url" as const,
+      url: "https://example.test/v1",
+      apiKey: "trae-key",
+      allowNoApiKey: false,
+      allowLoopback: false,
+      allowPrivateNetwork: false,
+    };
+    const openCodeFetch = {
+      baseUrl: "https://example.test/v1",
+      apiKey: "oc-key",
+      allowNoApiKey: false,
+    };
+
+    await expect(ports.traeWork.getModelIds()).resolves.toEqual({
+      modelIds: ["model-a"],
+      revision: "trae-rev",
+      truncated: false,
+    });
+    await ports.traeWork.fetchModels(traeFetch);
+    await ports.traeWork.saveModels({
+      ...traeFetch,
+      selectedModelIds: ["model-a"],
+      expectedRevision: "trae-rev",
+    });
+    await expect(ports.opencodeModels.getSnapshot()).resolves.toEqual({
+      providers: [{ id: "gateway", name: "Gateway", modelIds: ["model-a"] }],
+      revision: "oc-rev",
+    });
+    await ports.opencodeModels.fetchProviderModels(openCodeFetch);
+    await ports.opencodeModels.saveModels({
+      providerName: "Gateway",
+      baseUrl: openCodeFetch.baseUrl,
+      apiKey: openCodeFetch.apiKey,
+      selectedModelIds: ["model-a"],
+      expectedRevision: "oc-rev",
+    });
+
+    expect(invoke.mock.calls).toEqual([
+      ["get_traework_model_ids"],
+      ["fetch_traework_models", { request: traeFetch }],
+      [
+        "save_traework_models",
+        {
+          request: {
+            ...traeFetch,
+            selectedModelIds: ["model-a"],
+            expectedRevision: "trae-rev",
+          },
+        },
+      ],
+      ["get_opencode_model_snapshot"],
+      ["fetch_opencode_provider_models", { request: openCodeFetch }],
+      [
+        "save_opencode_models",
+        {
+          request: {
+            providerName: "Gateway",
+            baseUrl: openCodeFetch.baseUrl,
+            apiKey: openCodeFetch.apiKey,
+            selectedModelIds: ["model-a"],
+            expectedRevision: "oc-rev",
+          },
+        },
+      ],
     ]);
   });
 
@@ -936,10 +1053,8 @@ describe("V2 feature ports", () => {
       apps: {
         claude: true,
         codex: false,
-        gemini: false,
-        grokbuild: false,
         opencode: false,
-        hermes: false,
+        workbuddy: false,
       },
     };
     const skillApps = {
@@ -952,7 +1067,7 @@ describe("V2 feature ports", () => {
     await ports.skills.deleteBackup("backup-a");
     await ports.skills.install(skill, "claude");
     await ports.skills.uninstall("skill-a");
-    await ports.skills.restoreBackup("backup-a", "gemini");
+    await ports.skills.restoreBackup("backup-a", "opencode");
     await ports.skills.toggleApp("skill-a", "codex", true);
     await ports.skills.scanUnmanaged();
     await ports.skills.importFromApps([
@@ -967,11 +1082,11 @@ describe("V2 feature ports", () => {
     await ports.skills.addRepo(repo);
     await ports.skills.removeRepo("owner", "repo");
     await ports.skills.pickZip();
-    await ports.skills.installFromZip("C:/skill.zip", "hermes");
+    await ports.skills.installFromZip("C:/skill.zip", "workbuddy");
     await ports.mcp.getAll();
     await ports.mcp.upsert(server);
     await ports.mcp.delete("server-a");
-    await ports.mcp.toggleApp("server-a", "hermes", false);
+    await ports.mcp.toggleApp("server-a", "workbuddy", false);
     await ports.mcp.importFromApps();
     await ports.settings.get();
     await ports.settings.save({ skillSyncMethod: "copy" });
@@ -981,7 +1096,7 @@ describe("V2 feature ports", () => {
       ["delete_skill_backup", { backupId: "backup-a" }],
       ["install_skill_unified", { skill, currentApp: "claude" }],
       ["uninstall_skill_unified", { id: "skill-a" }],
-      ["restore_skill_backup", { backupId: "backup-a", currentApp: "gemini" }],
+      ["restore_skill_backup", { backupId: "backup-a", currentApp: "opencode" }],
       ["toggle_skill_app", { id: "skill-a", app: "codex", enabled: true }],
       ["scan_unmanaged_skills"],
       [
@@ -999,14 +1114,14 @@ describe("V2 feature ports", () => {
       ["open_zip_file_dialog"],
       [
         "install_skills_from_zip",
-        { filePath: "C:/skill.zip", currentApp: "hermes" },
+        { filePath: "C:/skill.zip", currentApp: "workbuddy" },
       ],
       ["get_mcp_servers"],
       ["upsert_mcp_server", { server }],
       ["delete_mcp_server", { id: "server-a" }],
       [
         "toggle_mcp_app",
-        { serverId: "server-a", app: "hermes", enabled: false },
+        { serverId: "server-a", app: "workbuddy", enabled: false },
       ],
       ["import_mcp_from_apps"],
       ["get_settings"],

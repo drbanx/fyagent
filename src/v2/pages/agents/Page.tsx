@@ -58,15 +58,15 @@ const capabilityLabels: Readonly<Record<AgentCapabilityId, string>> = {
   "skills.write": "管理 Skills",
   "hooks.read": "查看 Hooks",
   "hooks.write": "管理 Hooks",
-  "models.validate": "测试模型连接",
+  "models.validate": "检查模型连接",
   "models.write": "管理模型设置",
   "mcp.validate": "检查 MCP 配置",
   "mcp.write": "管理 MCP 配置",
 };
 
 const capabilityModeLabels: Readonly<Record<AgentCapabilityMode, string>> = {
-  direct: "可在 FyAgent 中完成",
-  assisted: "请在对应应用中完成",
+  direct: "支持",
+  assisted: "需在应用中完成",
   unsupported: "不支持",
   unverified: "暂无法确认",
 };
@@ -74,18 +74,37 @@ const capabilityModeLabels: Readonly<Record<AgentCapabilityMode, string>> = {
 const capabilityReasonLabels: Readonly<
   Record<AgentCapabilityReasonCode, string>
 > = {
-  official_link_reviewed: "可前往官方网站",
-  trusted_runtime_identity_unavailable: "暂时无法确认",
-  dedicated_agent_flow: "请在对应设置中完成",
-  fyagent_skill_synchronization: "可在 FyAgent 中管理",
-  fyagent_hook_management: "可在 FyAgent 中管理",
-  fyagent_model_validation: "可在 FyAgent 中测试连接",
-  fyagent_mcp_validation: "可在 FyAgent 中检查配置",
-  vendor_ui_required: "请在对应应用中完成",
-  vendor_private_storage_unsupported: "此项暂不支持",
-  dedicated_native_contract: "可在 FyAgent 中管理",
+  official_link_reviewed: "官网",
+  trusted_runtime_identity_unavailable: "暂无法确认",
+  dedicated_agent_flow: "需在应用中完成",
+  fyagent_skill_synchronization: "支持",
+  fyagent_hook_management: "支持",
+  fyagent_model_validation: "支持",
+  fyagent_mcp_validation: "支持",
+  vendor_ui_required: "需在应用中完成",
+  vendor_private_storage_unsupported: "不支持",
+  dedicated_native_contract: "支持",
   capability_not_applicable: "不适用",
-  no_catalog_product_link: "暂无官方网站",
+  no_catalog_product_link: "暂无官网",
+};
+
+type ModelsPageTarget =
+  | "qoderwork"
+  | "trae"
+  | "workbuddy"
+  | "codex"
+  | "claude"
+  | "opencode";
+
+const MODEL_TARGET_BY_CATALOG_ID: Readonly<
+  Record<AgentCatalogId, ModelsPageTarget>
+> = {
+  qoderwork: "qoderwork",
+  "trae-work": "trae",
+  workbuddy: "workbuddy",
+  codex: "codex",
+  "claude-code": "claude",
+  opencode: "opencode",
 };
 
 function capabilityTone(
@@ -103,17 +122,21 @@ function catalogSummary(entry: AgentCatalogEntry): string {
   const assisted = entry.capabilities.filter(
     (capability) => capability.mode === "assisted",
   ).length;
-  return `${direct} 项可管理 · ${assisted} 项需在应用中完成`;
+  return `${direct} 项支持 · ${assisted} 项需在应用中完成`;
 }
 
 function capability(entry: AgentCatalogEntry, id: AgentCapabilityId) {
   return entry.capabilities.find((candidate) => candidate.id === id);
 }
 
-function CapabilityGrid({ entry }: { entry: AgentCatalogEntry }) {
+function CapabilityGrid({
+  capabilities,
+}: {
+  capabilities: AgentCatalogEntry["capabilities"];
+}) {
   return (
     <div className="fy-agent-capabilities">
-      {entry.capabilities.map((item) => {
+      {capabilities.map((item) => {
         return (
           <article key={item.id} className="fy-agent-capability">
             <div className="fy-agent-capability-header">
@@ -122,7 +145,10 @@ function CapabilityGrid({ entry }: { entry: AgentCatalogEntry }) {
                 {capabilityModeLabels[item.mode]}
               </Badge>
             </div>
-            <p>{capabilityReasonLabels[item.reasonCode]}</p>
+            {capabilityReasonLabels[item.reasonCode] !==
+              capabilityModeLabels[item.mode] && (
+              <p>{capabilityReasonLabels[item.reasonCode]}</p>
+            )}
           </article>
         );
       })}
@@ -514,7 +540,11 @@ function QoderHooksPanel() {
   };
 
   return (
-    <section className="fy-agent-section" aria-label="QoderWork Hooks 配置">
+    <section
+      id="qoder-hooks"
+      className="fy-agent-section"
+      aria-label="QoderWork Hooks 配置"
+    >
       <div className="fy-agent-section-heading">
         <div>
           <h3>QoderWork Hooks</h3>
@@ -931,22 +961,35 @@ function ExternalMcpValidationPanel({
   );
 }
 
-function modelTarget(id: AgentCatalogId): string | null {
-  if (id === "workbuddy" || id === "codex") return id;
-  if (id === "claude-code") return "claude";
-  return null;
-}
-
 function officialLinkActionLabel(link: AgentOfficialLink): string {
   return /官方/.test(link.label) ? link.label : `打开 ${link.label} 官网`;
 }
 
 function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
   const navigate = useNavigate();
-  const target = modelTarget(entry.id);
+  const modelTarget = MODEL_TARGET_BY_CATALOG_ID[entry.id];
   const officialOnly = entry.id === "qoderwork" || entry.id === "trae-work";
   const productCapability = capability(entry, "product.open");
-  const modelCapability = capability(entry, "models.write");
+  const modelWrite = capability(entry, "models.write");
+  const skillsRead = capability(entry, "skills.read");
+  const skillsWrite = capability(entry, "skills.write");
+  const mcpWrite = capability(entry, "mcp.write");
+  const hooksRead = capability(entry, "hooks.read");
+  const hooksWrite = capability(entry, "hooks.write");
+  const supported = entry.capabilities.filter(
+    (item) => item.mode !== "unsupported",
+  );
+  const unsupported = entry.capabilities.filter(
+    (item) => item.mode === "unsupported",
+  );
+  const showModelsJump =
+    modelWrite?.mode === "direct" || modelWrite?.mode === "assisted";
+  const showSkillsJump =
+    skillsRead?.mode === "direct" || skillsWrite?.mode === "direct";
+  const showMcpJump = mcpWrite?.mode === "direct";
+  const showHooksJump =
+    entry.id === "qoderwork" &&
+    (hooksRead?.mode === "direct" || hooksWrite?.mode === "direct");
 
   return (
     <CatalogDetail
@@ -989,10 +1032,47 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
 
       {entry.id === "codex" && <CodexDesktopInstallerPanel />}
 
-      <section className="fy-agent-section" aria-label="可用功能">
-        <h3>可用功能</h3>
-        <CapabilityGrid entry={entry} />
+      <section className="fy-agent-section" aria-label="支持的功能">
+        <h3>支持的功能</h3>
+        {(showModelsJump || showSkillsJump || showMcpJump || showHooksJump) && (
+          <div className="fy-agent-action-row">
+            {showModelsJump && (
+              <Button
+                className="fy-control-button-primary"
+                onClick={() => navigate(`/models?target=${modelTarget}`)}
+              >
+                配置模型
+              </Button>
+            )}
+            {showSkillsJump && (
+              <Button onClick={() => navigate("/skills")}>打开 Skills</Button>
+            )}
+            {showMcpJump && (
+              <Button onClick={() => navigate("/mcp")}>打开 MCP</Button>
+            )}
+            {showHooksJump && (
+              <Button
+                onClick={() => {
+                  const panel = document.getElementById("qoder-hooks");
+                  if (typeof panel?.scrollIntoView === "function") {
+                    panel.scrollIntoView({ block: "start" });
+                  }
+                }}
+              >
+                管理 Hooks
+              </Button>
+            )}
+          </div>
+        )}
+        <CapabilityGrid capabilities={supported} />
       </section>
+
+      {unsupported.length > 0 && (
+        <details className="fy-agent-unsupported">
+          <summary>不适用的功能（{unsupported.length}）</summary>
+          <CapabilityGrid capabilities={unsupported} />
+        </details>
+      )}
 
       <AgentObservation selectedId={entry.id} />
 
@@ -1001,22 +1081,7 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
         <ExternalMcpValidationPanel agentId={entry.id} />
       )}
 
-      {target &&
-        (modelCapability?.mode === "direct" ||
-          modelCapability?.mode === "assisted") && (
-          <div className="fy-agent-action-row">
-            <Button
-              className="fy-control-button-primary"
-              onClick={() => navigate(`/models?target=${target}`)}
-            >
-              配置模型
-            </Button>
-          </div>
-        )}
-
-      <p className="fy-agent-evidence">
-        支持 {entry.capabilities.length} 项操作
-      </p>
+      <p className="fy-agent-evidence">{catalogSummary(entry)}</p>
     </CatalogDetail>
   );
 }
@@ -1052,7 +1117,7 @@ export function AgentsPage() {
       <header className="fy-feature-header">
         <div className="fy-feature-heading">
           <h1>Agent 目录</h1>
-          <p>查看已支持的应用及可管理的功能。</p>
+          <p>查看各应用支持的功能和下一步操作。</p>
         </div>
       </header>
 

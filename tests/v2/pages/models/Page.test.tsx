@@ -75,8 +75,8 @@ function catalog(): AgentCatalogResult {
       {
         id: "trae-work",
         variantId: "trae-work-cn",
-        displayName: "TRAE Work",
-        description: "TRAE Work 官方辅助设置",
+        displayName: "TRAE Work CN",
+        description: "TRAE Work CN 官方辅助设置",
         officialLinks: [
           {
             id: "desktop",
@@ -85,8 +85,8 @@ function catalog(): AgentCatalogResult {
           },
           {
             id: "product",
-            label: "打开 TRAE Work 官方页面",
-            url: "https://work.trae.cn/",
+            label: "打开 TRAE Work CN 官方页面",
+            url: "https://www.trae.cn/sem-work",
           },
         ],
         capabilities,
@@ -126,12 +126,12 @@ describe("V2 Models page", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN模型、Hooks 和 MCP",
-      "TRAE Work测试模型连接",
+      "QoderWork CN不支持第三方模型配置",
+      "TRAE Work CN管理模型设置",
       "WorkBuddy管理模型设置",
       "Codex快速配置模型",
       "Claude Code快速配置模型",
-      "OpenCode在 OpenCode 中完成模型设置",
+      "OpenCode管理模型设置",
     ]);
 
     const expectedIcons = [
@@ -169,38 +169,34 @@ describe("V2 Models page", () => {
       await screen.findByRole("button", { name: "打开 TRAE 官方模型设置" }),
     );
     expect(ports.settings.openExternal).toHaveBeenCalledWith(
-      "https://work.trae.cn/",
+      "https://www.trae.cn/sem-work",
     );
     expect(ports.settings.openExternal).not.toHaveBeenCalledWith(
       "https://ignored.example.test/trae",
     );
   });
 
-  it("requires explicit consent, validates first, probes once, and clears the TRAE key", async () => {
+  it("fetches TRAE models without clearing the key, then saves natively and clears it", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => catalog());
-    const requestId = "123e4567-e89b-42d3-a456-426614174000";
     const secret = "TRAE-UI-SECRET-SENTINEL-814";
-    ports.traeWork.validateModelConfig = vi.fn<
-      FeaturePorts["traeWork"]["validateModelConfig"]
-    >(async () => ({
-      requestId,
-      state: "valid",
-      reasonCode: "TRAE_MODEL_CONFIG_VALID",
-      durationBucket: "lt_1s",
-      statusClass: null,
+    ports.traeWork.getModelIds = vi.fn(async () => ({
+      modelIds: [],
+      revision: "revision-1",
+      truncated: false,
     }));
-    ports.traeWork.testModelEndpoint = vi.fn<
-      FeaturePorts["traeWork"]["testModelEndpoint"]
-    >(async () => ({
-      requestId,
-      state: "reachable",
-      reasonCode: "TRAE_ENDPOINT_REACHABLE",
-      durationBucket: "1s_to_3s",
-      statusClass: "2xx",
+    ports.traeWork.fetchModels = vi.fn(async () => ({
+      models: [{ id: "model-a", ownedBy: "openai" }],
+      truncated: false,
     }));
-    ports.traeWork.cancelModelEndpoint = vi.fn();
+    ports.traeWork.saveModels = vi.fn(async () => ({
+      state: "saved" as const,
+      revision: "revision-2",
+      modelCount: 1,
+      createdEntries: 1,
+      updatedEntries: 0,
+    }));
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const errorSpy = vi
       .spyOn(console, "error")
@@ -213,30 +209,45 @@ describe("V2 Models page", () => {
       await screen.findByLabelText("服务地址"),
       "https://gateway.example.test/v1",
     );
-    await user.type(screen.getByLabelText("模型 ID"), "model-a");
     await user.type(screen.getByLabelText("API Key"), secret);
-    await user.click(screen.getByRole("checkbox", { name: "同意连接测试" }));
-    await user.click(screen.getByRole("button", { name: "测试连接" }));
-
-    const request = {
-      apiFormat: "openai_chat_completions",
-      urlMode: "base_url",
-      url: "https://gateway.example.test/v1",
-      modelId: "model-a",
-      apiKey: secret,
-      allowNoApiKey: false,
-      allowLoopback: false,
-      allowPrivateNetwork: false,
-    } as const;
+    await user.click(screen.getByRole("button", { name: "拉取模型" }));
     await waitFor(() =>
-      expect(ports.traeWork.validateModelConfig).toHaveBeenCalledWith(request),
+      expect(ports.traeWork.fetchModels).toHaveBeenCalledWith({
+        apiFormat: "openai_chat_completions",
+        urlMode: "base_url",
+        url: "https://gateway.example.test/v1",
+        apiKey: secret,
+        allowNoApiKey: false,
+        allowLoopback: false,
+        allowPrivateNetwork: false,
+      }),
     );
-    expect(ports.traeWork.testModelEndpoint).toHaveBeenCalledWith(
-      requestId,
-      request,
+    expect(screen.getByLabelText("API Key")).toHaveValue(secret);
+    expect(await screen.findByText("model-a")).toBeVisible();
+    const fetchedIcon = screen.getByText("model-a").closest("li")?.querySelector("img");
+    expect(fetchedIcon).toHaveAttribute(
+      "src",
+      expect.stringMatching(/\/src\/v2\/shared\/assets\/models\//),
     );
-    expect(await screen.findByText("连接测试通过")).toBeVisible();
-    expect(screen.getByText("请返回 TRAE 保存设置后继续使用。")).toBeVisible();
+    expect(fetchedIcon?.getAttribute("src") ?? "").not.toMatch(/^https?:/i);
+    await user.click(screen.getByRole("button", { name: "保存并应用" }));
+    await waitFor(() =>
+      expect(ports.traeWork.saveModels).toHaveBeenCalledWith({
+        apiFormat: "openai_chat_completions",
+        urlMode: "base_url",
+        url: "https://gateway.example.test/v1",
+        apiKey: secret,
+        allowNoApiKey: false,
+        allowLoopback: false,
+        allowPrivateNetwork: false,
+        selectedModelIds: ["model-a"],
+        removedModelIds: [],
+        expectedRevision: "revision-1",
+      }),
+    );
+    expect(await screen.findByText("TRAE 模型配置已保存")).toBeVisible();
+    expect(screen.queryByText("请回 TRAE 保存")).not.toBeInTheDocument();
+    expect(screen.queryByText("请返回 TRAE 保存设置后继续使用。")).not.toBeInTheDocument();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(document.body.innerHTML).not.toContain(secret);
     expect(window.location.hash).not.toContain(secret);
@@ -248,65 +259,117 @@ describe("V2 Models page", () => {
     errorSpy.mockRestore();
   });
 
-  it("cancels an active TRAE probe and clears its key before terminal completion", async () => {
+  it("fetches OpenCode models without clearing the key, then saves natively and clears it", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
-    ports.catalog.get = vi.fn(async () => catalog());
-    const requestId = "123e4567-e89b-42d3-a456-426614174000";
-    ports.traeWork.validateModelConfig = vi.fn<
-      FeaturePorts["traeWork"]["validateModelConfig"]
-    >(async () => ({
-      requestId,
-      state: "valid",
-      reasonCode: "TRAE_MODEL_CONFIG_VALID",
-      durationBucket: "lt_1s",
-      statusClass: null,
+    const secret = "OPENCODE-UI-SECRET-SENTINEL-814";
+    ports.opencodeModels.getSnapshot = vi.fn(async () => ({
+      providers: [],
+      revision: "revision-1",
     }));
-    let finishProbe!: (result: {
-      requestId: string;
-      state: "cancelled";
-      reasonCode: "TRAE_ENDPOINT_CANCELLED";
-      durationBucket: "lt_1s";
-      statusClass: null;
-    }) => void;
-    ports.traeWork.testModelEndpoint = vi.fn<
-      FeaturePorts["traeWork"]["testModelEndpoint"]
-    >(
-      () =>
-        new Promise((resolve) => {
-          finishProbe = resolve;
-        }),
-    );
-    ports.traeWork.cancelModelEndpoint = vi.fn(async () => ({
-      requestId,
-      cancelled: true,
+    ports.opencodeModels.fetchProviderModels = vi.fn(async () => ({
+      models: [{ id: "gpt-4o", ownedBy: "openai" }],
+      truncated: false,
     }));
-    renderPage(ports, "trae");
+    ports.opencodeModels.saveModels = vi.fn(async () => ({
+      state: "saved" as const,
+      revision: "revision-2",
+      modelCount: 1,
+      createdEntries: 1,
+      updatedEntries: 0,
+    }));
+    localStorage.clear();
+    sessionStorage.clear();
+    renderPage(ports, "opencode");
 
+    await user.type(await screen.findByLabelText("供应商名称"), "Gateway");
     await user.type(
-      await screen.findByLabelText("服务地址"),
+      screen.getByLabelText("服务地址"),
       "https://gateway.example.test/v1",
     );
-    await user.type(screen.getByLabelText("模型 ID"), "model-a");
-    await user.type(screen.getByLabelText("API Key"), "cancel-secret");
-    await user.click(screen.getByRole("checkbox", { name: "同意连接测试" }));
-    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await user.type(screen.getByLabelText("API Key"), secret);
+    await user.click(screen.getByRole("button", { name: "拉取模型" }));
     await waitFor(() =>
-      expect(ports.traeWork.testModelEndpoint).toHaveBeenCalledTimes(1),
+      expect(ports.opencodeModels.fetchProviderModels).toHaveBeenCalledWith({
+        baseUrl: "https://gateway.example.test/v1",
+        apiKey: secret,
+        allowNoApiKey: false,
+      }),
     );
-    await user.click(screen.getByRole("button", { name: "取消测试" }));
+    expect(screen.getByLabelText("API Key")).toHaveValue(secret);
+    expect(await screen.findByText("gpt-4o")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "保存并应用" }));
+    await waitFor(() =>
+      expect(ports.opencodeModels.saveModels).toHaveBeenCalledWith({
+        providerName: "Gateway",
+        baseUrl: "https://gateway.example.test/v1",
+        apiKey: secret,
+        selectedModelIds: ["gpt-4o"],
+        removedModelIds: [],
+        expectedRevision: "revision-1",
+      }),
+    );
+    expect(await screen.findByText("OpenCode 模型配置已保存")).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
-    expect(ports.traeWork.cancelModelEndpoint).toHaveBeenCalledWith(requestId);
+    expect(document.body.innerHTML).not.toContain(secret);
+    expect(JSON.stringify(localStorage)).not.toContain(secret);
+    expect(JSON.stringify(sessionStorage)).not.toContain(secret);
+  });
 
-    finishProbe({
-      requestId,
-      state: "cancelled",
-      reasonCode: "TRAE_ENDPOINT_CANCELLED",
-      durationBucket: "lt_1s",
-      statusClass: null,
-    });
-    expect(await screen.findByText("连接测试已取消")).toBeVisible();
-    expect(document.body.innerHTML).not.toContain("cancel-secret");
+  it("fetches Claude models as chips with local icons then saves the selected id", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    const secret = "CLAUDE-UI-SECRET-SENTINEL-814";
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {},
+      currentId: "",
+    }));
+    ports.providers.fetchModels = vi.fn(async () => [
+      { id: "claude-sonnet-4", ownedBy: "anthropic" },
+    ]);
+    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
+      value: { warnings: [] },
+      liveConfigChanged: true,
+      app: "claude" as const,
+    }));
+    renderPage(ports, "claude");
+
+    await screen.findByRole("heading", { name: "Claude Code" });
+    await user.clear(screen.getByLabelText("配置名称"));
+    await user.type(screen.getByLabelText("配置名称"), "Claude Gateway");
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://claude.example.test/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), secret);
+    await user.click(screen.getByRole("button", { name: "拉取模型" }));
+    expect(await screen.findByText("claude-sonnet-4")).toBeVisible();
+    const chipIcon = screen
+      .getByText("claude-sonnet-4")
+      .closest("li")
+      ?.querySelector("img");
+    expect(chipIcon).toHaveAttribute(
+      "src",
+      expect.stringMatching(/\/src\/v2\/shared\/assets\/models\//),
+    );
+    expect(chipIcon?.getAttribute("src") ?? "").not.toMatch(/^https?:/i);
+    await user.click(screen.getByRole("button", { name: "claude-sonnet-4" }));
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
+    await waitFor(() =>
+      expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Claude Gateway",
+          baseUrl: "https://claude.example.test/v1",
+          apiKey: secret,
+          modelId: "claude-sonnet-4",
+        }),
+        "claude",
+      ),
+    );
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(document.body.innerHTML).not.toContain(secret);
   });
 
   it("keeps the WorkBuddy save action in the sticky panel heading", async () => {
@@ -1160,14 +1223,14 @@ describe("V2 Models page", () => {
     sessionStorage.clear();
     const view = renderPage(ports, "trae");
 
-    await screen.findByRole("region", { name: "TRAE Work 模型连接测试" });
+    await screen.findByRole("region", { name: "TRAE Work CN 模型设置" });
     const keyInput = screen.getByLabelText("API Key");
     expect(keyInput).toHaveAttribute("type", "password");
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://trae.example/v1",
     );
-    await user.type(screen.getByLabelText("模型 ID"), "model-keep");
+    await user.type(screen.getByLabelText("自定义模型 ID"), "model-keep");
     await user.type(keyInput, "target-only-secret");
 
     await user.click(screen.getByTestId("model-target-qoderwork"));
@@ -1179,7 +1242,7 @@ describe("V2 Models page", () => {
     expect(await screen.findByLabelText("服务地址")).toHaveValue(
       "https://trae.example/v1",
     );
-    expect(screen.getByLabelText("模型 ID")).toHaveValue("model-keep");
+    expect(screen.getByLabelText("自定义模型 ID")).toHaveValue("model-keep");
     expect(screen.getByLabelText("API Key")).toHaveValue("target-only-secret");
     expect(JSON.stringify(localStorage)).not.toContain("target-only-secret");
     expect(JSON.stringify(sessionStorage)).not.toContain("target-only-secret");

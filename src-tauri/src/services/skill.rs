@@ -642,6 +642,7 @@ impl SkillService {
         match target {
             SkillTargetId::QoderWork => Ok(home.join(".qoderwork").join("skills")),
             SkillTargetId::TraeWork => Ok(home.join(".trae-cn").join("skills")),
+            SkillTargetId::WorkBuddy => Ok(home.join(".workbuddy").join("skills")),
             _ => Self::get_app_skills_dir(&AppType::try_from(target)?),
         }
     }
@@ -2105,7 +2106,8 @@ impl SkillService {
             .ok_or_else(|| anyhow!("Invalid Vendor Skill destination"))?;
         let qoder = trusted_home.join(".qoderwork").join("skills");
         let trae = trusted_home.join(".trae-cn").join("skills");
-        if parent != qoder && parent != trae {
+        let workbuddy = trusted_home.join(".workbuddy").join("skills");
+        if parent != qoder && parent != trae && parent != workbuddy {
             return Err(anyhow!("Vendor Skill destination is outside trusted home"));
         }
 
@@ -5418,6 +5420,11 @@ mod tests {
             SkillService::get_target_skills_dir(&SkillTargetId::TraeWork)
                 .expect("resolve TRAE Work skills dir"),
             temp.path().join(".trae-cn").join("skills")
+        );
+        assert_eq!(
+            SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+                .expect("resolve WorkBuddy skills dir"),
+            temp.path().join(".workbuddy").join("skills")
         );
     }
 

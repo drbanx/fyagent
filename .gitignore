@@ -29,6 +29,7 @@ vitest-report.json
 nul
 
 .worktrees/
+.workbuddy/
 .spec-workflow/
 copilot-api
 .history

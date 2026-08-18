@@ -124,6 +124,13 @@ export function splitWorkBuddyDraft(
   return { selectedModelIds, manualModelIds };
 }
 
+export function nativeErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return null;
+  }
+  return typeof error.code === "string" ? error.code : null;
+}
+
 export function filterModelIds(
   ids: readonly string[],
   query: string,

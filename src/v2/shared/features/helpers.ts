@@ -1,10 +1,11 @@
 import { mcpUrlSearchToken, redactMcpArgs } from "./mcpSecurity";
-import type {
-  DiscoverableSkill,
-  InstalledSkill,
-  McpServer,
-  McpServerSpec,
-  SkillTargetId,
+import {
+  SKILL_TARGET_IDS,
+  type DiscoverableSkill,
+  type InstalledSkill,
+  type McpServer,
+  type McpServerSpec,
+  type SkillTargetId,
 } from "./types";
 
 function rawErrorMessage(error: unknown): string {
@@ -32,16 +33,17 @@ export function isNativeOnlyError(error: unknown): boolean {
 export function sanitizeMcpConfigurationError(error: unknown): string {
   const message = rawErrorMessage(error);
   const importConflict = message.match(
-    /配置冲突；未合并 (claude|codex|gemini|grokbuild|opencode|hermes) 分配/i,
+    /配置冲突；未合并 (claude|codex|gemini|grokbuild|opencode|hermes|workbuddy) 分配/i,
   );
   if (importConflict) {
     const appLabels: Record<string, string> = {
-      claude: "Claude",
+      claude: "Claude Code",
       codex: "Codex",
       gemini: "Gemini",
       grokbuild: "Grok Build",
       opencode: "OpenCode",
       hermes: "Hermes",
+      workbuddy: "WorkBuddy",
     };
     const appLabel = appLabels[importConflict[1].toLocaleLowerCase()];
     return `检测到同名 MCP 服务器的配置冲突，未合并 ${appLabel} 分配；请统一两端配置或更改服务器 ID`;
@@ -257,14 +259,5 @@ export async function runSequentialBulk<T>(
 
 export function supportedFoundIn(foundIn: readonly string[]): SkillTargetId[] {
   const normalized = new Set(foundIn.map((value) => value.toLowerCase()));
-  return [
-    "claude",
-    "codex",
-    "gemini",
-    "grokbuild",
-    "opencode",
-    "hermes",
-    "qoderwork",
-    "trae-work",
-  ].filter((id): id is SkillTargetId => normalized.has(id));
+  return SKILL_TARGET_IDS.filter((id) => normalized.has(id));
 }

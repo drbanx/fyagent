@@ -49,16 +49,10 @@ export async function installRichTauriFeatureFixture(
   await page.addInitScript((fixtureOptions: RichFeatureFixtureOptions) => {
     const mcpAssignments = (enabled: string[]) =>
       Object.fromEntries(
-        [
-          "claude",
-          "codex",
-          "gemini",
-          "grokbuild",
-          "opencode",
-          "hermes",
-          "claude-desktop",
-          "openclaw",
-        ].map((id) => [id, enabled.includes(id)]),
+        ["claude", "codex", "opencode", "workbuddy"].map((id) => [
+          id,
+          enabled.includes(id),
+        ]),
       );
     const skillAssignments = (enabled: string[]): Record<string, boolean> => ({
       ...mcpAssignments(enabled),
@@ -75,7 +69,7 @@ export async function installRichTauriFeatureFixture(
         repoName: "skills",
         repoBranch: "main",
         readmeUrl: "https://example.test/review-companion",
-        apps: skillAssignments(["claude", "gemini"]),
+        apps: skillAssignments(["claude", "opencode"]),
         installedAt: 1_700_000_000,
         contentHash: "fixture-local-hash",
         updatedAt: 1_700_000_100,
@@ -121,7 +115,7 @@ export async function installRichTauriFeatureFixture(
             Authorization: "Bearer synthetic-header-never-render",
           },
         },
-        apps: mcpAssignments(["gemini"]),
+        apps: mcpAssignments(["workbuddy"]),
       },
     };
     const capabilityIds = [
@@ -175,13 +169,13 @@ export async function installRichTauriFeatureFixture(
         {
           id: "trae-work",
           variantId: "trae-work-cn",
-          displayName: "TRAE Work",
-          description: "TRAE 的多端工作助手；当前仅提供官方入口。",
+          displayName: "TRAE Work CN",
+          description: "支持 Skills 同步、模型配置与 MCP 检查；不支持 Hooks。",
           officialLinks: [
             {
               id: "product",
-              label: "打开 TRAE Work 官方页面",
-              url: "https://work.trae.cn/",
+              label: "打开 TRAE Work CN 官方页面",
+              url: "https://www.trae.cn/sem-work",
             },
           ],
           capabilities: catalogCapabilities("trae-work"),
@@ -190,7 +184,7 @@ export async function installRichTauriFeatureFixture(
           id: "workbuddy",
           variantId: "workbuddy",
           displayName: "WorkBuddy",
-          description: "可通过 FyAgent 读取并保存受限的模型配置。",
+          description: "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
           officialLinks: [
             {
               id: "product",
@@ -204,8 +198,7 @@ export async function installRichTauriFeatureFixture(
           id: "codex",
           variantId: "codex",
           displayName: "Codex",
-          description:
-            "可通过 FyAgent 安装或更新 Codex Desktop，并管理受限的 Provider 配置。",
+          description: "支持桌面安装、Skills、模型配置与 MCP；不支持 Hooks。",
           officialLinks: [],
           capabilities: catalogCapabilities("codex"),
         },
@@ -213,7 +206,7 @@ export async function installRichTauriFeatureFixture(
           id: "claude-code",
           variantId: "claude-code",
           displayName: "Claude Code",
-          description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
+          description: "支持 Skills、模型配置与 MCP；不支持 Hooks。",
           officialLinks: [
             {
               id: "cli",
@@ -232,7 +225,7 @@ export async function installRichTauriFeatureFixture(
           id: "opencode",
           variantId: "opencode",
           displayName: "OpenCode",
-          description: "请在 OpenCode 中完成模型设置。",
+          description: "支持 Skills、模型配置与 MCP；不支持 Hooks。",
           officialLinks: [
             {
               id: "product",
@@ -458,6 +451,36 @@ export async function installRichTauriFeatureFixture(
             };
           case "cancel_traework_model_endpoint":
             return { requestId: payload.requestId, cancelled: true };
+          case "get_traework_model_ids":
+            return { modelIds: [], revision: "fixture-trae-revision", truncated: false };
+          case "fetch_traework_models":
+            return {
+              models: [{ id: "fixture-model", ownedBy: "openai" }],
+              truncated: false,
+            };
+          case "save_traework_models":
+            return {
+              state: "saved",
+              revision: "fixture-trae-revision-2",
+              modelCount: 1,
+              createdEntries: 1,
+              updatedEntries: 0,
+            };
+          case "get_opencode_model_snapshot":
+            return { providers: [], revision: null };
+          case "fetch_opencode_provider_models":
+            return {
+              models: [{ id: "fixture-opencode-model" }],
+              truncated: false,
+            };
+          case "save_opencode_models":
+            return {
+              state: "saved",
+              revision: "fixture-opencode-revision",
+              modelCount: 1,
+              createdEntries: 1,
+              updatedEntries: 0,
+            };
           case "codex_desktop_get_local_status":
             return structuredClone(installerLocal);
           case "codex_desktop_check_latest":

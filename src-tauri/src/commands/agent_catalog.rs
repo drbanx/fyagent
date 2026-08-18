@@ -7,7 +7,7 @@ use crate::services::external_agents::{
 };
 
 const AGENT_CATALOG_CONTRACT_VERSION: u16 = 3;
-const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-17";
+const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-18";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -83,8 +83,8 @@ const QODERWORK_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
 
 const TRAE_WORK_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
     AgentOfficialLinkId::Product,
-    "打开 TRAE Work 官方页面",
-    "https://work.trae.cn/",
+    "打开 TRAE Work CN 官方页面",
+    "https://www.trae.cn/sem-work",
 )];
 
 const WORKBUDDY_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
@@ -276,8 +276,8 @@ const TRAE_WORK_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
     capability(
         AgentCapabilityId::ModelsWrite,
-        AgentCapabilityMode::Assisted,
-        AgentCapabilityReasonCode::VendorUiRequired,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::DedicatedNativeContract,
         TRAE_MODELS_EVIDENCE,
     ),
     capability(
@@ -315,15 +315,15 @@ const WORKBUDDY_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
     capability(
         AgentCapabilityId::SkillsRead,
-        AgentCapabilityMode::Unsupported,
-        AgentCapabilityReasonCode::CapabilityNotApplicable,
-        P0_SCOPE_EVIDENCE,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentSkillSynchronization,
+        SKILL_SERVICE_EVIDENCE,
     ),
     capability(
         AgentCapabilityId::SkillsWrite,
-        AgentCapabilityMode::Unsupported,
-        AgentCapabilityReasonCode::CapabilityNotApplicable,
-        P0_SCOPE_EVIDENCE,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentSkillSynchronization,
+        SKILL_SERVICE_EVIDENCE,
     ),
     capability(
         AgentCapabilityId::HooksRead,
@@ -351,15 +351,15 @@ const WORKBUDDY_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
     capability(
         AgentCapabilityId::McpValidate,
-        AgentCapabilityMode::Unsupported,
-        AgentCapabilityReasonCode::CapabilityNotApplicable,
-        P0_SCOPE_EVIDENCE,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentMcpValidation,
+        MCP_SERVICE_EVIDENCE,
     ),
     capability(
         AgentCapabilityId::McpWrite,
-        AgentCapabilityMode::Unsupported,
-        AgentCapabilityReasonCode::CapabilityNotApplicable,
-        P0_SCOPE_EVIDENCE,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::DedicatedNativeContract,
+        MCP_SERVICE_EVIDENCE,
     ),
 ];
 
@@ -552,8 +552,8 @@ const OPENCODE_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
     capability(
         AgentCapabilityId::ModelsWrite,
-        AgentCapabilityMode::Assisted,
-        AgentCapabilityReasonCode::VendorUiRequired,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::DedicatedNativeContract,
         OPENCODE_MODELS_EVIDENCE,
     ),
     capability(
@@ -575,15 +575,17 @@ const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
         id: AgentCatalogId::QoderWork,
         variant_id: AgentVariantId::QoderWorkCn,
         display_name: "QoderWork CN",
-        description: "支持 Skills 同步与 Hooks 配置；本机识别和启动仍待可信身份验证。",
+        description:
+            "支持 Skills 同步与 Hooks 配置；不支持第三方模型配置。本机识别和启动暂无法确认。",
         official_links: &QODERWORK_OFFICIAL_LINKS,
         capabilities: &QODERWORK_CAPABILITIES,
     },
     AgentCatalogEntry {
         id: AgentCatalogId::TraeWork,
         variant_id: AgentVariantId::TraeWorkCn,
-        display_name: "TRAE Work",
-        description: "支持 Skills 同步、模型连接和 MCP 配置预检；不写入厂商私有配置。",
+        display_name: "TRAE Work CN",
+        description:
+            "支持 Skills 同步、模型配置与 MCP 检查；不支持 Hooks。本机识别和启动暂无法确认。",
         official_links: &TRAE_WORK_OFFICIAL_LINKS,
         capabilities: &TRAE_WORK_CAPABILITIES,
     },
@@ -591,7 +593,8 @@ const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
         id: AgentCatalogId::WorkBuddy,
         variant_id: AgentVariantId::WorkBuddy,
         display_name: "WorkBuddy",
-        description: "可通过 FyAgent 读取并保存受限的模型配置。",
+        description:
+            "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。本机识别和启动暂无法确认。",
         official_links: &WORKBUDDY_OFFICIAL_LINKS,
         capabilities: &WORKBUDDY_CAPABILITIES,
     },
@@ -599,7 +602,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
         id: AgentCatalogId::Codex,
         variant_id: AgentVariantId::Codex,
         display_name: "Codex",
-        description: "可通过 FyAgent 安装或更新 Codex Desktop，并管理受限的 Provider 配置。",
+        description: "支持桌面安装、Skills、模型配置与 MCP；不支持 Hooks。",
         official_links: &[],
         capabilities: &CODEX_CAPABILITIES,
     },
@@ -607,7 +610,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
         id: AgentCatalogId::ClaudeCode,
         variant_id: AgentVariantId::ClaudeCode,
         display_name: "Claude Code",
-        description: "可通过 FyAgent Provider 管理进行受限的模型配置。",
+        description: "支持 Skills、模型配置与 MCP；不支持 Hooks。本机识别和启动暂无法确认。",
         official_links: &CLAUDE_OFFICIAL_LINKS,
         capabilities: &CLAUDE_CODE_CAPABILITIES,
     },
@@ -615,7 +618,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
         id: AgentCatalogId::OpenCode,
         variant_id: AgentVariantId::OpenCode,
         display_name: "OpenCode",
-        description: "支持 Skills 同步与 MCP 配置；模型设置请在 OpenCode 中完成。",
+        description: "支持 Skills、模型配置与 MCP；不支持 Hooks。本机识别和启动暂无法确认。",
         official_links: &OPENCODE_OFFICIAL_LINKS,
         capabilities: &OPENCODE_CAPABILITIES,
     },
@@ -684,7 +687,7 @@ mod tests {
         let catalog = get_agent_catalog();
 
         assert_eq!(catalog.contract_version, 3);
-        assert_eq!(catalog.reviewed_at, "2026-08-17");
+        assert_eq!(catalog.reviewed_at, "2026-08-18");
         assert_eq!(
             catalog
                 .agents
@@ -700,7 +703,7 @@ mod tests {
                 (
                     AgentCatalogId::TraeWork,
                     AgentVariantId::TraeWorkCn,
-                    "TRAE Work",
+                    "TRAE Work CN",
                 ),
                 (
                     AgentCatalogId::WorkBuddy,
@@ -769,7 +772,7 @@ mod tests {
                 AgentCapabilityMode::Unsupported,
                 AgentCapabilityMode::Unsupported,
                 AgentCapabilityMode::Direct,
-                AgentCapabilityMode::Assisted,
+                AgentCapabilityMode::Direct,
                 AgentCapabilityMode::Direct,
                 AgentCapabilityMode::Assisted,
             ]
@@ -866,7 +869,7 @@ mod tests {
                     TRAE_MODELS_EVIDENCE,
                 ),
                 (
-                    AgentCapabilityReasonCode::VendorUiRequired,
+                    AgentCapabilityReasonCode::DedicatedNativeContract,
                     TRAE_MODELS_EVIDENCE,
                 ),
                 (
@@ -878,6 +881,58 @@ mod tests {
                     TRAE_MCP_EVIDENCE,
                 ),
             ]
+        );
+        let workbuddy = &catalog.agents[2];
+        assert_eq!(
+            workbuddy
+                .capabilities
+                .iter()
+                .map(|capability| capability.mode)
+                .collect::<Vec<_>>(),
+            [
+                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Unverified,
+                AgentCapabilityMode::Unverified,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityMode::Unsupported,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Direct,
+            ]
+        );
+        assert_eq!(workbuddy.capabilities[3].id, AgentCapabilityId::SkillsRead);
+        assert_eq!(workbuddy.capabilities[4].id, AgentCapabilityId::SkillsWrite);
+        assert_eq!(workbuddy.capabilities[9].id, AgentCapabilityId::McpValidate);
+        assert_eq!(workbuddy.capabilities[10].id, AgentCapabilityId::McpWrite);
+        assert!(workbuddy.description.contains("支持 Skills 同步"));
+        assert!(workbuddy.description.contains("MCP 直接分配"));
+        assert_eq!(trae.display_name, "TRAE Work CN");
+        assert_eq!(trae.official_links[0].label, "打开 TRAE Work CN 官方页面");
+        assert_eq!(trae.official_links[0].url, "https://www.trae.cn/sem-work");
+        assert!(qoder.description.contains("不支持第三方模型配置"));
+        for entry in &catalog.agents {
+            assert!(
+                !entry.description.contains("可通过 FyAgent"),
+                "{} must not use 可通过 FyAgent",
+                entry.display_name
+            );
+            assert!(
+                !entry.description.contains("可在 FyAgent"),
+                "{} must not use 可在 FyAgent",
+                entry.display_name
+            );
+        }
+        assert_eq!(
+            catalog.agents[5].capabilities[8],
+            capability(
+                AgentCapabilityId::ModelsWrite,
+                AgentCapabilityMode::Direct,
+                AgentCapabilityReasonCode::DedicatedNativeContract,
+                OPENCODE_MODELS_EVIDENCE,
+            )
         );
         assert!(codex.official_links.is_empty());
         assert_eq!(
@@ -928,7 +983,7 @@ mod tests {
         let value = serde_json::to_value(get_agent_catalog()).expect("catalog serializes");
 
         assert_eq!(value["contractVersion"], 3);
-        assert_eq!(value["reviewedAt"], "2026-08-17");
+        assert_eq!(value["reviewedAt"], "2026-08-18");
         assert_eq!(
             sorted_object_keys(&value),
             ["agents", "contractVersion", "reviewedAt"]
@@ -1082,7 +1137,7 @@ mod tests {
             })
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(registered.len(), 327, "review intentional handler changes");
+        assert_eq!(registered.len(), 333, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

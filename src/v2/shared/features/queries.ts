@@ -10,6 +10,8 @@ export const featureKeys = {
     ["v2", "providers", app, "summary"] as const,
   workbuddyStatus: ["v2", "workbuddy", "status"] as const,
   workbuddyModelIds: ["v2", "workbuddy", "model-ids"] as const,
+  traeWorkModelIds: ["v2", "trae-work", "model-ids"] as const,
+  openCodeModelSnapshot: ["v2", "opencode", "model-snapshot"] as const,
   skills: ["v2", "skills", "installed"] as const,
   skillBackups: ["v2", "skills", "backups"] as const,
   skillRepos: ["v2", "skills", "repos"] as const,
@@ -63,6 +65,24 @@ export function useWorkBuddyModelIds(enabled = true) {
   return useQuery({
     queryKey: featureKeys.workbuddyModelIds,
     queryFn: ports.workbuddy.getModelIds,
+    enabled,
+  });
+}
+
+export function useTraeWorkModelIds(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.traeWorkModelIds,
+    queryFn: ports.traeWork.getModelIds,
+    enabled,
+  });
+}
+
+export function useOpenCodeModelSnapshot(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.openCodeModelSnapshot,
+    queryFn: ports.opencodeModels.getSnapshot,
     enabled,
   });
 }

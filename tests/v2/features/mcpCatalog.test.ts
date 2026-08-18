@@ -139,10 +139,8 @@ describe("MCP curated catalog", () => {
       JSON.stringify({
         claude: true,
         codex: true,
-        gemini: true,
-        grokbuild: true,
-        opencode: false,
-        hermes: false,
+        opencode: true,
+        workbuddy: true,
       }),
     );
   });

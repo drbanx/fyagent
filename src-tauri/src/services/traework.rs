@@ -75,7 +75,7 @@ pub enum TraeUrlMode {
     CompleteUrl,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TraeModelConfigRequest {
     api_format: TraeApiFormat,
@@ -219,6 +219,20 @@ pub enum TraeErrorCode {
     McpInvalidServer,
     #[serde(rename = "TRAE_MCP_INVALID_TRANSPORT")]
     McpInvalidTransport,
+    #[serde(rename = "TRAE_MODELS_STORE_UNAVAILABLE")]
+    ModelsStoreUnavailable,
+    #[serde(rename = "TRAE_MODELS_WRITE_FAILED")]
+    ModelsWriteFailed,
+    #[serde(rename = "TRAE_MODELS_BACKUP_FAILED")]
+    ModelsBackupFailed,
+    #[serde(rename = "TRAE_MODELS_NO_TARGET")]
+    ModelsNoTarget,
+    #[serde(rename = "TRAE_OVERWRITE_TOKEN_INVALID")]
+    OverwriteTokenInvalid,
+    #[serde(rename = "TRAE_OVERWRITE_TOKEN_EXPIRED")]
+    OverwriteTokenExpired,
+    #[serde(rename = "TRAE_SAVE_PROBE_REJECTED")]
+    SaveProbeRejected,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -227,12 +241,37 @@ pub struct TraeErrorDto {
 }
 
 impl TraeErrorDto {
-    const fn new(code: TraeErrorCode) -> Self {
+    pub(crate) const fn new(code: TraeErrorCode) -> Self {
         Self { code }
     }
 }
 
-struct ValidatedModelRequest {
+impl TraeModelConfigRequest {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_connection(
+        api_format: TraeApiFormat,
+        url_mode: TraeUrlMode,
+        url: String,
+        model_id: String,
+        api_key: String,
+        allow_no_api_key: bool,
+        allow_loopback: bool,
+        allow_private_network: bool,
+    ) -> Self {
+        Self {
+            api_format,
+            url_mode,
+            url,
+            model_id,
+            api_key: TraeSecret(api_key),
+            allow_no_api_key,
+            allow_loopback,
+            allow_private_network,
+        }
+    }
+}
+
+pub(crate) struct ValidatedModelRequest {
     api_format: TraeApiFormat,
     endpoint: Url,
     model_id: String,
@@ -256,7 +295,7 @@ pub fn validate_traework_model_config(
     })
 }
 
-fn validate_model_request(
+pub(crate) fn validate_model_request(
     request: TraeModelConfigRequest,
 ) -> Result<ValidatedModelRequest, TraeErrorDto> {
     if request.url.is_empty()

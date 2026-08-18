@@ -14,7 +14,7 @@ import {
 
 const agentOrder = [
   "QoderWork CN",
-  "TRAE Work",
+  "TRAE Work CN",
   "WorkBuddy",
   "Codex",
   "Claude Code",
@@ -23,7 +23,7 @@ const agentOrder = [
 
 const modelTargetOrder = [
   "QoderWork CN",
-  "TRAE Work",
+  "TRAE Work CN",
   "WorkBuddy",
   "Codex",
   "Claude Code",
@@ -31,7 +31,7 @@ const modelTargetOrder = [
 ] as const;
 
 const modelTargetIconSources = [
-  "qoderwork.svg",
+  "qoderwork.png",
   "trae-work.png",
   "workbuddy.png",
   "inline-svg",
@@ -115,9 +115,9 @@ test("Agent catalog keeps exact native order and accessible master-detail select
   await page.keyboard.press("Enter");
   await expect(items.nth(1)).toHaveAttribute("aria-current", "true");
   await expect(
-    page.getByRole("region", { name: "TRAE Work 详情" }),
+    page.getByRole("region", { name: "TRAE Work CN 详情" }),
   ).toBeVisible();
-  const traeDetail = page.getByRole("region", { name: "TRAE Work 详情" });
+  const traeDetail = page.getByRole("region", { name: "TRAE Work CN 详情" });
   const traeDetailFrame = traeDetail.locator('[data-size="detail"]');
   expect(
     await traeDetailFrame.evaluate((frame) => {
@@ -300,13 +300,13 @@ test("Agent catalog links invoke exact official URLs and Codex has no external a
     .getByRole("button", { name: "打开 QoderWork 官方页面" })
     .click();
 
-  await agentItem(page, "TRAE Work").click();
-  const traeDetail = page.getByRole("region", { name: "TRAE Work 详情" });
+  await agentItem(page, "TRAE Work CN").click();
+  const traeDetail = page.getByRole("region", { name: "TRAE Work CN 详情" });
   await expect(
     traeDetail.getByRole("button", { name: "启动应用" }),
   ).toHaveCount(0);
   await traeDetail
-    .getByRole("button", { name: "打开 TRAE Work 官方页面" })
+    .getByRole("button", { name: "打开 TRAE Work CN 官方页面" })
     .click();
 
   await agentItem(page, "WorkBuddy").click();
@@ -345,7 +345,7 @@ test("Agent catalog links invoke exact official URLs and Codex has no external a
       },
       {
         command: "open_external",
-        payload: { url: "https://work.trae.cn/" },
+        payload: { url: "https://www.trae.cn/sem-work" },
       },
       {
         command: "open_external",
@@ -572,7 +572,7 @@ test("Agent catalog failure stays explicit and never falls back to a static supp
   await expectHealthyPage(page, health);
 });
 
-test("Models keeps six targets and runs only the bounded TRAE preflight", async ({
+test("Models keeps six targets and saves TRAE models natively", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
@@ -626,18 +626,21 @@ test("Models keeps six targets and runs only the bounded TRAE preflight", async 
   ).toBeVisible();
 
   await page.getByTestId("model-target-qoderwork").click();
-  await expect(modelPage).toContainText("在 QoderWork 中完成模型设置");
+  await expect(modelPage).toContainText("不支持第三方模型配置");
   await page.getByRole("button", { name: "打开官方设置" }).click();
   await page.getByTestId("model-target-trae").click();
   const apiKey = "browser-trae-secret-sentinel";
   await page
     .getByRole("textbox", { name: "服务地址" })
     .fill("https://gateway.example.test/v1");
-  await page.getByLabel("模型 ID").fill("fixture-model");
   await page.getByRole("textbox", { name: "API Key" }).fill(apiKey);
-  await page.getByRole("checkbox", { name: "同意连接测试" }).click();
-  await page.getByRole("button", { name: "测试连接" }).click();
-  await expect(page.getByText("连接测试通过")).toBeVisible();
+  await page.getByRole("button", { name: "拉取模型" }).click();
+  await expect(page.getByText("fixture-model")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "API Key" })).toHaveValue(
+    apiKey,
+  );
+  await page.getByRole("button", { name: "保存并应用" }).click();
+  await expect(page.getByText("TRAE 模型配置已保存")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "API Key" })).toHaveValue("");
   await expect(page.locator("body")).not.toContainText(apiKey);
   await page.getByRole("button", { name: "打开 TRAE 官方模型设置" }).click();
@@ -659,14 +662,14 @@ test("Models keeps six targets and runs only the bounded TRAE preflight", async 
     },
     {
       command: "open_external",
-      payload: { url: "https://work.trae.cn/" },
+      payload: { url: "https://www.trae.cn/sem-work" },
     },
   ]);
   expect(
-    calls.filter((call) => call.command === "validate_traework_model_config"),
+    calls.filter((call) => call.command === "fetch_traework_models"),
   ).toHaveLength(1);
   expect(
-    calls.filter((call) => call.command === "test_traework_model_endpoint"),
+    calls.filter((call) => call.command === "save_traework_models"),
   ).toHaveLength(1);
   expect(
     calls.filter((call) =>
@@ -674,6 +677,7 @@ test("Models keeps six targets and runs only the bounded TRAE preflight", async 
         "apply_provider_quick_setup_with_result",
         "switch_provider_with_result",
         "save_workbuddy_models",
+        "test_traework_model_endpoint",
       ].includes(call.command),
     ),
   ).toEqual([]);

@@ -52,6 +52,9 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       validateModelConfig: rejectNativeOnly,
       testModelEndpoint: rejectNativeOnly,
       cancelModelEndpoint: rejectNativeOnly,
+      getModelIds: rejectNativeOnly,
+      fetchModels: rejectNativeOnly,
+      saveModels: rejectNativeOnly,
     },
     codexDesktop: {
       getLocalStatus: rejectNativeOnly,
@@ -66,11 +69,17 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     providers: {
       getSummary: rejectNativeOnly,
       applyQuickSetupWithResult: rejectNativeOnly,
+      fetchModels: rejectNativeOnly,
     },
     workbuddy: {
       getStatus: rejectNativeOnly,
       getModelIds: rejectNativeOnly,
       fetchModels: rejectNativeOnly,
+      saveModels: rejectNativeOnly,
+    },
+    opencodeModels: {
+      getSnapshot: rejectNativeOnly,
+      fetchProviderModels: rejectNativeOnly,
       saveModels: rejectNativeOnly,
     },
     skills: {

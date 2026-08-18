@@ -331,10 +331,12 @@ impl DownloadedArtifact {
         &self.path
     }
 
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn actual_size(&self) -> u64 {
         self.size
     }
 
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn local_sha256(&self) -> &str {
         &self.sha256
     }

@@ -293,6 +293,33 @@
   overflow-wrap: anywhere;
 }
 
+.fy-agent-unsupported {
+  min-width: 0;
+  border: 1px solid var(--fy-border);
+  border-radius: 11px;
+  background: rgba(226, 243, 255, 0.04);
+}
+
+.fy-agent-unsupported > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-agent-unsupported > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fy-agent-unsupported[open] > summary {
+  border-bottom: 1px solid var(--fy-border);
+}
+
+.fy-agent-unsupported .fy-agent-capabilities {
+  padding: 9px;
+}
+
 .fy-agent-hooks-editor,
 .fy-agent-hook-group,
 .fy-agent-hooks-preview,

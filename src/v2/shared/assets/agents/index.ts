@@ -1,7 +1,7 @@
 import claudeCodeIconUrl from "./claude-code.svg";
 import codexIconUrl from "./codex.svg";
 import openCodeIconUrl from "./opencode.svg";
-import qoderWorkIconUrl from "./qoderwork.svg";
+import qoderWorkIconUrl from "./qoderwork.png";
 import traeWorkIconUrl from "./trae-work.png";
 import workBuddyIconUrl from "./workbuddy.png";
 

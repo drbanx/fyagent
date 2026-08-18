@@ -1476,6 +1476,14 @@ pub fn run() {
                     Ok(_) => log::debug!("○ No Hermes MCP servers found to import"),
                     Err(e) => log::warn!("✗ Failed to import Hermes MCP: {e}"),
                 }
+
+                match crate::services::mcp::McpService::import_from_workbuddy(&app_state) {
+                    Ok(count) if count > 0 => {
+                        log::info!("✓ Imported {count} MCP server(s) from WorkBuddy");
+                    }
+                    Ok(_) => log::debug!("○ No WorkBuddy MCP servers found to import"),
+                    Err(e) => log::warn!("✗ Failed to import WorkBuddy MCP: {e}"),
+                }
             }
 
             // 4. 导入提示词文件（表空时触发）
@@ -1823,6 +1831,9 @@ pub fn run() {
             commands::validate_traework_model_config,
             commands::test_traework_model_endpoint,
             commands::cancel_traework_model_endpoint,
+            commands::get_traework_model_ids,
+            commands::fetch_traework_models,
+            commands::save_traework_models,
             commands::validate_external_mcp_config,
             commands::get_providers,
             commands::get_current_provider,
@@ -1935,6 +1946,9 @@ pub fn run() {
             // model list fetch (OpenAI-compatible /v1/models)
             commands::fetch_models_for_config,
             commands::get_opencode_models,
+            commands::get_opencode_model_snapshot,
+            commands::fetch_opencode_provider_models,
+            commands::save_opencode_models,
             // ours: endpoint speed test + custom endpoint management
             commands::test_api_endpoints,
             commands::get_custom_endpoints,

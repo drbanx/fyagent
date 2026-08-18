@@ -44,6 +44,16 @@ import type {
   TraeModelValidationResult,
   TraeModelProbeResult,
   CancelTraeModelProbeResult,
+  TraeWorkFetchModelsRequest,
+  TraeWorkModelIdsResult,
+  TraeWorkSaveModelsRequest,
+  TraeWorkSaveModelsResult,
+  FetchedModelList,
+  FetchedModelRef,
+  OpenCodeFetchModelsRequest,
+  OpenCodeModelSnapshot,
+  OpenCodeSaveModelsRequest,
+  OpenCodeSaveModelsResult,
   DailyMemoryFileInfo,
   DailyMemorySearchResult,
   HermesMemoryKind,
@@ -89,6 +99,13 @@ export interface TraeWorkPort {
     request: TraeWorkModelRequest,
   ): Promise<TraeModelProbeResult>;
   cancelModelEndpoint(requestId: string): Promise<CancelTraeModelProbeResult>;
+  getModelIds(): Promise<TraeWorkModelIdsResult>;
+  fetchModels(
+    request: TraeWorkFetchModelsRequest,
+  ): Promise<FetchedModelList>;
+  saveModels(
+    request: TraeWorkSaveModelsRequest,
+  ): Promise<TraeWorkSaveModelsResult>;
 }
 
 export interface CodexDesktopPort {
@@ -110,6 +127,7 @@ export interface ProvidersPort {
     request: ProviderQuickSetupRequest,
     app: ProviderAppId,
   ): Promise<ProviderMutationResult<ProviderSwitchResult>>;
+  fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
 }
 
 export interface WorkBuddyPort {
@@ -121,6 +139,16 @@ export interface WorkBuddyPort {
   saveModels(
     request: WorkBuddySaveModelsRequest,
   ): Promise<WorkBuddySaveModelsResult>;
+}
+
+export interface OpenCodeModelsPort {
+  getSnapshot(): Promise<OpenCodeModelSnapshot>;
+  fetchProviderModels(
+    request: OpenCodeFetchModelsRequest,
+  ): Promise<FetchedModelList>;
+  saveModels(
+    request: OpenCodeSaveModelsRequest,
+  ): Promise<OpenCodeSaveModelsResult>;
 }
 
 export interface SkillsPort {
@@ -207,6 +235,7 @@ export interface FeaturePorts {
   codexDesktop: CodexDesktopPort;
   providers: ProvidersPort;
   workbuddy: WorkBuddyPort;
+  opencodeModels: OpenCodeModelsPort;
   skills: SkillsPort;
   mcp: McpPort;
   prompts: PromptsPort;

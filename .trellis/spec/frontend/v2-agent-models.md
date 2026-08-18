@@ -14,17 +14,21 @@ The product boundary is deliberately asymmetric. Agents and Models share one
 `CatalogMasterDetail` geometry and local brand metadata, but each detail keeps
 its own capability workflow:
 
-- QoderWork CN, TRAE Work, and WorkBuddy each expose one catalog-owned product
-  link; Claude Code exposes separate CLI and Desktop links; OpenCode exposes
-  `product` then `cli`. QoderWork additionally exposes safe Hooks/MCP
-  preparation, while TRAE Models owns connection preflight and external MCP
-  validation.
-- WorkBuddy additionally uses its dedicated revision-checked configuration
-  domain.
+- QoderWork CN, TRAE Work CN, and WorkBuddy each expose one catalog-owned
+  product link; Claude Code exposes separate CLI and Desktop links; OpenCode
+  exposes `product` then `cli`. QoderWork additionally exposes safe Hooks
+  preparation and MCP validation; TRAE Models owns connection admission plus
+  dedicated native model persistence.
+- WorkBuddy, TRAE Work CN, and OpenCode each use a dedicated revision-checked
+  model-configuration domain. WorkBuddy additionally exposes direct Skills
+  copy and MCP `.mcp.json` assignment.
 - Codex exposes no catalog link. Its detail owns the FyAgent-managed desktop
   installer while Codex and Claude Code retain bounded Provider quick setup.
-- OpenCode model write is assisted vendor UI only: the Models page must not
-  mount Provider quick setup or a managed installer for it.
+- OpenCode model write is `direct` + `dedicated_native_contract`. The Models
+  page mounts the dedicated `opencodeModels` port, never Provider quick setup
+  or the Codex installer.
+- QoderWork CN `models.write` is `unsupported`: the Models page must state
+  不支持第三方模型配置 and must not mount a third-party model editor.
 - Browser preview never impersonates authoritative desktop state or installer
   success.
 
@@ -154,17 +158,51 @@ type ProviderMutationResult<T> = {
 ```
 
 WorkBuddy signatures and revision/overwrite semantics remain authoritative in
-[WorkBuddy Configuration](../backend/workbuddy-configuration.md). API keys are
-mutation arguments only and never query keys or query data.
+[WorkBuddy Configuration](../backend/workbuddy-configuration.md). TRAE Work CN
+and OpenCode reuse that revision / one-time overwrite-token envelope through
+dedicated ports. API keys are mutation arguments only and never query keys or
+query data.
+
+```ts
+get_traework_model_ids() -> {
+  modelIds: string[];
+  revision: string | null;
+  truncated: boolean;
+}
+
+fetch_traework_models({ request: TraeWorkFetchModelsRequest })
+  -> { models: Array<{ id: string; ownedBy?: string | null }>; truncated: boolean }
+
+save_traework_models({ request: TraeWorkSaveModelsRequest })
+  -> WorkBuddySaveModelsResult
+
+get_opencode_model_snapshot() -> {
+  providers: Array<{ id: string; name: string; modelIds: string[] }>;
+  revision: string | null;
+}
+
+fetch_opencode_provider_models({ request: OpenCodeFetchModelsRequest })
+  -> { models: Array<{ id: string; ownedBy?: string | null }>; truncated: boolean }
+
+save_opencode_models({ request: OpenCodeSaveModelsRequest })
+  -> WorkBuddySaveModelsResult
+```
+
+`TraeWorkSaveModelsRequest` / `OpenCodeSaveModelsRequest` may carry `apiKey`
+only as a mutation field. GET snapshots contain sanitized model/provider IDs
+and a revision, never `ak` / `sk` / `apiKey`.
 
 ## 3. Contracts
 
 ### Catalog and local assets
 
 - `get_agent_catalog` is deterministic, non-networking, non-secret, and ordered
-  exactly: QoderWork CN, TRAE Work, WorkBuddy, Codex, Claude Code, OpenCode.
-- The v3 link matrix is exact: QoderWork CN, TRAE Work, and WorkBuddy each own
-  one `product` link; Claude Code owns `cli` then `desktop`; OpenCode owns
+  exactly: QoderWork CN, TRAE Work CN, WorkBuddy, Codex, Claude Code, OpenCode.
+  TRAE `displayName` is `TRAE Work CN`; its product URL is exactly
+  `https://www.trae.cn/sem-work`. Catalog descriptions use 支持 / 不支持
+  wording and must not contain `可在 FyAgent` or `可通过 FyAgent`.
+- The v3 link matrix is exact: QoderWork CN, TRAE Work CN, and WorkBuddy each
+  own one `product` link; Claude Code owns `cli` then `desktop`; OpenCode owns
   `product` then `cli`; Codex owns an empty list and keeps its dedicated
   managed installer outside generic launch. Link IDs are unique per entry,
   labels are nonempty, and URLs are absolute HTTPS values owned by Rust.
@@ -175,11 +213,15 @@ mutation arguments only and never query keys or query data.
 - The UI renders catalog capability mode/reason/evidence and the separate
   runtime capability state; it does not derive
   capability from the display name, icon, URL, installed files, or a duplicate
-  frontend matrix.
-- Every entry resolves through `src/v2/shared/assets/agents`. QoderWork uses the
-  reviewed official SVG; TRAE uses the reviewed official 48x48 PNG without
-  recoloring or runtime upscaling beyond its native detail size. List icons are
-  decorative; the detail identity owns the useful accessible name.
+  frontend matrix. Mode badges are the short labels 支持 / 需在应用中完成 /
+  不支持 / 暂无法确认. The default Agent detail shows supported features plus
+  jumps (`/models?target=`, `/skills`, `/mcp`, Qoder Hooks, official
+  `ExternalLinkButton`) and folds `unsupported` capabilities.
+- Every entry resolves through `src/v2/shared/assets/agents`. QoderWork CN uses
+  the reviewed official 256x256 PNG extracted from QoderWork CN.app; TRAE uses
+  the reviewed official 48x48 PNG without recoloring or runtime upscaling
+  beyond its native detail size. List icons are decorative; the detail identity
+  owns the useful accessible name.
 - Third-party marks identify their own products only. Their presence is not
   vendor endorsement, redistribution permission, or FyAgent application
   identity.
@@ -245,8 +287,10 @@ mutation arguments only and never query keys or query data.
 
 ### Models target selection
 
-- The exact selector order is QoderWork CN, TRAE Work, WorkBuddy, Codex, Claude
-  Code, OpenCode. Missing, empty, or unknown `target` resolves to QoderWork CN.
+- The exact selector order is QoderWork CN, TRAE Work CN, WorkBuddy, Codex,
+  Claude Code, OpenCode. Missing, empty, or unknown `target` resolves to
+  QoderWork CN. Side-rail summaries: Qoder 不支持第三方模型配置; TRAE Work CN
+  and OpenCode 管理模型设置. Never 测试模型连接 or 在 OpenCode 中完成模型设置.
 - All six selectors use the same reviewed local Agent asset map. No selector
   image is loaded from a remote URL.
 - Target state is component-local. API keys and form content never enter the
@@ -257,15 +301,22 @@ mutation arguments only and never query keys or query data.
   persistent page actually unmounts. The other five primary routes keep the same
   in-session page. Target panels that have been opened stay
   mounted and hidden the same way. Process reload still starts empty.
-- TRAE model setup requires explicit connection-test consent, calls native
-  validation before the probe, echoes the backend UUID into the probe/cancel
-  commands, accepts only closed terminal results, and clears the API key on
-  success, rejection, error, timeout, and cancel. A reachable result proves
-  only the FyAgent preflight; final save remains in TRAE Work. Switching
-  Models targets or hiding the page for another primary route does not clear
-  the in-session form; those values still never enter query cache, URL, or
-  storage. Actual unmount of the persistent Models page still clears the key
-  and cancels an in-flight probe.
+- TRAE fetch still requires explicit connection-test consent and the existing
+  URL/DNS admission before `/models`. A reachable probe is a save gate for new
+  custom rows, not the success state. `save_traework_models` writes TRAE SOLO
+  CN `state.vscdb` (`*:AI.agent.model.model_list_map`) for custom
+  (`is_preset=false`) Work-mode rows in `solo_work_lite` and `solo_work_remote`.
+  Success copy is native save; never 请回 TRAE 保存. Switching Models targets
+  or hiding the page for another primary route does not clear the in-session
+  form; those values still never enter query cache, URL, or storage. Actual
+  unmount of the persistent Models page still clears the key and cancels an
+  in-flight probe.
+- Every displayed model ID renders a ~14px decorative local vendor icon from
+  `src/v2/shared/assets/models` via `resolveModelVendorIcon(modelId, ownedBy?)`.
+  Unknown IDs use the bundled `unknown.svg`. Remote icon URLs are forbidden.
+- OpenCode uses `opencodeModels.getSnapshot` / `fetchProviderModels` /
+  `saveModels` with the same chip/fetch/save UX as WorkBuddy. Snapshot IDs are
+  sanitized; `get_opencode_models` (CLI runtime list) is not the write path.
 
 ### WorkBuddy
 
@@ -367,10 +418,13 @@ mutation arguments only and never query keys or query data.
 | Native observation fails                                                                   | Show controlled unavailable/unknown; never infer absence                                                |
 | Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
 | Qoder Hooks revision or overwrite request drifts                                           | Write nothing or require one exact token replay; never claim save                                       |
-| TRAE preflight reaches any terminal result                                                 | Clear key/request state; report only FyAgent validation, never vendor save                               |
+| TRAE preflight or save reaches any terminal result                                         | Clear key/request state; report native validation or native save, never 请回 TRAE 保存                    |
+| TRAE/OpenCode GET snapshot or Debug/log contains `ak`/`sk`/`apiKey`                        | Security regression test fails                                                                          |
+| TRAE save would mutate a preset row or skip `solo_work_remote`                             | Fail closed; write nothing                                                                              |
 | External MCP result contains an original env/header value                                  | Reject the result and expose no copy action                                                             |
 | Models target missing or unknown                                                           | Select QoderWork CN; issue no write                                                                     |
-| OpenCode is the Models target                                                              | Render vendor-UI guidance only; do not call Provider quick setup or the Codex installer                 |
+| OpenCode is the Models target                                                              | Mount `opencodeModels` CRUD; do not call Provider quick setup or the Codex installer                    |
+| A displayed model ID has no local vendor icon resolver                                     | Asset mapping test fails; never load `https?://` icons                                                  |
 | Any selector lacks a local icon                                                            | Asset mapping/unit/browser gate fails                                                                   |
 | WorkBuddy remote/local ID contains a complete API key                                      | Generic fail-closed error before DTO/cache/DOM/write                                                    |
 | WorkBuddy revision or overwrite token drifts                                               | Write nothing; reread before claiming state                                                             |
@@ -387,14 +441,15 @@ mutation arguments only and never query keys or query data.
 ## 5. Good / Base / Bad Cases
 
 - Good: `/models` opens on QoderWork CN at the top, all six local icons render,
-  and the page resolves the catalog's explicit `product` link when assisted
-  guidance is requested.
-- Good: OpenCode's Models panel only offers vendor-UI guidance plus catalog
-  `product` open and navigation to Agents; it never submits Provider quick
-  setup.
-- Good: TRAE validation returns a canonical request ID, the renderer passes the
-  same ID to one cancellable probe, clears the key in `finally`, and describes
-  `reachable` as a local preflight rather than vendor configuration success.
+  Qoder states 不支持第三方模型配置, and the page resolves the catalog's
+  explicit `product` link when official guidance is requested.
+- Good: OpenCode's Models panel lists existing sanitized provider/model IDs,
+  fetches, adds, deletes, and saves through `opencodeModels`; it never submits
+  Provider quick setup.
+- Good: TRAE validation returns a canonical request ID, fetch uses the same
+  admission rules, save writes custom Work-mode rows in both `solo_work_lite`
+  and `solo_work_remote`, and the UI reports native save. Fixture sqlite under
+  `FYAGENT_TEST_HOME` never points at the interactive TRAE profile.
 - Good: Qoder Hooks saves a previewed revisioned request and reports the
   required restart without claiming the running process consumed it.
 - Good: Claude Code renders independent CLI and Desktop official-site actions
@@ -433,8 +488,9 @@ Required focused coverage includes:
   ID/label/HTTPS matrix and v2/future/unknown/excess fail-closed cases,
   Claude CLI/Desktop order, OpenCode product/CLI order, Codex zero-link
   behavior, and command registration;
-- six local assets, official Qoder/TRAE digests/passive formats, Qoder default,
+- six local Agent assets, official Qoder PNG / TRAE PNG digests, Qoder default,
   exact Models order, master/detail keyboard/ARIA, four maintained viewports;
+  displayed model IDs resolve only bundled vendor SVGs;
 - exact official-link IPC through `ExternalLinkButton` /
   `useOpenExternal`, renderer official-site display labels in the
   identity, one FeatureProvider lock/error behavior, Codex negative-link
@@ -443,9 +499,10 @@ Required focused coverage includes:
   the 760px stack hiding that separator, and the shared catalog page inset
   (`gap: 0`, no extra Agents/Models page `gap` or `padding-top`);
 - normal browser native-only reads/writes and rich fake-Tauri test isolation;
-- WorkBuddy discovery success/truncation/failure/duplicate lock, revision,
-  frozen overwrite, expired token, external-edit TOCTOU, authoritative reread,
-  API-key lifecycle, remote echo, and malicious local-document collisions;
+- WorkBuddy plus TRAE/OpenCode discovery success/truncation/failure/duplicate
+  lock, revision, frozen overwrite, expired token, TOCTOU, authoritative
+  reread, API-key lifecycle, and malicious ID/credential collisions;
+  TRAE persist tests use fixture sqlite and assert GET DTO JSON has no `ak`/`sk`;
 - minimum Provider request/unknown-field rejection, fixed derived IDs/shapes,
   empty/URL/credential collisions, success warnings, current reread mismatch,
   full rollback, rollback-partial structured outcome, and secret-free errors;
@@ -472,6 +529,21 @@ contracts. Real Windows Tauri HIL and an isolated/reversible native mutation are
 separate acceptance evidence.
 
 ## 7. Wrong vs Correct
+
+Wrong: treat a reachable TRAE probe as vendor save, or write OpenCode through
+Provider quick setup.
+
+```ts
+showNotice("请回 TRAE 保存");
+await ports.providers.applyQuickSetupWithResult(request, "opencode");
+```
+
+Correct: persist through the dedicated ports and claim only native save.
+
+```ts
+await ports.traeWork.saveModels(request);
+await ports.opencodeModels.saveModels(request);
+```
 
 Wrong: let the renderer submit and activate a generic Provider in independent
 steps.

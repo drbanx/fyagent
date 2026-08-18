@@ -397,6 +397,42 @@
   font-size: 11px;
 }
 
+.fy-models-chip-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+  object-fit: contain;
+}
+
+.fy-models-chip-select {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.fy-models-chip-selected {
+  border-color: color-mix(in srgb, var(--fy-accent, #6cb6ff) 70%, var(--fy-border));
+}
+
+.fy-models-id-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-models-id-with-icon .fy-control-input,
+.fy-models-id-with-icon input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .fy-models-chip-remove {
   display: inline-flex;
   flex: 0 0 auto;

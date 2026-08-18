@@ -17,6 +17,20 @@ fn opencode_config_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+pub(crate) fn lock_opencode_config() -> std::sync::MutexGuard<'static, ()> {
+    opencode_config_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub(crate) fn read_opencode_config_bytes() -> Result<Option<Vec<u8>>, AppError> {
+    read_config_contents(&get_opencode_config_path())
+}
+
+pub(crate) fn write_opencode_config_value(config: &Value) -> Result<Vec<u8>, AppError> {
+    write_opencode_config_to_path_with_contents(&get_opencode_config_path(), config)
+}
+
 fn read_config_contents(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
     match std::fs::read(path) {
         Ok(contents) => Ok(Some(contents)),

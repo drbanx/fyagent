@@ -23,22 +23,38 @@ from `src/components`, `src/hooks`, `src/lib`, or `src/i18n`.
 ## 2. Signatures
 
 Skills and direct MCP assignment intentionally use different closed identities.
-User interfaces must not merge these collections or add Claude Desktop or
-OpenClaw to either list.
+V2 pages show the Agent-catalog-aligned subset. Leftover Gemini / Grok Build /
+Hermes flags remain on backend rows and must round-trip; they are not V2
+assignment targets. Do not merge these collections or add Claude Desktop or
+OpenClaw to either list. WorkBuddy is a Skills/MCP-domain target only and is
+never `AppType`.
 
 ```ts
-type McpTargetId =
+type McpTargetId = "claude" | "codex" | "opencode" | "workbuddy";
+
+type SkillTargetId =
   | "claude"
   | "codex"
-  | "gemini"
-  | "grokbuild"
   | "opencode"
-  | "hermes";
+  | "qoderwork"
+  | "trae-work"
+  | "workbuddy";
 
-type SkillTargetId = McpTargetId | "qoderwork" | "trae-work";
+const MCP_TARGETS: ReadonlyArray<{ id: McpTargetId; label: string }> = [
+  { id: "claude", label: "Claude Code" },
+  { id: "codex", label: "Codex" },
+  { id: "opencode", label: "OpenCode" },
+  { id: "workbuddy", label: "WorkBuddy" },
+];
 
-const MCP_TARGETS: ReadonlyArray<{ id: McpTargetId; label: string }>;
-const SKILL_TARGETS: ReadonlyArray<{ id: SkillTargetId; label: string }>;
+const SKILL_TARGETS: ReadonlyArray<{ id: SkillTargetId; label: string }> = [
+  { id: "claude", label: "Claude Code" },
+  { id: "codex", label: "Codex" },
+  { id: "opencode", label: "OpenCode" },
+  { id: "qoderwork", label: "QoderWork CN" },
+  { id: "trae-work", label: "TRAE Work CN" },
+  { id: "workbuddy", label: "WorkBuddy" },
+];
 
 const supportedAppIconById: Record<McpTargetId, string>;
 const skillTargetIconById: Record<SkillTargetId, string>;
@@ -126,10 +142,11 @@ function ExternalLinkButton(props: {
 - Only `src/v2/shared/platform/tauri/**` imports `@tauri-apps/**`.
 - The Tauri adapter maps the port methods to the existing snake-case command
   names and camel-case payload keys. It must not call deprecated per-app APIs.
-- Skill ports accept all eight `SkillTargetId` values. MCP CRUD/import/direct
-  assignment accepts only the original six `McpTargetId` values; QoderWork and
-  TRAE Work external MCP preparation uses the separate sanitized validator and
-  never enters direct assignment.
+- Skill ports accept all V2 `SkillTargetId` values. Native `SkillApps` still
+  stores leftover Gemini / Grok Build / Hermes columns. MCP CRUD/import/direct
+  assignment accepts only V2 `McpTargetId` values (claude, codex, opencode,
+  workbuddy). QoderWork and TRAE Work external MCP preparation uses the
+  separate sanitized validator and never enters direct assignment.
 - Browser reads return empty authority snapshots. Browser writes reject with a
   clear native-only error and never report success.
 - MCP presets have one source under `shared/features`: Windows uses
@@ -143,10 +160,13 @@ function ExternalLinkButton(props: {
 - A FeatureProvider owns one stable QueryClient and a session-only install
   target. The default target is Claude; navigation preserves it, while a full
   application restart resets it.
-- Skill assignment authority contains eight booleans. Missing persisted
-  `qoderwork` or `trae-work` values parse as false; the existing six values are
-  preserved. QoderWork/TRAE Work sync is copy-only and its successful UI copy
-  claims directory synchronization, not vendor recognition or loading.
+- Skill assignment authority on V2 pages contains six booleans. Native rows
+  still persist leftover Gemini / Grok / Hermes plus Qoder / TRAE / WorkBuddy
+  flags. Missing `qoderwork`, `trae-work`, or `workbuddy` values parse as
+  false; leftover flags are preserved. QoderWork / TRAE Work / WorkBuddy Skill
+  sync is copy-only (`~/.qoderwork/skills`, `~/.trae-cn/skills`,
+  `~/.workbuddy/skills`) and successful UI copy claims directory
+  synchronization, not vendor recognition or loading.
 - Server data is authoritative. Successful writes and partial failures both
   invalidate and reread the affected resources before the UI settles.
 - Disabling or deleting an MCP assignment removes it from that application's
@@ -209,7 +229,8 @@ function ExternalLinkButton(props: {
   credential/config form. Discover classification is only “直接安装” versus
   “配置安装”, plus an “全部” default. Prefer popular no-credential stdio/HTTP
   recipes for the remaining slots. It does not add a market API, persist catalog
-  metadata, or widen the six-target assignment set. Entries that need OAuth,
+  metadata, or widen the V2 MCP assignment set beyond claude / codex /
+  opencode / workbuddy. Entries that need OAuth,
   post-start login, SSE-only transport, or unverified high-privilege cloud
   control stay out of the catalog. New remote recipes use Streamable HTTP
   only.
@@ -234,13 +255,14 @@ function ExternalLinkButton(props: {
   Skills and MCP own only the page wrappers `.fy-skills-page` and
   `.fy-mcp-page`; do not invent a parallel `.fy-skills-*` / `.fy-mcp-*` theme.
   Consume only `--fy-*` tokens.
-- The shared assignment panel resolves all eight Skill targets through
-  `skillTargetIconById` / `getSkillTargetIcon`. MCP passes its six-target
+- The shared assignment panel resolves all V2 Skill targets through
+  `skillTargetIconById` / `getSkillTargetIcon`. MCP passes its four-target
   collection explicitly and still goes through that map. `supportedAppIconById`
-  / `getSupportedAppIcon` cover only the six MCP identities. Runtime code must
+  / `getSupportedAppIcon` cover only the four MCP identities. Runtime code must
   not import a legacy asset path or a remote URL. A reviewed byte-for-byte
   local asset copy is acceptable when V2 owns the resulting path and the asset
-  inventory is updated.
+  inventory is updated. WorkBuddy uses `../agents/workbuddy.png`; QoderWork CN
+  uses `../agents/qoderwork.png`.
 - Assignment icons are decorative beside the existing text:
   `alt=""` and `aria-hidden="true"`. The switch keeps the sole accessible name
   `${app.label} ${labelSuffix}`; an icon must not create a duplicate label.
@@ -276,7 +298,8 @@ function ExternalLinkButton(props: {
 | QoderWork or TRAE Work is submitted to direct MCP assignment     | Type/runtime adapter rejects before invoke                              |
 | A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image   |
 | An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name   |
-| Viewport changes between two- and three-column layouts           | Render exactly one panel: eight unique Skill or six unique MCP switches |
+| Viewport changes between two- and three-column layouts           | Render exactly one panel: six unique Skill or four unique MCP switches |
+| WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only        |
 | Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`        |
 | A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                  |
 
@@ -286,9 +309,13 @@ function ExternalLinkButton(props: {
   `toggle_skill_app` with `{ id, app: "codex", enabled }`, locks only
   conflicting writes, then rereads installed Skills before settling. The row
   shows the V2-owned Codex icon decoratively without changing the switch name.
-- **Good:** An old installed-Skill row has only the six legacy flags. The
-  adapter preserves those values, supplies false for both new targets, and a
-  later QoderWork sync uses only the trusted fixed copy destination.
+- **Good:** An old installed-Skill row has leftover Gemini / Grok / Hermes
+  flags. The adapter preserves those values, supplies false for missing
+  Qoder / TRAE / WorkBuddy flags, and a later WorkBuddy sync copies only to
+  `~/.workbuddy/skills`. MCP writes `~/.workbuddy/.mcp.json` as `mcpServers`
+  and skips when neither the home nor the file exists.
+- **Good:** V2 assignment shows six Skill targets and four MCP targets. Gemini
+  / Grok / Hermes do not appear as chips.
 - **Base:** A browser preview has no fixture. Both pages show their native-safe
   empty states; attempts to mutate reject instead of simulating persistence.
 - **Bad:** MCP search uses `JSON.stringify(server)`, a QoderWork ID is passed to
@@ -313,15 +340,17 @@ git diff --check
 
 - Adapter tests assert every command name, exact camel-case payload, return,
   and error propagation across Skills, MCP, Settings, and external links,
-  including eight-value Skill and six-value MCP separation.
+  including V2 six-value Skill and four-value MCP separation plus leftover
+  backend Gemini / Grok / Hermes flag round-trip.
 - Pure tests cover public-field search, secret exclusion, URL/args redaction,
   selection convergence, repository parsing, installed-key matching,
   pagination, env/header/args parsing, advanced JSON validation, extension
   retention, and each MCP catalog builder.
 - Component tests cover empty, loading, error, pending, write/refetch, dialogs,
   assignment, destructive confirmation, secret-safe presentation, an exhaustive
-  eight-ID icon map, eight decodable local assets, decorative icon semantics,
-  eight unique Skill switches, six unique MCP switches, Discover/docs and
+  six-ID Skill icon map, four MCP icons, decodable local assets, decorative
+  icon semantics, six unique Skill switches, four unique MCP switches,
+  Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
   and one shared in-flight lock.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
@@ -363,6 +392,15 @@ Correct: use the exhaustive local V2 map and keep the image decorative.
 ```tsx
 <img src={getSkillTargetIcon(app.id)} alt="" aria-hidden="true" />
 ```
+
+Wrong: add `AppType::WorkBuddy` so MCP can reuse Provider/session writers.
+
+```rust
+AppType::from_str("workbuddy")
+```
+
+Correct: keep WorkBuddy on `SkillTargetId` / `McpTargetId` only; `TryFrom`
+to `AppType` fails.
 
 Wrong: fill a split pane with `height: 100%` and leave the feature panel
 overflow visible, so bulk-assign buttons paint past the card.

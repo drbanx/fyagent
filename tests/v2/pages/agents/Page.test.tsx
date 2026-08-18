@@ -71,7 +71,7 @@ function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
                 id === "qoderwork"
                   ? "https://qoder.com.cn/qoderwork"
                   : id === "trae-work"
-                    ? "https://work.trae.cn/"
+                    ? "https://www.trae.cn/sem-work"
                     : "https://www.workbuddy.cn/",
             },
           ];
@@ -106,7 +106,7 @@ function catalog(): AgentCatalogResult {
     reviewedAt: "2026-08-14",
     agents: [
       entry("qoderwork", "QoderWork CN"),
-      entry("trae-work", "TRAE Work"),
+      entry("trae-work", "TRAE Work CN"),
       entry("workbuddy", "WorkBuddy"),
       entry("codex", "Codex"),
       entry("claude-code", "Claude Code"),
@@ -196,11 +196,11 @@ describe("V2 Agent directory", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN9 项可管理 · 0 项需在应用中完成",
-      "TRAE Work9 项可管理 · 0 项需在应用中完成",
-      "WorkBuddy9 项可管理 · 0 项需在应用中完成",
-      "Codex8 项可管理 · 0 项需在应用中完成",
-      "Claude Code9 项可管理 · 0 项需在应用中完成",
+      "QoderWork CN9 项支持 · 0 项需在应用中完成",
+      "TRAE Work CN9 项支持 · 0 项需在应用中完成",
+      "WorkBuddy9 项支持 · 0 项需在应用中完成",
+      "Codex8 项支持 · 0 项需在应用中完成",
+      "Claude Code9 项支持 · 0 项需在应用中完成",
     ]);
     expect(buttons[0]).toHaveAttribute("aria-current", "true");
     expect(
@@ -226,7 +226,7 @@ describe("V2 Agent directory", () => {
     expect(buttons[1]).toHaveAttribute("aria-current", "true");
     expect(buttons[0]).not.toHaveAttribute("aria-current");
     expect(
-      screen.getByRole("region", { name: "TRAE Work 详情" }),
+      screen.getByRole("region", { name: "TRAE Work CN 详情" }),
     ).toBeVisible();
   });
 
@@ -247,16 +247,18 @@ describe("V2 Agent directory", () => {
     ).toBeVisible();
     expect(
       qoderOfficial.compareDocumentPosition(
-        within(qoderDetail).getByRole("heading", { name: "可用功能" }),
+        within(qoderDetail).getByRole("heading", { name: "支持的功能" }),
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     await user.click(qoderOfficial);
-    await user.click(await screen.findByRole("button", { name: /TRAE Work/ }));
-    expect(
-      screen.queryByRole("button", { name: "配置模型" }),
-    ).not.toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: "打开 TRAE Work 官方页面" }),
+      await screen.findByRole("button", { name: /TRAE Work CN/ }),
+    );
+    expect(
+      screen.getByRole("button", { name: "配置模型" }),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "打开 TRAE Work CN 官方页面" }),
     );
 
     await user.click(screen.getByRole("button", { name: /WorkBuddy/ }));
@@ -285,7 +287,7 @@ describe("V2 Agent directory", () => {
     });
     expect(
       installer.compareDocumentPosition(
-        within(codexDetail).getByRole("heading", { name: "可用功能" }),
+        within(codexDetail).getByRole("heading", { name: "支持的功能" }),
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
@@ -296,7 +298,7 @@ describe("V2 Agent directory", () => {
     );
     expect(ports.settings.openExternal).toHaveBeenNthCalledWith(
       2,
-      "https://work.trae.cn/",
+      "https://www.trae.cn/sem-work",
     );
     expect(ports.settings.openExternal).toHaveBeenNthCalledWith(
       3,
@@ -394,6 +396,70 @@ describe("V2 Agent directory", () => {
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/models?target=claude",
     );
+  });
+
+  it("jumps to models, Skills, and MCP and collapses inapplicable capabilities", async () => {
+    const user = userEvent.setup();
+    renderPage(configuredPorts());
+
+    const qoderDetail = await screen.findByRole("region", {
+      name: "QoderWork CN 详情",
+    });
+    expect(
+      within(qoderDetail).getByRole("heading", { name: "支持的功能" }),
+    ).toBeVisible();
+    expect(within(qoderDetail).getAllByText("支持").length).toBeGreaterThan(0);
+    expect(qoderDetail).not.toHaveTextContent("可在 FyAgent");
+    expect(qoderDetail).not.toHaveTextContent("可通过 FyAgent");
+    expect(qoderDetail).not.toHaveTextContent("可同步 Skills");
+    await user.click(
+      within(qoderDetail).getByRole("button", { name: "管理 Hooks" }),
+    );
+    expect(
+      within(qoderDetail).getByRole("region", { name: "QoderWork Hooks 配置" }),
+    ).toBeVisible();
+    await user.click(
+      within(qoderDetail).getByRole("button", { name: "打开 Skills" }),
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/skills");
+
+    await user.click(screen.getByRole("button", { name: /TRAE Work CN/ }));
+    const traeDetail = screen.getByRole("region", {
+      name: "TRAE Work CN 详情",
+    });
+    await user.click(
+      within(traeDetail).getByRole("button", { name: "配置模型" }),
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/models?target=trae",
+    );
+
+    await user.click(screen.getByRole("button", { name: /Claude Code/ }));
+    const claudeDetail = screen.getByRole("region", {
+      name: "Claude Code 详情",
+    });
+    await user.click(
+      within(claudeDetail).getByRole("button", { name: "打开 MCP" }),
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/mcp");
+
+    await user.click(screen.getByRole("button", { name: /WorkBuddy/ }));
+    const workBuddyDetail = screen.getByRole("region", {
+      name: "WorkBuddy 详情",
+    });
+    await user.click(
+      within(workBuddyDetail).getByRole("button", { name: "打开 Skills" }),
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/skills");
+    await user.click(
+      within(workBuddyDetail).getByRole("button", { name: "打开 MCP" }),
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/mcp");
+
+    await user.click(screen.getByRole("button", { name: /^Codex/ }));
+    const codexDetail = screen.getByRole("region", { name: "Codex 详情" });
+    expect(within(codexDetail).getByText("不适用的功能（1）")).toBeVisible();
+    expect(codexDetail).not.toHaveTextContent("可在 FyAgent");
   });
 
   it("keeps an unavailable observation unknown and redacts backend text", async () => {
@@ -602,7 +668,7 @@ describe("V2 Agent directory", () => {
     expect(textarea).toHaveValue("");
     expect(document.body.innerHTML).not.toContain(secondSecret);
 
-    await user.click(screen.getByRole("button", { name: /TRAE Work/ }));
+    await user.click(screen.getByRole("button", { name: /TRAE Work CN/ }));
     expect(document.body.innerHTML).not.toContain(firstSecret);
     expect(document.body.innerHTML).not.toContain(secondSecret);
     view.unmount();

@@ -3,15 +3,18 @@
 ## 1. Scope / Trigger
 
 Read this contract before changing the static Agent catalog, external-agent
-runtime observation or launch, QoderWork/TRAE Work Skill targets, Qoder Hooks,
-TRAE model endpoint preflight, external MCP validation, or their Tauri
+runtime observation or launch, QoderWork/TRAE Work/WorkBuddy Skill or MCP
+targets, Qoder Hooks, TRAE model endpoint preflight and `state.vscdb` persist,
+OpenCode `opencode.json` model persist, external MCP validation, or their Tauri
 permissions. These capabilities are deliberately narrower than Provider,
 proxy, prompt, session, installer, and vendor-private configuration domains.
 
-P0 proves only FyAgent-owned validation and controlled local file operations.
-Vendor application detection, launch, Skill recognition, Qoder restart effects,
-model compatibility, and vendor-side save remain separate HIL evidence and
-must stay `unverified` when that evidence was not executed.
+P0 proves FyAgent-owned validation and controlled local file operations.
+Vendor application detection, launch, Skill recognition inside the vendor UI,
+Qoder restart effects, and model compatibility remain separate HIL evidence
+and must stay `unverified` when that evidence was not executed. TRAE/OpenCode
+model file writes are in-scope native contracts; they are not proof that the
+vendor process loaded the new rows.
 
 ## 2. Signatures
 
@@ -31,8 +34,9 @@ get_agent_catalog() -> {
 
 `id` is one of
 `qoderwork | trae-work | workbuddy | codex | claude-code | opencode`,
-in that catalog order. Every entry declares the same closed 11-capability
-sequence:
+in that catalog order. TRAE `displayName` is `TRAE Work CN`; product URL is
+`https://www.trae.cn/sem-work`. Every entry declares the same closed
+11-capability sequence:
 
 ```text
 product.open app.detect app.launch skills.read skills.write
@@ -53,7 +57,7 @@ launch_external_agent({ agentId, destination })
 `detected` and `running` are `boolean | null`. `destination` is exactly
 `home | skills | hooks | models | mcp`.
 
-Qoder Hooks and TRAE preflight commands are:
+Qoder Hooks, TRAE preflight/persist, and OpenCode model commands are:
 
 ```text
 get_qoderwork_hooks()
@@ -62,12 +66,19 @@ save_qoderwork_hooks({ request })
 validate_traework_model_config({ request })
 test_traework_model_endpoint({ requestId, request })
 cancel_traework_model_endpoint({ requestId })
+get_traework_model_ids()
+fetch_traework_models({ request })
+save_traework_models({ request })
+get_opencode_model_snapshot()
+fetch_opencode_provider_models({ request })
+save_opencode_models({ request })
 validate_external_mcp_config({ agentId, config })
 ```
 
-The Skills domain uses the closed eight-value `SkillTargetId` union: the six
-legacy AppType values plus `qoderwork` and `trae-work`. Only the original six
-may convert to `AppType` or participate in direct MCP assignment.
+Native Skills `SkillTargetId` is the leftover six AppType values plus
+`qoderwork`, `trae-work`, and `workbuddy`. Only leftover AppType values plus
+direct MCP's `workbuddy` participate in MCP assignment; QoderWork and TRAE
+Work never convert to `AppType` or direct MCP. WorkBuddy is not `AppType`.
 
 ## 3. Contracts
 
@@ -89,11 +100,16 @@ may convert to `AppType` or participate in direct MCP assignment.
 
 ### Skills and persistence
 
-- Database schema 17 adds default-false `enabled_qoderwork` and
-  `enabled_trae_work` columns. Migration preserves every legacy row and its six
-  existing flags; DAO reads and writes all eight flags.
-- QoderWork and TRAE Work targets are derived only from trusted home as
-  `.qoderwork/skills` and `.trae-cn/skills`. Both are copy-only.
+- Database schema 18 adds default-false `enabled_workbuddy` on Skills (and the
+  MCP `enabled_workbuddy` column). Schema 17 already added `enabled_qoderwork`
+  and `enabled_trae_work`. Migration preserves every legacy row and leftover
+  Gemini / Grok / Hermes flags; DAO reads and writes all stored flags.
+- QoderWork, TRAE Work, and WorkBuddy Skill destinations are derived only from
+  trusted home as `.qoderwork/skills`, `.trae-cn/skills`, and
+  `.workbuddy/skills`. All three are copy-only.
+- WorkBuddy MCP writes trusted-home `.workbuddy/.mcp.json` as a Claude-style
+  `mcpServers` map, backs up first, and skips when neither the home nor the
+  file exists. It may import a legacy `mcp.json` when specs are equivalent.
 - Target adapters reuse the existing SkillService archive, conflict, hash,
   copy, path-validation, and authoritative-reread behavior. They do not enter
   Provider, proxy, prompt, session, or direct MCP configuration.
@@ -134,6 +150,26 @@ may convert to `AppType` or participate in direct MCP assignment.
   status class, and request ID. They never include URL, model, key, response
   body, headers, or transport diagnostics.
 
+### TRAE model persist
+
+- Read/write TRAE SOLO CN `User/globalStorage/state.vscdb` key
+  `*:AI.agent.model.model_list_map`. Tests use fixture sqlite under
+  `FYAGENT_TEST_HOME` and must not open the interactive user profile.
+- GET projects secret-free custom rows (`is_preset == false`) from
+  `solo_work_lite`. `ak`/`sk` never appear in DTO, serde JSON, logs, or Debug.
+- Save backups the blob, clones a Work-mode preset as template, sets custom
+  identity/connection fields, upserts/deletes custom rows in both
+  `solo_work_lite` and `solo_work_remote`, never mutates presets, and uses HMAC
+  revision plus a one-time overwrite token. Missing/unparseable documents fail
+  closed.
+
+### OpenCode model persist
+
+- Snapshot/save run under `lock_opencode_config` against live `opencode.json`
+  providers. Snapshot IDs are sanitized. Unknown provider fields are preserved.
+  GET JSON must not contain `apiKey`. Revision/overwrite semantics match
+  WorkBuddy. `get_opencode_models` (CLI runtime list) is not the write path.
+
 ### External MCP validation
 
 - Input is exactly `{ mcpServers: object }`; each entry is exactly stdio
@@ -155,6 +191,10 @@ may convert to `AppType` or participate in direct MCP assignment.
 | Runtime detection is unavailable | Return `null`/`unverified`; never report not installed |
 | Launch lacks trusted runtime identity | Return controlled unverified/unavailable; start nothing |
 | Schema 16 data migrates | Preserve all old rows/flags and default both new flags to false |
+| Schema 17 data migrates to 18 | Preserve leftover flags and default `enabled_workbuddy` to false |
+| TRAE persist would mutate a preset or omit `solo_work_remote` | Fail closed; write nothing |
+| TRAE/OpenCode GET JSON contains `ak`/`sk`/`apiKey` | Security regression gate fails |
+| WorkBuddy is added as `AppType` | Type test fails |
 | Skill destination is linked, escaped, raced, or hash-drifted | Fail closed; do not claim sync |
 | Qoder JSON/hooks projection is unsafe | Return controlled unsupported/invalid result; write nothing |
 | Qoder revision drifts | Require one-use overwrite confirmation or return concurrent modification |
@@ -196,13 +236,16 @@ git diff --check
 ```
 
 Focused Rust coverage must include catalog fail-closed parsing, status/launch
-unknown semantics, schema 16-to-17 preservation, eight-target round trips,
-Skill path/TOCTOU/hash handling, Qoder projection/revision/token/backup/atomic
-behavior, TRAE URL/DNS/pin/proxy/deadline/body/cancel cleanup, and MCP
+unknown semantics, schema 16-to-17 and 17-to-18 preservation, Skill path/TOCTOU
+/hash handling including WorkBuddy copy dest, Qoder projection/revision/token,
+TRAE URL/DNS/pin plus fixture-sqlite persist (no secrets in GET DTO), OpenCode
+snapshot/save, WorkBuddy `.mcp.json` skip/write, and MCP
 union/no-execute/redaction. Renderer tests must assert exact command/payload
-wires, eight Skills versus six MCP targets, secret cleanup on every terminal or
-lifecycle path, catalog geometry at the maintained viewports and 760/761px,
-keyboard/focus behavior, and browser non-authority.
+wires, V2 six Skills versus four MCP targets, leftover backend flag
+round-trip, secret cleanup on every terminal or lifecycle path, catalog
+geometry at the maintained viewports and 760/761px, keyboard/focus behavior,
+and browser non-authority. ACL union still equals every `generate_handler!`
+command.
 
 The host permission test must derive the registered `generate_handler!`
 commands and require exact equality with the disjoint union of all active app

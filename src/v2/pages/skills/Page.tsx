@@ -864,7 +864,8 @@ function Discovery({
     new Set((discovery.data ?? []).map((skill) => skillRepoKey(skill))),
   );
   const installLabel =
-    SKILL_TARGETS.find((app) => app.id === installTarget)?.label ?? "Claude";
+    SKILL_TARGETS.find((app) => app.id === installTarget)?.label ??
+    "Claude Code";
   const groupedSkills = groupSkillsByRepo(skills);
   const resultSummary =
     source === "repos"

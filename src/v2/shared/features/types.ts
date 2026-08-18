@@ -1,18 +1,19 @@
 export const MCP_TARGET_IDS = [
   "claude",
   "codex",
-  "gemini",
-  "grokbuild",
   "opencode",
-  "hermes",
+  "workbuddy",
 ] as const;
 
 export type McpTargetId = (typeof MCP_TARGET_IDS)[number];
 
 export const SKILL_TARGET_IDS = [
-  ...MCP_TARGET_IDS,
+  "claude",
+  "codex",
+  "opencode",
   "qoderwork",
   "trae-work",
+  "workbuddy",
 ] as const;
 
 export type SkillTargetId = (typeof SKILL_TARGET_IDS)[number];
@@ -27,24 +28,25 @@ export const MCP_TARGETS: ReadonlyArray<{
   id: McpTargetId;
   label: string;
 }> = [
-  { id: "claude", label: "Claude" },
+  { id: "claude", label: "Claude Code" },
   { id: "codex", label: "Codex" },
-  { id: "gemini", label: "Gemini" },
-  { id: "grokbuild", label: "Grok Build" },
   { id: "opencode", label: "OpenCode" },
-  { id: "hermes", label: "Hermes" },
+  { id: "workbuddy", label: "WorkBuddy" },
 ];
 
 export const SKILL_TARGETS: ReadonlyArray<{
   id: SkillTargetId;
   label: string;
 }> = [
-  ...MCP_TARGETS,
-  { id: "qoderwork", label: "QoderWork" },
-  { id: "trae-work", label: "TRAE Work" },
+  { id: "claude", label: "Claude Code" },
+  { id: "codex", label: "Codex" },
+  { id: "opencode", label: "OpenCode" },
+  { id: "qoderwork", label: "QoderWork CN" },
+  { id: "trae-work", label: "TRAE Work CN" },
+  { id: "workbuddy", label: "WorkBuddy" },
 ];
 
-/** @deprecated MCP_TARGETS is the six-target direct-sync collection. */
+/** @deprecated MCP_TARGETS is the catalog-aligned direct-sync collection. */
 export const SUPPORTED_APPS = MCP_TARGETS;
 
 export type McpAssignments = Record<McpTargetId, boolean> &
@@ -534,6 +536,7 @@ export interface ProviderQuickSetupRequest {
 export interface ProviderSummary {
   id: string;
   name: string;
+  modelId?: string;
 }
 
 export type ProviderSummaryMap = Record<string, ProviderSummary>;
@@ -620,6 +623,76 @@ export interface WorkBuddyConcurrentModificationResult {
 }
 
 export type WorkBuddySaveModelsResult =
+  | WorkBuddySaveModelsSavedResult
+  | WorkBuddyOverwriteConfirmationRequiredResult
+  | WorkBuddyConcurrentModificationResult;
+
+export interface FetchedModelRef {
+  id: string;
+  ownedBy?: string | null;
+}
+
+export interface FetchedModelList {
+  models: FetchedModelRef[];
+  truncated: boolean;
+}
+
+export interface TraeWorkFetchModelsRequest {
+  apiFormat: TraeModelApiFormat;
+  urlMode: TraeModelUrlMode;
+  url: string;
+  apiKey: string;
+  allowNoApiKey: boolean;
+  allowLoopback: boolean;
+  allowPrivateNetwork: boolean;
+}
+
+export interface TraeWorkModelIdsResult {
+  modelIds: string[];
+  revision: string | null;
+  truncated: boolean;
+}
+
+export interface TraeWorkSaveModelsRequest extends TraeWorkFetchModelsRequest {
+  selectedModelIds: string[];
+  removedModelIds?: string[];
+  expectedRevision: string | null;
+  overwriteToken?: string;
+}
+
+export type TraeWorkSaveModelsResult =
+  | WorkBuddySaveModelsSavedResult
+  | WorkBuddyOverwriteConfirmationRequiredResult
+  | WorkBuddyConcurrentModificationResult;
+
+export interface OpenCodeProviderSnapshot {
+  id: string;
+  name: string;
+  modelIds: string[];
+}
+
+export interface OpenCodeModelSnapshot {
+  providers: OpenCodeProviderSnapshot[];
+  revision: string | null;
+}
+
+export interface OpenCodeFetchModelsRequest {
+  baseUrl: string;
+  apiKey: string;
+  allowNoApiKey: boolean;
+}
+
+export interface OpenCodeSaveModelsRequest {
+  providerName: string;
+  baseUrl: string;
+  apiKey: string;
+  selectedModelIds: string[];
+  removedModelIds?: string[];
+  expectedRevision: string | null;
+  overwriteToken?: string;
+}
+
+export type OpenCodeSaveModelsResult =
   | WorkBuddySaveModelsSavedResult
   | WorkBuddyOverwriteConfirmationRequiredResult
   | WorkBuddyConcurrentModificationResult;

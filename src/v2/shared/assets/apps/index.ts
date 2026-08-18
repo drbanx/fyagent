@@ -11,16 +11,15 @@ import grokBuildIconUrl from "./grokbuild.svg";
 import hermesIconUrl from "./hermes.png";
 import openClawIconUrl from "./openclaw.svg";
 import openCodeIconUrl from "./opencode.svg";
-import qoderWorkIconUrl from "../agents/qoderwork.svg";
+import qoderWorkIconUrl from "../agents/qoderwork.png";
 import traeWorkIconUrl from "../agents/trae-work.png";
+import workBuddyIconUrl from "../agents/workbuddy.png";
 
 export const supportedAppIconById: Record<SupportedAppId, string> = {
   claude: claudeIconUrl,
   codex: codexIconUrl,
-  gemini: geminiIconUrl,
-  grokbuild: grokBuildIconUrl,
   opencode: openCodeIconUrl,
-  hermes: hermesIconUrl,
+  workbuddy: workBuddyIconUrl,
 };
 
 export function getSupportedAppIcon(id: SupportedAppId): string {
@@ -28,9 +27,12 @@ export function getSupportedAppIcon(id: SupportedAppId): string {
 }
 
 export const skillTargetIconById: Record<SkillTargetId, string> = {
-  ...supportedAppIconById,
+  claude: claudeIconUrl,
+  codex: codexIconUrl,
+  opencode: openCodeIconUrl,
   qoderwork: qoderWorkIconUrl,
   "trae-work": traeWorkIconUrl,
+  workbuddy: workBuddyIconUrl,
 };
 
 export function getSkillTargetIcon(id: SkillTargetId): string {

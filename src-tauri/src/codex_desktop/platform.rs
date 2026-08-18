@@ -35,6 +35,7 @@ pub mod windows;
 ///
 /// This is a product allowlist, not metadata: the release source must never
 /// be able to select a different local package identity.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub(crate) const WINDOWS_CODEX_STABLE_IDENTITY: &str = "OpenAI.Codex";
 
 /// Exact stable bundle identifier for the macOS Codex application.
@@ -367,10 +368,12 @@ impl PreparedInstallPackage {
             .open_for_read()
     }
 
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn locked_release(&self) -> &ReleaseDescriptor {
         &self.locked_release
     }
 
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn actual_size(&self) -> u64 {
         self.artifact
             .as_ref()
@@ -378,6 +381,7 @@ impl PreparedInstallPackage {
             .unwrap_or(0)
     }
 
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn local_sha256(&self) -> &str {
         self.artifact
             .as_ref()

@@ -55,6 +55,15 @@ import {
   type TraeModelValidationResult,
   type TraeWorkModelRequest,
   type CancelTraeModelProbeResult,
+  type TraeWorkFetchModelsRequest,
+  type TraeWorkModelIdsResult,
+  type TraeWorkSaveModelsRequest,
+  type FetchedModelList,
+  type FetchedModelRef,
+  type OpenCodeFetchModelsRequest,
+  type OpenCodeModelSnapshot,
+  type OpenCodeSaveModelsRequest,
+  type WorkBuddySaveModelsResult,
   type DailyMemoryFileInfo,
   type DailyMemorySearchResult,
   HERMES_MEMORY_KINDS,
@@ -648,6 +657,247 @@ function assertTraeModelRequest(
   return { ...request };
 }
 
+function assertTraeFetchRequest(
+  request: TraeWorkFetchModelsRequest,
+): TraeWorkFetchModelsRequest {
+  if (
+    !isRecord(request) ||
+    !hasExactKeys(request, [
+      "apiFormat",
+      "urlMode",
+      "url",
+      "apiKey",
+      "allowNoApiKey",
+      "allowLoopback",
+      "allowPrivateNetwork",
+    ]) ||
+    !isOneOf(request.apiFormat, TRAE_MODEL_API_FORMATS) ||
+    !isOneOf(request.urlMode, TRAE_MODEL_URL_MODES) ||
+    typeof request.url !== "string" ||
+    typeof request.apiKey !== "string" ||
+    typeof request.allowNoApiKey !== "boolean" ||
+    typeof request.allowLoopback !== "boolean" ||
+    typeof request.allowPrivateNetwork !== "boolean"
+  )
+    throw new Error("TRAE model request is invalid");
+  return { ...request };
+}
+
+function assertStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function assertTraeSaveRequest(
+  request: TraeWorkSaveModelsRequest,
+): TraeWorkSaveModelsRequest {
+  if (
+    !isRecord(request) ||
+    !hasRequiredAndOptionalKeys(
+      request,
+      [
+        "apiFormat",
+        "urlMode",
+        "url",
+        "apiKey",
+        "allowNoApiKey",
+        "allowLoopback",
+        "allowPrivateNetwork",
+        "selectedModelIds",
+        "expectedRevision",
+      ],
+      ["removedModelIds", "overwriteToken"],
+    ) ||
+    !isOneOf(request.apiFormat, TRAE_MODEL_API_FORMATS) ||
+    !isOneOf(request.urlMode, TRAE_MODEL_URL_MODES) ||
+    typeof request.url !== "string" ||
+    typeof request.apiKey !== "string" ||
+    typeof request.allowNoApiKey !== "boolean" ||
+    typeof request.allowLoopback !== "boolean" ||
+    typeof request.allowPrivateNetwork !== "boolean" ||
+    !assertStringArray(request.selectedModelIds) ||
+    (request.removedModelIds !== undefined &&
+      !assertStringArray(request.removedModelIds)) ||
+    (request.expectedRevision !== null &&
+      typeof request.expectedRevision !== "string") ||
+    (request.overwriteToken !== undefined &&
+      typeof request.overwriteToken !== "string")
+  )
+    throw new Error("TRAE model request is invalid");
+  return { ...request };
+}
+
+function assertOpenCodeFetchRequest(
+  request: OpenCodeFetchModelsRequest,
+): OpenCodeFetchModelsRequest {
+  if (
+    !isRecord(request) ||
+    !hasExactKeys(request, ["baseUrl", "apiKey", "allowNoApiKey"]) ||
+    typeof request.baseUrl !== "string" ||
+    typeof request.apiKey !== "string" ||
+    typeof request.allowNoApiKey !== "boolean"
+  )
+    throw new Error("OpenCode model request is invalid");
+  return { ...request };
+}
+
+function assertOpenCodeSaveRequest(
+  request: OpenCodeSaveModelsRequest,
+): OpenCodeSaveModelsRequest {
+  if (
+    !isRecord(request) ||
+    !hasRequiredAndOptionalKeys(
+      request,
+      [
+        "providerName",
+        "baseUrl",
+        "apiKey",
+        "selectedModelIds",
+        "expectedRevision",
+      ],
+      ["removedModelIds", "overwriteToken"],
+    ) ||
+    typeof request.providerName !== "string" ||
+    typeof request.baseUrl !== "string" ||
+    typeof request.apiKey !== "string" ||
+    !assertStringArray(request.selectedModelIds) ||
+    (request.removedModelIds !== undefined &&
+      !assertStringArray(request.removedModelIds)) ||
+    (request.expectedRevision !== null &&
+      typeof request.expectedRevision !== "string") ||
+    (request.overwriteToken !== undefined &&
+      typeof request.overwriteToken !== "string")
+  )
+    throw new Error("OpenCode model request is invalid");
+  return { ...request };
+}
+
+function parseFetchedModelRef(value: unknown): FetchedModelRef {
+  if (
+    !isRecord(value) ||
+    !hasRequiredAndOptionalKeys(value, ["id"], ["ownedBy"]) ||
+    typeof value.id !== "string" ||
+    value.id.trim().length === 0 ||
+    (value.ownedBy !== undefined &&
+      value.ownedBy !== null &&
+      typeof value.ownedBy !== "string")
+  )
+    throw new Error("Model list is unavailable");
+  return {
+    id: value.id,
+    ...(value.ownedBy === undefined
+      ? {}
+      : { ownedBy: value.ownedBy as string | null }),
+  };
+}
+
+function parseFetchedModelRefs(value: unknown): FetchedModelRef[] {
+  if (!Array.isArray(value)) throw new Error("Model list is unavailable");
+  return value.map(parseFetchedModelRef);
+}
+
+function parseFetchedModelList(value: unknown): FetchedModelList {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["models", "truncated"]) ||
+    !Array.isArray(value.models) ||
+    typeof value.truncated !== "boolean"
+  )
+    throw new Error("Model list is unavailable");
+  return {
+    models: value.models.map(parseFetchedModelRef),
+    truncated: value.truncated,
+  };
+}
+
+function parseTraeWorkModelIdsResult(value: unknown): TraeWorkModelIdsResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["modelIds", "revision", "truncated"]) ||
+    !assertStringArray(value.modelIds) ||
+    (value.revision !== null && typeof value.revision !== "string") ||
+    typeof value.truncated !== "boolean"
+  )
+    throw new Error("TRAE model list is unavailable");
+  return {
+    modelIds: value.modelIds,
+    revision: value.revision,
+    truncated: value.truncated,
+  };
+}
+
+function parseOpenCodeModelSnapshot(value: unknown): OpenCodeModelSnapshot {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["providers", "revision"]) ||
+    !Array.isArray(value.providers) ||
+    (value.revision !== null && typeof value.revision !== "string")
+  )
+    throw new Error("OpenCode model snapshot is unavailable");
+  const providers = value.providers.map((provider) => {
+    if (
+      !isRecord(provider) ||
+      !hasExactKeys(provider, ["id", "name", "modelIds"]) ||
+      typeof provider.id !== "string" ||
+      typeof provider.name !== "string" ||
+      !assertStringArray(provider.modelIds)
+    )
+      throw new Error("OpenCode model snapshot is unavailable");
+    return {
+      id: provider.id,
+      name: provider.name,
+      modelIds: provider.modelIds,
+    };
+  });
+  return { providers, revision: value.revision };
+}
+
+function parseRevisionedSaveResult(value: unknown): WorkBuddySaveModelsResult {
+  if (!isRecord(value) || typeof value.state !== "string")
+    throw new Error("Model save result is unavailable");
+  if (value.state === "saved") {
+    if (
+      !hasExactKeys(value, [
+        "state",
+        "revision",
+        "modelCount",
+        "createdEntries",
+        "updatedEntries",
+      ]) ||
+      typeof value.revision !== "string" ||
+      typeof value.modelCount !== "number" ||
+      typeof value.createdEntries !== "number" ||
+      typeof value.updatedEntries !== "number"
+    )
+      throw new Error("Model save result is unavailable");
+    return {
+      state: "saved",
+      revision: value.revision,
+      modelCount: value.modelCount,
+      createdEntries: value.createdEntries,
+      updatedEntries: value.updatedEntries,
+    };
+  }
+  if (value.state === "overwrite_confirmation_required") {
+    if (
+      !hasExactKeys(value, ["state", "token", "existingIds"]) ||
+      typeof value.token !== "string" ||
+      !assertStringArray(value.existingIds)
+    )
+      throw new Error("Model save result is unavailable");
+    return {
+      state: "overwrite_confirmation_required",
+      token: value.token,
+      existingIds: value.existingIds,
+    };
+  }
+  if (value.state === "concurrent_modification") {
+    if (!hasExactKeys(value, ["state"]))
+      throw new Error("Model save result is unavailable");
+    return { state: "concurrent_modification" };
+  }
+  throw new Error("Model save result is unavailable");
+}
+
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -762,13 +1012,20 @@ function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
   for (const [key, candidate] of Object.entries(value.providers)) {
     if (
       !isRecord(candidate) ||
-      !hasExactKeys(candidate, ["id", "name"]) ||
+      !hasRequiredAndOptionalKeys(candidate, ["id", "name"], ["modelId"]) ||
       typeof candidate.id !== "string" ||
       typeof candidate.name !== "string" ||
+      (candidate.modelId !== undefined && typeof candidate.modelId !== "string") ||
       candidate.id !== key
     )
       throw new Error("Provider public summary is unavailable");
-    providers[key] = { id: candidate.id, name: candidate.name };
+    providers[key] = {
+      id: candidate.id,
+      name: candidate.name,
+      ...(typeof candidate.modelId === "string" && candidate.modelId
+        ? { modelId: candidate.modelId }
+        : {}),
+    };
   }
   if (value.currentId !== "" && !(value.currentId in providers))
     throw new Error("Provider public summary is unavailable");
@@ -1192,6 +1449,22 @@ export function createTauriFeaturePorts(): FeaturePorts {
           safeRequestId,
         );
       },
+      getModelIds: async () =>
+        parseTraeWorkModelIdsResult(
+          await invoke<unknown>("get_traework_model_ids"),
+        ),
+      fetchModels: async (request) =>
+        parseFetchedModelList(
+          await invoke<unknown>("fetch_traework_models", {
+            request: assertTraeFetchRequest(request),
+          }),
+        ),
+      saveModels: async (request) =>
+        parseRevisionedSaveResult(
+          await invoke<unknown>("save_traework_models", {
+            request: assertTraeSaveRequest(request),
+          }),
+        ),
     },
     codexDesktop: {
       getLocalStatus: async () =>
@@ -1242,12 +1515,37 @@ export function createTauriFeaturePorts(): FeaturePorts {
           request: assertQuickSetupRequest(request),
           app,
         }),
+      fetchModels: async (baseUrl, apiKey) =>
+        parseFetchedModelRefs(
+          await invoke<unknown>("fetch_models_for_config", {
+            baseUrl,
+            apiKey,
+          }),
+        ),
     },
     workbuddy: {
       getStatus: () => invoke("get_workbuddy_status"),
       getModelIds: () => invoke("get_workbuddy_model_ids"),
       fetchModels: (request) => invoke("fetch_workbuddy_models", { request }),
       saveModels: (request) => invoke("save_workbuddy_models", { request }),
+    },
+    opencodeModels: {
+      getSnapshot: async () =>
+        parseOpenCodeModelSnapshot(
+          await invoke<unknown>("get_opencode_model_snapshot"),
+        ),
+      fetchProviderModels: async (request) =>
+        parseFetchedModelList(
+          await invoke<unknown>("fetch_opencode_provider_models", {
+            request: assertOpenCodeFetchRequest(request),
+          }),
+        ),
+      saveModels: async (request) =>
+        parseRevisionedSaveResult(
+          await invoke<unknown>("save_opencode_models", {
+            request: assertOpenCodeSaveRequest(request),
+          }),
+        ),
     },
     skills: {
       getInstalled: () => invoke("get_installed_skills"),

@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
-use crate::app_config::{AppType, McpServer};
+use crate::app_config::{AppType, McpServer, McpTargetId};
 use crate::error::AppError;
 use crate::mcp;
 use crate::store::AppState;
@@ -51,6 +51,9 @@ impl McpService {
         if prev_apps.hermes && !server.apps.hermes {
             Self::disable_server_for_app(state, &server.id, &AppType::Hermes)?;
         }
+        if prev_apps.workbuddy && !server.apps.workbuddy {
+            Self::disable_server_for_target(state, &server.id, McpTargetId::WorkBuddy)?;
+        }
 
         // 安全相关的取消分配必须先在 live 配置生效，才能提交数据库状态；
         // 否则清理失败后，界面会显示已关闭，但 Agent 仍会加载旧命令。
@@ -89,18 +92,29 @@ impl McpService {
         app: AppType,
         enabled: bool,
     ) -> Result<(), AppError> {
-        let _guard =
-            futures::executor::block_on(state.proxy_service.lock_switch_for_app(app.as_str()));
+        match McpTargetId::try_from(&app) {
+            Ok(target) => Self::toggle_target(state, server_id, target, enabled),
+            Err(_) => Ok(()),
+        }
+    }
+
+    pub fn toggle_target(
+        state: &AppState,
+        server_id: &str,
+        target: McpTargetId,
+        enabled: bool,
+    ) -> Result<(), AppError> {
+        let lock_id = target.as_str();
+        let _guard = futures::executor::block_on(state.proxy_service.lock_switch_for_app(lock_id));
         if enabled {
             if let Some(server) = state
                 .db
-                .update_mcp_server_app_enabled(server_id, &app, true)?
+                .update_mcp_server_target_enabled(server_id, &target, true)?
             {
-                Self::sync_server_to_app(state, &server, &app)?;
+                Self::sync_server_to_target(&server, &target)?;
             }
         } else if state.db.get_all_mcp_servers()?.contains_key(server_id) {
-            // 禁用先清理 live，再提交数据库；失败时保留原开关和重试入口。
-            Self::disable_server_for_app(state, server_id, &app)?;
+            Self::disable_server_for_target(state, server_id, target)?;
         }
 
         Ok(())
@@ -108,8 +122,8 @@ impl McpService {
 
     /// 将 MCP 服务器同步到所有启用的应用
     fn sync_server_to_apps(_state: &AppState, server: &McpServer) -> Result<(), AppError> {
-        for app in server.apps.enabled_apps() {
-            Self::sync_server_to_app_no_config(server, &app)?;
+        for target in server.apps.enabled_targets() {
+            Self::sync_server_to_target(server, &target)?;
         }
 
         Ok(())
@@ -121,45 +135,46 @@ impl McpService {
         server: &McpServer,
         app: &AppType,
     ) -> Result<(), AppError> {
-        Self::sync_server_to_app_no_config(server, app)
+        if let Ok(target) = McpTargetId::try_from(app) {
+            Self::sync_server_to_target(server, &target)?;
+        }
+        Ok(())
     }
 
-    fn sync_server_to_app_no_config(server: &McpServer, app: &AppType) -> Result<(), AppError> {
-        match app {
-            AppType::Claude => {
+    fn sync_server_to_target(server: &McpServer, target: &McpTargetId) -> Result<(), AppError> {
+        match target {
+            McpTargetId::Claude => {
                 mcp::sync_single_server_to_claude(&Default::default(), &server.id, &server.server)?;
             }
-            AppType::ClaudeDesktop => {
-                log::debug!("Claude Desktop 3P profiles do not use FyAgent MCP sync, skipping");
-            }
-            AppType::Codex => {
-                // Codex uses TOML format, must use the correct function
+            McpTargetId::Codex => {
                 mcp::sync_single_server_to_codex(&Default::default(), &server.id, &server.server)?;
             }
-            AppType::Gemini => {
+            McpTargetId::Gemini => {
                 mcp::sync_single_server_to_gemini(&Default::default(), &server.id, &server.server)?;
             }
-            AppType::GrokBuild => {
+            McpTargetId::GrokBuild => {
                 mcp::sync_single_server_to_grokbuild(
                     &Default::default(),
                     &server.id,
                     &server.server,
                 )?;
             }
-            AppType::OpenCode => {
+            McpTargetId::OpenCode => {
                 mcp::sync_single_server_to_opencode(
                     &Default::default(),
                     &server.id,
                     &server.server,
                 )?;
             }
-            AppType::OpenClaw => {
-                // OpenClaw MCP support is still in development (Issue #4834)
-                // Skip for now
-                log::debug!("OpenClaw MCP support is still in development, skipping sync");
-            }
-            AppType::Hermes => {
+            McpTargetId::Hermes => {
                 mcp::sync_single_server_to_hermes(&Default::default(), &server.id, &server.server)?;
+            }
+            McpTargetId::WorkBuddy => {
+                mcp::sync_single_server_to_workbuddy(
+                    &Default::default(),
+                    &server.id,
+                    &server.server,
+                )?;
             }
         }
         Ok(())
@@ -171,41 +186,40 @@ impl McpService {
         id: &str,
         server: &McpServer,
     ) -> Result<(), AppError> {
-        // 从所有曾启用的应用中移除
-        for app in server.apps.enabled_apps() {
-            // Commit each successful cleanup independently. If a later client
-            // fails, the retained row describes exactly which clients can be
-            // retried instead of reverting to a false all-enabled snapshot.
-            Self::disable_server_for_app(state, id, &app)?;
+        for target in server.apps.enabled_targets() {
+            Self::disable_server_for_target(state, id, target)?;
         }
         Ok(())
     }
 
     fn disable_server_for_app(state: &AppState, id: &str, app: &AppType) -> Result<(), AppError> {
-        Self::remove_server_from_app(state, id, app)?;
-        state.db.update_mcp_server_app_enabled(id, app, false)?;
+        if let Ok(target) = McpTargetId::try_from(app) {
+            Self::disable_server_for_target(state, id, target)?;
+        }
         Ok(())
     }
 
-    fn remove_server_from_app(_state: &AppState, id: &str, app: &AppType) -> Result<(), AppError> {
-        match app {
-            AppType::Claude => mcp::remove_server_from_claude(id)?,
-            AppType::ClaudeDesktop => {
-                log::debug!("Claude Desktop 3P profiles do not use FyAgent MCP sync, skipping");
-            }
-            AppType::Codex => mcp::remove_server_from_codex(id)?,
-            AppType::Gemini => mcp::remove_server_from_gemini(id)?,
-            AppType::GrokBuild => mcp::remove_server_from_grokbuild(id)?,
-            AppType::OpenCode => {
-                mcp::remove_server_from_opencode(id)?;
-            }
-            AppType::OpenClaw => {
-                // OpenClaw MCP support is still in development
-                log::debug!("OpenClaw MCP support is still in development, skipping remove");
-            }
-            AppType::Hermes => {
-                mcp::remove_server_from_hermes(id)?;
-            }
+    fn disable_server_for_target(
+        state: &AppState,
+        id: &str,
+        target: McpTargetId,
+    ) -> Result<(), AppError> {
+        Self::remove_server_from_target(id, &target)?;
+        state
+            .db
+            .update_mcp_server_target_enabled(id, &target, false)?;
+        Ok(())
+    }
+
+    fn remove_server_from_target(id: &str, target: &McpTargetId) -> Result<(), AppError> {
+        match target {
+            McpTargetId::Claude => mcp::remove_server_from_claude(id)?,
+            McpTargetId::Codex => mcp::remove_server_from_codex(id)?,
+            McpTargetId::Gemini => mcp::remove_server_from_gemini(id)?,
+            McpTargetId::GrokBuild => mcp::remove_server_from_grokbuild(id)?,
+            McpTargetId::OpenCode => mcp::remove_server_from_opencode(id)?,
+            McpTargetId::Hermes => mcp::remove_server_from_hermes(id)?,
+            McpTargetId::WorkBuddy => mcp::remove_server_from_workbuddy(id)?,
         }
         Ok(())
     }
@@ -219,11 +233,22 @@ impl McpService {
         config: &crate::app_config::MultiAppConfig,
         app: &AppType,
     ) -> Result<usize, AppError> {
+        let target = McpTargetId::try_from(app)?;
+        Self::persist_imported_servers_for_target(state, config, target)
+    }
+
+    fn persist_imported_servers_for_target(
+        state: &AppState,
+        config: &crate::app_config::MultiAppConfig,
+        target: McpTargetId,
+    ) -> Result<usize, AppError> {
         let Some(servers) = &config.mcp.servers else {
             return Ok(0);
         };
         let imported = servers.values().cloned().collect::<Vec<_>>();
-        state.db.import_mcp_servers_atomically(&imported, app)
+        state
+            .db
+            .import_mcp_servers_atomically_for_target(&imported, &target)
     }
 
     /// 手动同步所有启用的 MCP 服务器到对应的应用。
@@ -247,13 +272,15 @@ impl McpService {
         let servers = Self::get_all_servers(state)?;
 
         let mut failures: Vec<String> = Vec::new();
-        for app in AppType::all() {
+        for target in McpTargetId::all() {
             let _guard = lock_each_app.then(|| {
-                futures::executor::block_on(state.proxy_service.lock_switch_for_app(app.as_str()))
+                futures::executor::block_on(
+                    state.proxy_service.lock_switch_for_app(target.as_str()),
+                )
             });
-            if let Err(err) = Self::project_servers_to_app(state, &servers, &app) {
-                log::warn!("同步 MCP 到 {app:?} 失败: {err}");
-                failures.push(format!("{}: {err}", app.as_str()));
+            if let Err(err) = Self::project_servers_to_target(&servers, &target) {
+                log::warn!("同步 MCP 到 {target:?} 失败: {err}");
+                failures.push(format!("{}: {err}", target.as_str()));
             }
         }
 
@@ -281,23 +308,21 @@ impl McpService {
         app: &AppType,
     ) -> Result<(), AppError> {
         let servers = Self::get_all_servers(state)?;
-        Self::project_servers_to_app(state, &servers, app)
+        match McpTargetId::try_from(app) {
+            Ok(target) => Self::project_servers_to_target(&servers, &target),
+            Err(_) => Ok(()),
+        }
     }
 
-    fn project_servers_to_app(
-        state: &AppState,
+    fn project_servers_to_target(
         servers: &IndexMap<String, McpServer>,
-        app: &AppType,
+        target: &McpTargetId,
     ) -> Result<(), AppError> {
-        if matches!(app, AppType::OpenClaw | AppType::ClaudeDesktop) {
-            return Ok(());
-        }
-
         for server in servers.values() {
-            if server.apps.is_enabled_for(app) {
-                Self::sync_server_to_app(state, server, app)?;
+            if server.apps.is_enabled_for_target(target) {
+                Self::sync_server_to_target(server, target)?;
             } else {
-                Self::remove_server_from_app(state, &server.id, app)?;
+                Self::remove_server_from_target(&server.id, target)?;
             }
         }
 
@@ -409,6 +434,13 @@ impl McpService {
         Self::persist_imported_servers(state, &temp_config, &AppType::Hermes)
     }
 
+    /// 从 WorkBuddy 导入 MCP。WorkBuddy 不是 AppType。
+    pub fn import_from_workbuddy(state: &AppState) -> Result<usize, AppError> {
+        let mut temp_config = crate::app_config::MultiAppConfig::default();
+        crate::mcp::import_from_workbuddy(&mut temp_config)?;
+        Self::persist_imported_servers_for_target(state, &temp_config, McpTargetId::WorkBuddy)
+    }
+
     /// 从所有支持 MCP 的应用导入服务器，返回新导入的数量。
     ///
     /// Best-effort：单个应用导入失败（如坏 config.toml）不阻断其余应用；
@@ -419,13 +451,14 @@ impl McpService {
         let mut total = 0;
         let mut failures: Vec<String> = Vec::new();
 
-        let results: [(&str, Result<usize, AppError>); 6] = [
+        let results: [(&str, Result<usize, AppError>); 7] = [
             ("claude", Self::import_from_claude(state)),
             ("codex", Self::import_from_codex(state)),
             ("gemini", Self::import_from_gemini(state)),
             ("grokbuild", Self::import_from_grokbuild(state)),
             ("opencode", Self::import_from_opencode(state)),
             ("hermes", Self::import_from_hermes(state)),
+            ("workbuddy", Self::import_from_workbuddy(state)),
         ];
         for (app, result) in results {
             match result {

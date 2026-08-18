@@ -91,7 +91,7 @@ describe("V2 MCP management", () => {
       await screen.findByRole("heading", { name: "Docs server" }),
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent(secret);
-    expect(screen.getAllByRole("switch")).toHaveLength(6);
+    expect(screen.getAllByRole("switch")).toHaveLength(4);
     expect(screen.getByText(/stdio · 1 Agent/)).toBeVisible();
     expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
       "手动添加",
@@ -195,7 +195,7 @@ describe("V2 MCP management", () => {
     ).toBeVisible();
 
     const assignment = screen.getByRole("switch", {
-      name: "Claude MCP 分配",
+      name: "Claude Code MCP 分配",
     });
     await user.click(assignment);
 
@@ -238,7 +238,9 @@ describe("V2 MCP management", () => {
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent(secret);
 
-    await user.click(screen.getByRole("switch", { name: "Claude MCP 分配" }));
+    await user.click(
+      screen.getByRole("switch", { name: "Claude Code MCP 分配" }),
+    );
     await waitFor(() => expect(ports.mcp.toggleApp).toHaveBeenCalledTimes(1));
     expect(document.body).not.toHaveTextContent(secret);
   });
@@ -362,10 +364,8 @@ describe("V2 MCP management", () => {
       apps: {
         claude: true,
         codex: true,
-        gemini: true,
-        grokbuild: true,
-        opencode: false,
-        hermes: false,
+        opencode: true,
+        workbuddy: true,
       },
       server: { type: "stdio", command: "uvx", args: ["mcp-server-time"] },
     });
@@ -581,7 +581,7 @@ describe("V2 Skills management", () => {
       within(dialog).getByRole("checkbox", { name: /Codex/ }),
     ).toBeChecked();
     expect(
-      within(dialog).getByRole("checkbox", { name: /Gemini/ }),
+      within(dialog).getByRole("checkbox", { name: /OpenCode/ }),
     ).not.toBeChecked();
 
     await user.click(
@@ -594,10 +594,10 @@ describe("V2 Skills management", () => {
         apps: expect.objectContaining({
           claude: true,
           codex: true,
-          gemini: false,
-          grokbuild: false,
           opencode: false,
-          hermes: false,
+          qoderwork: false,
+          "trae-work": false,
+          workbuddy: false,
         }),
       },
     ]);
@@ -625,7 +625,7 @@ describe("V2 Skills management", () => {
     ).toBeVisible();
 
     const assignment = screen.getByRole("switch", {
-      name: "Claude Skill 分配",
+      name: "Claude Code Skill 分配",
     });
     await user.click(assignment);
 
@@ -785,7 +785,7 @@ describe("V2 Skills management", () => {
     await screen.findByText("还没有安装 Skill");
     await user.click(screen.getByRole("tab", { name: "发现" }));
     const install = await screen.findByRole("button", {
-      name: "安装到 Claude",
+      name: "安装到 Claude Code",
     });
 
     await user.click(install);
@@ -827,7 +827,7 @@ describe("V2 Skills management", () => {
     await screen.findByText("还没有安装 Skill");
     await user.click(screen.getByRole("tab", { name: "发现" }));
     await user.click(
-      await screen.findByRole("button", { name: "安装到 Claude" }),
+      await screen.findByRole("button", { name: "安装到 Claude Code" }),
     );
 
     expect(await screen.findByText("请稍后重试。")).toBeVisible();
@@ -865,7 +865,7 @@ describe("V2 Skills management", () => {
     ).toBeVisible();
     expect(screen.getByRole("tablist", { name: "安装目标" })).toBeVisible();
     expect(
-      screen.getByRole("tab", { name: "Claude", selected: true }),
+      screen.getByRole("tab", { name: "Claude Code", selected: true }),
     ).toBeVisible();
     expect(
       screen.queryByRole("tablist", { name: "仓库筛选" }),
@@ -884,7 +884,7 @@ describe("V2 Skills management", () => {
     );
     expect(openExternal).toHaveBeenCalledWith(discoverable.readmeUrl);
     expect(
-      await screen.findByRole("button", { name: "安装到 Claude" }),
+      await screen.findByRole("button", { name: "安装到 Claude Code" }),
     ).toBeVisible();
   });
 
@@ -967,7 +967,7 @@ describe("V2 Skills management", () => {
       }),
     ).toBeVisible();
     expect(
-      screen.queryByRole("button", { name: "安装到 Claude" }),
+      screen.queryByRole("button", { name: "安装到 Claude Code" }),
     ).not.toBeInTheDocument();
   });
 
