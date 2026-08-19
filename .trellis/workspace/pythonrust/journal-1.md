@@ -895,3 +895,41 @@ Aligned V2 agent catalog, models, and Skills/MCP: TRAE Work CN URL and native pe
 ### Status
 
 [OK] **Completed**
+
+
+## Session 29: Qoder/TRAE MCP assignment and catalog-order Skills/MCP
+
+**Date**: 2026-08-19
+**Task**: Qoder/TRAE MCP assignment and catalog-order Skills/MCP
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Removed unused Models official-settings buttons, added QoderWork CN and TRAE Work CN direct MCP live-file adapters, aligned Skills/MCP assignment order with the Agent directory, merged and closed PR 111, and updated the 7-section code-specs.
+
+### Main Changes
+
+- Drop Models 「打开官方设置」 / 「打开 TRAE 官方模型设置」; keep Qoder 「管理 Hooks 和 MCP」.
+- Add schema v19 MCP flags and native adapters for ~/.qoderworkcn/mcp.json and TRAE SOLO CN User/mcp.json.
+- Share six catalog-ordered Skills/MCP targets; FeatureList is a column flex track; FeatureListItem accepts ariaLabel.
+- Merge PR 111 onto shared FeatureTabs/FeatureSearch/FeatureList; close GitHub PR 111; archive 08-18-prompt-memory-frontend-replan.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d52a7ef9` | (see git log) |
+
+### Testing
+
+- [OK] mise run lint:v2, typecheck:v2, test:v2 (245 tests).
+- [OK] mise run rust:fmt:check, rust:clippy, rust:test.
+- [OK] mise run test:v2:browser: 116 passed (user-run).
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
