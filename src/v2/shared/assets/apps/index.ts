@@ -16,10 +16,12 @@ import traeWorkIconUrl from "../agents/trae-work.png";
 import workBuddyIconUrl from "../agents/workbuddy.png";
 
 export const supportedAppIconById: Record<SupportedAppId, string> = {
-  claude: claudeIconUrl,
-  codex: codexIconUrl,
-  opencode: openCodeIconUrl,
+  qoderwork: qoderWorkIconUrl,
+  "trae-work": traeWorkIconUrl,
   workbuddy: workBuddyIconUrl,
+  codex: codexIconUrl,
+  claude: claudeIconUrl,
+  opencode: openCodeIconUrl,
 };
 
 export function getSupportedAppIcon(id: SupportedAppId): string {
@@ -27,12 +29,12 @@ export function getSupportedAppIcon(id: SupportedAppId): string {
 }
 
 export const skillTargetIconById: Record<SkillTargetId, string> = {
-  claude: claudeIconUrl,
-  codex: codexIconUrl,
-  opencode: openCodeIconUrl,
   qoderwork: qoderWorkIconUrl,
   "trae-work": traeWorkIconUrl,
   workbuddy: workBuddyIconUrl,
+  codex: codexIconUrl,
+  claude: claudeIconUrl,
+  opencode: openCodeIconUrl,
 };
 
 export function getSkillTargetIcon(id: SkillTargetId): string {

@@ -68,7 +68,9 @@ impl Database {
             enabled_gemini BOOLEAN NOT NULL DEFAULT 0, enabled_grokbuild BOOLEAN NOT NULL DEFAULT 0,
             enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
             enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
-            enabled_workbuddy BOOLEAN NOT NULL DEFAULT 0
+            enabled_workbuddy BOOLEAN NOT NULL DEFAULT 0,
+            enabled_qoderwork BOOLEAN NOT NULL DEFAULT 0,
+            enabled_trae_work BOOLEAN NOT NULL DEFAULT 0
         )",
             [],
         )
@@ -526,6 +528,11 @@ impl Database {
                         log::info!("迁移数据库从 v17 到 v18（Skills/MCP 添加 WorkBuddy 目标）");
                         Self::migrate_v17_to_v18(conn)?;
                         Self::set_user_version(conn, 18)?;
+                    }
+                    18 => {
+                        log::info!("迁移数据库从 v18 到 v19（MCP 添加 QoderWork/TRAE Work 目标）");
+                        Self::migrate_v18_to_v19(conn)?;
+                        Self::set_user_version(conn, 19)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1592,6 +1599,30 @@ impl Database {
         }
 
         log::info!("v17 -> v18 迁移完成：Skills/MCP 已添加 WorkBuddy 目标");
+        Ok(())
+    }
+
+    /// v18 -> v19：MCP 增加 QoderWork / TRAE Work 直接分配标志。
+    ///
+    /// 两列均为 additive/default-false；旧行和原有 enabled_* 值原样保留。
+    /// QoderWork / TRAE Work 不是 AppType，MCP 列只服务直接分配。
+    fn migrate_v18_to_v19(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "mcp_servers")? {
+            Self::add_column_if_missing(
+                conn,
+                "mcp_servers",
+                "enabled_qoderwork",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+            Self::add_column_if_missing(
+                conn,
+                "mcp_servers",
+                "enabled_trae_work",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+        }
+
+        log::info!("v18 -> v19 迁移完成：MCP 已添加 QoderWork/TRAE Work 目标");
         Ok(())
     }
 
@@ -3370,6 +3401,41 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
         assert_eq!(mcp_values, (1, 1, 0));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v18_to_v19_adds_qoder_trae_mcp_flags_without_changing_existing(
+    ) -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE mcp_servers (
+                id TEXT PRIMARY KEY,
+                enabled_claude BOOLEAN NOT NULL DEFAULT 0,
+                enabled_codex BOOLEAN NOT NULL DEFAULT 0,
+                enabled_gemini BOOLEAN NOT NULL DEFAULT 0,
+                enabled_grokbuild BOOLEAN NOT NULL DEFAULT 0,
+                enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
+                enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
+                enabled_workbuddy BOOLEAN NOT NULL DEFAULT 0
+            );
+            INSERT INTO mcp_servers (
+                id, enabled_claude, enabled_codex, enabled_gemini,
+                enabled_grokbuild, enabled_opencode, enabled_hermes, enabled_workbuddy
+            ) VALUES ('mcp-1', 1, 0, 0, 0, 1, 0, 1);",
+        )?;
+        Database::set_user_version(&conn, 18)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let mcp_values: (i64, i64, i64, i64, i64) = conn.query_row(
+            "SELECT enabled_claude, enabled_opencode, enabled_workbuddy, enabled_qoderwork, enabled_trae_work
+             FROM mcp_servers WHERE id = 'mcp-1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        )?;
+        assert_eq!(mcp_values, (1, 1, 1, 0, 0));
         Ok(())
     }
 

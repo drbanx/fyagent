@@ -33,7 +33,7 @@ export function isNativeOnlyError(error: unknown): boolean {
 export function sanitizeMcpConfigurationError(error: unknown): string {
   const message = rawErrorMessage(error);
   const importConflict = message.match(
-    /配置冲突；未合并 (claude|codex|gemini|grokbuild|opencode|hermes|workbuddy) 分配/i,
+    /配置冲突；未合并 (claude|codex|gemini|grokbuild|opencode|hermes|workbuddy|qoderwork|trae-work) 分配/i,
   );
   if (importConflict) {
     const appLabels: Record<string, string> = {
@@ -44,6 +44,8 @@ export function sanitizeMcpConfigurationError(error: unknown): string {
       opencode: "OpenCode",
       hermes: "Hermes",
       workbuddy: "WorkBuddy",
+      qoderwork: "QoderWork CN",
+      "trae-work": "TRAE Work CN",
     };
     const appLabel = appLabels[importConflict[1].toLocaleLowerCase()];
     return `检测到同名 MCP 服务器的配置冲突，未合并 ${appLabel} 分配；请统一两端配置或更改服务器 ID`;

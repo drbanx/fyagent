@@ -4,13 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { classNames } from "../../shared/design-system/classNames";
 import { useFeatures } from "../../shared/features/provider";
-import {
-  useAgentCatalog,
-  useTraeWorkModelIds,
-} from "../../shared/features/queries";
+import { useTraeWorkModelIds } from "../../shared/features/queries";
 import type { TraeWorkSaveModelsRequest } from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
-import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import {
   Button,
   Checkbox,
@@ -50,7 +46,6 @@ type NoticeField =
 
 export function TraeModelsPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
-  const catalogQuery = useAgentCatalog(active);
   const modelIdsQuery = useTraeWorkModelIds(active);
   const [apiFormat, setApiFormat] =
     useState<TraeWorkSaveModelsRequest["apiFormat"]>("openai_chat_completions");
@@ -82,13 +77,6 @@ export function TraeModelsPanel({ active }: { active: boolean }) {
   const urlInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const manualModelsInputRef = useRef<HTMLInputElement>(null);
-  const entry = catalogQuery.data?.agents.find(
-    (agent) => agent.id === "trae-work",
-  );
-  const productLink = entry?.officialLinks.find((link) => link.id === "product");
-  const productCapability = entry?.capabilities.find(
-    (capability) => capability.id === "product.open",
-  );
 
   const setApiKey = (value: string) => {
     apiKeyRef.current = value;
@@ -695,18 +683,6 @@ export function TraeModelsPanel({ active }: { active: boolean }) {
             >
               清除所有模型
             </Button>
-            <ExternalLinkButton
-              url={productLink?.url}
-              disabled={
-                !productLink ||
-                (productCapability?.mode !== "direct" &&
-                  productCapability?.mode !== "assisted") ||
-                busy !== null
-              }
-              errorTitle="无法打开 TRAE 官方设置"
-            >
-              打开 TRAE 官方模型设置
-            </ExternalLinkButton>
           </div>
           <FieldFeedback id="trae-fetch-error" notice={notices.fetch} />
         </div>

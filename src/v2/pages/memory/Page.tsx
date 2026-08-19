@@ -408,6 +408,7 @@ function LongTermView({
                     key={document.id}
                     selected={document.id === selectedId}
                     title={document.listLabel}
+                    ariaLabel={`${document.title}。${document.description}`}
                     onSelect={() => selectDocument(document.id)}
                   >
                     <span>{document.description}</span>

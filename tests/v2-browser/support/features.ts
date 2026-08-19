@@ -49,16 +49,17 @@ export async function installRichTauriFeatureFixture(
   await page.addInitScript((fixtureOptions: RichFeatureFixtureOptions) => {
     const mcpAssignments = (enabled: string[]) =>
       Object.fromEntries(
-        ["claude", "codex", "opencode", "workbuddy"].map((id) => [
-          id,
-          enabled.includes(id),
-        ]),
+        [
+          "qoderwork",
+          "trae-work",
+          "workbuddy",
+          "codex",
+          "claude",
+          "opencode",
+        ].map((id) => [id, enabled.includes(id)]),
       );
-    const skillAssignments = (enabled: string[]): Record<string, boolean> => ({
-      ...mcpAssignments(enabled),
-      qoderwork: enabled.includes("qoderwork"),
-      "trae-work": enabled.includes("trae-work"),
-    });
+    const skillAssignments = (enabled: string[]): Record<string, boolean> =>
+      mcpAssignments(enabled);
     const skills = [
       {
         id: "fixture-review",
@@ -170,7 +171,7 @@ export async function installRichTauriFeatureFixture(
           id: "trae-work",
           variantId: "trae-work-cn",
           displayName: "TRAE Work CN",
-          description: "支持 Skills 同步、模型配置与 MCP 检查；不支持 Hooks。",
+          description: "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
           officialLinks: [
             {
               id: "product",

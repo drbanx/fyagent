@@ -54,6 +54,12 @@ impl McpService {
         if prev_apps.workbuddy && !server.apps.workbuddy {
             Self::disable_server_for_target(state, &server.id, McpTargetId::WorkBuddy)?;
         }
+        if prev_apps.qoderwork && !server.apps.qoderwork {
+            Self::disable_server_for_target(state, &server.id, McpTargetId::QoderWork)?;
+        }
+        if prev_apps.trae_work && !server.apps.trae_work {
+            Self::disable_server_for_target(state, &server.id, McpTargetId::TraeWork)?;
+        }
 
         // 安全相关的取消分配必须先在 live 配置生效，才能提交数据库状态；
         // 否则清理失败后，界面会显示已关闭，但 Agent 仍会加载旧命令。
@@ -176,6 +182,20 @@ impl McpService {
                     &server.server,
                 )?;
             }
+            McpTargetId::QoderWork => {
+                mcp::sync_single_server_to_qoderwork(
+                    &Default::default(),
+                    &server.id,
+                    &server.server,
+                )?;
+            }
+            McpTargetId::TraeWork => {
+                mcp::sync_single_server_to_traework(
+                    &Default::default(),
+                    &server.id,
+                    &server.server,
+                )?;
+            }
         }
         Ok(())
     }
@@ -220,6 +240,8 @@ impl McpService {
             McpTargetId::OpenCode => mcp::remove_server_from_opencode(id)?,
             McpTargetId::Hermes => mcp::remove_server_from_hermes(id)?,
             McpTargetId::WorkBuddy => mcp::remove_server_from_workbuddy(id)?,
+            McpTargetId::QoderWork => mcp::remove_server_from_qoderwork(id)?,
+            McpTargetId::TraeWork => mcp::remove_server_from_traework(id)?,
         }
         Ok(())
     }
@@ -441,6 +463,18 @@ impl McpService {
         Self::persist_imported_servers_for_target(state, &temp_config, McpTargetId::WorkBuddy)
     }
 
+    pub fn import_from_qoderwork(state: &AppState) -> Result<usize, AppError> {
+        let mut temp_config = crate::app_config::MultiAppConfig::default();
+        crate::mcp::import_from_qoderwork(&mut temp_config)?;
+        Self::persist_imported_servers_for_target(state, &temp_config, McpTargetId::QoderWork)
+    }
+
+    pub fn import_from_traework(state: &AppState) -> Result<usize, AppError> {
+        let mut temp_config = crate::app_config::MultiAppConfig::default();
+        crate::mcp::import_from_traework(&mut temp_config)?;
+        Self::persist_imported_servers_for_target(state, &temp_config, McpTargetId::TraeWork)
+    }
+
     /// 从所有支持 MCP 的应用导入服务器，返回新导入的数量。
     ///
     /// Best-effort：单个应用导入失败（如坏 config.toml）不阻断其余应用；
@@ -451,7 +485,7 @@ impl McpService {
         let mut total = 0;
         let mut failures: Vec<String> = Vec::new();
 
-        let results: [(&str, Result<usize, AppError>); 7] = [
+        let results: [(&str, Result<usize, AppError>); 9] = [
             ("claude", Self::import_from_claude(state)),
             ("codex", Self::import_from_codex(state)),
             ("gemini", Self::import_from_gemini(state)),
@@ -459,6 +493,8 @@ impl McpService {
             ("opencode", Self::import_from_opencode(state)),
             ("hermes", Self::import_from_hermes(state)),
             ("workbuddy", Self::import_from_workbuddy(state)),
+            ("qoderwork", Self::import_from_qoderwork(state)),
+            ("trae-work", Self::import_from_traework(state)),
         ];
         for (app, result) in results {
             match result {

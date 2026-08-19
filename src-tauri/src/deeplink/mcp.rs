@@ -168,6 +168,8 @@ pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
             }
             "hermes" => apps.hermes = true,
             "workbuddy" => apps.workbuddy = true,
+            "qoderwork" => apps.qoderwork = true,
+            "trae-work" => apps.trae_work = true,
             other => {
                 return Err(AppError::InvalidInput(format!(
                     "Invalid app in 'apps': {other}"
@@ -221,5 +223,7 @@ mod tests {
         assert!(merged.opencode);
         assert!(merged.hermes);
         assert!(merged.workbuddy);
+        assert!(!merged.qoderwork);
+        assert!(!merged.trae_work);
     }
 }

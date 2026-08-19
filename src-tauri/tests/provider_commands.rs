@@ -379,6 +379,8 @@ command = "say"
                 opencode: false,
                 hermes: false,
                 workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,

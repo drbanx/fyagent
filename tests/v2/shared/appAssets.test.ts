@@ -10,7 +10,10 @@ import {
   supportedAppIconById,
 } from "@/v2/shared/assets/apps";
 import {
+  MCP_TARGET_IDS,
+  MCP_TARGETS,
   SKILL_TARGET_IDS,
+  SKILL_TARGETS,
   SUPPORTED_APP_IDS,
   type SupportedAppId,
 } from "@/v2/shared/features/types";
@@ -49,10 +52,12 @@ const reviewedSources: Readonly<Record<keyof typeof copiedAssetNames, string>> =
   };
 
 const expectedAssetPaths: Readonly<Record<SupportedAppId, string>> = {
-  claude: path.join(agentAssetRoot, "claude-code.svg"),
-  codex: path.join(agentAssetRoot, "codex.svg"),
-  opencode: path.join(appAssetRoot, copiedAssetNames.opencode),
+  qoderwork: path.join(agentAssetRoot, "qoderwork.png"),
+  "trae-work": path.join(agentAssetRoot, "trae-work.png"),
   workbuddy: path.join(agentAssetRoot, "workbuddy.png"),
+  codex: path.join(agentAssetRoot, "codex.svg"),
+  claude: path.join(agentAssetRoot, "claude-code.svg"),
+  opencode: path.join(appAssetRoot, copiedAssetNames.opencode),
 };
 
 describe("V2 supported application assets", () => {
@@ -67,9 +72,20 @@ describe("V2 supported application assets", () => {
     }
   });
 
-  it("keeps Skills at six catalog-aligned targets while the MCP map stays at four", () => {
+  it("keeps Skills and MCP on the same six catalog-aligned targets", () => {
     expect(Object.keys(skillTargetIconById)).toEqual(SKILL_TARGET_IDS);
     expect(Object.keys(supportedAppIconById)).toEqual(SUPPORTED_APP_IDS);
+    expect(SKILL_TARGET_IDS).toEqual([
+      "qoderwork",
+      "trae-work",
+      "workbuddy",
+      "codex",
+      "claude",
+      "opencode",
+    ]);
+    expect(SKILL_TARGET_IDS).toBe(MCP_TARGET_IDS);
+    expect(SKILL_TARGETS).toBe(MCP_TARGETS);
+    expect(SUPPORTED_APP_IDS).toEqual(SKILL_TARGET_IDS);
     expect(getSkillTargetIcon("qoderwork")).toMatch(
       /\/src\/v2\/shared\/assets\/agents\/qoderwork\.png$/,
     );

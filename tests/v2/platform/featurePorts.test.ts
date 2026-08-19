@@ -1051,10 +1051,12 @@ describe("V2 feature ports", () => {
       name: "Server A",
       server: { type: "stdio" as const, command: "npx" },
       apps: {
-        claude: true,
-        codex: false,
-        opencode: false,
+        qoderwork: false,
+        "trae-work": false,
         workbuddy: false,
+        codex: false,
+        claude: true,
+        opencode: false,
       },
     };
     const skillApps = {

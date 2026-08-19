@@ -21,10 +21,13 @@ pub struct McpApps {
     pub hermes: bool,
     #[serde(default)]
     pub workbuddy: bool,
+    #[serde(default)]
+    pub qoderwork: bool,
+    #[serde(default, rename = "trae-work")]
+    pub trae_work: bool,
 }
 
-/// MCP 直接分配目标。WorkBuddy 只存在于 MCP/Skills 域，不是 [`AppType`]。
-/// QoderWork / TRAE Work 不进入该集合。
+/// MCP 直接分配目标。WorkBuddy / QoderWork / TRAE Work 只存在于 MCP/Skills 域，不是 [`AppType`]。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum McpTargetId {
@@ -35,6 +38,9 @@ pub enum McpTargetId {
     OpenCode,
     Hermes,
     WorkBuddy,
+    QoderWork,
+    #[serde(rename = "trae-work")]
+    TraeWork,
 }
 
 impl McpTargetId {
@@ -47,6 +53,8 @@ impl McpTargetId {
             Self::OpenCode => "opencode",
             Self::Hermes => "hermes",
             Self::WorkBuddy => "workbuddy",
+            Self::QoderWork => "qoderwork",
+            Self::TraeWork => "trae-work",
         }
     }
 
@@ -59,6 +67,8 @@ impl McpTargetId {
             Self::OpenCode,
             Self::Hermes,
             Self::WorkBuddy,
+            Self::QoderWork,
+            Self::TraeWork,
         ]
         .into_iter()
     }
@@ -71,7 +81,7 @@ impl McpTargetId {
             Self::GrokBuild => Some(AppType::GrokBuild),
             Self::OpenCode => Some(AppType::OpenCode),
             Self::Hermes => Some(AppType::Hermes),
-            Self::WorkBuddy => None,
+            Self::WorkBuddy | Self::QoderWork | Self::TraeWork => None,
         }
     }
 }
@@ -88,11 +98,8 @@ impl FromStr for McpTargetId {
             "opencode" => Ok(Self::OpenCode),
             "hermes" => Ok(Self::Hermes),
             "workbuddy" => Ok(Self::WorkBuddy),
-            "qoderwork" | "trae-work" => Err(AppError::localized(
-                "unsupported_mcp_target",
-                format!("'{s}' 不支持 MCP 直接分配。"),
-                format!("'{s}' is not a direct MCP assignment target."),
-            )),
+            "qoderwork" => Ok(Self::QoderWork),
+            "trae-work" => Ok(Self::TraeWork),
             other => Err(AppError::localized(
                 "unsupported_mcp_target",
                 format!("不支持的 MCP 目标标识: '{other}'。"),
@@ -139,6 +146,8 @@ impl McpApps {
             McpTargetId::OpenCode => self.opencode,
             McpTargetId::Hermes => self.hermes,
             McpTargetId::WorkBuddy => self.workbuddy,
+            McpTargetId::QoderWork => self.qoderwork,
+            McpTargetId::TraeWork => self.trae_work,
         }
     }
 
@@ -158,6 +167,8 @@ impl McpApps {
             McpTargetId::OpenCode => self.opencode = enabled,
             McpTargetId::Hermes => self.hermes = enabled,
             McpTargetId::WorkBuddy => self.workbuddy = enabled,
+            McpTargetId::QoderWork => self.qoderwork = enabled,
+            McpTargetId::TraeWork => self.trae_work = enabled,
         }
     }
 
@@ -184,6 +195,8 @@ impl McpApps {
             && !self.opencode
             && !self.hermes
             && !self.workbuddy
+            && !self.qoderwork
+            && !self.trae_work
     }
 }
 
@@ -1285,19 +1298,33 @@ mod tests {
     }
 
     #[test]
-    fn mcp_targets_include_workbuddy_and_reject_qoder_trae_direct_assignment() {
+    fn mcp_targets_include_workbuddy_qoder_and_trae_without_app_type() {
         let targets: Vec<_> = McpTargetId::all().collect();
-        assert_eq!(targets.len(), 7);
+        assert_eq!(targets.len(), 9);
         assert_eq!(targets[6].as_str(), "workbuddy");
+        assert_eq!(targets[7].as_str(), "qoderwork");
+        assert_eq!(targets[8].as_str(), "trae-work");
         assert!(McpTargetId::WorkBuddy.as_app_type().is_none());
-        assert!("qoderwork".parse::<McpTargetId>().is_err());
-        assert!("trae-work".parse::<McpTargetId>().is_err());
+        assert!(McpTargetId::QoderWork.as_app_type().is_none());
+        assert!(McpTargetId::TraeWork.as_app_type().is_none());
+        assert_eq!(
+            "qoderwork".parse::<McpTargetId>().unwrap(),
+            McpTargetId::QoderWork
+        );
+        assert_eq!(
+            "trae-work".parse::<McpTargetId>().unwrap(),
+            McpTargetId::TraeWork
+        );
         assert_eq!(
             "workbuddy".parse::<McpTargetId>().unwrap(),
             McpTargetId::WorkBuddy
         );
         assert!(AppType::try_from(&SkillTargetId::WorkBuddy).is_err());
+        assert!(AppType::try_from(&SkillTargetId::QoderWork).is_err());
+        assert!(AppType::try_from(&SkillTargetId::TraeWork).is_err());
         assert!("workbuddy".parse::<AppType>().is_err());
+        assert!("qoderwork".parse::<AppType>().is_err());
+        assert!("trae-work".parse::<AppType>().is_err());
     }
 
     #[test]
@@ -1340,6 +1367,8 @@ mod tests {
         assert!(apps.claude);
         assert!(apps.opencode);
         assert!(!apps.workbuddy);
+        assert!(!apps.qoderwork);
+        assert!(!apps.trae_work);
         assert_eq!(
             apps.enabled_targets(),
             vec![McpTargetId::Claude, McpTargetId::OpenCode]

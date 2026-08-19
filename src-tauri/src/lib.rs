@@ -1484,6 +1484,22 @@ pub fn run() {
                     Ok(_) => log::debug!("○ No WorkBuddy MCP servers found to import"),
                     Err(e) => log::warn!("✗ Failed to import WorkBuddy MCP: {e}"),
                 }
+
+                match crate::services::mcp::McpService::import_from_qoderwork(&app_state) {
+                    Ok(count) if count > 0 => {
+                        log::info!("✓ Imported {count} MCP server(s) from QoderWork");
+                    }
+                    Ok(_) => log::debug!("○ No QoderWork MCP servers found to import"),
+                    Err(e) => log::warn!("✗ Failed to import QoderWork MCP: {e}"),
+                }
+
+                match crate::services::mcp::McpService::import_from_traework(&app_state) {
+                    Ok(count) if count > 0 => {
+                        log::info!("✓ Imported {count} MCP server(s) from TRAE Work");
+                    }
+                    Ok(_) => log::debug!("○ No TRAE Work MCP servers found to import"),
+                    Err(e) => log::warn!("✗ Failed to import TRAE Work MCP: {e}"),
+                }
             }
 
             // 4. 导入提示词文件（表空时触发）

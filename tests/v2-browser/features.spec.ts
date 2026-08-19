@@ -60,7 +60,7 @@ for (const feature of [
     list: "MCP 列表",
     detail: "MCP 详情",
     switchSuffix: "MCP 分配",
-    targetCount: 4,
+    targetCount: 6,
   },
 ] as const) {
   test(`${feature.route} renders populated responsive master-detail-assignment data`, async ({
@@ -87,7 +87,16 @@ for (const feature of [
     const switchNames = await switches.evaluateAll((elements) =>
       elements.map((element) => element.getAttribute("aria-label")),
     );
-    expect(new Set(switchNames).size).toBe(feature.targetCount);
+    expect(switchNames).toEqual(
+      [
+        "QoderWork CN",
+        "TRAE Work CN",
+        "WorkBuddy",
+        "Codex",
+        "Claude Code",
+        "OpenCode",
+      ].map((label) => `${label} ${feature.switchSuffix}`),
+    );
 
     const paneCount = await page
       .locator(".fy-split-panes > .fy-split-pane")

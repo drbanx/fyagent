@@ -9,11 +9,11 @@ use indexmap::IndexMap;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 const MCP_SERVER_SELECT: &str =
-    "SELECT id, name, server_config, description, homepage, docs, tags, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes, enabled_workbuddy FROM mcp_servers";
+    "SELECT id, name, server_config, description, homepage, docs, tags, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes, enabled_workbuddy, enabled_qoderwork, enabled_trae_work FROM mcp_servers";
 const MCP_SERVER_UPSERT: &str = "INSERT OR REPLACE INTO mcp_servers (
     id, name, server_config, description, homepage, docs, tags,
-    enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes, enabled_workbuddy
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)";
+    enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes, enabled_workbuddy, enabled_qoderwork, enabled_trae_work
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)";
 
 fn mcp_target_column(target: &McpTargetId) -> &'static str {
     match target {
@@ -24,6 +24,8 @@ fn mcp_target_column(target: &McpTargetId) -> &'static str {
         McpTargetId::OpenCode => "enabled_opencode",
         McpTargetId::Hermes => "enabled_hermes",
         McpTargetId::WorkBuddy => "enabled_workbuddy",
+        McpTargetId::QoderWork => "enabled_qoderwork",
+        McpTargetId::TraeWork => "enabled_trae_work",
     }
 }
 
@@ -50,6 +52,8 @@ fn save_mcp_server_on(conn: &Connection, server: &McpServer) -> Result<(), AppEr
             server.apps.opencode,
             server.apps.hermes,
             server.apps.workbuddy,
+            server.apps.qoderwork,
+            server.apps.trae_work,
         ],
     )
     .map_err(|e| AppError::Database(e.to_string()))?;
@@ -71,6 +75,8 @@ fn row_to_mcp_server(row: &Row<'_>) -> rusqlite::Result<(String, McpServer)> {
     let enabled_opencode: bool = row.get(11)?;
     let enabled_hermes: bool = row.get(12)?;
     let enabled_workbuddy: bool = row.get(13)?;
+    let enabled_qoderwork: bool = row.get(14)?;
+    let enabled_trae_work: bool = row.get(15)?;
 
     let server = serde_json::from_str(&server_config_str).unwrap_or_default();
     let tags = serde_json::from_str(&tags_str).unwrap_or_default();
@@ -89,6 +95,8 @@ fn row_to_mcp_server(row: &Row<'_>) -> rusqlite::Result<(String, McpServer)> {
                 opencode: enabled_opencode,
                 hermes: enabled_hermes,
                 workbuddy: enabled_workbuddy,
+                qoderwork: enabled_qoderwork,
+                trae_work: enabled_trae_work,
             },
             description,
             homepage,
@@ -472,6 +480,32 @@ mod tests {
             .expect("disable workbuddy")
             .expect("server exists");
         assert!(!after_disable.apps.workbuddy);
+        assert!(after_disable.apps.gemini);
+    }
+
+    #[test]
+    fn qoderwork_and_trae_work_mcp_flags_round_trip_without_an_app_type() {
+        let db = Database::memory().expect("create memory db");
+        let mut server = test_server();
+        server.apps.qoderwork = true;
+        server.apps.trae_work = true;
+        db.save_mcp_server(&server).expect("seed server");
+
+        let stored = db
+            .get_all_mcp_servers()
+            .expect("read servers")
+            .shift_remove("shared-server")
+            .expect("stored server");
+        assert!(stored.apps.qoderwork);
+        assert!(stored.apps.trae_work);
+        assert!(stored.apps.gemini);
+
+        let after_disable = db
+            .update_mcp_server_target_enabled("shared-server", &McpTargetId::QoderWork, false)
+            .expect("disable qoderwork")
+            .expect("server exists");
+        assert!(!after_disable.apps.qoderwork);
+        assert!(after_disable.apps.trae_work);
         assert!(after_disable.apps.gemini);
     }
 }

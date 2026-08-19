@@ -33,6 +33,11 @@ describe("AssignmentPanel", () => {
         screen.getByRole("switch", { name: `${app.label} Skill 分配` }),
       ).toBeVisible();
     }
+    expect(
+      screen.getAllByRole("switch").map((node) => node.getAttribute("aria-label")),
+    ).toEqual(
+      SKILL_TARGETS.map((app) => `${app.label} Skill 分配`),
+    );
 
     const icons = Array.from(
       container.querySelectorAll<HTMLImageElement>(
@@ -65,5 +70,8 @@ describe("AssignmentPanel", () => {
 
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onToggle).toHaveBeenCalledWith("opencode", true);
+    expect(
+      screen.getAllByRole("switch").map((node) => node.getAttribute("aria-label")),
+    ).toEqual(MCP_TARGETS.map((app) => `${app.label} MCP 分配`));
   });
 });

@@ -1,8 +1,10 @@
 import type { McpTargetId } from "../../shared/features/types";
 
 export const DEFAULT_NEW_APPS: readonly McpTargetId[] = [
-  "claude",
-  "codex",
-  "opencode",
+  "qoderwork",
+  "trae-work",
   "workbuddy",
+  "codex",
+  "claude",
+  "opencode",
 ];

@@ -219,8 +219,8 @@ const QODERWORK_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
     capability(
         AgentCapabilityId::McpWrite,
-        AgentCapabilityMode::Assisted,
-        AgentCapabilityReasonCode::VendorUiRequired,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::DedicatedNativeContract,
         QODER_MCP_EVIDENCE,
     ),
 ];
@@ -288,8 +288,8 @@ const TRAE_WORK_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
     capability(
         AgentCapabilityId::McpWrite,
-        AgentCapabilityMode::Assisted,
-        AgentCapabilityReasonCode::VendorUiRequired,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::DedicatedNativeContract,
         TRAE_MCP_EVIDENCE,
     ),
 ];
@@ -576,7 +576,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
         variant_id: AgentVariantId::QoderWorkCn,
         display_name: "QoderWork CN",
         description:
-            "支持 Skills 同步与 Hooks 配置；不支持第三方模型配置。本机识别和启动暂无法确认。",
+            "支持 Skills 同步、Hooks 配置与 MCP 直接分配；不支持第三方模型配置。本机识别和启动暂无法确认。",
         official_links: &QODERWORK_OFFICIAL_LINKS,
         capabilities: &QODERWORK_CAPABILITIES,
     },
@@ -585,7 +585,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
         variant_id: AgentVariantId::TraeWorkCn,
         display_name: "TRAE Work CN",
         description:
-            "支持 Skills 同步、模型配置与 MCP 检查；不支持 Hooks。本机识别和启动暂无法确认。",
+            "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。本机识别和启动暂无法确认。",
         official_links: &TRAE_WORK_OFFICIAL_LINKS,
         capabilities: &TRAE_WORK_CAPABILITIES,
     },
@@ -755,7 +755,7 @@ mod tests {
                 AgentCapabilityMode::Unsupported,
                 AgentCapabilityMode::Unsupported,
                 AgentCapabilityMode::Direct,
-                AgentCapabilityMode::Assisted,
+                AgentCapabilityMode::Direct,
             ]
         );
         assert_eq!(
@@ -774,7 +774,7 @@ mod tests {
                 AgentCapabilityMode::Direct,
                 AgentCapabilityMode::Direct,
                 AgentCapabilityMode::Direct,
-                AgentCapabilityMode::Assisted,
+                AgentCapabilityMode::Direct,
             ]
         );
         assert_eq!(
@@ -825,7 +825,7 @@ mod tests {
                     QODER_MCP_EVIDENCE,
                 ),
                 (
-                    AgentCapabilityReasonCode::VendorUiRequired,
+                    AgentCapabilityReasonCode::DedicatedNativeContract,
                     QODER_MCP_EVIDENCE,
                 ),
             ]
@@ -877,7 +877,7 @@ mod tests {
                     TRAE_MCP_EVIDENCE,
                 ),
                 (
-                    AgentCapabilityReasonCode::VendorUiRequired,
+                    AgentCapabilityReasonCode::DedicatedNativeContract,
                     TRAE_MCP_EVIDENCE,
                 ),
             ]
@@ -913,6 +913,8 @@ mod tests {
         assert_eq!(trae.official_links[0].label, "打开 TRAE Work CN 官方页面");
         assert_eq!(trae.official_links[0].url, "https://www.trae.cn/sem-work");
         assert!(qoder.description.contains("不支持第三方模型配置"));
+        assert!(qoder.description.contains("MCP 直接分配"));
+        assert!(trae.description.contains("MCP 直接分配"));
         for entry in &catalog.agents {
             assert!(
                 !entry.description.contains("可通过 FyAgent"),

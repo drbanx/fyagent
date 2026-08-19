@@ -627,7 +627,9 @@ test("Models keeps six targets and saves TRAE models natively", async ({
 
   await page.getByTestId("model-target-qoderwork").click();
   await expect(modelPage).toContainText("不支持第三方模型配置");
-  await page.getByRole("button", { name: "打开官方设置" }).click();
+  await expect(
+    page.getByRole("button", { name: "打开官方设置" }),
+  ).toHaveCount(0);
   await page.getByTestId("model-target-trae").click();
   const apiKey = "browser-trae-secret-sentinel";
   await page
@@ -643,7 +645,9 @@ test("Models keeps six targets and saves TRAE models natively", async ({
   await expect(page.getByText("TRAE 模型配置已保存")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "API Key" })).toHaveValue("");
   await expect(page.locator("body")).not.toContainText(apiKey);
-  await page.getByRole("button", { name: "打开 TRAE 官方模型设置" }).click();
+  await expect(
+    page.getByRole("button", { name: "打开 TRAE 官方模型设置" }),
+  ).toHaveCount(0);
   await page.getByTestId("model-target-qoderwork").click();
   await expect(modelPage).not.toContainText("配置成功");
   expect(page.url()).not.toContain(apiKey);
@@ -655,16 +659,7 @@ test("Models keeps six targets and saves TRAE models natively", async ({
   expect(Object.values(secretSurfaces).join("\n")).not.toContain(apiKey);
 
   const calls = await featureFixtureCalls(page);
-  expect(calls.filter((call) => call.command === "open_external")).toEqual([
-    {
-      command: "open_external",
-      payload: { url: "https://qoder.com.cn/qoderwork" },
-    },
-    {
-      command: "open_external",
-      payload: { url: "https://www.trae.cn/sem-work" },
-    },
-  ]);
+  expect(calls.filter((call) => call.command === "open_external")).toEqual([]);
   expect(
     calls.filter((call) => call.command === "fetch_traework_models"),
   ).toHaveLength(1);

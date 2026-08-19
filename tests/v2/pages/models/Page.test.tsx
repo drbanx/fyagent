@@ -158,22 +158,26 @@ describe("V2 Models page", () => {
     ).toBeVisible();
   });
 
-  it("opens the explicit product link instead of relying on array position", async () => {
-    const user = userEvent.setup();
+  it("does not expose official settings buttons on QoderWork or TRAE model details", async () => {
     const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => catalog());
-    ports.settings.openExternal = vi.fn(async () => undefined);
-    renderPage(ports, "trae");
+    renderPage(ports, "qoderwork");
 
-    await user.click(
-      await screen.findByRole("button", { name: "打开 TRAE 官方模型设置" }),
-    );
-    expect(ports.settings.openExternal).toHaveBeenCalledWith(
-      "https://www.trae.cn/sem-work",
-    );
-    expect(ports.settings.openExternal).not.toHaveBeenCalledWith(
-      "https://ignored.example.test/trae",
-    );
+    expect(
+      await screen.findByRole("button", { name: "管理 Hooks 和 MCP" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "打开官方设置" }),
+    ).not.toBeInTheDocument();
+
+    const view = renderPage(ports, "trae");
+    expect(
+      await screen.findByRole("region", { name: "TRAE Work CN 模型设置" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "打开 TRAE 官方模型设置" }),
+    ).not.toBeInTheDocument();
+    view.unmount();
   });
 
   it("fetches TRAE models without clearing the key, then saves natively and clears it", async () => {

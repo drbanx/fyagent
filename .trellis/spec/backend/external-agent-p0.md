@@ -76,9 +76,11 @@ validate_external_mcp_config({ agentId, config })
 ```
 
 Native Skills `SkillTargetId` is the leftover six AppType values plus
-`qoderwork`, `trae-work`, and `workbuddy`. Only leftover AppType values plus
-direct MCP's `workbuddy` participate in MCP assignment; QoderWork and TRAE
-Work never convert to `AppType` or direct MCP. WorkBuddy is not `AppType`.
+`qoderwork`, `trae-work`, and `workbuddy`. Native `McpTargetId` is the leftover
+six AppType values plus the same three Skills/MCP-domain IDs. Direct V2
+assignment uses catalog order
+`qoderwork | trae-work | workbuddy | codex | claude | opencode`.
+QoderWork, TRAE Work, and WorkBuddy never convert to `AppType`.
 
 ## 3. Contracts
 
@@ -101,18 +103,27 @@ Work never convert to `AppType` or direct MCP. WorkBuddy is not `AppType`.
 ### Skills and persistence
 
 - Database schema 18 adds default-false `enabled_workbuddy` on Skills (and the
-  MCP `enabled_workbuddy` column). Schema 17 already added `enabled_qoderwork`
-  and `enabled_trae_work`. Migration preserves every legacy row and leftover
-  Gemini / Grok / Hermes flags; DAO reads and writes all stored flags.
+  MCP `enabled_workbuddy` column). Schema 17 already added Skills
+  `enabled_qoderwork` and `enabled_trae_work`. Schema 19 adds the matching MCP
+  columns `enabled_qoderwork` and `enabled_trae_work` default false. Migration
+  preserves every legacy row and leftover Gemini / Grok / Hermes flags; DAO
+  reads and writes all stored flags.
 - QoderWork, TRAE Work, and WorkBuddy Skill destinations are derived only from
   trusted home as `.qoderwork/skills`, `.trae-cn/skills`, and
   `.workbuddy/skills`. All three are copy-only.
-- WorkBuddy MCP writes trusted-home `.workbuddy/.mcp.json` as a Claude-style
-  `mcpServers` map, backs up first, and skips when neither the home nor the
-  file exists. It may import a legacy `mcp.json` when specs are equivalent.
+- Direct MCP live files: WorkBuddy writes trusted-home `.workbuddy/.mcp.json`;
+  QoderWork CN writes `{trusted-home}/.qoderworkcn/mcp.json`; TRAE Work CN
+  writes TRAE SOLO CN `User/mcp.json`. Each is a Claude-style `mcpServers` map,
+  backs up first, and skips when neither the home/User directory nor the file
+  exists. Do not write Qoder `userData/mcp.json` or TRAE `state.vscdb` for MCP.
+  WorkBuddy may import a legacy `mcp.json` when specs are equivalent. Qoder
+  import may normalize `type: "streamable-http"` to `http` before validation.
+- Catalog `mcp.write` for QoderWork CN and TRAE Work CN is `direct` +
+  `dedicated_native_contract`. Agents “打开 MCP” appears only when
+  `mcp.write === "direct"`.
 - Target adapters reuse the existing SkillService archive, conflict, hash,
-  copy, path-validation, and authoritative-reread behavior. They do not enter
-  Provider, proxy, prompt, session, or direct MCP configuration.
+  copy, path-validation, and authoritative-reread behavior. Skill adapters do
+  not enter Provider, proxy, prompt, session, or MCP live-file writers.
 
 ### Qoder Hooks document
 
@@ -192,6 +203,8 @@ Work never convert to `AppType` or direct MCP. WorkBuddy is not `AppType`.
 | Launch lacks trusted runtime identity | Return controlled unverified/unavailable; start nothing |
 | Schema 16 data migrates | Preserve all old rows/flags and default both new flags to false |
 | Schema 17 data migrates to 18 | Preserve leftover flags and default `enabled_workbuddy` to false |
+| Schema 18 data migrates to 19 | Preserve leftover flags and default MCP `enabled_qoderwork` / `enabled_trae_work` to false |
+| Qoder/TRAE/WorkBuddy MCP home and file are both absent | Skip live write; do not create the vendor directory |
 | TRAE persist would mutate a preset or omit `solo_work_remote` | Fail closed; write nothing |
 | TRAE/OpenCode GET JSON contains `ak`/`sk`/`apiKey` | Security regression gate fails |
 | WorkBuddy is added as `AppType` | Type test fails |
@@ -236,12 +249,14 @@ git diff --check
 ```
 
 Focused Rust coverage must include catalog fail-closed parsing, status/launch
-unknown semantics, schema 16-to-17 and 17-to-18 preservation, Skill path/TOCTOU
-/hash handling including WorkBuddy copy dest, Qoder projection/revision/token,
-TRAE URL/DNS/pin plus fixture-sqlite persist (no secrets in GET DTO), OpenCode
-snapshot/save, WorkBuddy `.mcp.json` skip/write, and MCP
-union/no-execute/redaction. Renderer tests must assert exact command/payload
-wires, V2 six Skills versus four MCP targets, leftover backend flag
+unknown semantics, schema 16-to-17, 17-to-18, and 18-to-19 preservation, Skill
+path/TOCTOU /hash handling including WorkBuddy copy dest, Qoder
+projection/revision/token, TRAE URL/DNS/pin plus fixture-sqlite persist (no
+secrets in GET DTO), OpenCode snapshot/save, WorkBuddy `.mcp.json` skip/write,
+QoderWork `~/.qoderworkcn/mcp.json` skip/write, TRAE `User/mcp.json`
+skip/write, and MCP union/no-execute/redaction. Renderer tests must assert
+exact command/payload wires, V2 six Skills and six MCP targets in catalog
+order, leftover backend flag
 round-trip, secret cleanup on every terminal or lifecycle path, catalog
 geometry at the maintained viewports and 760/761px, keyboard/focus behavior,
 and browser non-authority. ACL union still equals every `generate_handler!`
@@ -297,5 +312,21 @@ try {
   await ports.trae.testEndpoint(requestId, request);
 } finally {
   clearSensitiveDraft();
+}
+```
+
+Wrong: write Qoder builtin `userData/mcp.json` or TRAE `state.vscdb` for MCP.
+
+```rust
+let path = app_data_dir.join("mcp.json");
+```
+
+Correct: write only the vendor live MCP file, and skip when home/User and file
+are both absent.
+
+```rust
+let path = home.join(".qoderworkcn").join("mcp.json");
+if !home.exists() && !path.exists() {
+    return Ok(());
 }
 ```

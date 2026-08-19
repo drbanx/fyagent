@@ -124,7 +124,8 @@
   margin: 0;
 }
 .fy-feature-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 7px;
   margin-top: 12px;
 }

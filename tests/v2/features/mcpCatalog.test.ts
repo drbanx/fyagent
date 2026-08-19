@@ -63,6 +63,17 @@ describe("MCP curated catalog", () => {
     expect(findCatalogItem("minimax")).toBeUndefined();
   });
 
+  it("defaults new MCP installs to Agent catalog target order", () => {
+    expect(DEFAULT_NEW_APPS).toEqual([
+      "qoderwork",
+      "trae-work",
+      "workbuddy",
+      "codex",
+      "claude",
+      "opencode",
+    ]);
+  });
+
   it("builds Windows and macOS npx commands", () => {
     const playwright = item("playwright");
     expect(playwright.build({}, DEFAULT_NEW_APPS, "windows").server).toEqual({
@@ -137,10 +148,12 @@ describe("MCP curated catalog", () => {
     ]);
     expect(JSON.stringify(server.apps)).toEqual(
       JSON.stringify({
-        claude: true,
-        codex: true,
-        opencode: true,
+        qoderwork: true,
+        "trae-work": true,
         workbuddy: true,
+        codex: true,
+        claude: true,
+        opencode: true,
       }),
     );
   });

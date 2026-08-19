@@ -26,39 +26,47 @@ page will need goes in `src/v2/shared/ui` on the first commit. See
 
 ## 2. Signatures
 
-Skills and direct MCP assignment intentionally use different closed identities.
-V2 pages show the Agent-catalog-aligned subset. Leftover Gemini / Grok Build /
-Hermes flags remain on backend rows and must round-trip; they are not V2
-assignment targets. Do not merge these collections or add Claude Desktop or
-OpenClaw to either list. WorkBuddy is a Skills/MCP-domain target only and is
-never `AppType`.
+Skills and direct MCP assignment use the same closed six identities, in Agent
+catalog order. Leftover Gemini / Grok Build / Hermes flags remain on backend
+rows and must round-trip; they are not V2 assignment targets. Do not merge
+these collections or add Claude Desktop or OpenClaw to either list. WorkBuddy,
+QoderWork, and TRAE Work are Skills/MCP-domain targets only and are never
+`AppType`.
 
 ```ts
-type McpTargetId = "claude" | "codex" | "opencode" | "workbuddy";
-
-type SkillTargetId =
-  | "claude"
-  | "codex"
-  | "opencode"
+type McpTargetId =
   | "qoderwork"
   | "trae-work"
-  | "workbuddy";
+  | "workbuddy"
+  | "codex"
+  | "claude"
+  | "opencode";
 
-const MCP_TARGETS: ReadonlyArray<{ id: McpTargetId; label: string }> = [
-  { id: "claude", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-  { id: "opencode", label: "OpenCode" },
-  { id: "workbuddy", label: "WorkBuddy" },
+type SkillTargetId = McpTargetId;
+
+const MCP_TARGET_IDS: readonly McpTargetId[] = [
+  "qoderwork",
+  "trae-work",
+  "workbuddy",
+  "codex",
+  "claude",
+  "opencode",
 ];
 
-const SKILL_TARGETS: ReadonlyArray<{ id: SkillTargetId; label: string }> = [
-  { id: "claude", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-  { id: "opencode", label: "OpenCode" },
+const SKILL_TARGET_IDS = MCP_TARGET_IDS;
+
+const MCP_TARGETS: ReadonlyArray<{ id: McpTargetId; label: string }> = [
   { id: "qoderwork", label: "QoderWork CN" },
   { id: "trae-work", label: "TRAE Work CN" },
   { id: "workbuddy", label: "WorkBuddy" },
+  { id: "codex", label: "Codex" },
+  { id: "claude", label: "Claude Code" },
+  { id: "opencode", label: "OpenCode" },
 ];
+
+const SKILL_TARGETS = MCP_TARGETS;
+
+const DEFAULT_NEW_APPS: readonly McpTargetId[] = MCP_TARGET_IDS;
 
 const supportedAppIconById: Record<McpTargetId, string>;
 const skillTargetIconById: Record<SkillTargetId, string>;
@@ -148,9 +156,12 @@ function ExternalLinkButton(props: {
   names and camel-case payload keys. It must not call deprecated per-app APIs.
 - Skill ports accept all V2 `SkillTargetId` values. Native `SkillApps` still
   stores leftover Gemini / Grok Build / Hermes columns. MCP CRUD/import/direct
-  assignment accepts only V2 `McpTargetId` values (claude, codex, opencode,
-  workbuddy). QoderWork and TRAE Work external MCP preparation uses the
-  separate sanitized validator and never enters direct assignment.
+  assignment accepts the same six V2 `McpTargetId` values as Skills
+  (`qoderwork`, `trae-work`, `workbuddy`, `codex`, `claude`, `opencode`). Native
+  `McpTargetId` also keeps leftover Gemini / Grok / Hermes for round-trip;
+  those leftover IDs are not V2 assignment targets and never convert to
+  `AppType`. QoderWork and TRAE Work `validate_external_mcp_config` remains
+  for Agents preparation and does not replace live-file assignment.
 - Browser reads return empty authority snapshots. Browser writes reject with a
   clear native-only error and never report success.
 - MCP presets have one source under `shared/features`: Windows uses
@@ -162,8 +173,10 @@ function ExternalLinkButton(props: {
 ### State and writes
 
 - A FeatureProvider owns one stable QueryClient and a session-only install
-  target. The default target is Claude; navigation preserves it, while a full
-  application restart resets it.
+  target. The default target remains `claude` (label Claude Code); navigation
+  preserves it, while a full application restart resets it. Assignment,
+  bulk 全开/全关, discovery install-target tabs, and new-MCP `DEFAULT_NEW_APPS`
+  must render in Agent catalog order, not alphabetical or Claude-first order.
 - Skill assignment authority on V2 pages contains six booleans. Native rows
   still persist leftover Gemini / Grok / Hermes plus Qoder / TRAE / WorkBuddy
   flags. Missing `qoderwork`, `trae-work`, or `workbuddy` values parse as
@@ -177,6 +190,14 @@ function ExternalLinkButton(props: {
   live configuration before clearing the authoritative flag. Multi-application
   cleanup commits each successful removal so a later failure remains exactly
   retryable without a false disabled claim.
+- Direct MCP live files: QoderWork CN writes `{trusted-home}/.qoderworkcn/mcp.json`
+  (`mcpServers` map); TRAE Work CN writes TRAE SOLO CN `User/mcp.json`
+  (macOS `Library/Application Support/TRAE SOLO CN/User`, Windows roaming same
+  product folder); WorkBuddy writes `{trusted-home}/.workbuddy/.mcp.json`.
+  All three skip when neither the home/User directory nor the file exists.
+  Do not write Qoder `userData/mcp.json` (builtin table) or TRAE `state.vscdb`
+  for MCP. Import may normalize Qoder `type: "streamable-http"` to `http`
+  before `validate_server_spec`.
 - Cross-application MCP imports merge assignments only when normalized server
   specifications are equivalent. A conflicting shared ID is preflighted before
   any server from that source application is persisted.
@@ -203,7 +224,10 @@ function ExternalLinkButton(props: {
   gutter, pointer/keyboard resize, independent pane scroll). Installed lists
   use `FeatureList` / `FeatureListItem`; installed/discovery and MCP editor
   tracks use `FeatureTabs`; management search uses `FeatureSearch`. Do not
-  add a page-local tabs, search, or list clone. Each column
+  add a page-local tabs, search, or list clone. `.fy-feature-list` is a
+  column flex track so `SelectionLens` (absolute overlay) is not a grid item
+  and list rows do not collapse onto one another. Do not restore
+  `display: grid` on that class. Each column
   scrolls independently; the content viewport must
   not grow with the left-hand list. Split-pane children fill the pane height
   (`min-height: 100%` and `height: 100%`) and scroll inside the pane
@@ -216,7 +240,8 @@ function ExternalLinkButton(props: {
   `FeatureTabs`. The install-target `FeatureTabs` live in the page header
   with decorative app icons so they do not push the card grid down. Do not
   use a `<select>` or a page-local tab clone. Result copy names the current
-  install target. Repository chips appear only when more
+  install target with the catalog label (`Claude Code`, not `Claude`).
+  Repository chips appear only when more
   than one repository is loaded. Skill Discover cards show the name and
   install state in the header, a clamped description or directory/source
   note, then a text meta line of repository and optional install count. Group
@@ -238,8 +263,8 @@ function ExternalLinkButton(props: {
   credential/config form. Discover classification is only “直接安装” versus
   “配置安装”, plus an “全部” default. Prefer popular no-credential stdio/HTTP
   recipes for the remaining slots. It does not add a market API, persist catalog
-  metadata, or widen the V2 MCP assignment set beyond claude / codex /
-  opencode / workbuddy. Entries that need OAuth,
+  metadata, or widen the V2 MCP assignment set beyond the six catalog-aligned
+  targets. Entries that need OAuth,
   post-start login, SSE-only transport, or unverified high-privilege cloud
   control stay out of the catalog. New remote recipes use Streamable HTTP
   only.
@@ -264,14 +289,14 @@ function ExternalLinkButton(props: {
   Skills and MCP own only the page wrappers `.fy-skills-page` and
   `.fy-mcp-page`; do not invent a parallel `.fy-skills-*` / `.fy-mcp-*` theme.
   Consume only `--fy-*` tokens.
-- The shared assignment panel resolves all V2 Skill targets through
-  `skillTargetIconById` / `getSkillTargetIcon`. MCP passes its four-target
-  collection explicitly and still goes through that map. `supportedAppIconById`
-  / `getSupportedAppIcon` cover only the four MCP identities. Runtime code must
+- The shared assignment panel resolves all V2 Skill and MCP targets through
+  `skillTargetIconById` / `getSkillTargetIcon`. MCP passes `MCP_TARGETS`
+  explicitly and still goes through that map. `supportedAppIconById`
+  / `getSupportedAppIcon` cover the same six catalog identities. Runtime code must
   not import a legacy asset path or a remote URL. A reviewed byte-for-byte
   local asset copy is acceptable when V2 owns the resulting path and the asset
   inventory is updated. WorkBuddy uses `../agents/workbuddy.png`; QoderWork CN
-  uses `../agents/qoderwork.png`.
+  uses `../agents/qoderwork.png`; TRAE Work CN uses `../agents/trae-work.png`.
 - Assignment icons are decorative beside the existing text:
   `alt=""` and `aria-hidden="true"`. The switch keeps the sole accessible name
   `${app.label} ${labelSuffix}`; an icon must not create a duplicate label.
@@ -304,10 +329,12 @@ function ExternalLinkButton(props: {
 | OpenCode/Hermes source entry has `enabled: false`                | Keep it disabled; do not create or activate a managed assignment        |
 | MCP live cleanup fails while disabling or deleting               | Retain the failed assignment and retryable authoritative record         |
 | A Skill response omits either new external target                | Default that target to false without changing any legacy assignment     |
-| QoderWork or TRAE Work is submitted to direct MCP assignment     | Type/runtime adapter rejects before invoke                              |
+| QoderWork or TRAE Work MCP assignment is enabled                 | Write the vendor live `mcp.json`; skip if home/User and file are absent |
+| MCP/Skills assignment order is alphabetical or Claude-first      | Page/component test fails; order must match Agent catalog               |
+| `.fy-feature-list` is restored to CSS Grid                       | List rows overlap because `SelectionLens` occupies a grid track         |
 | A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image   |
 | An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name   |
-| Viewport changes between two- and three-column layouts           | Render exactly one panel: six unique Skill or four unique MCP switches |
+| Viewport changes between two- and three-column layouts           | Render exactly one panel: six unique Skill or six unique MCP switches |
 | WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only        |
 | Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`        |
 | A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                  |
@@ -323,12 +350,15 @@ function ExternalLinkButton(props: {
   Qoder / TRAE / WorkBuddy flags, and a later WorkBuddy sync copies only to
   `~/.workbuddy/skills`. MCP writes `~/.workbuddy/.mcp.json` as `mcpServers`
   and skips when neither the home nor the file exists.
-- **Good:** V2 assignment shows six Skill targets and four MCP targets. Gemini
-  / Grok / Hermes do not appear as chips.
+- **Good:** V2 assignment shows six Skill targets and six MCP targets in Agent
+  catalog order: QoderWork CN, TRAE Work CN, WorkBuddy, Codex, Claude Code,
+  OpenCode. Gemini / Grok / Hermes do not appear as chips.
+- **Good:** Enabling QoderWork MCP writes `~/.qoderworkcn/mcp.json`; enabling
+  TRAE writes TRAE SOLO CN `User/mcp.json`. Missing home and file skips write.
 - **Base:** A browser preview has no fixture. Both pages show their native-safe
   empty states; attempts to mutate reject instead of simulating persistence.
-- **Bad:** MCP search uses `JSON.stringify(server)`, a QoderWork ID is passed to
-  direct MCP assignment, a toast prints an invoke
+- **Bad:** MCP search uses `JSON.stringify(server)`, assignment lists are
+  sorted A–Z, a toast prints an invoke
   error containing headers, quick mode reconstructs the whole server object,
   or both responsive assignment panels remain mounted. Each violates a
   security, compatibility, or accessibility contract.
@@ -349,24 +379,27 @@ git diff --check
 
 - Adapter tests assert every command name, exact camel-case payload, return,
   and error propagation across Skills, MCP, Settings, and external links,
-  including V2 six-value Skill and four-value MCP separation plus leftover
+  including V2 six-value Skill and six-value MCP identity plus leftover
   backend Gemini / Grok / Hermes flag round-trip.
 - Pure tests cover public-field search, secret exclusion, URL/args redaction,
   selection convergence, repository parsing, installed-key matching,
   pagination, env/header/args parsing, advanced JSON validation, extension
-  retention, and each MCP catalog builder.
+  retention, and each MCP catalog builder. Catalog `apps` JSON key order and
+  `DEFAULT_NEW_APPS` must match Agent catalog order.
 - Component tests cover empty, loading, error, pending, write/refetch, dialogs,
   assignment, destructive confirmation, secret-safe presentation, an exhaustive
-  six-ID Skill icon map, four MCP icons, decodable local assets, decorative
-  icon semantics, six unique Skill switches, four unique MCP switches,
-  Discover/docs and
+  six-ID Skill/MCP icon map, decodable local assets, decorative
+  icon semantics, six unique Skill switches, six unique MCP switches in catalog
+  order, Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
-  and one shared in-flight lock.
+  header install-target tabs in that same order, flex list overlay, and one
+  shared in-flight lock.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
   populated two-/three-column layouts, a single correctly-sized assignment
-  panel, visible split separators above 760px, assignment rows contained
-  inside their pane, no overflow, no secret rendering, exact invoke payloads, and
-  authoritative refetch.
+  panel whose switch accessible names match catalog order, visible split
+  separators above 760px, assignment rows contained
+  inside their pane, no overlapping list rows, no overflow, no secret
+  rendering, exact invoke payloads, and authoritative refetch.
 - Browser tests do not replace native Windows Tauri/WebView2 acceptance,
   actual filesystem/config writes, or 125%/150% display-scale review.
 
@@ -408,8 +441,44 @@ Wrong: add `AppType::WorkBuddy` so MCP can reuse Provider/session writers.
 AppType::from_str("workbuddy")
 ```
 
-Correct: keep WorkBuddy on `SkillTargetId` / `McpTargetId` only; `TryFrom`
-to `AppType` fails.
+Correct: keep WorkBuddy, QoderWork, and TRAE Work on `SkillTargetId` /
+`McpTargetId` only; `TryFrom` to `AppType` fails.
+
+Wrong: sort Skills/MCP assignment alphabetically or Claude-first.
+
+```ts
+const MCP_TARGETS = [...apps].sort((a, b) => a.label.localeCompare(b.label));
+```
+
+Correct: keep the Agent catalog sequence as the single list order.
+
+```ts
+const MCP_TARGET_IDS = [
+  "qoderwork",
+  "trae-work",
+  "workbuddy",
+  "codex",
+  "claude",
+  "opencode",
+] as const;
+```
+
+Wrong: make `.fy-feature-list` a CSS Grid so the overlay lens is a grid item.
+
+```css
+.fy-feature-list {
+  display: grid;
+}
+```
+
+Correct: use a column flex track; the lens stays out of flow.
+
+```css
+.fy-feature-list {
+  display: flex;
+  flex-direction: column;
+}
+```
 
 Wrong: fill a split pane with `height: 100%` and leave the feature panel
 overflow visible, so bulk-assign buttons paint past the card.

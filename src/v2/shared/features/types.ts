@@ -1,22 +1,17 @@
 export const MCP_TARGET_IDS = [
-  "claude",
-  "codex",
-  "opencode",
+  "qoderwork",
+  "trae-work",
   "workbuddy",
+  "codex",
+  "claude",
+  "opencode",
 ] as const;
 
 export type McpTargetId = (typeof MCP_TARGET_IDS)[number];
 
-export const SKILL_TARGET_IDS = [
-  "claude",
-  "codex",
-  "opencode",
-  "qoderwork",
-  "trae-work",
-  "workbuddy",
-] as const;
+export const SKILL_TARGET_IDS = MCP_TARGET_IDS;
 
-export type SkillTargetId = (typeof SKILL_TARGET_IDS)[number];
+export type SkillTargetId = McpTargetId;
 
 /** @deprecated Use McpTargetId or SkillTargetId at the owning feature boundary. */
 export const SUPPORTED_APP_IDS = MCP_TARGET_IDS;
@@ -28,23 +23,15 @@ export const MCP_TARGETS: ReadonlyArray<{
   id: McpTargetId;
   label: string;
 }> = [
-  { id: "claude", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-  { id: "opencode", label: "OpenCode" },
-  { id: "workbuddy", label: "WorkBuddy" },
-];
-
-export const SKILL_TARGETS: ReadonlyArray<{
-  id: SkillTargetId;
-  label: string;
-}> = [
-  { id: "claude", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-  { id: "opencode", label: "OpenCode" },
   { id: "qoderwork", label: "QoderWork CN" },
   { id: "trae-work", label: "TRAE Work CN" },
   { id: "workbuddy", label: "WorkBuddy" },
+  { id: "codex", label: "Codex" },
+  { id: "claude", label: "Claude Code" },
+  { id: "opencode", label: "OpenCode" },
 ];
+
+export const SKILL_TARGETS = MCP_TARGETS;
 
 /** @deprecated MCP_TARGETS is the catalog-aligned direct-sync collection. */
 export const SUPPORTED_APPS = MCP_TARGETS;

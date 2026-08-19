@@ -126,7 +126,9 @@ The fixed resource mapping is:
   Over-limit content is warned about but remains saveable because the native
   runtime may truncate it.
 - Long-term source groups show `MEMORY.md` / `USER.md` in the list. The
-  accessible name and editor title keep `OpenClaw ·` / `Hermes ·`.
+  accessible name and editor title keep `OpenClaw ·` / `Hermes ·`. Pass that
+  accessible name through `FeatureListItem` `ariaLabel`; do not fork a
+  page-local list button to get a different label than the visible title.
 - Daily memory is restricted to OpenClaw `workspace/memory/YYYY-MM-DD.md`.
   The adapter validates the filename before invoke, and the backend validates
   it again. Long-term vs daily uses `FeatureTabs`; document and daily files

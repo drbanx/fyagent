@@ -8,7 +8,6 @@ import { classNames } from "../../shared/design-system/classNames";
 import type { FeaturePorts } from "../../shared/features/ports";
 import { useFeatures } from "../../shared/features/provider";
 import {
-  useAgentCatalog,
   useProviderSummary,
   useWorkBuddyModelIds,
   useWorkBuddyStatus,
@@ -36,7 +35,6 @@ import {
   CatalogMasterDetail,
   CatalogRail,
 } from "../../shared/ui/catalog";
-import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import {
   FieldFeedback,
   focusControl,
@@ -1344,18 +1342,8 @@ function ProviderPanel({
   );
 }
 
-function QoderGuidancePanel({ active }: { active: boolean }) {
+function QoderGuidancePanel() {
   const navigate = useNavigate();
-  const catalogQuery = useAgentCatalog(active);
-  const entry = catalogQuery.data?.agents.find(
-    (agent) => agent.id === "qoderwork",
-  );
-  const productLink = entry?.officialLinks.find(
-    (link) => link.id === "product",
-  );
-  const productCapability = entry?.capabilities.find(
-    (capability) => capability.id === "product.open",
-  );
 
   return (
     <CatalogDetail
@@ -1371,17 +1359,9 @@ function QoderGuidancePanel({ active }: { active: boolean }) {
       </header>
 
       <InlineNotice>
-        不支持第三方模型配置。可在应用目录中管理 Hooks，或打开官方页面。
+        不支持第三方模型配置。可在应用目录中管理 Hooks 和 MCP。
       </InlineNotice>
 
-      {catalogQuery.isLoading && (
-        <Spinner label="正在读取 QoderWork 官方入口" />
-      )}
-      {catalogQuery.isError && (
-        <InlineNotice tone="error">
-          暂时无法获取官方网站，请稍后重试。
-        </InlineNotice>
-      )}
       <div className="fy-models-actions">
         <Button
           className="fy-control-button-primary"
@@ -1389,17 +1369,6 @@ function QoderGuidancePanel({ active }: { active: boolean }) {
         >
           管理 Hooks 和 MCP
         </Button>
-        <ExternalLinkButton
-          url={productLink?.url}
-          disabled={
-            !productLink ||
-            (productCapability?.mode !== "direct" &&
-              productCapability?.mode !== "assisted")
-          }
-          errorTitle="无法打开官方设置"
-        >
-          打开官方设置
-        </ExternalLinkButton>
       </div>
     </CatalogDetail>
   );
@@ -1425,7 +1394,7 @@ function renderTargetPanel(
         />
       );
     case "qoderwork":
-      return <QoderGuidancePanel active={active} />;
+      return <QoderGuidancePanel />;
     case "trae":
       return <TraeModelsPanel active={active} />;
     case "opencode":

@@ -32,7 +32,10 @@ its own capability workflow:
   page mounts the dedicated `opencodeModels` port, never Provider quick setup
   or the Codex installer.
 - QoderWork CN `models.write` is `unsupported`: the Models page must state
-  不支持第三方模型配置 and must not mount a third-party model editor.
+  不支持第三方模型配置 and must not mount a third-party model editor. It must
+  not render 「打开官方设置」. Keep 「管理 Hooks 和 MCP」, which navigates to
+  `/agents?target=qoderwork`. TRAE Models must not render
+  「打开 TRAE 官方模型设置」; native save stays on this page.
 - Browser preview never impersonates authoritative desktop state or installer
   success.
 
@@ -203,8 +206,10 @@ and a revision, never `ak` / `sk` / `apiKey`.
 - `get_agent_catalog` is deterministic, non-networking, non-secret, and ordered
   exactly: QoderWork CN, TRAE Work CN, WorkBuddy, Codex, Claude Code, OpenCode.
   TRAE `displayName` is `TRAE Work CN`; its product URL is exactly
-  `https://www.trae.cn/sem-work`. Catalog descriptions use 支持 / 不支持
+  `https://www.trae.cn/sem-work`.   Catalog descriptions use 支持 / 不支持
   wording and must not contain `可在 FyAgent` or `可通过 FyAgent`.
+  QoderWork CN and TRAE Work CN describe MCP as 直接分配; their `mcp.write`
+  mode is `direct` with `dedicated_native_contract`.
 - The v3 link matrix is exact: QoderWork CN, TRAE Work CN, and WorkBuddy each
   own one `product` link; Claude Code owns `cli` then `desktop`; OpenCode owns
   `product` then `cli`; Codex owns an empty list and keeps its dedicated
@@ -219,7 +224,8 @@ and a revision, never `ak` / `sk` / `apiKey`.
   capability from the display name, icon, URL, installed files, or a duplicate
   frontend matrix. Mode badges are the short labels 支持 / 需在应用中完成 /
   不支持 / 暂无法确认. The default Agent detail shows supported features plus
-  jumps (`/models?target=`, `/skills`, `/mcp`, Qoder Hooks, official
+  jumps (`/models?target=`, `/skills`, `/mcp` only when `mcp.write.mode` is
+  `direct`, Qoder Hooks, official
   `ExternalLinkButton`) and folds `unsupported` capabilities.
 - Every entry resolves through `src/v2/shared/assets/agents`. QoderWork CN uses
   the reviewed official 256x256 PNG extracted from QoderWork CN.app; TRAE uses
@@ -260,8 +266,9 @@ and a revision, never `ak` / `sk` / `apiKey`.
 - QoderWork/TRAE/WorkBuddy/OpenCode and Claude link actions render
   `ExternalLinkButton` with the catalog HTTPS URL. That control is the only
   jump: `useOpenExternal` holds one FeatureProvider lock and calls
-  `settings.openExternal(link.url)`. Models selects an explicit `product`
-  link when it needs product guidance; it never depends on array position.
+  `settings.openExternal(link.url)`. Official product/cli/desktop links live
+  on the Agent directory, not the Models page. Models must not clone those
+  catalog links as 「打开官方设置」 or 「打开 TRAE 官方模型设置」.
   These actions do not inspect login state, download packages, read
   private config, persist notes, accept an API key, or emit configuration
   success.
@@ -419,6 +426,7 @@ and a revision, never `ak` / `sk` / `apiKey`.
 | A non-Codex entry is selected                                                              | Do not read or subscribe to the Codex installer                                                         |
 | Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
 | QoderWork/TRAE selected                                                                    | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
+| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; keep 「管理 Hooks 和 MCP」 and native TRAE save only                                  |
 | Native observation fails                                                                   | Show controlled unavailable/unknown; never infer absence                                                |
 | Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
 | Qoder Hooks revision or overwrite request drifts                                           | Write nothing or require one exact token replay; never claim save                                       |
@@ -445,8 +453,8 @@ and a revision, never `ak` / `sk` / `apiKey`.
 ## 5. Good / Base / Bad Cases
 
 - Good: `/models` opens on QoderWork CN at the top, all six local icons render,
-  Qoder states 不支持第三方模型配置, and the page resolves the catalog's
-  explicit `product` link when official guidance is requested.
+  Qoder states 不支持第三方模型配置, keeps 「管理 Hooks 和 MCP」, and does not
+  render 「打开官方设置」. TRAE Models has no 「打开 TRAE 官方模型设置」.
 - Good: OpenCode's Models panel lists existing sanitized provider/model IDs,
   fetches, adds, deletes, and saves through `opencodeModels`; it never submits
   Provider quick setup.
@@ -524,6 +532,8 @@ Required focused coverage includes:
   target panels; the other primary routes keep the same in-session page.
   Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
+- Models Qoder/TRAE details must not render 「打开官方设置」 or
+  「打开 TRAE 官方模型设置」; Qoder keeps 「管理 Hooks 和 MCP」.
 - exact external status/launch, Qoder read/save/token, external MCP validation,
   and TRAE validate/probe/cancel IPC payloads and result parsers; terminal
   probe outcomes still clear the TRAE key.
@@ -583,14 +593,13 @@ renderer.
 await ports.settings.openExternal(entry.officialLinks[0].url);
 ```
 
-Correct: select the semantic product link only for targets that own one, and
-let Codex use the managed installer port.
+Correct: official catalog links belong on the Agent directory. Models Qoder/TRAE
+panels must not clone those links as settings buttons.
 
 ```ts
-const productLink = entry.officialLinks.find((link) => link.id === "product");
-<ExternalLinkButton url={productLink?.url} errorTitle="无法打开官方设置">
-  打开官方设置
-</ExternalLinkButton>
+<Button onClick={() => navigate("/agents?target=qoderwork")}>
+  管理 Hooks 和 MCP
+</Button>
 ```
 
 Wrong: stack a Models page flex gap on top of the shared feature header

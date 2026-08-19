@@ -14,6 +14,9 @@ import type { FeaturePorts } from "@/v2/shared/features/ports";
 import { FeatureProvider } from "@/v2/shared/features/provider";
 import {
   createAssignments,
+  createMcpAssignments,
+  MCP_TARGETS,
+  SKILL_TARGETS,
   type DiscoverableSkill,
   type InstalledSkill,
   type McpServer,
@@ -70,7 +73,13 @@ describe("V2 MCP management", () => {
       id: "docs",
       name: "Docs server",
       description: "Documentation helper",
-      apps: { ...createAssignments(["claude"]), hiddenClient: true },
+      apps: {
+        ...createMcpAssignments(["claude"]),
+        gemini: true,
+        grokbuild: true,
+        hermes: true,
+        hiddenClient: true,
+      },
       server: {
         type: "stdio",
         command: "npx",
@@ -91,7 +100,12 @@ describe("V2 MCP management", () => {
       await screen.findByRole("heading", { name: "Docs server" }),
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent(secret);
-    expect(screen.getAllByRole("switch")).toHaveLength(4);
+    expect(screen.getAllByRole("switch")).toHaveLength(6);
+    expect(
+      screen
+        .getAllByRole("switch")
+        .map((node) => node.getAttribute("aria-label")),
+    ).toEqual(MCP_TARGETS.map((app) => `${app.label} MCP 分配`));
     expect(screen.getByText(/stdio · 1 Agent/)).toBeVisible();
     expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
       "手动添加",
@@ -100,7 +114,7 @@ describe("V2 MCP management", () => {
       "无本地安装目录",
     );
     expect(screen.getByRole("region", { name: "当前分配" })).toHaveTextContent(
-      "Claude",
+      "Claude Code",
     );
     expect(screen.getByRole("region", { name: "安装信息" })).toHaveTextContent(
       "stdio",
@@ -136,7 +150,13 @@ describe("V2 MCP management", () => {
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
     await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
     expect(upsert.mock.calls[0][0]).toMatchObject({
-      apps: { hiddenClient: true },
+      apps: {
+        claude: true,
+        gemini: true,
+        grokbuild: true,
+        hermes: true,
+        hiddenClient: true,
+      },
       server: {
         env: { SECRET_TOKEN: secret },
         extension: { keep: true },
@@ -297,7 +317,7 @@ describe("V2 MCP management", () => {
       "无本地安装目录",
     );
     expect(screen.getByRole("region", { name: "当前分配" })).toHaveTextContent(
-      "Claude",
+      "Claude Code",
     );
     appearsBefore(
       screen.getByRole("button", { name: "编辑" }),
@@ -624,6 +644,12 @@ describe("V2 Skills management", () => {
       await screen.findByRole("heading", { name: "Review Skill" }),
     ).toBeVisible();
 
+    expect(
+      screen
+        .getAllByRole("switch")
+        .map((node) => node.getAttribute("aria-label")),
+    ).toEqual(SKILL_TARGETS.map((app) => `${app.label} Skill 分配`));
+
     const assignment = screen.getByRole("switch", {
       name: "Claude Code Skill 分配",
     });
@@ -718,7 +744,7 @@ describe("V2 Skills management", () => {
       ),
     ).toBeVisible();
     const assignment = screen.getByRole("region", { name: "当前分配" });
-    expect(assignment).toHaveTextContent("Claude");
+    expect(assignment).toHaveTextContent("Claude Code");
     expect(assignment).toHaveTextContent("Codex");
     expect(assignment).not.toHaveTextContent("Gemini");
 
@@ -865,6 +891,11 @@ describe("V2 Skills management", () => {
     ).toBeVisible();
     expect(screen.getByRole("tablist", { name: "安装目标" })).toBeVisible();
     expect(
+      within(screen.getByRole("tablist", { name: "安装目标" }))
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent?.replace(/\s+/g, " ").trim()),
+    ).toEqual(SKILL_TARGETS.map((app) => app.label));
+    expect(
       screen.getByRole("tab", { name: "Claude Code", selected: true }),
     ).toBeVisible();
     expect(
@@ -878,7 +909,7 @@ describe("V2 Skills management", () => {
       within(card as HTMLElement).getByText("Review changes"),
     ).toBeVisible();
     expect(within(card as HTMLElement).getByText("acme/skills")).toBeVisible();
-    expect(screen.getByText("1 个 Skill · 将安装到 Claude")).toBeVisible();
+    expect(screen.getByText("1 个 Skill · 将安装到 Claude Code")).toBeVisible();
     await user.click(
       within(card as HTMLElement).getByRole("button", { name: "说明" }),
     );
@@ -939,7 +970,7 @@ describe("V2 Skills management", () => {
       ),
     ).toBeVisible();
     expect(
-      screen.getByText("skills.sh · 1 / 48 · 将安装到 Claude"),
+      screen.getByText("skills.sh · 1 / 48 · 将安装到 Claude Code"),
     ).toBeVisible();
     await user.click(
       within(article as HTMLElement).getByRole("button", { name: "仓库" }),

@@ -93,11 +93,13 @@ export function FeatureListItem({
   onSelect,
   title,
   children,
+  ariaLabel,
 }: {
   selected: boolean;
   onSelect: () => void;
   title: ReactNode;
   children?: ReactNode;
+  ariaLabel?: string;
 }): JSX.Element;
 ```
 

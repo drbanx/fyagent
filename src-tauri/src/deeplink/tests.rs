@@ -1030,8 +1030,8 @@ fn test_parse_mcp_apps() {
 
     let err = parse_mcp_apps("invalid").unwrap_err();
     assert!(err.to_string().contains("Invalid app"));
-    assert!(parse_mcp_apps("qoderwork").is_err());
-    assert!(parse_mcp_apps("trae-work").is_err());
+    assert!(parse_mcp_apps("qoderwork").unwrap().qoderwork);
+    assert!(parse_mcp_apps("trae-work").unwrap().trae_work);
 }
 
 #[test]

@@ -25,17 +25,20 @@ export function FeatureListItem({
   onSelect,
   title,
   children,
+  ariaLabel,
 }: {
   selected: boolean;
   onSelect: () => void;
   title: ReactNode;
   children?: ReactNode;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       className="fy-feature-list-item"
       aria-current={selected ? true : undefined}
+      aria-label={ariaLabel}
       onClick={onSelect}
     >
       <SelectionLens active={selected} />

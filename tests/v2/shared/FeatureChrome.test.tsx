@@ -1,4 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -109,6 +111,19 @@ describe("FeatureList", () => {
     expect(screen.getByRole("button", { name: /Two/ })).toHaveAttribute(
       "aria-current",
       "true",
+    );
+  });
+
+  it("uses a column flex track so the overlay lens is not a grid item", () => {
+    const featuresCss = readFileSync(
+      path.resolve(process.cwd(), "src", "v2", "app", "styles", "features.css"),
+      "utf8",
+    );
+    expect(featuresCss).toMatch(
+      /\.fy-feature-list\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s,
+    );
+    expect(featuresCss).not.toMatch(
+      /\.fy-feature-list\s*\{[^}]*display:\s*grid;/s,
     );
   });
 });
