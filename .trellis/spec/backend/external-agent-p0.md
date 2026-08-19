@@ -4,17 +4,19 @@
 
 Read this contract before changing the static Agent catalog, external-agent
 runtime observation or launch, QoderWork/TRAE Work/WorkBuddy Skill or MCP
-targets, Qoder Hooks, TRAE model endpoint preflight and `state.vscdb` persist,
-OpenCode `opencode.json` model persist, external MCP validation, or their Tauri
-permissions. These capabilities are deliberately narrower than Provider,
+targets, Qoder Hooks, TRAE model endpoint preflight and read-only
+`state.vscdb` observation, OpenCode `opencode.json` model persist, external MCP
+validation, or their Tauri permissions. These capabilities are deliberately
+narrower than Provider,
 proxy, prompt, session, installer, and vendor-private configuration domains.
 
 P0 proves FyAgent-owned validation and controlled local file operations.
 Vendor application detection, launch, Skill recognition inside the vendor UI,
 Qoder restart effects, and model compatibility remain separate HIL evidence
-and must stay `unverified` when that evidence was not executed. TRAE/OpenCode
+and must stay `unverified` when that evidence was not executed. OpenCode
 model file writes are in-scope native contracts; they are not proof that the
-vendor process loaded the new rows.
+vendor process loaded the new rows. FyAgent must not write TRAE model sqlite;
+Work CN listing requires TRAE cloud `add_custom_model`.
 
 ## 2. Signatures
 
@@ -57,7 +59,8 @@ launch_external_agent({ agentId, destination })
 `detected` and `running` are `boolean | null`. `destination` is exactly
 `home | skills | hooks | models | mcp`.
 
-Qoder Hooks, TRAE preflight/persist, and OpenCode model commands are:
+Qoder Hooks, TRAE preflight, TRAE model-id observation, and OpenCode model
+commands are:
 
 ```text
 get_qoderwork_hooks()
@@ -67,8 +70,6 @@ validate_traework_model_config({ request })
 test_traework_model_endpoint({ requestId, request })
 cancel_traework_model_endpoint({ requestId })
 get_traework_model_ids()
-fetch_traework_models({ request })
-save_traework_models({ request })
 get_opencode_model_snapshot()
 fetch_opencode_provider_models({ request })
 save_opencode_models({ request })
@@ -161,18 +162,108 @@ QoderWork, TRAE Work, and WorkBuddy never convert to `AppType`.
   status class, and request ID. They never include URL, model, key, response
   body, headers, or transport diagnostics.
 
-### TRAE model persist
+### TRAE model observation
 
-- Read/write TRAE SOLO CN `User/globalStorage/state.vscdb` key
-  `*:AI.agent.model.model_list_map`. Tests use fixture sqlite under
-  `FYAGENT_TEST_HOME` and must not open the interactive user profile.
-- GET projects secret-free custom rows (`is_preset == false`) from
-  `solo_work_lite`. `ak`/`sk` never appear in DTO, serde JSON, logs, or Debug.
-- Save backups the blob, clones a Work-mode preset as template, sets custom
-  identity/connection fields, upserts/deletes custom rows in both
-  `solo_work_lite` and `solo_work_remote`, never mutates presets, and uses HMAC
-  revision plus a one-time overwrite token. Missing/unparseable documents fail
-  closed.
+TRAE Work CN is the catalog product name. After v0.1.18 the desktop app is
+the renamed TRAE SOLO; the live store on this host is still TRAE SOLO CN
+`User/globalStorage/state.vscdb` (macOS
+`~/Library/Application Support/TRAE SOLO CN/...`). There is no separate
+`Application Support/TRAE Work CN` folder. Bundle id remains
+`cn.trae.solo.app`. Catalog `models.validate` and `models.write` for TRAE
+are `assisted` + `vendor_ui_required`.
+
+#### Scenario: TRAE Work CN custom-model observation
+
+##### 1. Scope / Trigger
+- Trigger: `get_traework_model_ids` reads the local TRAE SOLO CN model-list
+  cache so FyAgent can display currently cached custom IDs. This is not
+  Work CN persist. The TRAE Work CN UI refreshes from TRAE cloud `model` /
+  `model_list` and only keeps customs registered via `add_custom_model`.
+  A running or launching TRAE process overwrites `state.vscdb` from that
+  cloud list. FyAgent must not write this sqlite document.
+
+##### 2. Signatures
+- SQLite `ItemTable` in TRAE SOLO CN `state.vscdb`; `value` is TEXT
+- `ItemTable.key` suffix `AI.agent.model.model_list_map`
+- Work CN live key: `{userId}:AI.agent.model.model_list_map` (colon)
+- IDE/legacy key: `{userId}_AI.agent.model.model_list_map` (underscore)
+- Command: `get_traework_model_ids() -> { modelIds, revision, truncated }`
+- There is no `save_traework_models` or `fetch_traework_models` command.
+
+##### 3. Contracts
+- GET opens the colon Work CN key when both keys exist. Underscore is the
+  IDE map. `ORDER BY key LIMIT 1` is still forbidden; collect matching keys
+  and prefer `:{suffix}` when present, else `_{suffix}`.
+- GET projects secret-free custom rows (`is_preset == false`) from every
+  present Work list, deduped. Prefer `display_name` or the `name` suffix
+  after `//` as the model ID. `ak`/`sk` never appear in DTO, serde JSON,
+  logs, or Debug.
+- FyAgent never binds or replaces the colon document. Custom models must be
+  added in TRAE Work CN. Local-only rows without a server `custom_model_id`
+  are dropped when TRAE launches.
+
+##### 4. Validation & Error Matrix
+- Both colon and underscore keys exist -> read colon Work CN map
+- Missing/unparseable document -> fail closed
+- Custom id collides with a stored secret -> fail closed
+- Any write/upsert into `state.vscdb` model-list map -> forbidden
+
+##### 5. Good/Base/Bad Cases
+- Good: GET on the live colon map returns cached custom IDs without `ak`/`sk`.
+- Base: fixture sqlite under `FYAGENT_TEST_HOME` may still be colon-only
+  with legacy `solo_work_lite`/`solo_work_remote` snake rows.
+- Bad: prefer the underscore IDE key when the colon Work CN key exists,
+  write sqlite to make Work CN list a model, or expose `save_traework_models`.
+
+##### 6. Tests Required
+- Fixture with both keys: GET uses the colon Work CN map and leaves the
+  underscore IDE map unchanged.
+- Legacy colon-only fixture: GET never serializes `ak`/`sk`.
+- Command surface: `save_traework_models` / `fetch_traework_models` are not
+  registered.
+
+##### 7. Wrong vs Correct
+- Wrong: write `{userId}:AI.agent.model.model_list_map` or treat sqlite as
+  Work CN UI persist.
+- Correct: prefer the colon key for GET observation only. Work CN listing
+  requires TRAE cloud `add_custom_model`.
+
+### Design Decision: TRAE Work CN 不把 sqlite 当作模型写入面
+
+**Context**: Direct `ItemTable` upserts into `{userId}:AI.agent.model.model_list_map`
+do not make Work CN list a model. Work CN refreshes from cloud `model` /
+`model_list` and drops local-only customs.
+
+**Options Considered**:
+1. Continue SAVE into `state.vscdb` and tell users to reopen TRAE
+2. Implement cloud `add_custom_model`
+3. Remove fetch/save commands; GET observation only
+
+**Decision**: Option 3. `get_traework_model_ids` is the only model-list IPC.
+`fetch_traework_models` and `save_traework_models` must not exist.
+
+**Example**:
+```text
+get_traework_model_ids() -> { modelIds, revision, truncated }
+```
+
+**Extensibility**: Cloud registration, if ever added, is a separate command
+with its own closed DTO. It must not reuse sqlite upsert.
+
+### Common Mistake: treating `state.vscdb` as Work CN persist
+
+**Symptom**: `ItemTable` upsert into `{userId}:AI.agent.model.model_list_map`
+succeeds, then TRAE launch drops the row.
+
+**Cause**: Work CN refreshes from cloud `model` / `model_list`. Local-only
+customs without `add_custom_model` are not listing authority.
+
+**Fix**: Keep `get_traework_model_ids` as GET observation. Do not register
+`save_traework_models` or `fetch_traework_models`.
+
+**Prevention**: Any sqlite write of the model-list map is forbidden. GET DTO
+JSON must not contain `ak` / `sk`. Prefer the colon Work CN key over the
+underscore IDE key.
 
 ### OpenCode model persist
 
@@ -205,7 +296,7 @@ QoderWork, TRAE Work, and WorkBuddy never convert to `AppType`.
 | Schema 17 data migrates to 18 | Preserve leftover flags and default `enabled_workbuddy` to false |
 | Schema 18 data migrates to 19 | Preserve leftover flags and default MCP `enabled_qoderwork` / `enabled_trae_work` to false |
 | Qoder/TRAE/WorkBuddy MCP home and file are both absent | Skip live write; do not create the vendor directory |
-| TRAE persist would mutate a preset or omit `solo_work_remote` | Fail closed; write nothing |
+| TRAE sqlite model-list write is requested | Forbidden; GET observation only; Work CN listing requires `add_custom_model` |
 | TRAE/OpenCode GET JSON contains `ak`/`sk`/`apiKey` | Security regression gate fails |
 | WorkBuddy is added as `AppType` | Type test fails |
 | Skill destination is linked, escaped, raced, or hash-drifted | Fail closed; do not claim sync |
@@ -251,8 +342,10 @@ git diff --check
 Focused Rust coverage must include catalog fail-closed parsing, status/launch
 unknown semantics, schema 16-to-17, 17-to-18, and 18-to-19 preservation, Skill
 path/TOCTOU /hash handling including WorkBuddy copy dest, Qoder
-projection/revision/token, TRAE URL/DNS/pin plus fixture-sqlite persist (no
-secrets in GET DTO), OpenCode snapshot/save, WorkBuddy `.mcp.json` skip/write,
+projection/revision/token, TRAE URL/DNS/pin plus fixture-sqlite GET
+observation that prefers the colon Work CN key, projects present Work lists
+without writing `state.vscdb`, and keeps GET DTO secret-free,
+OpenCode snapshot/save, WorkBuddy `.mcp.json` skip/write,
 QoderWork `~/.qoderworkcn/mcp.json` skip/write, TRAE `User/mcp.json`
 skip/write, and MCP union/no-execute/redaction. Renderer tests must assert
 exact command/payload wires, V2 six Skills and six MCP targets in catalog
@@ -272,6 +365,18 @@ vendor detection, launch, configuration acceptance, restart effectiveness, or
 Skill loading to verified.
 
 ## 7. Wrong vs Correct
+
+Wrong: write TRAE custom models into local sqlite.
+
+```rust
+save_traework_models_at(&paths, &request)?;
+```
+
+Correct: observe cached IDs only.
+
+```rust
+get_traework_model_ids_at(&paths)?;
+```
 
 Wrong: let the renderer choose process/filesystem/network authority.
 

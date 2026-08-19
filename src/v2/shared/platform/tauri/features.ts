@@ -55,9 +55,7 @@ import {
   type TraeModelValidationResult,
   type TraeWorkModelRequest,
   type CancelTraeModelProbeResult,
-  type TraeWorkFetchModelsRequest,
   type TraeWorkModelIdsResult,
-  type TraeWorkSaveModelsRequest,
   type FetchedModelList,
   type FetchedModelRef,
   type OpenCodeFetchModelsRequest,
@@ -657,73 +655,8 @@ function assertTraeModelRequest(
   return { ...request };
 }
 
-function assertTraeFetchRequest(
-  request: TraeWorkFetchModelsRequest,
-): TraeWorkFetchModelsRequest {
-  if (
-    !isRecord(request) ||
-    !hasExactKeys(request, [
-      "apiFormat",
-      "urlMode",
-      "url",
-      "apiKey",
-      "allowNoApiKey",
-      "allowLoopback",
-      "allowPrivateNetwork",
-    ]) ||
-    !isOneOf(request.apiFormat, TRAE_MODEL_API_FORMATS) ||
-    !isOneOf(request.urlMode, TRAE_MODEL_URL_MODES) ||
-    typeof request.url !== "string" ||
-    typeof request.apiKey !== "string" ||
-    typeof request.allowNoApiKey !== "boolean" ||
-    typeof request.allowLoopback !== "boolean" ||
-    typeof request.allowPrivateNetwork !== "boolean"
-  )
-    throw new Error("TRAE model request is invalid");
-  return { ...request };
-}
-
 function assertStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-
-function assertTraeSaveRequest(
-  request: TraeWorkSaveModelsRequest,
-): TraeWorkSaveModelsRequest {
-  if (
-    !isRecord(request) ||
-    !hasRequiredAndOptionalKeys(
-      request,
-      [
-        "apiFormat",
-        "urlMode",
-        "url",
-        "apiKey",
-        "allowNoApiKey",
-        "allowLoopback",
-        "allowPrivateNetwork",
-        "selectedModelIds",
-        "expectedRevision",
-      ],
-      ["removedModelIds", "overwriteToken"],
-    ) ||
-    !isOneOf(request.apiFormat, TRAE_MODEL_API_FORMATS) ||
-    !isOneOf(request.urlMode, TRAE_MODEL_URL_MODES) ||
-    typeof request.url !== "string" ||
-    typeof request.apiKey !== "string" ||
-    typeof request.allowNoApiKey !== "boolean" ||
-    typeof request.allowLoopback !== "boolean" ||
-    typeof request.allowPrivateNetwork !== "boolean" ||
-    !assertStringArray(request.selectedModelIds) ||
-    (request.removedModelIds !== undefined &&
-      !assertStringArray(request.removedModelIds)) ||
-    (request.expectedRevision !== null &&
-      typeof request.expectedRevision !== "string") ||
-    (request.overwriteToken !== undefined &&
-      typeof request.overwriteToken !== "string")
-  )
-    throw new Error("TRAE model request is invalid");
-  return { ...request };
 }
 
 function assertOpenCodeFetchRequest(
@@ -816,8 +749,9 @@ function parseTraeWorkModelIdsResult(value: unknown): TraeWorkModelIdsResult {
     !assertStringArray(value.modelIds) ||
     (value.revision !== null && typeof value.revision !== "string") ||
     typeof value.truncated !== "boolean"
-  )
+  ) {
     throw new Error("TRAE model list is unavailable");
+  }
   return {
     modelIds: value.modelIds,
     revision: value.revision,
@@ -1452,18 +1386,6 @@ export function createTauriFeaturePorts(): FeaturePorts {
       getModelIds: async () =>
         parseTraeWorkModelIdsResult(
           await invoke<unknown>("get_traework_model_ids"),
-        ),
-      fetchModels: async (request) =>
-        parseFetchedModelList(
-          await invoke<unknown>("fetch_traework_models", {
-            request: assertTraeFetchRequest(request),
-          }),
-        ),
-      saveModels: async (request) =>
-        parseRevisionedSaveResult(
-          await invoke<unknown>("save_traework_models", {
-            request: assertTraeSaveRequest(request),
-          }),
         ),
     },
     codexDesktop: {

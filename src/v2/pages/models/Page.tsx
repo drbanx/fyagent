@@ -1,5 +1,4 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
-import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -26,7 +25,6 @@ import {
   Input,
   SecretInput,
   Spinner,
-  Tooltip,
 } from "../../shared/ui/primitives";
 import {
   CatalogDetail,
@@ -55,7 +53,7 @@ import {
   type QuickSetupErrors,
 } from "./quickSetup";
 import { GroupedModelChips, ModelSearchField, ModelVendorIcon } from "./modelChips";
-import { ModelsPanelHeader, NoticeView } from "./modelsShared";
+import { ModelsPanelHeader, NoApiKeyOption, NoticeView } from "./modelsShared";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
 import {
@@ -77,7 +75,7 @@ const TARGET_PRESENTATION: Record<
   { label: string; summary: string }
 > = {
   qoderwork: { label: "QoderWork CN", summary: "不支持第三方模型配置" },
-  trae: { label: "TRAE Work CN", summary: "管理模型设置" },
+  trae: { label: "TRAE Work CN", summary: "需在 TRAE Work CN 中添加模型" },
   workbuddy: { label: "WorkBuddy", summary: "管理模型设置" },
   codex: { label: "Codex", summary: "快速配置模型" },
   claude: { label: "Claude Code", summary: "快速配置模型" },
@@ -693,34 +691,14 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               notice={notices.apiKey}
             />
           </div>
-          <div className="fy-models-checkbox-row fy-models-checkbox-row-inline fy-models-form-wide">
-            <Checkbox
-              checked={allowNoApiKey}
-              onCheckedChange={(checked) => {
-                setAllowNoApiKey(checked);
-                if (checked) dismiss("apiKey");
-              }}
-              label="允许无 API Key"
-              disabled={busy !== null}
-            />
-            <span>不使用 API Key</span>
-            <Tooltip
-              label={
-                <span className="fy-models-help-copy">
-                  给不需要鉴权的本地模型使用，例如本机的 Ollama、LM
-                  Studio。勾选后请求不会携带 API Key。
-                </span>
-              }
-            >
-              <button
-                type="button"
-                className="fy-models-help"
-                aria-label="不使用 API Key 说明"
-              >
-                <QuestionIcon size={16} weight="regular" aria-hidden />
-              </button>
-            </Tooltip>
-          </div>
+          <NoApiKeyOption
+            checked={allowNoApiKey}
+            onCheckedChange={(checked) => {
+              setAllowNoApiKey(checked);
+              if (checked) dismiss("apiKey");
+            }}
+            disabled={busy !== null}
+          />
         </div>
       </ModelsSection>
 

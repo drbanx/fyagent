@@ -624,33 +624,11 @@ export interface FetchedModelList {
   truncated: boolean;
 }
 
-export interface TraeWorkFetchModelsRequest {
-  apiFormat: TraeModelApiFormat;
-  urlMode: TraeModelUrlMode;
-  url: string;
-  apiKey: string;
-  allowNoApiKey: boolean;
-  allowLoopback: boolean;
-  allowPrivateNetwork: boolean;
-}
-
 export interface TraeWorkModelIdsResult {
   modelIds: string[];
   revision: string | null;
   truncated: boolean;
 }
-
-export interface TraeWorkSaveModelsRequest extends TraeWorkFetchModelsRequest {
-  selectedModelIds: string[];
-  removedModelIds?: string[];
-  expectedRevision: string | null;
-  overwriteToken?: string;
-}
-
-export type TraeWorkSaveModelsResult =
-  | WorkBuddySaveModelsSavedResult
-  | WorkBuddyOverwriteConfirmationRequiredResult
-  | WorkBuddyConcurrentModificationResult;
 
 export interface OpenCodeProviderSnapshot {
   id: string;

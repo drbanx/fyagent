@@ -397,7 +397,9 @@ function AgentObservation({ selectedId }: { selectedId: AgentCatalogId }) {
         <section className="fy-agent-section" aria-label="使用说明">
           <h3>使用说明</h3>
           <InlineNotice tone="warning">
-            部分设置需要在对应应用中完成。
+            {selectedId === "trae-work"
+              ? "自定义模型请在 TRAE Work CN 中添加。FyAgent 不会写入其本地模型配置。"
+              : "部分设置需要在对应应用中完成。"}
           </InlineNotice>
         </section>
       )}
@@ -1041,7 +1043,7 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
                 className="fy-control-button-primary"
                 onClick={() => navigate(`/models?target=${modelTarget}`)}
               >
-                配置模型
+                {modelWrite?.mode === "assisted" ? "查看模型说明" : "配置模型"}
               </Button>
             )}
             {showSkillsJump && (

@@ -1,5 +1,4 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
-import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { classNames } from "../../shared/design-system/classNames";
@@ -9,13 +8,11 @@ import type { OpenCodeSaveModelsRequest } from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
 import {
   Button,
-  Checkbox,
   Dialog,
   InlineNotice,
   Input,
   SecretInput,
   Spinner,
-  Tooltip,
 } from "../../shared/ui/primitives";
 import {
   FieldFeedback,
@@ -26,7 +23,7 @@ import {
   type Notice,
 } from "./feedback";
 import { GroupedModelChips, ModelSearchField } from "./modelChips";
-import { ModelsPanelHeader } from "./modelsShared";
+import { ModelsPanelHeader, NoApiKeyOption } from "./modelsShared";
 import { isHttpUrl, parseManualModelIds } from "./quickSetup";
 import {
   addUniqueModelIds,
@@ -560,33 +557,14 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
               notice={notices.apiKey}
             />
           </div>
-          <div className="fy-models-checkbox-row fy-models-checkbox-row-inline fy-models-form-wide">
-            <Checkbox
-              checked={allowNoApiKey}
-              onCheckedChange={(checked) => {
-                setAllowNoApiKey(checked);
-                if (checked) dismiss("apiKey");
-              }}
-              label="允许无 API Key"
-              disabled={busy !== null}
-            />
-            <span>不使用 API Key</span>
-            <Tooltip
-              label={
-                <span className="fy-models-help-copy">
-                  给不需要鉴权的本地模型使用。勾选后请求不会携带 API Key。
-                </span>
-              }
-            >
-              <button
-                type="button"
-                className="fy-models-help"
-                aria-label="不使用 API Key 说明"
-              >
-                <QuestionIcon size={16} weight="regular" aria-hidden />
-              </button>
-            </Tooltip>
-          </div>
+          <NoApiKeyOption
+            checked={allowNoApiKey}
+            onCheckedChange={(checked) => {
+              setAllowNoApiKey(checked);
+              if (checked) dismiss("apiKey");
+            }}
+            disabled={busy !== null}
+          />
         </div>
       </ModelsSection>
 

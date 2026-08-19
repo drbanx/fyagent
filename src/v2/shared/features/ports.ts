@@ -44,10 +44,7 @@ import type {
   TraeModelValidationResult,
   TraeModelProbeResult,
   CancelTraeModelProbeResult,
-  TraeWorkFetchModelsRequest,
   TraeWorkModelIdsResult,
-  TraeWorkSaveModelsRequest,
-  TraeWorkSaveModelsResult,
   FetchedModelList,
   FetchedModelRef,
   OpenCodeFetchModelsRequest,
@@ -100,12 +97,6 @@ export interface TraeWorkPort {
   ): Promise<TraeModelProbeResult>;
   cancelModelEndpoint(requestId: string): Promise<CancelTraeModelProbeResult>;
   getModelIds(): Promise<TraeWorkModelIdsResult>;
-  fetchModels(
-    request: TraeWorkFetchModelsRequest,
-  ): Promise<FetchedModelList>;
-  saveModels(
-    request: TraeWorkSaveModelsRequest,
-  ): Promise<TraeWorkSaveModelsResult>;
 }
 
 export interface CodexDesktopPort {

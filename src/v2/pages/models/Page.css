@@ -483,15 +483,6 @@
   padding-left: 18px;
 }
 
-.fy-models-consent-list {
-  display: grid;
-  gap: 9px;
-  padding: 11px;
-  border: 1px solid var(--fy-border);
-  border-radius: 11px;
-  background: rgba(16, 40, 64, 0.18);
-}
-
 @media (max-width: 900px) {
   .fy-models-status-grid {
     grid-template-columns: minmax(0, 1fr);

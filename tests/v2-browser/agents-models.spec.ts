@@ -631,41 +631,34 @@ test("Models keeps six targets and saves TRAE models natively", async ({
     page.getByRole("button", { name: "打开官方设置" }),
   ).toHaveCount(0);
   await page.getByTestId("model-target-trae").click();
-  const apiKey = "browser-trae-secret-sentinel";
-  await page
-    .getByRole("textbox", { name: "服务地址" })
-    .fill("https://gateway.example.test/v1");
-  await page.getByRole("textbox", { name: "API Key" }).fill(apiKey);
-  await page.getByRole("button", { name: "拉取模型" }).click();
-  await expect(page.getByText("fixture-model")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "API Key" })).toHaveValue(
-    apiKey,
+  await expect(
+    page.getByRole("region", { name: "TRAE Work CN 模型设置" }),
+  ).toBeVisible();
+  await expect(page.locator("body")).toContainText(
+    "自定义模型需在 TRAE Work CN 中添加",
   );
-  await page.getByRole("button", { name: "保存并应用" }).click();
-  await expect(page.getByText("TRAE 模型配置已保存")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "API Key" })).toHaveValue("");
-  await expect(page.locator("body")).not.toContainText(apiKey);
+  await expect(page.getByRole("textbox", { name: "API Key" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "拉取模型" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "保存并应用" })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "打开 TRAE 官方模型设置" }),
   ).toHaveCount(0);
+  await page.getByRole("button", { name: /TRAE 当前第三方模型 ID/ }).click();
+  await expect(page.getByText("fixture-model")).toBeVisible();
   await page.getByTestId("model-target-qoderwork").click();
   await expect(modelPage).not.toContainText("配置成功");
-  expect(page.url()).not.toContain(apiKey);
-  const secretSurfaces = await page.evaluate(() => ({
-    hash: location.hash,
-    localStorage: JSON.stringify(localStorage),
-    sessionStorage: JSON.stringify(sessionStorage),
-  }));
-  expect(Object.values(secretSurfaces).join("\n")).not.toContain(apiKey);
 
   const calls = await featureFixtureCalls(page);
   expect(calls.filter((call) => call.command === "open_external")).toEqual([]);
   expect(
-    calls.filter((call) => call.command === "fetch_traework_models"),
+    calls.filter((call) => call.command === "get_traework_model_ids"),
   ).toHaveLength(1);
   expect(
+    calls.filter((call) => call.command === "fetch_traework_models"),
+  ).toHaveLength(0);
+  expect(
     calls.filter((call) => call.command === "save_traework_models"),
-  ).toHaveLength(1);
+  ).toHaveLength(0);
   expect(
     calls.filter((call) =>
       [

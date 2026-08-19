@@ -246,31 +246,6 @@ impl TraeErrorDto {
     }
 }
 
-impl TraeModelConfigRequest {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn from_connection(
-        api_format: TraeApiFormat,
-        url_mode: TraeUrlMode,
-        url: String,
-        model_id: String,
-        api_key: String,
-        allow_no_api_key: bool,
-        allow_loopback: bool,
-        allow_private_network: bool,
-    ) -> Self {
-        Self {
-            api_format,
-            url_mode,
-            url,
-            model_id,
-            api_key: TraeSecret(api_key),
-            allow_no_api_key,
-            allow_loopback,
-            allow_private_network,
-        }
-    }
-}
-
 pub(crate) struct ValidatedModelRequest {
     api_format: TraeApiFormat,
     endpoint: Url,
@@ -754,6 +729,7 @@ impl TraeDnsResolver for SystemDnsResolver {
 #[derive(Clone, Copy)]
 enum TraeProbeProxyPolicy {
     Direct,
+    Proxied,
     Unsupported,
 }
 
@@ -763,8 +739,10 @@ fn current_proxy_policy() -> TraeProbeProxyPolicy {
             TraeProbeProxyPolicy::Direct
         }
         Ok(crate::proxy::http_client::InstallerProxyConfiguration::Explicit(_))
-        | Ok(crate::proxy::http_client::InstallerProxyConfiguration::System)
-        | Err(()) => TraeProbeProxyPolicy::Unsupported,
+        | Ok(crate::proxy::http_client::InstallerProxyConfiguration::System) => {
+            TraeProbeProxyPolicy::Proxied
+        }
+        Err(()) => TraeProbeProxyPolicy::Unsupported,
     }
 }
 
@@ -885,6 +863,13 @@ async fn probe_once(
     if matches!(proxy_policy, TraeProbeProxyPolicy::Unsupported) {
         return ProbeOutcome::network(TraeReasonCode::ProxyDnsPinUnsupported);
     }
+    if matches!(proxy_policy, TraeProbeProxyPolicy::Proxied) {
+        let client = match build_proxied_client(limits) {
+            Ok(client) => client,
+            Err(()) => return ProbeOutcome::network(TraeReasonCode::ProxyDnsPinUnsupported),
+        };
+        return complete_probe_http(client, &request, limits).await;
+    }
 
     let host = request.endpoint.host_str().unwrap_or_default().to_owned();
     let port = request.endpoint.port_or_known_default().unwrap_or_default();
@@ -912,9 +897,19 @@ async fn probe_once(
         Ok(client) => client,
         Err(()) => return ProbeOutcome::network(TraeReasonCode::EndpointNetworkRejected),
     };
-    let response = match send_model_probe(&client, &request).await {
+    complete_probe_http(client, &request, limits).await
+}
+
+async fn complete_probe_http(
+    client: Client,
+    request: &ValidatedModelRequest,
+    limits: ProbeLimits,
+) -> ProbeOutcome {
+    let response = match send_model_probe(&client, request).await {
         Ok(response) => response,
-        Err(_) => return ProbeOutcome::network(TraeReasonCode::EndpointNetworkRejected),
+        Err(_) => {
+            return ProbeOutcome::network(TraeReasonCode::EndpointNetworkRejected);
+        }
     };
     let status = response.status().as_u16();
     if consume_bounded_body(response, limits.max_body_bytes)
@@ -981,6 +976,20 @@ fn build_pinned_client(
         .no_deflate()
         .no_zstd()
         .resolve_to_addrs(host, addresses)
+        .build()
+        .map_err(|_| ())
+}
+
+fn build_proxied_client(limits: ProbeLimits) -> Result<Client, ()> {
+    let builder = Client::builder()
+        .redirect(Policy::none())
+        .connect_timeout(limits.connect_timeout)
+        .timeout(limits.total_timeout)
+        .no_gzip()
+        .no_brotli()
+        .no_deflate()
+        .no_zstd();
+    crate::proxy::http_client::apply_installer_proxy(builder)?
         .build()
         .map_err(|_| ())
 }
@@ -1837,6 +1846,40 @@ mod tests {
             TraeEndpointProbeTerminalState::NetworkRejected
         );
         assert_eq!(result.reason_code, TraeReasonCode::ProxyDnsPinUnsupported);
+    }
+
+    #[tokio::test]
+    async fn proxied_probe_uses_shared_proxy_client_and_skips_dns_pin() {
+        let response =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".to_vec();
+        let (port, request_rx, handle) = spawn_http_fixture(response);
+        let request = validate_model_request(model_request(
+            "openai_chat_completions",
+            "complete_url",
+            format!("http://127.0.0.1:{port}/v1/chat/completions"),
+            SECRET_SENTINEL,
+            true,
+            false,
+        ))
+        .unwrap();
+        let result = probe_with_dependencies(
+            Uuid::new_v4(),
+            request,
+            Arc::new(ProbeCancellation::default()),
+            &PendingResolver,
+            TraeProbeProxyPolicy::Proxied,
+            ProbeLimits::default(),
+        )
+        .await;
+        assert_eq!(result.state, TraeEndpointProbeTerminalState::Reachable);
+        assert_eq!(result.reason_code, TraeReasonCode::EndpointReachable);
+        let request = request_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        handle.join().unwrap();
+        assert!(request.to_ascii_lowercase().contains("host: 127.0.0.1"));
+        assert_eq!(request.matches(SECRET_SENTINEL).count(), 1);
+        assert!(!serde_json::to_string(&result)
+            .unwrap()
+            .contains(SECRET_SENTINEL));
     }
 
     #[tokio::test]

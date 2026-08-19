@@ -453,20 +453,7 @@ export async function installRichTauriFeatureFixture(
           case "cancel_traework_model_endpoint":
             return { requestId: payload.requestId, cancelled: true };
           case "get_traework_model_ids":
-            return { modelIds: [], revision: "fixture-trae-revision", truncated: false };
-          case "fetch_traework_models":
-            return {
-              models: [{ id: "fixture-model", ownedBy: "openai" }],
-              truncated: false,
-            };
-          case "save_traework_models":
-            return {
-              state: "saved",
-              revision: "fixture-trae-revision-2",
-              modelCount: 1,
-              createdEntries: 1,
-              updatedEntries: 0,
-            };
+            return { modelIds: ["fixture-model"], revision: "fixture-trae-revision", truncated: false };
           case "get_opencode_model_snapshot":
             return { providers: [], revision: null };
           case "fetch_opencode_provider_models":

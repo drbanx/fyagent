@@ -270,14 +270,14 @@ const TRAE_WORK_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
     capability(
         AgentCapabilityId::ModelsValidate,
-        AgentCapabilityMode::Direct,
-        AgentCapabilityReasonCode::FyagentModelValidation,
+        AgentCapabilityMode::Assisted,
+        AgentCapabilityReasonCode::VendorUiRequired,
         TRAE_MODELS_EVIDENCE,
     ),
     capability(
         AgentCapabilityId::ModelsWrite,
-        AgentCapabilityMode::Direct,
-        AgentCapabilityReasonCode::DedicatedNativeContract,
+        AgentCapabilityMode::Assisted,
+        AgentCapabilityReasonCode::VendorUiRequired,
         TRAE_MODELS_EVIDENCE,
     ),
     capability(
@@ -585,7 +585,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
         variant_id: AgentVariantId::TraeWorkCn,
         display_name: "TRAE Work CN",
         description:
-            "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。本机识别和启动暂无法确认。",
+            "支持 Skills 同步与 MCP 直接分配；自定义模型需在 TRAE Work CN 中添加；不支持 Hooks。本机识别和启动暂无法确认。",
         official_links: &TRAE_WORK_OFFICIAL_LINKS,
         capabilities: &TRAE_WORK_CAPABILITIES,
     },
@@ -771,8 +771,8 @@ mod tests {
                 AgentCapabilityMode::Direct,
                 AgentCapabilityMode::Unsupported,
                 AgentCapabilityMode::Unsupported,
-                AgentCapabilityMode::Direct,
-                AgentCapabilityMode::Direct,
+                AgentCapabilityMode::Assisted,
+                AgentCapabilityMode::Assisted,
                 AgentCapabilityMode::Direct,
                 AgentCapabilityMode::Direct,
             ]
@@ -865,11 +865,11 @@ mod tests {
                     P0_SCOPE_EVIDENCE,
                 ),
                 (
-                    AgentCapabilityReasonCode::FyagentModelValidation,
+                    AgentCapabilityReasonCode::VendorUiRequired,
                     TRAE_MODELS_EVIDENCE,
                 ),
                 (
-                    AgentCapabilityReasonCode::DedicatedNativeContract,
+                    AgentCapabilityReasonCode::VendorUiRequired,
                     TRAE_MODELS_EVIDENCE,
                 ),
                 (
@@ -915,6 +915,9 @@ mod tests {
         assert!(qoder.description.contains("不支持第三方模型配置"));
         assert!(qoder.description.contains("MCP 直接分配"));
         assert!(trae.description.contains("MCP 直接分配"));
+        assert!(trae
+            .description
+            .contains("自定义模型需在 TRAE Work CN 中添加"));
         for entry in &catalog.agents {
             assert!(
                 !entry.description.contains("可通过 FyAgent"),
@@ -1139,7 +1142,7 @@ mod tests {
             })
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(registered.len(), 333, "review intentional handler changes");
+        assert_eq!(registered.len(), 331, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

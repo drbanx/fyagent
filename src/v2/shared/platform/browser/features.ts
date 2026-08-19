@@ -53,8 +53,6 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       testModelEndpoint: rejectNativeOnly,
       cancelModelEndpoint: rejectNativeOnly,
       getModelIds: rejectNativeOnly,
-      fetchModels: rejectNativeOnly,
-      saveModels: rejectNativeOnly,
     },
     codexDesktop: {
       getLocalStatus: rejectNativeOnly,

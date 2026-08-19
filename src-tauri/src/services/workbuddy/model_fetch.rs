@@ -117,32 +117,17 @@ async fn fetch_with_client(
 }
 
 fn build_workbuddy_client() -> Result<Client, WorkBuddyError> {
-    let mut builder = Client::builder()
+    let builder = Client::builder()
         .redirect(Policy::none())
         .no_gzip()
         .no_brotli()
         .no_deflate()
         .no_zstd();
 
-    match crate::proxy::http_client::installer_proxy_configuration() {
-        Ok(crate::proxy::http_client::InstallerProxyConfiguration::Explicit(proxy_url)) => {
-            let proxy = reqwest::Proxy::all(proxy_url.as_str()).map_err(|_| {
-                WorkBuddyError::new(WorkBuddyErrorCode::FetchHttpError)
-                    .with_redacted_summary("The configured proxy could not be used.")
-            })?;
-            builder = builder.proxy(proxy);
-        }
-        Ok(crate::proxy::http_client::InstallerProxyConfiguration::System) => {
-            // Preserve the application's normal system-proxy behavior.
-        }
-        Ok(crate::proxy::http_client::InstallerProxyConfiguration::Direct) => {
-            builder = builder.no_proxy();
-        }
-        Err(()) => {
-            return Err(WorkBuddyError::new(WorkBuddyErrorCode::FetchHttpError)
-                .with_redacted_summary("The configured proxy is invalid."));
-        }
-    }
+    let builder = crate::proxy::http_client::apply_installer_proxy(builder).map_err(|_| {
+        WorkBuddyError::new(WorkBuddyErrorCode::FetchHttpError)
+            .with_redacted_summary("The configured proxy could not be used.")
+    })?;
 
     builder.build().map_err(|_| {
         WorkBuddyError::new(WorkBuddyErrorCode::FetchHttpError)

@@ -88,13 +88,21 @@ function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
           ? "unsupported"
           : capabilityId === "app.detect" || capabilityId === "app.launch"
             ? "unverified"
-            : "direct",
+            : id === "trae-work" &&
+                (capabilityId === "models.validate" ||
+                  capabilityId === "models.write")
+              ? "assisted"
+              : "direct",
       reasonCode:
         capabilityId === "product.open" && id === "codex"
           ? "no_catalog_product_link"
           : capabilityId === "app.detect" || capabilityId === "app.launch"
             ? "trusted_runtime_identity_unavailable"
-            : "dedicated_native_contract",
+            : id === "trae-work" &&
+                (capabilityId === "models.validate" ||
+                  capabilityId === "models.write")
+              ? "vendor_ui_required"
+              : "dedicated_native_contract",
       evidenceIds: ["p0_scope"],
     })),
   };
@@ -197,7 +205,7 @@ describe("V2 Agent directory", () => {
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
       "QoderWork CN9 项支持 · 0 项需在应用中完成",
-      "TRAE Work CN9 项支持 · 0 项需在应用中完成",
+      "TRAE Work CN7 项支持 · 2 项需在应用中完成",
       "WorkBuddy9 项支持 · 0 项需在应用中完成",
       "Codex8 项支持 · 0 项需在应用中完成",
       "Claude Code9 项支持 · 0 项需在应用中完成",
@@ -255,7 +263,7 @@ describe("V2 Agent directory", () => {
       await screen.findByRole("button", { name: /TRAE Work CN/ }),
     );
     expect(
-      screen.getByRole("button", { name: "配置模型" }),
+      screen.getByRole("button", { name: "查看模型说明" }),
     ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: "打开 TRAE Work CN 官方页面" }),
@@ -428,7 +436,7 @@ describe("V2 Agent directory", () => {
       name: "TRAE Work CN 详情",
     });
     await user.click(
-      within(traeDetail).getByRole("button", { name: "配置模型" }),
+      within(traeDetail).getByRole("button", { name: "查看模型说明" }),
     );
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/models?target=trae",

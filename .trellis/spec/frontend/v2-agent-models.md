@@ -21,9 +21,9 @@ its own capability workflow:
 - QoderWork CN, TRAE Work CN, and WorkBuddy each expose one catalog-owned
   product link; Claude Code exposes separate CLI and Desktop links; OpenCode
   exposes `product` then `cli`. QoderWork additionally exposes safe Hooks
-  preparation and MCP validation; TRAE Models owns connection admission plus
-  dedicated native model persistence.
-- WorkBuddy, TRAE Work CN, and OpenCode each use a dedicated revision-checked
+  preparation and MCP validation; TRAE Models is read-only observation plus
+  catalog guidance that custom models must be added in TRAE Work CN.
+- WorkBuddy and OpenCode each use a dedicated revision-checked
   model-configuration domain. WorkBuddy additionally exposes direct Skills
   copy and MCP `.mcp.json` assignment.
 - Codex exposes no catalog link. Its detail owns the FyAgent-managed desktop
@@ -35,7 +35,9 @@ its own capability workflow:
   不支持第三方模型配置 and must not mount a third-party model editor. It must
   not render 「打开官方设置」. Keep 「管理 Hooks 和 MCP」, which navigates to
   `/agents?target=qoderwork`. TRAE Models must not render
-  「打开 TRAE 官方模型设置」; native save stays on this page.
+  「打开 TRAE 官方模型设置」. TRAE `models.write` is `assisted` +
+  `vendor_ui_required`: the Models page states that custom models must be
+  added in TRAE Work CN and must not save into TRAE sqlite.
 - Browser preview never impersonates authoritative desktop state or installer
   success.
 
@@ -177,12 +179,6 @@ get_traework_model_ids() -> {
   truncated: boolean;
 }
 
-fetch_traework_models({ request: TraeWorkFetchModelsRequest })
-  -> { models: Array<{ id: string; ownedBy?: string | null }>; truncated: boolean }
-
-save_traework_models({ request: TraeWorkSaveModelsRequest })
-  -> WorkBuddySaveModelsResult
-
 get_opencode_model_snapshot() -> {
   providers: Array<{ id: string; name: string; modelIds: string[] }>;
   revision: string | null;
@@ -195,7 +191,7 @@ save_opencode_models({ request: OpenCodeSaveModelsRequest })
   -> WorkBuddySaveModelsResult
 ```
 
-`TraeWorkSaveModelsRequest` / `OpenCodeSaveModelsRequest` may carry `apiKey`
+`OpenCodeSaveModelsRequest` may carry `apiKey`
 only as a mutation field. GET snapshots contain sanitized model/provider IDs
 and a revision, never `ak` / `sk` / `apiKey`.
 
@@ -301,7 +297,8 @@ and a revision, never `ak` / `sk` / `apiKey`.
 - The exact selector order is QoderWork CN, TRAE Work CN, WorkBuddy, Codex,
   Claude Code, OpenCode. Missing, empty, or unknown `target` resolves to
   QoderWork CN. Side-rail summaries: Qoder 不支持第三方模型配置; TRAE Work CN
-  and OpenCode 管理模型设置. Never 测试模型连接 or 在 OpenCode 中完成模型设置.
+  需在 TRAE Work CN 中添加模型; OpenCode 管理模型设置. Never 测试模型连接 or
+  在 OpenCode 中完成模型设置.
 - All six selectors use the same reviewed local Agent asset map. No selector
   image is loaded from a remote URL.
 - Target state is component-local. API keys and form content never enter the
@@ -312,16 +309,60 @@ and a revision, never `ak` / `sk` / `apiKey`.
   persistent page actually unmounts. The other five primary routes keep the same
   in-session page. Target panels that have been opened stay
   mounted and hidden the same way. Process reload still starts empty.
-- TRAE fetch still requires explicit connection-test consent and the existing
-  URL/DNS admission before `/models`. A reachable probe is a save gate for new
-  custom rows, not the success state. `save_traework_models` writes TRAE SOLO
-  CN `state.vscdb` (`*:AI.agent.model.model_list_map`) for custom
-  (`is_preset=false`) Work-mode rows in `solo_work_lite` and `solo_work_remote`.
-  Success copy is native save; never 请回 TRAE 保存. Switching Models targets
-  or hiding the page for another primary route does not clear the in-session
-  form; those values still never enter query cache, URL, or storage. Actual
-  unmount of the persistent Models page still clears the key and cancels an
-  in-flight probe.
+- TRAE Work CN custom models are owned by TRAE cloud `model` / `model_list`.
+  Catalog label TRAE Work CN is not a second Application Support folder; after
+  v0.1.18 it is the renamed TRAE SOLO desktop app whose store is still TRAE
+  SOLO CN. FyAgent `get_traework_model_ids` may read the TRAE SOLO CN
+  `state.vscdb` colon key `{userId}:AI.agent.model.model_list_map` as a
+  secret-free observation of currently cached custom IDs. FyAgent must not
+  fetch-and-save into that sqlite document: TRAE launch refreshes it from
+  cloud `model_list` and drops local-only rows. The Models panel states that
+  custom models must be added in TRAE Work CN and never claims sqlite writes
+  will appear in the Work CN UI. Never 请回 TRAE 保存. Switching Models targets
+  or hiding the page for another primary route does not clear other targets'
+  in-session forms; those values still never enter query cache, URL, or
+  storage. Actual unmount of the persistent Models page still clears keys and
+  cancels an in-flight probe.
+
+### Design Decision: TRAE Work CN 自定义模型不写本地库
+
+**Context**: Writing custom rows into TRAE SOLO CN `state.vscdb` can succeed on
+disk, but Work CN listing is owned by cloud `model` / `model_list`. Launch
+overwrites local-only rows that were never registered with `add_custom_model`.
+
+**Options Considered**:
+1. Keep sqlite SAVE and change copy to “请回 TRAE 保存”
+2. Call TRAE cloud `add_custom_model`
+3. GET observation plus vendor-UI guidance
+
+**Decision**: Option 3. Catalog `models.validate` / `models.write` are
+`assisted` + `vendor_ui_required`. There is no `fetch_traework_models` or
+`save_traework_models`. The Models page does not collect a TRAE API key.
+
+**Example**:
+```ts
+await ports.traeWork.getModelIds();
+```
+
+**Extensibility**: A future cloud-register command would be a new native
+contract, not a sqlite upsert.
+
+### Common Mistake: writing TRAE custom models into `state.vscdb`
+
+**Symptom**: FyAgent reports SAVE success, but TRAE Work CN still does not list
+the model after launch.
+
+**Cause**: Work CN listing is owned by cloud `model` / `model_list`. Launch
+overwrites local-only rows that lack a server `custom_model_id`.
+
+**Fix**: Do not add `save_traework_models` or `fetch_traework_models`. Observe
+cached IDs with `ports.traeWork.getModelIds()` and tell the user to add the
+model in TRAE Work CN.
+
+**Prevention**: Catalog `models.validate` / `models.write` stay `assisted` +
+`vendor_ui_required`. The Models page must not collect a TRAE API key or mount
+fetch/save controls.
+
 - Every displayed model ID renders a ~14px decorative local vendor icon from
   `src/v2/shared/assets/models` via `resolveModelVendorIcon(modelId, ownedBy?)`.
   Unknown IDs use the bundled `unknown.svg`. Remote icon URLs are forbidden.
@@ -426,13 +467,12 @@ and a revision, never `ak` / `sk` / `apiKey`.
 | A non-Codex entry is selected                                                              | Do not read or subscribe to the Codex installer                                                         |
 | Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
 | QoderWork/TRAE selected                                                                    | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
-| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; keep 「管理 Hooks 和 MCP」 and native TRAE save only                                  |
+| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; keep 「管理 Hooks 和 MCP」; TRAE stays guidance-only                               |
 | Native observation fails                                                                   | Show controlled unavailable/unknown; never infer absence                                                |
 | Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
 | Qoder Hooks revision or overwrite request drifts                                           | Write nothing or require one exact token replay; never claim save                                       |
-| TRAE preflight or save reaches any terminal result                                         | Clear key/request state; report native validation or native save, never 请回 TRAE 保存                    |
+| TRAE Models attempts sqlite save or fetch-and-apply                                        | Forbidden; GET observation and catalog guidance only, never 请回 TRAE 保存                              |
 | TRAE/OpenCode GET snapshot or Debug/log contains `ak`/`sk`/`apiKey`                        | Security regression test fails                                                                          |
-| TRAE save would mutate a preset row or skip `solo_work_remote`                             | Fail closed; write nothing                                                                              |
 | External MCP result contains an original env/header value                                  | Reject the result and expose no copy action                                                             |
 | Models target missing or unknown                                                           | Select QoderWork CN; issue no write                                                                     |
 | OpenCode is the Models target                                                              | Mount `opencodeModels` CRUD; do not call Provider quick setup or the Codex installer                    |
@@ -458,9 +498,9 @@ and a revision, never `ak` / `sk` / `apiKey`.
 - Good: OpenCode's Models panel lists existing sanitized provider/model IDs,
   fetches, adds, deletes, and saves through `opencodeModels`; it never submits
   Provider quick setup.
-- Good: TRAE validation returns a canonical request ID, fetch uses the same
-  admission rules, save writes custom Work-mode rows in both `solo_work_lite`
-  and `solo_work_remote`, and the UI reports native save. Fixture sqlite under
+- Good: TRAE Models states that custom models must be added in TRAE Work CN,
+  does not mount a fetch/save editor, and `get_traework_model_ids` may list
+  currently cached custom IDs without `ak`/`sk`. Fixture sqlite under
   `FYAGENT_TEST_HOME` never points at the interactive TRAE profile.
 - Good: Qoder Hooks saves a previewed revisioned request and reports the
   required restart without claiming the running process consumed it.
@@ -511,10 +551,13 @@ Required focused coverage includes:
   the 760px stack hiding that separator, and the shared catalog page inset
   (`gap: 0`, no extra Agents/Models page `gap` or `padding-top`);
 - normal browser native-only reads/writes and rich fake-Tauri test isolation;
-- WorkBuddy plus TRAE/OpenCode discovery success/truncation/failure/duplicate
+- WorkBuddy plus OpenCode discovery success/truncation/failure/duplicate
   lock, revision, frozen overwrite, expired token, TOCTOU, authoritative
   reread, API-key lifecycle, and malicious ID/credential collisions;
-  TRAE persist tests use fixture sqlite and assert GET DTO JSON has no `ak`/`sk`;
+  TRAE GET tests use fixture sqlite, prefer the colon Work CN key when
+  an underscore IDE map also exists, and assert GET DTO JSON has no `ak`/`sk`.
+  TRAE Models tests prove guidance copy and the absence of fetch/save
+  controls; they never invoke `save_traework_models`.
 - minimum Provider request/unknown-field rejection, fixed derived IDs/shapes,
   empty/URL/credential collisions, success warnings, current reread mismatch,
   full rollback, rollback-partial structured outcome, and secret-free errors;
@@ -535,8 +578,8 @@ Required focused coverage includes:
 - Models Qoder/TRAE details must not render 「打开官方设置」 or
   「打开 TRAE 官方模型设置」; Qoder keeps 「管理 Hooks 和 MCP」.
 - exact external status/launch, Qoder read/save/token, external MCP validation,
-  and TRAE validate/probe/cancel IPC payloads and result parsers; terminal
-  probe outcomes still clear the TRAE key.
+  and TRAE validate/probe/cancel IPC payloads and result parsers. The Models
+  page does not collect a TRAE API key.
 
 Browser tests prove renderer/IPC wiring only. Rust tests prove service/command
 contracts. Real Windows Tauri HIL and an isolated/reversible native mutation are
@@ -544,18 +587,19 @@ separate acceptance evidence.
 
 ## 7. Wrong vs Correct
 
-Wrong: treat a reachable TRAE probe as vendor save, or write OpenCode through
+Wrong: write TRAE custom models into local sqlite, or write OpenCode through
 Provider quick setup.
 
 ```ts
 showNotice("请回 TRAE 保存");
+await ports.traeWork.saveModels(request);
 await ports.providers.applyQuickSetupWithResult(request, "opencode");
 ```
 
-Correct: persist through the dedicated ports and claim only native save.
+Correct: observe TRAE cached IDs only and persist OpenCode through its port.
 
 ```ts
-await ports.traeWork.saveModels(request);
+await ports.traeWork.getModelIds();
 await ports.opencodeModels.saveModels(request);
 ```
 

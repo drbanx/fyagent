@@ -1848,8 +1848,6 @@ pub fn run() {
             commands::test_traework_model_endpoint,
             commands::cancel_traework_model_endpoint,
             commands::get_traework_model_ids,
-            commands::fetch_traework_models,
-            commands::save_traework_models,
             commands::validate_external_mcp_config,
             commands::get_providers,
             commands::get_current_provider,

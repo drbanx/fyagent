@@ -476,25 +476,13 @@ describe("V2 feature ports", () => {
     ]);
   });
 
-  it("uses exact TRAE persist and OpenCode model commands", async () => {
+  it("uses exact TRAE observation and OpenCode model commands", async () => {
     const { createTauriFeaturePorts } = await import(
       "@/v2/shared/platform/tauri/features"
     );
     invoke.mockImplementation(async (command: string) => {
       if (command === "get_traework_model_ids") {
         return { modelIds: ["model-a"], revision: "trae-rev", truncated: false };
-      }
-      if (command === "fetch_traework_models") {
-        return { models: [{ id: "model-a", ownedBy: "openai" }], truncated: false };
-      }
-      if (command === "save_traework_models") {
-        return {
-          state: "saved",
-          revision: "trae-rev-2",
-          modelCount: 1,
-          createdEntries: 1,
-          updatedEntries: 0,
-        };
       }
       if (command === "get_opencode_model_snapshot") {
         return {
@@ -518,15 +506,6 @@ describe("V2 feature ports", () => {
     });
 
     const ports = createTauriFeaturePorts();
-    const traeFetch = {
-      apiFormat: "openai_chat_completions" as const,
-      urlMode: "base_url" as const,
-      url: "https://example.test/v1",
-      apiKey: "trae-key",
-      allowNoApiKey: false,
-      allowLoopback: false,
-      allowPrivateNetwork: false,
-    };
     const openCodeFetch = {
       baseUrl: "https://example.test/v1",
       apiKey: "oc-key",
@@ -537,12 +516,6 @@ describe("V2 feature ports", () => {
       modelIds: ["model-a"],
       revision: "trae-rev",
       truncated: false,
-    });
-    await ports.traeWork.fetchModels(traeFetch);
-    await ports.traeWork.saveModels({
-      ...traeFetch,
-      selectedModelIds: ["model-a"],
-      expectedRevision: "trae-rev",
     });
     await expect(ports.opencodeModels.getSnapshot()).resolves.toEqual({
       providers: [{ id: "gateway", name: "Gateway", modelIds: ["model-a"] }],
@@ -559,17 +532,6 @@ describe("V2 feature ports", () => {
 
     expect(invoke.mock.calls).toEqual([
       ["get_traework_model_ids"],
-      ["fetch_traework_models", { request: traeFetch }],
-      [
-        "save_traework_models",
-        {
-          request: {
-            ...traeFetch,
-            selectedModelIds: ["model-a"],
-            expectedRevision: "trae-rev",
-          },
-        },
-      ],
       ["get_opencode_model_snapshot"],
       ["fetch_opencode_provider_models", { request: openCodeFetch }],
       [

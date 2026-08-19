@@ -127,7 +127,7 @@ describe("V2 Models page", () => {
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
       "QoderWork CN不支持第三方模型配置",
-      "TRAE Work CN管理模型设置",
+      "TRAE Work CN需在 TRAE Work CN 中添加模型",
       "WorkBuddy管理模型设置",
       "Codex快速配置模型",
       "Claude Code快速配置模型",
@@ -180,87 +180,53 @@ describe("V2 Models page", () => {
     view.unmount();
   });
 
-  it("fetches TRAE models without clearing the key, then saves natively and clears it", async () => {
+  it("shows TRAE guidance and observed IDs without fetch or save controls", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => catalog());
-    const secret = "TRAE-UI-SECRET-SENTINEL-814";
     ports.traeWork.getModelIds = vi.fn(async () => ({
-      modelIds: [],
+      modelIds: ["custom-a"],
       revision: "revision-1",
       truncated: false,
     }));
-    ports.traeWork.fetchModels = vi.fn(async () => ({
-      models: [{ id: "model-a", ownedBy: "openai" }],
-      truncated: false,
-    }));
-    ports.traeWork.saveModels = vi.fn(async () => ({
-      state: "saved" as const,
-      revision: "revision-2",
-      modelCount: 1,
-      createdEntries: 1,
-      updatedEntries: 0,
-    }));
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const errorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    localStorage.clear();
-    sessionStorage.clear();
     renderPage(ports, "trae");
 
-    await user.type(
-      await screen.findByLabelText("服务地址"),
-      "https://gateway.example.test/v1",
-    );
-    await user.type(screen.getByLabelText("API Key"), secret);
-    await user.click(screen.getByRole("button", { name: "拉取模型" }));
-    await waitFor(() =>
-      expect(ports.traeWork.fetchModels).toHaveBeenCalledWith({
-        apiFormat: "openai_chat_completions",
-        urlMode: "base_url",
-        url: "https://gateway.example.test/v1",
-        apiKey: secret,
-        allowNoApiKey: false,
-        allowLoopback: false,
-        allowPrivateNetwork: false,
-      }),
-    );
-    expect(screen.getByLabelText("API Key")).toHaveValue(secret);
-    expect(await screen.findByText("model-a")).toBeVisible();
-    const fetchedIcon = screen.getByText("model-a").closest("li")?.querySelector("img");
-    expect(fetchedIcon).toHaveAttribute(
-      "src",
-      expect.stringMatching(/\/src\/v2\/shared\/assets\/models\//),
-    );
-    expect(fetchedIcon?.getAttribute("src") ?? "").not.toMatch(/^https?:/i);
-    await user.click(screen.getByRole("button", { name: "保存并应用" }));
-    await waitFor(() =>
-      expect(ports.traeWork.saveModels).toHaveBeenCalledWith({
-        apiFormat: "openai_chat_completions",
-        urlMode: "base_url",
-        url: "https://gateway.example.test/v1",
-        apiKey: secret,
-        allowNoApiKey: false,
-        allowLoopback: false,
-        allowPrivateNetwork: false,
-        selectedModelIds: ["model-a"],
-        removedModelIds: [],
-        expectedRevision: "revision-1",
-      }),
-    );
-    expect(await screen.findByText("TRAE 模型配置已保存")).toBeVisible();
+    expect(
+      await screen.findByRole("region", { name: "TRAE Work CN 模型设置" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "自定义模型需在 TRAE Work CN 中添加。FyAgent 不会写入其本地模型配置。",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/以云端模型列表为准/),
+    ).toBeVisible();
+    expect(screen.queryByLabelText("服务地址")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "拉取模型" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "保存并应用" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "允许本机地址" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "允许私有网络地址" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("不使用 API Key")).not.toBeInTheDocument();
+    expect(screen.queryByText("TRAE 模型配置已保存")).not.toBeInTheDocument();
     expect(screen.queryByText("请回 TRAE 保存")).not.toBeInTheDocument();
-    expect(screen.queryByText("请返回 TRAE 保存设置后继续使用。")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
-    expect(document.body.innerHTML).not.toContain(secret);
-    expect(window.location.hash).not.toContain(secret);
-    expect(JSON.stringify(localStorage)).not.toContain(secret);
-    expect(JSON.stringify(sessionStorage)).not.toContain(secret);
-    expect(JSON.stringify(logSpy.mock.calls)).not.toContain(secret);
-    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(secret);
-    logSpy.mockRestore();
-    errorSpy.mockRestore();
+
+    await user.click(
+      screen.getByRole("button", { name: /TRAE 当前第三方模型 ID/ }),
+    );
+    expect(await screen.findByText("custom-a")).toBeVisible();
+    expect(ports.traeWork.getModelIds).toHaveBeenCalled();
+    expect("fetchModels" in ports.traeWork).toBe(false);
+    expect("saveModels" in ports.traeWork).toBe(false);
   });
 
   it("fetches OpenCode models without clearing the key, then saves natively and clears it", async () => {
@@ -1219,38 +1185,40 @@ describe("V2 Models page", () => {
     expect(JSON.stringify(sessionStorage)).not.toContain("keep-secret");
   });
 
-  it("keeps TRAE form content when switching targets and still never writes the key to storage", async () => {
+  it("keeps the TRAE observation panel mounted when switching targets", async () => {
     const user = userEvent.setup();
-    const ports = workBuddyPorts();
+    const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => catalog());
+    ports.traeWork.getModelIds = vi.fn(async () => ({
+      modelIds: ["custom-keep"],
+      revision: "revision-1",
+      truncated: false,
+    }));
     localStorage.clear();
     sessionStorage.clear();
     const view = renderPage(ports, "trae");
 
-    await screen.findByRole("region", { name: "TRAE Work CN 模型设置" });
-    const keyInput = screen.getByLabelText("API Key");
-    expect(keyInput).toHaveAttribute("type", "password");
-    await user.type(
-      screen.getByLabelText("服务地址"),
-      "https://trae.example/v1",
-    );
-    await user.type(screen.getByLabelText("自定义模型 ID"), "model-keep");
-    await user.type(keyInput, "target-only-secret");
+    expect(
+      await screen.findByRole("region", { name: "TRAE Work CN 模型设置" }),
+    ).toBeVisible();
+    expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId("model-target-qoderwork"));
-    expect(document.body).not.toHaveTextContent("target-only-secret");
-    expect(screen.queryByLabelText("端点备注")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("模型备注")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId("model-target-trae"));
-    expect(await screen.findByLabelText("服务地址")).toHaveValue(
-      "https://trae.example/v1",
-    );
-    expect(screen.getByLabelText("自定义模型 ID")).toHaveValue("model-keep");
-    expect(screen.getByLabelText("API Key")).toHaveValue("target-only-secret");
-    expect(JSON.stringify(localStorage)).not.toContain("target-only-secret");
-    expect(JSON.stringify(sessionStorage)).not.toContain("target-only-secret");
+    expect(
+      await screen.findByRole("region", { name: "TRAE Work CN 模型设置" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "自定义模型需在 TRAE Work CN 中添加。FyAgent 不会写入其本地模型配置。",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByLabelText("服务地址")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
+    expect(ports.traeWork.getModelIds).toHaveBeenCalled();
     view.unmount();
-    expect(document.body).not.toHaveTextContent("target-only-secret");
   });
+
 });
