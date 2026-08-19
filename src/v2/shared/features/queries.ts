@@ -1,7 +1,11 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 
 import { useFeatures } from "./provider";
-import type { MemoryDocumentId, PromptAppId } from "./types";
+import {
+  PROMPT_APP_IDS,
+  type MemoryDocumentId,
+  type PromptAppId,
+} from "./types";
 import type { ProviderAppId } from "./types";
 
 export const featureKeys = {
@@ -150,6 +154,15 @@ export function usePrompts(app: PromptAppId) {
   return useQuery({
     queryKey: featureKeys.prompts(app),
     queryFn: () => ports.prompts.getAll(app),
+  });
+}
+export function usePromptLibraries() {
+  const { ports } = useFeatures();
+  return useQueries({
+    queries: PROMPT_APP_IDS.map((app) => ({
+      queryKey: featureKeys.prompts(app),
+      queryFn: () => ports.prompts.getAll(app),
+    })),
   });
 }
 export function usePromptLiveFile(app: PromptAppId) {

@@ -190,6 +190,8 @@ describe("MemoryPage native business management", () => {
       name: "长期记忆资源",
     });
     expect(within(resources).getAllByRole("button")).toHaveLength(4);
+    expect(within(resources).getAllByText("MEMORY.md")).toHaveLength(2);
+    expect(within(resources).getAllByText("USER.md")).toHaveLength(2);
     expect(screen.getByRole("textbox", { name: "记忆内容" })).toHaveValue(
       "openclaw memory",
     );

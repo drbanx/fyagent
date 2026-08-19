@@ -212,12 +212,14 @@ function ExternalLinkButton(props: {
   past the panel chrome. Assignment rows wrap (`flex-wrap: wrap`,
   `min-width: 0`) so “全开 / 全关” stay inside the pane.   The Discover tab
   stays a card grid and must not use this master-detail chassis. Discovery
-  chrome puts search first (`FeatureSearch`), then source/status and the
-  install-target `FeatureTabs`; do not use a `<select>`. Install-target tabs
-  may show decorative app icons. Repository chips appear only when more
+  chrome puts search first (`FeatureSearch`), then source/status
+  `FeatureTabs`. The install-target `FeatureTabs` live in the page header
+  with decorative app icons so they do not push the card grid down. Do not
+  use a `<select>` or a page-local tab clone. Result copy names the current
+  install target. Repository chips appear only when more
   than one repository is loaded. Skill Discover cards show the name and
-  install state in the header, a description or directory/source note,
-  then a text meta line of repository and optional install count. Group
+  install state in the header, a clamped description or directory/source
+  note, then a text meta line of repository and optional install count. Group
   headings appear only when a repository has two or more skills; those
   cards omit the repeated repository. Cards open a document URL as
   “说明”, otherwise the GitHub repository as “仓库”, through

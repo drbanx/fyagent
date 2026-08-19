@@ -83,7 +83,12 @@ paths above.
 ### Prompt behavior
 
 - The page defaults to Claude. Application selection is page-local state and is
-  not written to preferences.
+  not written to preferences. The application rail shows each application's
+  authoritative enabled count, not a generic “提示词库” placeholder.
+- Search filters the library list only. It must not replace the selected
+  prompt with `filtered[0]`. A selected prompt stays in the editor even
+  when the current query hides that row or matches nothing. Do not replace
+  the editor with the empty-search state while a prompt is selected.
 - Each application has an independent prompt collection and live-file query.
   Enabling one prompt uses the backend's single-enabled invariant; the result
   shown in the UI comes from the authoritative reread.
@@ -120,6 +125,8 @@ The fixed resource mapping is:
 - Only Hermes documents expose enabled switches and native character limits.
   Over-limit content is warned about but remains saveable because the native
   runtime may truncate it.
+- Long-term source groups show `MEMORY.md` / `USER.md` in the list. The
+  accessible name and editor title keep `OpenClaw ·` / `Hermes ·`.
 - Daily memory is restricted to OpenClaw `workspace/memory/YYYY-MM-DD.md`.
   The adapter validates the filename before invoke, and the backend validates
   it again. Long-term vs daily uses `FeatureTabs`; document and daily files

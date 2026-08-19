@@ -50,6 +50,7 @@ type DiscardIntent =
 interface MemoryDocumentDefinition {
   id: MemoryDocumentId;
   title: string;
+  listLabel: string;
   description: string;
   path: string;
   source: "OpenClaw" | "Hermes";
@@ -60,6 +61,7 @@ const MEMORY_DOCUMENTS: readonly MemoryDocumentDefinition[] = [
   {
     id: "openclaw-memory",
     title: "OpenClaw · MEMORY.md",
+    listLabel: "MEMORY.md",
     description: "OpenClaw 工作区的长期共享记忆",
     path: "workspace/MEMORY.md",
     source: "OpenClaw",
@@ -67,6 +69,7 @@ const MEMORY_DOCUMENTS: readonly MemoryDocumentDefinition[] = [
   {
     id: "openclaw-user",
     title: "OpenClaw · USER.md",
+    listLabel: "USER.md",
     description: "OpenClaw 工作区的用户信息",
     path: "workspace/USER.md",
     source: "OpenClaw",
@@ -74,6 +77,7 @@ const MEMORY_DOCUMENTS: readonly MemoryDocumentDefinition[] = [
   {
     id: "hermes-memory",
     title: "Hermes · MEMORY.md",
+    listLabel: "MEMORY.md",
     description: "Hermes 的长期记忆",
     path: "memories/MEMORY.md",
     source: "Hermes",
@@ -82,6 +86,7 @@ const MEMORY_DOCUMENTS: readonly MemoryDocumentDefinition[] = [
   {
     id: "hermes-user",
     title: "Hermes · USER.md",
+    listLabel: "USER.md",
     description: "Hermes 的用户信息",
     path: "memories/USER.md",
     source: "Hermes",
@@ -402,7 +407,7 @@ function LongTermView({
                   <FeatureListItem
                     key={document.id}
                     selected={document.id === selectedId}
-                    title={document.title}
+                    title={document.listLabel}
                     onSelect={() => selectDocument(document.id)}
                   >
                     <span>{document.description}</span>

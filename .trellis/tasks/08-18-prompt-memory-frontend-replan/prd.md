@@ -57,14 +57,14 @@
 
 ## Acceptance Criteria
 
-- [ ] AC1. 功能分支是 `origin/dev/laiyongjie` 的后代；PR base 是 `dev/laiyongjie`；没有任何 commit 被推到 `dev/laiyongjie`。
-- [ ] AC2. 提示词：七应用目录轨，无 `<select>`；中间就地编辑；live file 可折叠；新建/导入/启用/删除/脏确认/写锁/回读警告仍在。
-- [ ] AC3. 记忆：来源分组轨；无「记忆信息」第三栏；Hermes 开关和上限在编辑头；每日两栏；页头文案不再暗示 Hermes 有每日文件。
-- [ ] AC4. 两页搜索都在工作区内；空 / 无结果 / native-only 仍可区分。
-- [ ] AC5. 900×600、1152×640、1232×700、1440×900 无横向溢出、主操作可见；分栏内容不画出 pane。
-- [ ] AC6. 不改 `src-tauri`，不改 port 签名，浏览器无种子数据。
-- [ ] AC7. `mise run lint:v2`、`typecheck:v2`、`test:v2`、`test:v2:browser`、`build:renderer`、`format:check` 通过。
-- [ ] AC8. `v2-prompts-memory.md` 补上目录轨、就地编辑、折叠检视，且不放松现有 command 边界。
+- [x] AC1. 功能分支是 `origin/dev/laiyongjie` 的后代；PR base 是 `dev/laiyongjie`；没有任何 commit 被推到 `dev/laiyongjie`。
+- [x] AC2. 提示词：七应用目录轨，无 `<select>`；中间就地编辑；live file 可折叠；新建/导入/启用/删除/脏确认/写锁/回读警告仍在。
+- [x] AC3. 记忆：来源分组轨；无「记忆信息」第三栏；Hermes 开关和上限在编辑头；每日两栏；页头文案不再暗示 Hermes 有每日文件。
+- [x] AC4. 两页搜索都在工作区内；空 / 无结果 / native-only 仍可区分。
+- [x] AC5. 900×600、1152×640、1232×700、1440×900 无横向溢出、主操作可见；分栏内容不画出 pane。Linux Playwright 已过；Windows 125%/150% 与 `mise run check` 见 `handoff.md`。
+- [x] AC6. 不改 `src-tauri`，不改 port 签名，浏览器无种子数据。
+- [x] AC7. 本环境已跑 `lint:v2`、`typecheck:v2`、`test:v2`、`test:v2:browser`、`build:renderer`、`format:check`。完整 `mise run check` 需 Windows/macOS，见 `handoff.md`。
+- [x] AC8. `v2-prompts-memory.md` 补上目录轨、就地编辑、折叠检视，且不放松现有 command 边界。
 
 ## Interaction defects this sprint must close
 

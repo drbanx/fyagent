@@ -14,6 +14,7 @@ import { errorMessage, isNativeOnlyError } from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
 import {
   featureKeys,
+  usePromptLibraries,
   usePromptLiveFile,
   usePrompts,
 } from "../../shared/features/queries";
@@ -161,6 +162,7 @@ export function PromptsPage() {
   const { ports, notify } = useFeatures();
   const [app, setApp] = useState<PromptAppId>("claude");
   const promptsQuery = usePrompts(app);
+  const promptLibraries = usePromptLibraries();
   const liveFileQuery = usePromptLiveFile(app);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -180,9 +182,21 @@ export function PromptsPage() {
   const selected =
     editor?.mode === "new"
       ? null
-      : (filtered.find((prompt) => prompt.id === selectedId) ??
-        filtered[0] ??
-        null);
+      : selectedId
+        ? (prompts.find((prompt) => prompt.id === selectedId) ?? null)
+        : (filtered[0] ?? null);
+  const enabledByApp = useMemo(() => {
+    const counts = {} as Record<PromptAppId, number | null>;
+    for (const [index, id] of PROMPT_APP_IDS.entries()) {
+      const query = promptLibraries[index];
+      counts[id] = query?.data
+        ? query.data.filter((prompt) => prompt.enabled).length
+        : query?.isPending
+          ? null
+          : 0;
+    }
+    return counts;
+  }, [promptLibraries]);
 
   const editorDirty =
     editor !== null &&
@@ -437,7 +451,7 @@ export function PromptsPage() {
         </>
       }
     />
-  ) : filtered.length === 0 && activeEditor?.mode !== "new" ? (
+  ) : filtered.length === 0 && activeEditor?.mode !== "new" && !selected ? (
     <EmptyState
       title="没有匹配的提示词"
       description={`已加载 ${prompts.length} 条 ${APP_LABELS[app]} 提示词，可清空或调整搜索条件。`}
@@ -459,7 +473,17 @@ export function PromptsPage() {
             {enabledCount} 条已启用
           </span>
         </h2>
+        {selected &&
+        search.trim() &&
+        !filtered.some((prompt) => prompt.id === selected.id) ? (
+          <p className="fy-feature-description">
+            当前编辑的提示词不在搜索结果中。
+          </p>
+        ) : null}
         <FeatureList id="prompts-list">
+          {filtered.length === 0 ? (
+            <p className="fy-feature-description">没有匹配的提示词</p>
+          ) : null}
           {filtered.map((prompt) => (
             <FeatureListItem
               key={prompt.id}
@@ -561,7 +585,11 @@ export function PromptsPage() {
                   key={id}
                   asset={getPromptAppBrand(id)}
                   label={APP_LABELS[id]}
-                  summary={id === app ? `${enabledCount} 条已启用` : "提示词库"}
+                  summary={
+                    enabledByApp[id] === null
+                      ? "读取中"
+                      : `${enabledByApp[id]} 条已启用`
+                  }
                   selected={id === app}
                   disabled={busy}
                   testId={`prompt-app-${id}`}

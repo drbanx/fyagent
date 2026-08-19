@@ -78,6 +78,17 @@
   width: 14px;
   height: 14px;
 }
+@media (max-width: 1180px) {
+  .fy-feature-target-tabs .fy-feature-tab > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
 .fy-feature-tab {
   min-height: 34px;
   padding: 0 15px;
@@ -380,6 +391,12 @@
   color: var(--fy-text-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+.fy-feature-card-body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 .fy-feature-card footer {
   display: flex;
